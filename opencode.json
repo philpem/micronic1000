@@ -1,0 +1,44 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openrouter/deepseek-v4-pro",
+  "small_model": "opencode/nemotron-3.5-lightning-free",
+
+  "agent": {
+    "general": {
+      "model": "opencode/muse-spark-1.2-free",
+      "description": "Low-cost general worker for routine delegated research and project tasks. Do not use for substantive reverse-engineering analysis.",
+      "prompt": "{file:./.opencode/prompts/general.txt}"
+    },
+
+    "annotate": {
+      "model": "opencode/muse-spark-1.2-free",
+      "mode": "subagent",
+      "temperature": 0.1,
+      "description": "Applies established findings to Ghidra. No new reverse-engineering inference.",
+      "prompt": "{file:./.opencode/prompts/annotate.txt}"
+    },
+
+    "docs": {
+      "model": "opencode/muse-spark-1.2-free",
+      "mode": "subagent",
+      "temperature": 0.1,
+      "description": "Applies established findings to project documentation and rebuilds the documentation site. No new reverse-engineering inference.",
+      "prompt": "{file:./.opencode/prompts/docs.txt}"
+    },
+
+    "investigate": {
+      "model": "openrouter/deepseek/deepseek-v4-flash",
+      "mode": "subagent",
+      "temperature": 0.1,
+      "description": "Investigates reverse-engineering questions using Ghidra and reports evidence, hypotheses, confidence, and unresolved questions. Does not modify Ghidra.",
+      "prompt": "{file:./.opencode/prompts/investigate.txt}"
+    },
+
+    "investigate_deep": {
+      "model": "openrouter/deepseek-v4-pro",
+      "mode": "subagent",
+      "description": "Expensive deep investigator for difficult, ambiguous, or cross-cutting reverse-engineering problems.",
+      "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
+    }
+  }
+}
