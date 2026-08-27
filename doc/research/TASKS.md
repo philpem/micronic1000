@@ -200,6 +200,41 @@ State: continuously updated as work progresses.
       receive counters; writer trace agent looped - still open) +
       FileSearchNextCb renamed FormatDecU16 (2026-08-27, below).
 
+### 12. FINAL PASS — complete annotation + naming cleanup (defer until the
+    reverse-engineering is done; owner-decision 2026-08-27)
+
+    One coordinated sweep at the end, not piecemeal ad-hoc patches. Scope
+    (baseline 2026-08-27: 935 functions, 131 still `FUN_*`, 27 dispatch
+    tables):
+
+    1. **Name + plate every `FUN_*`** (131 today, mostly the new
+       InlineTableDispatch handlers) — proper Module_VerbNoun name + plate
+       per §8 (brief purpose / mechanics / In-Out-Clobbers / evidence tag).
+    2. **Rename wrong or grandfathered names** — the concatenated legacy
+       names (LinkBlockTx, BdosReaderInChar, ...) to `Module_Name` style,
+       plus outright-wrong names (e.g. the former FileSearchNextCb ->
+       FormatDecU16 pattern). Do as one repo-wide pass, then grep doc/ to
+       sync every mention (rename hygiene §7).
+    3. **Plate-quality pass** — every named function gets a real plate;
+       fix the SHORT-form ones that don't actually fit one sentence, fix
+       plates that contradict their own names, re-flow to ~70 cols.
+    4. **Comment-style pass** — migrate raw-address cites to labels,
+       decode remaining magic numbers/masks in place, drop comments that
+       restate the opcode (§8 anti-patterns).
+    5. **Data-typing backlog** — apply the still-open proposals: ROM00 7d80
+       + 7e50 fn-ptr tables, 7c50/7c30 font metrics, ROM01 7545-7fff
+       config-descriptor table, ram:e105 font copy, ram:d0e0 error-string
+       table, and the 27 dispatch tables' `tbl_` labels + index->handler
+       plate comments.
+    6. **Refresh gap-analysis.md** (the single coverage tracker) after the
+       sweep; do not keep competing %-named claims elsewhere.
+
+    Sequencing: one Ghidra-writing agent at a time, `save_program` between,
+    and diff-guard the function list each batch (§11). Hold until the
+    remaining open items (field-cycle key, "No program in memory"
+    qualifier, emulator navigation) are resolved, so we annotate the
+    final picture rather than a moving target.
+
 ## Owner corrections to honor
 
 - 4x ports (4A/4B/4C/4D/4F cluster) are NOT the RTC (twice-confirmed)
