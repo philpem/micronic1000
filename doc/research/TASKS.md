@@ -1638,3 +1638,26 @@ State: continuously updated as work progresses.
     offsets unknown. Decoder/linker for the RECORD stream is safe to build
     now; a full DIP file ENCODER needs the header pinned (disassemble
     module A, or capture a DIP from a live link session).
+- 2026-08-27 (Module A dug into - DIP parser NOT there; loader primitives boot-only):
+  * Disassembled Module A (ram:D893-E0F3, 1360 instr) and Module B
+    (ram:D081-D2CA, 471 instr) in Ghidra. Module A = session file/FCB/
+    string fns (Fcb_CharTrans area, BDOS RST-8 caller) - NO reference to
+    the loader primitives (d6db/d6f4/d6fa/d713/d727/d7d1) or the DIP
+    error strings. Module B (ROM01:7BCB, 586B) is DATA: the banner
+    "PARCON 1000\n*** Error ***" (D090) + ALL the program-load error
+    strings (D0BD "No program in memory", D0F2 "DIP file too big", D103
+    "Bad DIP file", D110 "COM file too big", D121 "Program not built...",
+    D143 "Program corrupt", D153 "DIP file has too many blocks").
+  * KEY: the kernel loader primitives (d6db record dispatcher + handler
+    table d6f4 + d684 queue) are referenced ONLY by the boot-chain feeder
+    (ROM00:7038 CALL d6db for both banks' 7FFC chains) and kernel init
+    (d681/d691). NOTHING at runtime (ROM01 app, module A/B) references
+    them - so the runtime DIP program loader is a SEPARATE path that does
+    NOT flow through the boot-chain record grammar. This weakens the
+    earlier "DIP uses the same grammar as the boot chain" claim; the boot
+    grammar proves the loader MACHINERY, not the runtime DIP container.
+  * Corrects investigate_deep's inference (it claimed the parser was in
+    module A D893-EC6C - wrong; module A is D893-E0F3 and contains no
+    parser). DIP parser still to locate - likely ROM01 Load/Run Program
+    handler or the dispatch-module RAM block d681+. Header offsets remain
+    OPEN (see manual/program-formats.md).
