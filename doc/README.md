@@ -46,6 +46,6 @@ not reader-facing API specifications.
 
 ## Building the HTML site
 
-See [BUILD.md](BUILD.md). The builder publishes this landing page plus the
-`manual/`, `protocol/`, and `internals/` trees; it intentionally excludes
-the research archive from site navigation.
+See `BUILD.md` in the source repository. The builder publishes this landing
+page plus the `manual/`, `protocol/`, and `internals/` trees; it intentionally
+excludes the research archive from site navigation.

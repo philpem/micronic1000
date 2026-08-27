@@ -13,7 +13,10 @@ MkDocs Material is the supported documentation site generator. Its
 configuration and dependency list are in the repository-root `mkdocs.yml` and
 `requirements.txt`;
 the explicit `nav` tree keeps the programmer manual, protocol specification,
-and internals easy to browse while excluding the research archive.
+and internals easy to browse while excluding the research archive. MkDocs
+loads Mermaid and WaveDrom from jsDelivr: Mermaid fences render as diagrams,
+and WaveDrom fences are converted from their safely escaped code fence into
+the `script[type=WaveDrom]` element required by WaveDrom.
 
 ```bash
 python3 -m venv .venv

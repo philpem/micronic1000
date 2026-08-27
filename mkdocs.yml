@@ -26,6 +26,13 @@ theme:
         name: Switch to light mode
 plugins:
   - search
+extra_javascript:
+  # Custom fences below provide the DOM shape expected by these renderers.
+  # Keep this order: WaveDrom's default skin creates window.WaveSkin.
+  - https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js
+  - https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/skins/default.js
+  - https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/wavedrom.min.js
+  - javascripts/diagrams.js
 exclude_docs: |
   research/**
   node_modules/**
@@ -39,7 +46,14 @@ markdown_extensions:
   - attr_list
   - pymdownx.details
   - pymdownx.highlight
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+        - name: wavedrom
+          class: wavedrom
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - tables
 nav:
   - Home: README.md

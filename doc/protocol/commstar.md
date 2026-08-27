@@ -66,6 +66,25 @@ The payload source is a **descriptor list** in RAM. Each four-byte entry is
 (ROM00:3508) advances to the next entry until a zero count terminates the
 list. These descriptors are not transmitted.
 
+The diagram below is the confirmed controller-facing transmit ordering. It is
+not a Commstar session exchange and makes no claim about the external
+controller's electrical timing.
+
+```mermaid
+sequenceDiagram
+    participant F as M1000 firmware
+    participant C as Link controller
+    F->>C: Select port and prepare LINK_CTRL
+    F->>C: LINK_CMD = 81h
+    F->>C: LINK_TXD = link_id & 1Fh prelude
+    Note over F,C: Handshake polls LINK_STATUS bits 4 and 6
+    loop Each descriptor payload byte
+        F->>C: LINK_TXD = payload byte
+        Note over F,C: Firmware waits for LINK_STATUS bit 7
+    end
+    F->>C: Release LINK_CTRL enables
+```
+
 ### Receive
 
 **CONFIRMED:** `LinkBlockRx` (ROM00:3378) uses control-latch strobes,
@@ -126,8 +145,8 @@ paths: `01EE`, `02E0`, `02EE`, `04E0`, `05E0`, and `01EF`. Only
 reply envelope, payload, and mapping of the remaining values to session
 meaning remain open.
 
-Consequently, no state diagram or host/peer sequence is normative yet. A
-capture must establish each transition as:
+Consequently, no state diagram or host/peer session sequence is normative
+yet. A capture must establish each transition as:
 
 | Current state | Received bytes | Guard | Transmitted bytes | Next state |
 |---|---|---|---|---|
