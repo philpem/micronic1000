@@ -1435,3 +1435,18 @@ State: continuously updated as work progresses.
     Ghidra script (clearListing + createWord/array/word), with
     COMPUTED_CALL references added to every handler + default target.
     Function count unchanged (777). Saved. protocol document updated.
+- 2026-08-27 (dispatch handlers -> functions; handler field -> pointer):
+  * handler field of DispatchTableEntry retyped word -> pointer (the 'p'
+    key equivalent). Iterated to fixpoint: 27 inline tables (the 27th at
+    ROM00:4cc8 is nested inside handler FUN_ROM00__4c2c), every handler +
+    default target now has a FUNCTION starting at its address (144
+    targets, verified ok=144 bad=0). Function count 777 -> 935 (all
+    additive - new handler functions; no losses). Saved.
+  * Field-edit dispatch semantics decoded (1f96 table): 0x06/0x0b -> 1e61
+    (next field), 0x01/0x0c -> 1ea1 (prev field), 0x11 -> 1ece (first
+    choice), 0x12 -> 1eed (last choice), default 1f23 (choice-table
+    letter-match). So 0x11/0x12 are first/last, NOT cycle - the "N/Z
+    cycles the From value" key is STILL unresolved.
+  * NEXT (large): annotate the ~96 new handler functions (name + plate +
+    labels) - dispatch via annotate agent, serialized. Continue the
+    choice-cycle trace (d8ce transform + the From field's choice table).
