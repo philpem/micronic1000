@@ -1005,3 +1005,227 @@ State: continuously updated as work progresses.
     gap-analysis.md refreshed (5th audit).
   * NEXT: plateless tranche 8 (ROM01's 61), then ROM00's 238; LAB batch
     12 (~160 in-fn labels above 4730, evidence dump in-hand).
+- 2026-08-26 (ROM01 plateless CLOSED; 3 read-only investigate agents +
+  main applied, saved):
+  * ROM01 plateless tranche COMPLETE: 61 plates applied (3 RST thunks
+    BankedRst08/20/28 done by main; 58 session/UI functions by three
+    parallel investigate agents, byte-verified at application).
+    Callee names cross-checked (UiFindKeyMatch/UiSetDialogId/
+    UiSetAttrCells/UiRenderCharCell/BankedMonoCall/UiFieldLineWalk/
+    CmdDispatchSub/CmdDispatchWrap + the Session 32-bit VM op cluster
+    dc37/dc49/dce9/dca1/ddfa/dc30/e09f/df42/df5b) - all real, no
+    hallucination. Coverage: 750 total / FUN=0 / thunk=13 / plateless
+    238 (all ROM00; ROM01 now 0, ram saturated).
+  * Boundary issue FOUND + bookmarked (not re-based): ROM01::2f74 holds
+    an orphan 11 byte = first byte of LD DE,0x10; SessionFieldEditLoop
+    entry is 2f75 (mid-instruction), yet the CALLer at 75df literally
+    targets 0x2f75 (CD 75 2F). SUSPECTED dual entry (2f74 primary / 2f75
+    DEC-B secondary). Discriminating test: single-step 75df. Guarded
+    re-base candidate (bookmark at 2f74).
+  * NEXT: plateless tranche 9 = ROM00's 238 (larger; dispatch investigate
+    agents in ~6-8 batches); LAB batch 12 (~160 labels).
+  * NOTE: agents are WORKING now (config fixed to
+    "openrouter/deepseek/deepseek-v4-flash"); read-only investigate
+     agents ran 3-wide in parallel without DB issue - the earlier wipe was
+     write-agent concurrency. Keep annotate (write) serial.
+- 2026-08-26 (ROM00 plateless COMPLETE + wipe/recovery; 9 read-only
+  investigate agents in 3 waves, main applied, saved):
+  * PLATE CAMPAIGN FINISHED: ROM00's 238 plateless functions plated in
+    three waves (disk/Fs/BDOS + device/link/barcode + keyboard/LCD;
+    RTC/periph + diag/LCD-print + link transport; TTY/coroutine +
+    session screens + TX/RX protocol). Final coverage: 749 total /
+    FUN_*=0 / thunk=13 / plateless=0 (ROM00, ROM01, ram all saturated).
+    gap-analysis.md refreshed (6th audit). This closes the plate debt
+    that started at 498-plateless on 2026-08-25.
+  * AGENT QUALITY NOTE: investigate agents were reliable on callee
+    NAMES and general mechanics but have a ~5-10% detail error rate
+    (wrong registers/constants/addresses, esp. in "stub/no-op" guesses).
+    Spot-checks caught + corrected: 1888/188c return 0xFFFF/0 (not
+    identity no-ops); 1893 uses LD C,0xFE + RST 28h (not A/08h); KbdDrive
+    shadow is f782 (not f784); 60d6 aborts on ==4 (not >=4). The applied
+    ROM00 plates are FIRST-PASS - a systematic byte-verify refinement
+    pass is queued (follow-up).
+  * CORRECTNESS FIXES applied: TableIndexedRead (4f4f) = false positive
+    over data (no xrefs) -> DELETED. SessionStartTransmit (52d7) is
+    mid-function (real proem at 52a5) -> bookmarked, not re-based.
+    SessionCompleteMsg/Silent (4a4b/4a67) = alternate entries of the 4a25
+    coroutine (noted in plates).
+  * WIPE + RECOVERY: during wave-3 application, deferred auto-analysis
+    deleted ~125 functions in-memory (750 -> 625), concentrated in the
+    ROM00 session/coroutine/TX-RX region. Followed AGENTS.md §11: did NOT
+    save, owner exited Ghidra without saving, reopened the last disk state
+    (751 functions), and wave-3's 63 plates were re-applied from the log.
+    Root cause: sustained rapid set_plate_comment MCP load. NEW RULE for
+    next time: save every ~30-40 plate writes (not per-wave).
+  * NEXT: byte-verify refinement pass over the ROM00 first-pass plates;
+    guarded re-bases of the 2f74/2f75 and 52a5/52d7 boundary issues; LAB
+    batch 12 (~160 in-fn labels).
+- 2026-08-26 (KbdDrive rename + LAB batch 12 complete; main agent, saved):
+  * KbdDrive* grandfathered names fixed (owner-requested; byte-verified).
+    KbdDriveAllOn(1a42)=2-byte LD A,0x3F entry that falls into the sense
+    routine; KbdDriveWrite(1a44) drives a column AND senses; "ReleaseAll"
+    wrote the SAME 0x3F as "AllOn" but without sensing - the real split is
+    sense-vs-no-sense, not on-vs-release. Renamed: KbdSenseAllColumns(1a42),
+    KbdSenseColumn(1a44), KbdDriveSetAll(1a77, 0x3F), KbdDriveClearAll
+    (1a81, 0x00). Plates corrected; 2 first-pass byte-range errors fixed
+    (KbdDriveWrite was 1a44-1a76 spanning KbdScanRowDecode; KbdDriveOff
+    was 1a81-1a95).
+  * LAB batch 12 COMPLETE: all 202 remaining ROM01 in-fn LAB_* labels
+    renamed to branch-meaning names (function-prefix + suffix: load_cell/
+    ret_imm/zero/one/back/join/exit/dispatch). ROM01 in-fn LAB = 0.
+  * REMAINING LAB (enumerated): ROM00 505 in-fn + 88 out-fn; ROM01 60
+    out-fn (data region 7715/7751 etc.); ram 128 in-fn + 126 out-fn.
+    Next: ROM00 in-fn batch, then the out-fn labels (likely data - delete
+    or comment), then ram.
+- 2026-08-26 (LAB campaign continued; main agent, saved):
+  * ROM00 in-fn LAB batch COMPLETE: 505 labels renamed to branch-meaning
+    names (reset_/cold_/install_/diag_/Fs*/Disk*/Bdos*/devcon_/extarm_/
+    extedge_/tty_/lcd*/rtc*/link*/ramtest_/contig_/session* prefixes).
+  * ram in-fn LAB batch COMPLETE: 128 labels renamed (kernloop_/
+    syscall_/loadblock_/fcb_/memmove_/shiftdiv_/mulu_/cmddisp_/bdos_/
+    bankwalk_/bankcb_/nmi_ etc.).
+  * Session total in-fn LAB renames: 202 ROM01 + 505 ROM00 + 128 ram =
+    835. Only the out-fn data-region labels remain: ROM00 88, ROM01 60
+    (7715/7751 descriptor tables), ram 126 - these are data labels, to
+    type/comment/delete (next round), plus 2 mid-instruction artifacts
+    (ROM00:200a, ram:f1b2) to delete.
+  * OUT-FN LAB ASSESSED (not renamed - they are auto-generated dynamic
+    labels, not deletable via removeSymbol; need the UNDERLYING fix):
+    - 13 mid-instruction artifacts (ROM00:1793/200a/7060; ram:d0fe/d123/
+      d159/d186/d207/d219/d27b/de6a/f1b2/f1fb) -> need clear-flow repair
+      (misdisassembled flow), not label deletion.
+    - Data tables (ROM00 7c52-7c70, 692a, 6a28-6a5d; ram e127-e145,
+      f1f9/f1fb in the BdosFnHandlers array) -> need data-typing.
+    - Code-gap branch targets (ROM00 199d-1a3f keyboard-scan region,
+      ram page-zero 0100/01a6/024d etc.) -> need function creation
+      (find_code_gaps), not rename.
+    Verdict: in-fn LAB re-inventory is COMPLETE (835 renamed); the
+    out-fn remainder is function-boundary/flow/data-typing debt, logged
+    as its own follow-up.
+- 2026-08-26 (terminology correction): "Session 32-bit VM" / "VM register
+    file" was an OVER-CLAIM. There is no opcode-interpreter/dispatch loop;
+    the E3B1-E3BF cells are a plain 32-bit arithmetic register file
+    (accumulator/operand slots, little-endian) driven by direct-CALL
+    routines, used by the session numeric formatter (SessionCmdHandler53C6).
+    Historical TASKS entries above still say "VM" - treat as stale wording.
+    The 16-bit helpers are genuinely generic (moved to Lib_*); the 32-bit
+    cluster IS session-specific, so "Session*32" names stay.
+- 2026-08-26 (byte-verify refinement wave 1; 4 read-only agents + main,
+  saved):
+  * RAM02 factored in: ram:0000-7FFF is the banked WINDOW, modelled by
+    overlays ROM00/ROM01/RAM02 (RAM02 = RAM bank-2 page, owner-created).
+    The ram:0100/01a6 "no-block" labels are banked-window page-zero
+    targets (resolve to the selected bank); not a missing-block task.
+  * MECHANICAL byte-range audit (script): 110 of 312 plates had a wrong
+    "CONFIRMED: addr1-addr2" range (agents over-stated extent to the
+    next function's address). ALL auto-corrected to actual body bounds.
+  * FACTUAL verification (4 parallel investigate agents, ~295 plates):
+    22 discrepancies found + corrected, all byte-verified before apply:
+    - ROM01 (6): TemplateBuilder CALL-on-Z not NZ; UiDialogListItem JP
+      09db not fall-through; UiDialogLayout does not return HL=1;
+      SessionWaitCharCell returns HL=1 (not 0) on zero arg; SessionField
+      EditLoop has NO 356e call; SessionFieldReady needs (eb53) non-zero
+      too.
+    - ROM00 (16): BdosDirSearchHelper extent = f823-f82c (reversed);
+      LinkSelectActiveDevice AND 3 not 7; ExtBusAdvanceTimer fbce +=
+      f9ac (not -=); CommsLineDeassertRd order (2349 first); KbdColumn
+      Strobe branches on Z not carry; LcdCharWrapBound uses BC not HL;
+      lcd_clear_spaces loops 0xA0 (160) not 0x60; RtcPeekDateByte CALL
+      not tail-call; DiagPrintResult 0x80=TIMEOUT else FAIL (swapped);
+      TtyPrintString/LcdPrintString NULL-terminated not $; LinkTransport
+      Call CLEARS fbc9 bit0 while LinkResetSession SETS it (pair was
+      SWAPPED); DescriptorCount16 reads 4 bytes not 16; RtcDateChanged
+      Check sets fbc9 bit1 unconditionally; RtcAlarmWriteCtrl is a 15-byte
+      fragment (real alarm logic in RtcSetAlarm).
+    - Session cluster (ROM00 354c-6811) verified CLEAN (agent found 0).
+  * BeepAndLatchWrite (14ff) renamed Barcode_AttentionStrobe (stale
+    "ReaderBeepAttention"/"light-pen" plate fixed; drives 2A/2C route
+    latches + arms fbbf). io-map.md updated.
+  * NEXT: byte-verify wave 2 (re-scan for remaining detail errors;
+    data-typing + find_code_gaps for the out-fn tail); guarded re-bases
+    (2f74/52a5/4a25); emulator run (memory-gated).
+- 2026-08-26 (Comm Setup device-selection trace; 3 read-only agents +
+  main, saved):
+  * The 5 device names at ROM01:757F are COMM SETUP form labels, not
+    drives. Form template at 758B (+0x0C -> 757F), built by
+    Ui_CommSetupFormInit (060B) -> TemplateBuilder (0271).
+  * Two wire-id tables, one accessor (~ROM00:31FF): FE93 = drive-letter
+    -> wire-id (A=0x00 internal, B=0x7F, C=0x73, D=0x72, E-P=0x00);
+    FE83 = 4 device slots [0x80,wire,0x63,0x43] = 0xAB/0x2B/0x67/0x67.
+    BDOS std file ops (fn<0x25) reject non-zero wire-id -> external probe
+    (DiskKeyedSearch -> LinkTransportOpen). Plates set on FE93/FE83.
+  * Device-selection callbacks (ram:D081 = 5 indirect ptrs, Module B):
+    [0] WORKSTATION MEMORY -> 0A67 (dialog config),
+    [1] WORKSTATION RAMDISK -> 156F (reset slots + banked dispatch),
+    [2] PLINTH -> 1177 (no-op), [3] V24 ADAPTOR -> 1177 (no-op),
+    [4] EXT STORAGE ADAPTER -> 156F (different param 0x41 vs 0x42).
+    "RAMdisk size" string at 7B45. Plate set on ram:D081.
+  * VERDICT: WORKSTATION MEMORY/RAMDISK are config FLOWS, not hardcoded
+    wire-ids; the wire-id values are RUNTIME (dialog result / banked-call
+    param), so static analysis cannot read them. NEXT: hardware/emulator
+    step the Comm Setup wizard and observe FE93/FE83/FBC5.
+- 2026-08-27 (3 agents: emulator + code-gaps + acronym/EOL; main applied):
+  * EMULATOR (general agent): booted but STALLED in the bank-walk loop
+    (never reached BannerKeyRead/menu). Still produced a full 64K dump.
+    FINDING: runtime D660-D680 holds CODE (not the zeros in our static
+    dump) and D681 self-patches to JP F180 - so the static dump's D660
+    zeros are pre-boot state, overwritten by the boot/dispatch code.
+    FE83/FE93/F180/F820 match ROM defaults. To reach menu: higher
+    --max-slices (~2e6) + fix the ram-page-test skip.
+  * CODE GAPS: created functions Kbd_ScanMain (ROM00:18f0, the keyboard
+    scan loop) + 4 session helpers (7be0 Session_IncHLOrRet, 7bed
+    Session_LoadDecCmp, 7c14 Session_Cmp16Bit, 7c22 Session_Cmp16BitB).
+    Data tables identified (not yet typed): ROM00 7c30 lookup, 7c50
+    bitmap, 7d80/7e50 fn-ptr tables, ROM01 7545-7fff descriptor table,
+    ram:e105 lookup+bitmap, ram:d0e0 string table. 2 mid-instruction
+    labels to delete (ram:f1b2, ram:de6a - auto-symbols, need clear-flow).
+  * ACRONYM: 14 32-bit-arithmetic plates corrected - dropped the "VM
+    register file" over-claim, now name the concrete E3Bx cells.
+  * EOL: 41 EOL comments on SessionCommandDispatch (e0b2), FsInitAllocator
+    (05a1), Kernel_BankedCallEnvelope (f376), SessionCoroStartTask (3d3c).
+  * CHURN: 7 FUN_* re-triaged + named: Fs_DirBlockMap (042d),
+    Session_DialogIdGet (1548), Kbd_SetKeyState2 (1aec), Kbd_ClearAndPower
+    Bit0 (1b1a), PowerLatchClrBit0 (1b39), SessionDivS32 (ddb0),
+    SessionModS32 (ddcb). FUN_* = 0.
+  * NEXT: data-type the identified tables; guarded re-bases (2f74/52a5/
+    4a25); emulator menu reach (higher slices); apply remaining EOL
+    (SessionCoroJumpTable 3c06).
+  * COMMENT-STYLE GUIDE added to AGENTS.md §8 (owner-requested): plate
+    template (brief/longer/In/Out/Clobbers, MUST be multi-line ASCII -
+    never squashed); SHORT form allowed for trivial fns (Lib_SignedLe16);
+    LABELS-not-addresses rule (cite g_/named labels, not raw cell/port
+    addresses). MIGRATION follow-up: many existing comments still cite raw
+    addresses (fbc9 bit0, e681, ec49, f794, ...) - a labelling pass should
+    create descriptive labels for the hot session/link cells and rewrite
+    those comments to reference them.
+- 2026-08-27 (3 agents: stdlib inventory + serial flow + emulator; applied):
+  * STDLIB RECATEGORISATION continued (byte-verified by agent): the
+    string/memory/char helpers are generic and moved to Lib_*. Two were
+    MIS-NAMED and corrected: Util_ArgAddrSp5 = bounded STRNCMP ->
+    Lib_StrCmp (db35); Util_ArgAddrSp5b = STRCAT -> Lib_StrCat (dbb1).
+    Also: Util_StrLen -> Lib_StrLen, Util_StrCopy -> Lib_StrCopy,
+    Util_NulFillCopy -> Lib_StrCopyN, SessionMemMove -> Lib_MemMove,
+    SessionFillMemory -> Lib_MemFill, Session_IsDigitCy -> Lib_IsDigit.
+    NO pure strcmp/strncmp-with-caller-bound exists. Kept Session_ for
+    the FCB/session-specific (Session_CharTranslate, Session_FcbCharTrans,
+    Session_FcbParseFilename) and the VM register-file ops. (Nugget:
+    the underlying 32-bit divide engine might be general-purpose - open.)
+  * SERIAL NUMBER (refines owner note): ram:FEAB is WRITTEN by
+    DelayCountUp (ROM00:271F) at cold start as FEAB = FEA9*0x20 (FEA9 =
+    count of 0xFF bytes from the RAM scan) - so it is a COMPUTED default,
+    DISPLAYED on the banner, NOT entered at the banner. The banner only
+    waits for ENTER (0x0D) at 02D8. The "Enter the Workstation serial
+    number shown on the back" dialog is ROM01 app UI (strings 7A8E-7AB2,
+    template 76E4), post-boot - this is where the user entry (overwriting
+    FEAB) happens. Consistent with owner + nuance to record in §3.
+  * EMULATOR STALL SOLVED: root cause was NOT a bank-walk bug - it was the
+    genuine banner HALT-wait (16CA, ffa8=1, fbc9=0); the --drive-kbd cheat
+    spammed ENTER faster than the ring was consumed. Fix (in /tmp/
+    boot_hw_serial.py, NOT yet merged): pace one char per consume (inject
+    only when fbc9 bit2 clear), add --drive-serial/--serial to inject
+    banner-ENTER + "12345678" + ENTER. Result: reaches the MAIN MENU
+    (~173k slices; framebuffer shows Main Menu / Load/Run Program / Set
+    Clock / Display Status / Diagnostics). Speed: SLICE=5-10k halves the
+    slice count at the same wall time; MAX_SLICES 300k sufficient.
+    NEXT: merge the paced-injection + --drive-serial flags into
+    analysis/boot_hw.py.

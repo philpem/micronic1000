@@ -23,7 +23,7 @@ Confidence legend:
 | 08h | W | io08_port_08 | Comms/modem indexed register INDEX (data at 28h) | CONFIRMED mechanism |
 | 23h | W | io23_lcd_clk | LCD strobe/select: 0Bh = command phase, 0Ch = data phase | CONFIRMED |
 | 28h | R/W | io28_data_in | Comms/modem indexed register DATA | CONFIRMED mechanism |
-| 2Ah | W | io2a_ctl_latch | Peripheral control latch (shadow F78B). Init 20h; bit5 toggled in beep sequences; bit1/bit4 driven by the external-device bus arm/trigger path in ExtBusArm (1221)/BeepAndLatchWrite (14FF) for the 2A wire variant | usage CONFIRMED |
+| 2Ah | W | io2a_ctl_latch | Peripheral control latch (shadow F78B). Init 20h; bit5 toggled in beep sequences; bit1/bit4 driven by the external-device bus arm/trigger path in ExtBusArm (1221)/Barcode_AttentionStrobe (14FF) for the 2A wire variant | usage CONFIRMED |
 | 2Bh | W | io2b_sound | Sounder/beeper: 0 = off, 0Bh = beep pattern. **Also written 0 by the device front-end 35C9 to quiet before an external-bus timing window** | LIKELY |
 | 2Ch | W | io2c_ctl_latch | Control latch (shadow F78D); **bit1/bit0 = attention strobe for the 2D external-device status bus** (toggled by ExtBusDisableFe 14DE / BeepAndLatch 14FF) | usage CONFIRMED |
 | 2Dh | R | **EXTBUS_EDGE** | **External-device bus level/edge input** (read-only). **bit0 = data/signal line**, bit1 = secondary/status line. Acquired by ExtBusAcquireEdge (13B8) which times between edges. This is the bit-banged front-end for the EXT STORAGE ADAPTER wire-2B adapter bus and the wire-2A variant; **not** proven to be a barcode/light-pen input. (io:002d labelled `EXTBUS_EDGE`) | CONFIRMED code, function NEUTRAL |

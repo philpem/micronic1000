@@ -1,9 +1,9 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-26 (5th audit), firmware `micron1.bin`
-(overlay spaces `ROM00`/`ROM01`, `ram` resident kernel). This is a
-**documentation-coverage** audit: which functions have *we* named and
-commented, versus the auto-named `FUN_*` that Ghidra merely detected.
+Status: 2026-08-26 (6th audit, plateless campaign COMPLETE), firmware
+`micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
+This is a **documentation-coverage** audit: which functions have *we* named
+and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 ## Headline
 
@@ -20,9 +20,10 @@ each reappearance is triaged and either named (if real code) or deleted
 (if a NOP/zero-buffer artifact) in the same pass — see the 2026-08-26
 session entries in TASKS.md. The naming invariant is `FUN_* == 0`.
 
-**Plate debt (separate from naming):** 299 named functions still carry no
-plate comment (ROM00 238, ROM01 61; ram saturated). Tracked in TASKS.md
-"plateless tranches". 13 thunks are intentionally excluded.
+**Plate debt: 0.** Every named function now carries a plate comment
+(ROM00, ROM01 and ram all saturated). 13 thunks are intentionally
+excluded from the plate requirement. Completed 2026-08-26 (ROM00's 238
+finished in three agent waves; see TASKS.md).
 
 Earlier audits (480/88, 668/58, 686/1, 689/0) are history.
 
