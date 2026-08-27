@@ -181,10 +181,12 @@ State: continuously updated as work progresses.
 8c. **Static writers of d2dc/d2de (06d3 globals)** and of the EA14/
     EA1C chunk-state blocks — not in defined code post-repair;
     re-check after the thunk-sweep and get_callers pass.
-9. **Stale barcode-reader.md leftovers** (docs agent flagged):
-   H1 still ends `(was "barcode reader")` and §"What a symbology
-   decoder does" still says "(if this is a light-pen)" — both now
-   stale versus the owner adjudication. Reword.
+9. **Stale barcode-reader.md leftovers** — **DONE (verified 2026-08-27):**
+   barcode-reader.md H1 and the "What a symbology decoder does" section
+   no longer carry the stale "(was ...)" / "(if this is a light-pen)"
+   wording. NOTE: protocol-comms.md §400 still titles the external-device
+   bus "(was "barcode/light-pen")" and §434 asserts "no barcode strings" —
+   that predates the owner adjudication and needs a separate review pass.
 10. **Name `FUN_ROM00__35c9`** (the quiet-bus helper in the capture
      path, review §2.3) during the work-item-queue analysis (item 5).
 11. **Decode the error-screen format** — **DONE (2026-08-27, see
@@ -194,9 +196,9 @@ State: continuously updated as work progresses.
      NOT the e488 code (6); the "(238/001)" pair = RCV1/RCV2 session
      status fields from e701/e6ff (3-digit zero-padded), template at
      ROM00:7310 (tbl_sess_status_fmt) with field names RCV1/RCV2/SEND/
-     LOAD/PROG/TIME/ENDC. Open: runtime meaning of RCV1/RCV2 (SUSPECTED
-     receive counters) + FileSearchNextCb misnomer (it is a decimal
-     formatter, ROM00:403b — rename pending).
+      LOAD/PROG/TIME/ENDC. Open: runtime meaning of RCV1/RCV2 (SUSPECTED
+      receive counters; writer trace agent looped - still open) +
+      FileSearchNextCb renamed FormatDecU16 (2026-08-27, below).
 
 ## Owner corrections to honor
 
@@ -1394,3 +1396,25 @@ State: continuously updated as work progresses.
     starts ".Consult Dealer." (runtime error-string table). OPEN: map
     the physical key matrix / ring bytes to the field-move so the UI can
     be driven without a RAM patch, then re-trace the real qualifier.
+- 2026-08-27 (tie-up: formatter + SessionSub* + dispatcher format; main):
+  * FileSearchNextCb -> FormatDecU16 (ROM00:403b). CONFIRMED decimal
+    formatter (div-10 + 0x30, two-pass leading-zero->pad, null-term at
+    [width]); stack args value/dest/width/pad at SP+0x0C/0x0E/0x10/0x12.
+    Callers: SessionStateBuild (error-screen), FileSearchFindNum.
+  * SessionSub* naming applied:
+    - SessionSub16 -> Lib_Sub16 (ram:e0a9); plate CORRECTED: Z flags the
+      FULL 16-bit result (OR L), not just the low byte.
+    - SessionSub612A -> Session_FieldParseValidate (ROM01:612a).
+    - SessionSub620C -> plate updated: field loop, SUSPECTED dead code
+      (init block 61d0-620b unreachable).
+    - DELETED SessionSub5DFD (mis-bounded fragment; real entry 5df2) and
+      SessionSub6431 (basic block inside Ui_DescFieldEditMenu, entry is a
+      NOP). Function count 779 -> 777, saved.
+  * SessionCommandDispatch (ram:e0b2) inline-table format CONFIRMED from
+    two dumps: {count:word}{case_lo,case_hi,handler_lo,handler_hi}xN
+    {default:word}. Documented in the plate; 5e2e dispatch (CmdRetryCounter
+    retry index) case 0/1/2 -> 5df2/5e04/5e17, default 5e41.
+  * "No program in memory" qualifier agent LOOPED (repeated itself) and was
+    cancelled - still OPEN. Emulator field-navigation DEFERRED: needs owner
+    UI guidance (how the From field is browsed/cycled on hardware) rather
+    than brute-forcing keys.
