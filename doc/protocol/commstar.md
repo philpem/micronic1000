@@ -112,6 +112,14 @@ The receiver dispatches type 2, 3, and 4 differently. The state labels
 texts are firmware UI/state vocabulary. They are useful research anchors,
 but they are not a wire-command dictionary.
 
+The loaded session module also uses `InlineTableDispatch` (ram:E0B2) for
+local control flow. **CONFIRMED:** a CALL is followed by an inline table
+with `{count: u16le} {case: u16le, handler: u16le} x count
+{default_handler: u16le}`. The dispatcher probes the declared number of
+cases, then tail-jumps to the trailing default when none matches. This
+mechanism is local module control flow, not evidence that the case values
+are wire-command identifiers.
+
 The firmware writes these little-endian words into a reply buffer on some
 paths: `01EE`, `02E0`, `02EE`, `04E0`, `05E0`, and `01EF`. Only
 `01EF` is directly tied to the type-4 sequence mismatch. The complete

@@ -1423,3 +1423,15 @@ State: continuously updated as work progresses.
     0x4E/0x5A exists in the field-edit path, so the owner "N/Z cycles the
     value" is NOT how this firmware build behaves - OPEN to reconcile
     (documented in micronic_notes.md). keymap/dispatch tables annotated.
+- 2026-08-27 (InlineTableDispatch: rename + struct + typed all 26 tables):
+  * ram:e0b2 renamed SessionCommandDispatch -> InlineTableDispatch; plate
+    and EOL comments thrown out and redone from the code. Format byte-
+    verified (NOT the earlier "sentinel" guess): {count: u16le}
+    {case: u16le, handler: u16le} x count {default_handler: u16le}. The
+    leading count is loaded once and DEC'd per probe; underflow (D<0)
+    enters the trailing default. No per-entry sentinel.
+  * Defined struct DispatchTableEntry {caseValue: word, handler: word}
+    and typed ALL 26 inline tables after CALL InlineTableDispatch via a
+    Ghidra script (clearListing + createWord/array/word), with
+    COMPUTED_CALL references added to every handler + default target.
+    Function count unchanged (777). Saved. protocol document updated.

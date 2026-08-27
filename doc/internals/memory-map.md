@@ -208,7 +208,7 @@ copied from ROM (see [the operating-system overview](os-diposb.md)). The ROM dum
 | E69D | g_wSessionRxReady | word | Frame-ready latch for the session "wait for frame" (656D polls it; 666D sets it via fn6). | runtime |
 | E6A9 | g_wSessionRxRemaining | word | Remaining bytes of the received frame still unread (decremented by the byte getter). | runtime |
 | E5BC/E5BE/E5C0 | g_sessionParamBlock | 4 B | Session connection params (link addr, sizes); copied into the record header state E644..E649 by the session-setup path | runtime |
-| E644/E646/E648/E649 | g_sessionRecHeader | 5 B | **Record header state** set per received/transmitted record (E646 = record type/status: 4=abort, 8/9=data/complete). Written/read by the RECORD state machine (5A81) before SessionCommandDispatch | runtime |
+| E644/E646/E648/E649 | g_sessionRecHeader | 5 B | **Record header state** set per received/transmitted record (E646 = record type/status: 4=abort, 8/9=data/complete). Written/read by the RECORD state machine (5A81) before InlineTableDispatch | runtime |
 | FDAF | — | byte | IrSenseDiagEcho result flag | runtime |
 | FE83 | g_abDeviceCfgSlots | 16 B | 16 independent one-byte wire ids indexed numerically 1-16 (low branch of DeviceTableIndex 31FF), defaults 80 AB 63 43 \| 80 2B 63 43 \| 80 67 63 43 \| 80 67 63 43 (source ROM00:3267); read through fbc5 selector windows (console entries 1-4, reader-channel 5-8, punch 1-16 direct, list per BdosListOutChar). 0x63/0x43 are wire ids, NOT 'c'/'C', and there is no 4-byte "record" structure | copied |
 | FE93 | g_abDeviceCfgMain | 16 B | Letter-indexed (SUB 0x41 branch) device-pair table from ROM00:3257; non-RAM defaults are wire ids 0x73 / 0x72 (not ASCII 's'/'r' records) | copied |
