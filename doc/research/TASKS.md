@@ -1590,3 +1590,12 @@ State: continuously updated as work progresses.
     documents the template struct + validation.
   * OPEN (menu): decode the menu-item record format (ROM01:7860) and its
     per-item handlers - separate sub-project, still pending.
+- 2026-08-27 (menu record format decoded):
+  * Main Menu table decoded (tbl_menu_main ROM01:772d): title {label ptr,
+    attr} + 4 MenuItem records {key:u8, label:ptr, attr:u16}. '1' Load/Run
+    Program(0104), '2' Set Clock(0105), '3' Display Status(0106),
+    '4' Diagnostics(0001). Selection = type the digit (letter-match on key).
+    MenuItem struct defined + applied; menu-advance handler located at
+    ROM01:5114/510d (stores key in e84d). Diagnostics menu (7860) is a FORM
+    with choice entries (Set Debug mode/Status/Device), not a keyed menu -
+    its per-item target screens (attr -> screen id) still to trace.

@@ -56,9 +56,28 @@ whatever list `ec49` currently points at.
   | +12 | dataPtr | 0x757f | field's choice/string table |
 
   The three templates differ only in `count` (0x0120 vs 0x0020) and
-  `dataPtr` (757f / 75e1 / 75ff). Menu screens are a *different* structure
-  (item records `{string ptr, action}` at ROM01:7860-78a0), rendered by a
-  menu handler, not `TemplateBuilder`.
+  `dataPtr` (757f / 75e1 / 75ff).
+
+## Menus
+
+Menus are a separate structure, rendered by a menu handler (not
+`TemplateBuilder`). The Main Menu table (`tbl_menu_main`, ROM01:772d) is a
+title record `{label ptr, attr}` followed by 4 `MenuItem` records
+`{key: u8, label: ptr, attr: u16}`:
+
+| key | label | attr |
+|-----|-------|------|
+| '1' | Load/Run Program | 0x0104 |
+| '2' | Set Clock | 0x0105 |
+| '3' | Display Status | 0x0106 |
+| '4' | Diagnostics | 0x0001 |
+
+Selection is by **typing the digit** — the letter-match handler matches the
+key against each record's `key` byte, then the record's `attr` selects the
+next screen. The menu-advance handler lives at ROM01:5114/510d (stores the
+key in e84d). The Diagnostics screen (ROM01:7860) is itself a form whose
+choice entries are "Set Debug mode" / "Status" / "Device"; the per-item
+target screens are indexed by the attr value and still being traced.
 
 ## Field validation
 
