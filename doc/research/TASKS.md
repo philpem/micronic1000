@@ -1538,3 +1538,21 @@ State: continuously updated as work progresses.
   * NEXT (user-guide plan): trace the per-error qualifier literals (ROM-
     only), map the Diagnostics sub-menu + self-test screens, finish the
     menu map field detail. Then fold into the final annotation pass.
+- 2026-08-27 (error-code map complete; self-test screens added):
+  * ERROR CODES DECODED: the error-screen <major> is a per-site error code
+    (decimal 8000-series = 0x1F40+), byte-verified across all 21 sites:
+    Plinth not connected 8000/8001; Failed to connect 8010,8012-8015;
+    Not available 8011,8055,8056,8151,8165,8166; Modem fault 8016;
+    Line failure 8050,8054,8150,8160,8164; Invalid reply 8053,8163.
+    So the same message text appears at several codes - the code is the
+    source-error-site id, the message is the class. This settles the
+    original "Error 8000 (238/001)" question: 8000 = site code,
+    (238/001) = RCV1/RCV2 counters, message = class text.
+  * Renamed the msg wrappers: Session_ShowLineFailure -> SessionMsgLine
+    Failure; FUN_44a5/44bd/44d5 -> SessionMsgFailedToConnect /
+    SessionMsgInvalidReply / SessionMsgModemFault; SessionShowMessage
+    (443c) plate carries the full code->message map. Saved.
+  * user-guide.md: complete error list + status lines + loader errors
+    (No program in memory / Requested program not in memory / Program not
+    built for this system / Program corrupt); boot self-test screens added
+    to the menu map. Diagnostic menu sub-detail still to trace (ROM-only).

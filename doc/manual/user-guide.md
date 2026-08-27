@@ -6,8 +6,10 @@ in [forms and UI code](../internals/forms-ui.md).
 
 ## Power-on and boot
 
-1. Power on. The unit runs its self test, then shows the banner
-   (`PARCON 1000`, RAM size) and **`Press >> to continue`**.
+1. Power on. The unit runs the self test (`TESTING...`), stepping through
+   the screens **Clock test**, **Powerdown test**, **First Ram Bank**,
+   **Full Ram**, **Contig Ram**, then shows the banner (`PARCON 1000`, RAM
+   size) and **`Press >> to continue`**.
 2. Press **ENTER** to continue.
 3. At the serial-number prompt, key the 8-digit serial number and press
    **ENTER** (after a battery change the number defaults and is re-entered
@@ -71,21 +73,23 @@ last choice.
 
 ```
 Cold boot
- └─ banner + "Press >> to continue"
-     └─ serial-number prompt
-         └─ MAIN MENU
-             ├─ 1  Load/Run Program
-             │     └─ fields: Name (text), From (choice: PLINTH / V24 … )
-             │        └─ From=PLINTH → Log-on information
-             │             └─ Mode (LOCAL LINK) · Linespeed (9600)
-             │                User id · Password · Group id · Telephone number
-             ├─ 2  Set Clock
-             │     └─ fields: Time, Date
-             ├─ 3  Display Status
-             │     └─ System Status · Version · Serial No.
-             │        total RAM · RAMdisk size
-             └─ 4  Diagnostics
-                   └─ Set Debug mode · Status · Device
+ └─ self test: Clock test · Powerdown test · First Ram Bank ·
+    Full Ram · Contig Ram
+     └─ banner + "Press >> to continue"
+         └─ serial-number prompt
+             └─ MAIN MENU
+                 ├─ 1  Load/Run Program
+                 │     └─ fields: Name (text), From (choice: PLINTH / V24 … )
+                 │        └─ From=PLINTH → Log-on information
+                 │             └─ Mode (LOCAL LINK) · Linespeed (9600)
+                 │                User id · Password · Group id · Telephone number
+                 ├─ 2  Set Clock
+                 │     └─ fields: Time, Date
+                 ├─ 3  Display Status
+                 │     └─ System Status · Version · Serial No.
+                 │        Program · total RAM · RAMdisk size
+                 └─ 4  Diagnostics
+                       └─ Set Debug mode · Status · Device
 ```
 
 Menu items are selected by their number (type the digit — digits are the
@@ -113,33 +117,34 @@ Fatal errors instead show **`*** FATAL ERROR ***` … Consult Dealer**.
 
 ### Error list
 
-Session/commstar messages (ROM00:6d40-6e10):
+The `<major>` field is a **per-site error code** (a source-line-style
+identifier in the 8000-series; each error check has its own number, so the
+same message text can appear at several codes). The `<message>` is the
+error class.
 
-| message | qualifier | meaning |
-|---------|-----------|---------|
-| Plinth not connected | 8000 / 8001 | IR link handshake failed (default / case-9 path) |
-| Line failure | TBD | link dropped / line fault |
-| Modem fault | TBD | modem-side fault |
-| Failed to connect | TBD | connect handshake unsuccessful |
-| Invalid reply | TBD | peer sent an unrecognised reply |
-| Invalid command | TBD | peer sent an unrecognised command |
-| Invalid data string | TBD | malformed received data |
-| Not available | TBD | requested item unavailable |
-| Program received | (status) | a program was received |
-| Session complete | (status) | session finished cleanly |
-| Logging on / Logged on / Logged off | (status) | session log-on progress |
+Session/commstar errors (byte-verified error-code → message map):
 
-Loader/application errors (ROM01):
+| code | message |
+|------|---------|
+| 8000, 8001 | Plinth not connected |
+| 8010, 8012–8015 | Failed to connect |
+| 8011, 8055, 8056, 8151, 8165, 8166 | Not available |
+| 8016 | Modem fault |
+| 8050, 8054, 8150, 8160, 8164 | Line failure |
+| 8053, 8163 | Invalid reply |
 
-| message | major | condition |
-|---------|-------|-----------|
-| No program in memory | TBD | Load from empty WORKSTATION MEMORY |
-| Can't open or create file | TBD | file open/creat failed on the chosen device |
-| System error · Consult dealer | — | unrecoverable system error |
+Status lines (not errors — no error-code prefix): "Program transmitted",
+"Program received", "Session complete", "Logging on", "Logged on",
+"Logged off".
 
-The qualifiers marked TBD are ROM-derivable (each error site pushes its own
-literal before `SessionShowMessage`); they are being traced and will be
-filled in — they do **not** need the hardware.
+Loader errors (ROM01, Load/Run Program):
+
+| message | condition |
+|---------|-----------|
+| No program in memory | Load from empty WORKSTATION MEMORY |
+| Requested program not in memory | named program absent |
+| Program not built for this system | incompatible build |
+| Program corrupt | failed checksum/validation |
 
 ### Error recovery
 
@@ -160,4 +165,3 @@ is available:
   `INSRT`, `F1`/`F2`, `STWDL`, `LIGHT`, `TOP`, `BOT`, `/POS`).
 * Whether menu items are selected by number (digits are shifted values) or
   by YES/NO + ENTER.
-* The Diagnostics sub-menu contents and self-test screens.
