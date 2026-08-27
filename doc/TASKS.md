@@ -1358,6 +1358,16 @@ State: continuously updated as work progresses.
   * MISNOMER FLAGGED: ROM00:403b (named FileSearchNextCb) is actually a
     decimal-to-ASCII formatter (div-10 digit loop + 0x30); used by
     SessionStateBuild. Rename queued (needs rename-hygiene pass).
-  * "No program in memory" emulator chase: general agent still returned
-    empty twice; will retry with the confirmed key codes (owner: N/Z=
-    0x4E/0x5A edit field, YES/NO=0x11/0x12 move between fields).
+  * "No program in memory" emulator chase: partial. General agent booted
+    to Load/Run Program (From defaults to PLINTH; ENTER there goes to
+    "Log-on information / Mode LOCAL_LINK"). The field-move keys (0x11/
+    0x12) injected via the ring do NOT change the From selection in this
+    harness build, so the agent forced the branch with a RAM patch
+    (0xE00E=0) and reached the error screen:
+    "PARCON 1000 / *** Error *** / <major> / No program in memory",
+    with major qualifier shown as 9000 (SUSPECTED - patch-induced, the
+    pushed constant is not cleanly byte-verified; agent muddled 0x1F40).
+    e488/e48d/e681 stayed zero (patch bypassed the setter). d0e0 dump
+    starts ".Consult Dealer." (runtime error-string table). OPEN: map
+    the physical key matrix / ring bytes to the field-move so the UI can
+    be driven without a RAM patch, then re-trace the real qualifier.
