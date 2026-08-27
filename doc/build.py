@@ -47,12 +47,12 @@ WAVEDROM_FENCE_RE = re.compile(
 )
 MERMAID_VALIDATOR = ROOT / "validate-mermaid.mjs"
 STYLE = """
-  body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;
+  body{font-family:system-ui,sans-serif;max-width:none;margin:2rem auto;
        padding:0 1.2rem;line-height:1.55;color:#1c1c1c}
   pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:6px;
       padding:.8rem;overflow:auto}
   code{background:#f6f8fa;padding:.1em .3em;border-radius:4px}
-  table{border-collapse:collapse;margin:1rem 0}
+  table{border-collapse:collapse;margin:1rem 0;width:100%}
   th,td{border:1px solid #d8dee4;padding:.4em .7em;text-align:left}
   th{background:#f0f3f6}
   h1,h2,h3{margin-top:1.6em}

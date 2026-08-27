@@ -1,0 +1,63 @@
+site_name: Micronic 1000 Programmer Manual
+site_description: Programmer-facing and internal documentation for DIPOS-B
+docs_dir: doc
+site_dir: site-mkdocs
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+plugins:
+  - search
+exclude_docs: |
+  research/**
+  node_modules/**
+  BUILD.md
+  build.py
+  Makefile
+  package*.json
+  validate-mermaid.mjs
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - tables
+nav:
+  - Home: README.md
+  - Programmer manual:
+      - manual/README.md
+      - Programmer guide: manual/programmer-guide.md
+      - BDOS reference: manual/bdos-reference.md
+      - Devices and storage: manual/devices-and-storage.md
+      - Barcode reader: manual/barcode-reader.md
+      - Program formats: manual/program-formats.md
+  - Protocol:
+      - protocol/README.md
+      - Commstar: protocol/commstar.md
+  - OS and hardware internals:
+      - internals/README.md
+      - Memory map: internals/memory-map.md
+      - I/O map: internals/io-map.md
+      - Interrupts: internals/interrupts.md
+      - DIPOS-B OS: internals/os-diposb.md
+      - CP/M comparison: internals/cp-m-comparison.md
+      - RTC: internals/rtc.md

@@ -7,6 +7,28 @@ Mermaid fences (` ```mermaid ``) are
 used for sequence and state-transition diagrams. WaveDrom fences
 (` ```wavedrom ``) describe digital timing diagrams in WaveJSON.
 
+## Recommended site build — MkDocs Material
+
+MkDocs Material is the supported documentation site generator. Its
+configuration and dependency list are in the repository-root `mkdocs.yml` and
+`requirements.txt`;
+the explicit `nav` tree keeps the programmer manual, protocol specification,
+and internals easy to browse while excluding the research archive.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+mkdocs serve       # local preview at http://127.0.0.1:8000/
+mkdocs build       # writes site-mkdocs/
+```
+
+Run those commands from the repository root. The generated site is written to
+`site-mkdocs/` (also at the repository root).
+
+The legacy `build.py` remains available for the lightweight HTML build and
+diagram parser validation below.
+
 ## Option A — python-markdown + client-side diagrams (zero node deps)
 
 ```sh

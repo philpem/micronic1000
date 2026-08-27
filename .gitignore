@@ -1,4 +1,5 @@
 /doc/site-html
+/site-mkdocs
 /doc/node_modules
 __pycache__
 *~
