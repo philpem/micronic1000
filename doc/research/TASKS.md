@@ -1415,6 +1415,11 @@ State: continuously updated as work progresses.
     {default:word}. Documented in the plate; 5e2e dispatch (CmdRetryCounter
     retry index) case 0/1/2 -> 5df2/5e04/5e17, default 5e41.
   * "No program in memory" qualifier agent LOOPED (repeated itself) and was
-    cancelled - still OPEN. Emulator field-navigation DEFERRED: needs owner
-    UI guidance (how the From field is browsed/cycled on hardware) rather
-    than brute-forcing keys.
+    cancelled - still OPEN.
+  * Emulator field-navigation: PROGRESS. YES/NO are 0x06/0x01 (not
+    0x11/0x12) - byte-confirmed in the keymap + dispatch table; they move
+    DOWN/UP a field. N/Z (0x4E/0x5A) are plain letters and TYPE into a
+    text field (the "From" field is free-text, default "PLINTH"); no CP
+    0x4E/0x5A exists in the field-edit path, so the owner "N/Z cycles the
+    value" is NOT how this firmware build behaves - OPEN to reconcile
+    (documented in micronic_notes.md). keymap/dispatch tables annotated.

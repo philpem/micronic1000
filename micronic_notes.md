@@ -37,6 +37,39 @@ The ports are:
 
 Micronic held a US Patent for a similar infrared interface, US 4,423,319: https://patentimages.storage.googleapis.com/7c/9c/46/bb89fcac0aee3c/US4423319.pdf
 
+## Keyboard (owner-supplied 2026-08-27)
+
+32-key alphanumeric keypad. Physical key / shifted value:
+
+    Shift(MODE)  Sun(2nd)
+    A/(  B/)  C  D/Del  E  F
+    G/+  H//  I/,  J/?  K/-  L/*  M/.
+    N/Z  O/7  P/8  Q/9  DEPT
+    R/4  S/5  T/6  END
+    U/1  V/2  W/3  ENTER
+    Backspace  Space/0  NO  YES
+
+Matrix wiring (drive = port 02h, sense = port 00h; full diagram at
+https://philpem.me.uk/elec/micronic). Modifier keys: Shift = MODE,
+Sun = 2nd (Left Shift).
+
+Firmware key codes (master table `tbl_kbd_map` at ROM00:1b58, three
+36-entry pages; Kbd_ScanMain ROM00:18f0 indexes it as col*6+row):
+letters are ASCII 0x41-0x57 ('A'..'W'), ENTER=0x0D, space=0x20,
+backspace=0x7F. Function-key codes: 0x01/0x06/0x0b/0x0c/0x11/0x12/
+0x14/0x1a/0xd0. Sun-shifted page: N->Z (0x5A), plus 0x58/0x59.
+
+Owner UI navigation facts: YES/NO move between the form fields; N/Z
+is said to cycle a choice field's value to the next predefined setting.
+
+Emulator-confirmed key codes (2026-08-27): YES=0x06 (moves DOWN a
+field), NO=0x01 (moves UP), ENTER=0x0D, space=0x20, backspace=0x7F.
+N/Z = 0x4E/0x5A are plain letters: they TYPE into a text field. The
+Load/Run "From" field is a free-text field (default "PLINTH") and
+typing appends to it - no N/Z cycle observed in firmware (no CP
+0x4E/0x5A in the field-edit path). OPEN: reconcile owner "N/Z cycles"
+with firmware "N/Z types letters".
+
 ## Side port
 
 There is a 5-pin port on the right side which seems like it could be some kind of serial port or barcode scanner input.
