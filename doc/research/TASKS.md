@@ -1680,3 +1680,22 @@ State: continuously updated as work progresses.
     execution + which BDOS reads the header; or (3) capture a real DIP file
     from a live Commstar session. Record grammar + checksum remain CONFIRMED
     and safe to implement (see manual/program-formats.md).
+- 2026-08-27 (constructor trace - efec mystery RESOLVED; DIP loader is a user action):
+  * Emulator dump of ram:efec settles it: efec holds {RST10h(0xD7), bank,
+    target} 4-byte TRAMPOLINES = the deferred-call queue (the 134 bank-0 +
+    147 bank-1 enqueued constructors). At earliest boot it holds the
+    default "LD HL,1; RET" stub; after the queue is drained it holds the
+    banked-call stubs (bank 0x01 targets 4FB0/5B2D/51C1/0115/4B69... =
+    exactly the chain-B constructor list). So the form templates' four
+    "stub pointers" (0xefec/0xf0f8/0xef98/0xefd8) are TRAMPOLINE SLOTS,
+    not direct function code - the form builders are ROM01 functions
+    bank-called through them. This means the whole form/loader machinery
+    IS statically reachable ROM01 code (not battery-RAM code), correcting
+    the earlier "runtime-installed / untraceable" conclusion.
+  * But the constructors are boot INITIALISATION. The DIP loader is a
+    USER ACTION (Load/Run Program -> ENTER on the From field), not a boot
+    constructor - so it is a ROM01 function reached from the form's
+    submit/load path, not in the constructor set. Next: trace the
+    Load/Run form submit action to that function (forms use {label,attr}
+    records; attr 0x0104 = the load action), or emulator-drive Load and
+    dump the execution/BDOS trace to spot the header read.
