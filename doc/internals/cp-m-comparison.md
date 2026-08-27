@@ -1,8 +1,8 @@
 # Micronic 1000 — CP/M implementation comparison
 
 Status: 2026-08-24. Source: Ghidra analysis of `micron1.bin` (ROM00
-kernel + ROM01 UI), plus the already-decoded drive/device layer
-(protocol-comms.md, os-diposb.md).
+kernel + ROM01 UI), plus the drive/device and operating-system analysis
+in this directory.
 
 ## Bottom line
 
@@ -29,7 +29,7 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
     handler word is read from the JP-vector run past the table, e.g.
     fn 40h reads F26B = bytes of the F2xx jump stubs). Nothing is
     rejected; never call undefined fns in this range (hazard
-    documented in os-diposb.md).
+    documented in [the operating-system overview](os-diposb.md)).
   - fn >= F3h: the VALID wrapped extension view — DEC B (B=FF)
     wraps index C=F3..FF onto F1D1..F1E9 (the 13 words immediately
     before the F1EB base; full table below).

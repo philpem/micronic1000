@@ -1,8 +1,33 @@
 # Building the documentation site (Markdown → HTML)
 
-The documents are plain Markdown. Mermaid fences (` ```mermaid ``) are
+The reader-facing documents are plain Markdown in the top-level index plus
+`manual/`, `protocol/`, and `internals/`. Research records remain in
+`research/` and are intentionally excluded from the published navigation.
+Mermaid fences (` ```mermaid ``) are
 used for sequence and state-transition diagrams. WaveDrom fences
 (` ```wavedrom ``) describe digital timing diagrams in WaveJSON.
+
+## Recommended site build — MkDocs Material
+
+MkDocs Material is the supported documentation site generator. Its
+configuration and dependency list are in the repository-root `mkdocs.yml` and
+`requirements.txt`;
+the explicit `nav` tree keeps the programmer manual, protocol specification,
+and internals easy to browse while excluding the research archive.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+mkdocs serve       # local preview at http://127.0.0.1:8000/
+mkdocs build       # writes site-mkdocs/
+```
+
+Run those commands from the repository root. The generated site is written to
+`site-mkdocs/` (also at the repository root).
+
+The legacy `build.py` remains available for the lightweight HTML build and
+diagram parser validation below.
 
 ## Option A — python-markdown + client-side diagrams (zero node deps)
 
@@ -11,7 +36,9 @@ python3 -m pip install markdown      # once
 python3 doc/build.py                  # writes doc/site-html/*.html
 ```
 
-Open `doc/site-html/index.html` in a browser. Mermaid and WaveDrom are
+Open `doc/site-html/index.html` in a browser. The output preserves the
+source directory layout, for example
+`doc/site-html/protocol/commstar.html`. Mermaid and WaveDrom are
 rendered client-side from jsDelivr. The Mermaid build uses an ES-module
 import, so a local replacement must also be an ES module. If you must
 work offline, download the Mermaid bundle plus WaveDrom's engine and
@@ -56,7 +83,7 @@ A timing diagram is a `wavedrom` fence containing WaveJSON:
 ```bash
 pandoc --standalone --embed-resources \
        --from markdown+pipe_tables+fenced_code_attributes \
-       --to html doc/protocol-comms.md -o /tmp/protocol.html
+       --to html doc/protocol/commstar.md -o /tmp/commstar.html
 ```
 
 ## Option C — mermaid CLI for static SVG

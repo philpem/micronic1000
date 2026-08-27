@@ -13,6 +13,7 @@ renderers (or locally vendored JavaScript bundles).
 """
 import argparse
 import html
+import os
 import pathlib
 import re
 import shutil
@@ -23,6 +24,12 @@ import markdown
 
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "site-html"
+PUBLISHED_DIRS = ("manual", "protocol", "internals")
+NAV_GROUPS = (
+    ("Manual", "manual/README.md"),
+    ("Protocol", "protocol/README.md"),
+    ("Internals", "internals/README.md"),
+)
 MERMAID_JS = (
     "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs"
 )
@@ -40,23 +47,49 @@ WAVEDROM_FENCE_RE = re.compile(
 )
 MERMAID_VALIDATOR = ROOT / "validate-mermaid.mjs"
 STYLE = """
-  body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;
+  body{font-family:system-ui,sans-serif;max-width:none;margin:2rem auto;
        padding:0 1.2rem;line-height:1.55;color:#1c1c1c}
   pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:6px;
       padding:.8rem;overflow:auto}
   code{background:#f6f8fa;padding:.1em .3em;border-radius:4px}
-  table{border-collapse:collapse;margin:1rem 0}
+  table{border-collapse:collapse;margin:1rem 0;width:100%}
   th,td{border:1px solid #d8dee4;padding:.4em .7em;text-align:left}
   th{background:#f0f3f6}
   h1,h2,h3{margin-top:1.6em}
   blockquote{border-left:4px solid #ccc;margin-left:0;padding-left:1rem;
              color:#444}
+  nav{font-size:.95rem;margin-bottom:1.5rem}
   nav a{color:#0366d6}
+  nav .nav-group{display:inline-block;margin-left:1rem}
+  nav .nav-group:first-child{margin-left:0}
   svg{max-width:100%;height:auto}
 """
 
+def published_markdown_paths() -> list[pathlib.Path]:
+    paths = [ROOT / "README.md"]
+    for directory in PUBLISHED_DIRS:
+        paths.extend((ROOT / directory).rglob("*.md"))
+    return sorted(paths)
+
+
+def output_path(path: pathlib.Path) -> pathlib.Path:
+    relative = path.relative_to(ROOT)
+    if relative == pathlib.Path("README.md"):
+        return OUT / "index.html"
+    return OUT / relative.with_suffix(".html")
+
+
+def rewrite_markdown_links(source: str) -> str:
+    """Preserve relative links while converting published Markdown targets."""
+    return re.sub(
+        r"\]\(([^)#]+)\.md(#[^)]+)?\)",
+        lambda match: "](" + match.group(1) + ".html" + (match.group(2) or "") + ")",
+        source,
+    )
+
+
 def convert_md(path: pathlib.Path) -> dict:
-    source = path.read_text(encoding="utf-8")
+    source = rewrite_markdown_links(path.read_text(encoding="utf-8"))
     md = markdown.Markdown(extensions=["tables", "fenced_code", "nl2br"])
     body = md.convert(source)
     # run mermaid code fences -> <pre class="mermaid"> so the JS picks them up
@@ -153,13 +186,35 @@ mermaid.initialize({{ startOnLoad: true }});
 {doc["body"]}
 </body></html>"""
 
-def build_nav_items() -> str:
-    links = []
-    for f in sorted(ROOT.glob("*.md")):
-        fn = "index.html" if f.stem == "README" else f"{f.stem}.html"
-        label = f.stem if f.stem != "README" else "index"
-        links.append(f'<a href="{fn}">{label}</a>')
-    return " | ".join(links)
+def build_nav_items(current: pathlib.Path) -> str:
+    current_dir = output_path(current).parent
+    paths = {path.relative_to(ROOT).as_posix(): path
+             for path in published_markdown_paths()}
+
+    def link(path: pathlib.Path, label: str) -> str:
+        href = os.path.relpath(output_path(path), current_dir).replace(os.sep, "/")
+        return f'<a href="{href}">{html.escape(label)}</a>'
+
+    groups = []
+    home = paths["README.md"]
+    href = os.path.relpath(output_path(home), current_dir).replace(os.sep, "/")
+    groups.append(f'<a href="{href}">Home</a>')
+    for title, index in NAV_GROUPS:
+        index_path = paths[index]
+        entries = [link(index_path, title)]
+        prefix = index.rsplit("/", 1)[0] + "/"
+        for key in sorted(paths):
+            if key.startswith(prefix) and key != index:
+                path = paths[key]
+                entries.append(link(path, path.stem.replace("-", " ")))
+        groups.append(
+            '<span class="nav-group"><strong>'
+            + html.escape(title)
+            + ':</strong> '
+            + " · ".join(entries)
+            + "</span>"
+        )
+    return " | ".join(groups)
 
 
 def main():
@@ -176,7 +231,7 @@ def main():
     )
     args = parser.parse_args()
 
-    markdown_paths = sorted(ROOT.glob("*.md"))
+    markdown_paths = published_markdown_paths()
     if args.validate_mermaid:
         node = shutil.which("node")
         mermaid_package = ROOT / "node_modules" / "mermaid" / "package.json"
@@ -205,12 +260,12 @@ def main():
         print(f"Validated {count} WaveDrom diagram(s).")
 
     OUT.mkdir(exist_ok=True)
-    nav = build_nav_items()
     for md in markdown_paths:
         doc = convert_md(md)
-        fn = "index.html" if md.stem == "README" else f"{md.stem}.html"
-        (OUT / fn).write_text(wrap(doc, nav), encoding="utf-8")
-        print(f"wrote {OUT / fn}")
+        destination = output_path(md)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(wrap(doc, build_nav_items(md)), encoding="utf-8")
+        print(f"wrote {destination}")
     print("Done. Mermaid and WaveDrom render on page open (need CDN access).")
 
 if __name__ == "__main__":

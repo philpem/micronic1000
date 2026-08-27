@@ -60,7 +60,7 @@ overwrite to patch ROM bugs or add functionality. Investigated
 | Stub farm B ram:f100-f17f (32×4B) | direct CALLs from ROM00 (e.g. `CD 38 F1` @41ba); 0/1-word stack args; same defaults | LIKELY |
 | Pointer slots + F168 sentinel + `ram:d828` | UI cells (eb00/eb39/ec51/eb08…) hold callback ptrs; F168 = "unset"; guards skip extra work; d828 calls cell via JP (HL) for ≥ED00 targets or self-patching RST 10h stub (d834=target, d833=bank) | CONFIRMED |
 | `g_tblFieldTypeRecPtrs` ram:d081 → cells {D0F0,D13D,D121,D12F,D14B} | double indirection, both levels DIP-writable; D0F0 used as sentinel at ROM01::0360 | CONFIRMED consumption; patch LIKELY |
-| `fbc2` decode hook | ExtDecodeHookInstall/Discard; documented recipe (barcode-reader.md) | CONFIRMED |
+| `fbc2` decode hook | ExtDecodeHookInstall/Discard; documented recipe ([barcode reader](../manual/barcode-reader.md)) | CONFIRMED |
 
 Loader primitives give any DIP arbitrary RAM write + execution control:
 record fn 0 (`ram:d6fa` write-anywhere copy), fn 1 (`d713` move),
@@ -152,7 +152,7 @@ of the template builder ROM01:0271, which instantiates UI objects as
 ## Battery-backed RAM layout (8000-FFFF)
 
 Contents below are initialised by cold boot; parts of the kernel are
-copied from ROM (see os-diposb.md). The ROM dumps contain no RAM bytes
+copied from ROM (see [the operating-system overview](os-diposb.md)). The ROM dumps contain no RAM bytes
 — values shown are post-boot state for a healthy machine, seeded by the
 `FillBatteryRam` Ghidra script.
 

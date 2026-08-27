@@ -1,10 +1,14 @@
 # Micronic 1000 doc build
 # See doc/BUILD.md for full instructions.
 
-MD       := $(wildcard *.md)
+MD       := $(shell find . \( -path './research' -o -path './node_modules' -o -path './site-html' \) -prune -o -name '*.md' -print)
 OUT      := site-html
+MKDOCS   ?= mkdocs
 
 html: $(OUT)/index.html
+
+mkdocs:
+	cd .. && $(MKDOCS) build
 
 $(OUT)/index.html: build.py $(MD)
 	python3 build.py
@@ -23,6 +27,6 @@ clean:
 	rm -rf $(OUT)
 
 .PHONY: html validate svg clean
-.PHONY: help
+.PHONY: help mkdocs
 help:
 	@grep -E '^[a-z]+:' Makefile
