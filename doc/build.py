@@ -7,6 +7,7 @@ wrap in a shared template, and load Mermaid.js and WaveDrom from CDNs
 so diagrams render client-side (view the HTML in a browser).
 
 Dependencies:  python3 -m pip install markdown
+Validation:    cd doc && npm install
 Works offline for text; diagrams require browser + net to fetch their
 renderers (or locally vendored JavaScript bundles).
 """
@@ -23,7 +24,7 @@ import markdown
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "site-html"
 MERMAID_JS = (
-    "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
+    "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs"
 )
 WAVEDROM_SKIN_JS = (
     "https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/skins/default.js"
@@ -37,6 +38,7 @@ MERMAID_FENCE_RE = re.compile(
 WAVEDROM_FENCE_RE = re.compile(
     r"^```wavedrom[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL
 )
+MERMAID_VALIDATOR = ROOT / "validate-mermaid.mjs"
 STYLE = """
   body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;
        padding:0 1.2rem;line-height:1.55;color:#1c1c1c}
@@ -80,8 +82,8 @@ def convert_md(path: pathlib.Path) -> dict:
     return {"name": path.stem, "title": title, "body": body}
 
 
-def validate_mermaid(paths: list[pathlib.Path], mmdc: str) -> int:
-    """Parse every Mermaid fence with Mermaid CLI; return diagram count."""
+def validate_mermaid(paths: list[pathlib.Path], node: str) -> int:
+    """Parse every Mermaid fence with Mermaid's API; return diagram count."""
     count = 0
     with tempfile.TemporaryDirectory(prefix="micronic-mermaid-") as temp_dir:
         temp = pathlib.Path(temp_dir)
@@ -92,17 +94,9 @@ def validate_mermaid(paths: list[pathlib.Path], mmdc: str) -> int:
             ):
                 count += 1
                 input_path = temp / "diagram.mmd"
-                output_path = temp / "diagram.svg"
                 input_path.write_text(diagram, encoding="utf-8")
                 result = subprocess.run(
-                    [
-                        mmdc,
-                        "--input",
-                        str(input_path),
-                        "--output",
-                        str(output_path),
-                        "--quiet",
-                    ],
+                    [node, str(MERMAID_VALIDATOR), str(input_path)],
                     capture_output=True,
                     text=True,
                 )
@@ -173,7 +167,7 @@ def main():
     parser.add_argument(
         "--validate-mermaid",
         action="store_true",
-        help="parse every Mermaid fence with mmdc before building",
+        help="parse every Mermaid fence with Mermaid before building",
     )
     parser.add_argument(
         "--validate-wavedrom",
@@ -184,20 +178,28 @@ def main():
 
     markdown_paths = sorted(ROOT.glob("*.md"))
     if args.validate_mermaid:
-        mmdc = shutil.which("mmdc")
-        if mmdc is None:
+        node = shutil.which("node")
+        mermaid_package = ROOT / "node_modules" / "mermaid" / "package.json"
+        if node is None:
+            parser.error("--validate-mermaid requires Node.js")
+        if not mermaid_package.is_file():
             parser.error(
-                "--validate-mermaid requires Mermaid CLI (mmdc); "
-                "install @mermaid-js/mermaid-cli@11"
+                "--validate-mermaid requires local diagram dependencies; "
+                "run 'npm install' in doc/"
             )
-        count = validate_mermaid(markdown_paths, mmdc)
+        count = validate_mermaid(markdown_paths, node)
         print(f"Validated {count} Mermaid diagram(s).")
     if args.validate_wavedrom:
-        wavedrom = shutil.which("wavedrom")
+        local_wavedrom = ROOT / "node_modules" / ".bin" / "wavedrom"
+        wavedrom = (
+            str(local_wavedrom)
+            if local_wavedrom.is_file()
+            else shutil.which("wavedrom")
+        )
         if wavedrom is None:
             parser.error(
                 "--validate-wavedrom requires WaveDrom CLI; "
-                "install wavedrom@3.6.2"
+                "run 'npm install' in doc/"
             )
         count = validate_wavedrom(markdown_paths, wavedrom)
         print(f"Validated {count} WaveDrom diagram(s).")

@@ -23,19 +23,23 @@ browser engine expects the default skin to have initialized
 ## Validate diagrams
 
 The HTML build can ask both renderers' own parsers to check every diagram
-before writing the site. This requires Mermaid CLI (`mmdc`) and WaveDrom
-CLI (`wavedrom`):
+before writing the site. With Node.js 20 or newer, install the pinned local
+dependencies once:
 
 ```bash
-npm install -g @mermaid-js/mermaid-cli@11
-npm install -g wavedrom@3.6.2
 cd doc
+npm install
 make validate
 ```
 
 Equivalently, run `python3 doc/build.py --validate-mermaid
 --validate-wavedrom` from the repository root. A parse failure identifies
 the Markdown file and diagram number and stops the build.
+
+Validation calls Mermaid's `parse()` API directly and WaveDrom's
+browser-free CLI. It does **not** install Mermaid CLI (`mmdc`), Puppeteer,
+Chrome, or `chrome-headless-shell`. A browser is only needed for the
+optional static-SVG workflow below.
 
 A timing diagram is a `wavedrom` fence containing WaveJSON:
 
@@ -59,10 +63,11 @@ pandoc --standalone --embed-resources \
 
 If Node.js is available, you can pre-render each diagram to SVG with
 `mmdc` (mermaid-cli) and inline the SVGs so the final HTML needs no
-browser JS:
+browser JS. Unlike syntax validation, `mmdc` renders through Puppeteer
+and therefore needs a compatible Chrome/Chromium executable:
 
 ```bash
-npm install -g @mermaid-js/mermaid-cli
+npm install -g @mermaid-js/mermaid-cli@11
 mmdc -i diagram.mmd -o diagram.svg
 ```
 

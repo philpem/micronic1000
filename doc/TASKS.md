@@ -1345,6 +1345,10 @@ State: continuously updated as work progresses.
   * Browser integration corrected after review: WaveDrom 3.6.2's engine
     expects `window.WaveSkin`, so the pinned default-skin bundle now loads
     before `wavedrom.min.js`. A DOM smoke test rendered the example SVG.
+  * Validation no longer uses `mmdc`: Mermaid CLI pulled Puppeteer plus
+    Chrome/`chrome-headless-shell` merely to check syntax. The builder now
+    calls pinned Mermaid 11.17.2's `parse()` API under jsdom and WaveDrom's
+    browser-free CLI; all five current examples validate without Puppeteer.
 - 2026-08-27 (keyboard keymap + UI field-edit keys; main):
   * KEYMAP TABLE LOCATED: ROM00:1b58 (labelled tbl_kbd_map) is a three
     36-byte-page keymap (base in ram:fbda, set at ColdStartSelfTestBanner

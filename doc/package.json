@@ -1,0 +1,12 @@
+{
+  "name": "micronic1000-doc-validation",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "mermaid": "11.17.2",
+    "wavedrom": "3.6.2"
+  }
+}
