@@ -1699,3 +1699,19 @@ State: continuously updated as work progresses.
     Load/Run form submit action to that function (forms use {label,attr}
     records; attr 0x0104 = the load action), or emulator-drive Load and
     dump the execution/BDOS trace to spot the header read.
+- 2026-08-27 (forms/UI: trampoline stubs + exit-dispatch loop documented):
+  * emulator dump settled the "stub" question: the form-template's four
+    stub fields are 4-byte banked-call trampolines {RST10h, bank, target},
+    initialised to "LD HL,1; RET" and later filled by the boot-chain
+    deferred-call queue (134+147 constructors). Form builders = ROM01
+    functions via d828, NOT battery-RAM code.
+  * Ui_FormExitDispatchNext (ROM01:06d3) = the form-transition loop: walks
+    a 5-entry double-indirect table at ram:d081 (module B head) and
+    bank-calls each callback, then rebuilds the comm form (060b) + posts
+    descriptors 7715/7751 (Ui_PostDescriptor 6633). forms-ui.md updated
+    (trampoline semantics + new "Screen transition dispatch" section).
+  * DIP loader STILL one step out: it is the Load/Run form's submit action
+    (ENTER on From), reached through this dispatch/descriptor machinery -
+    the exact function that reads the DIP header is not yet pinned. Emulator
+    drive (craft a bad DIP/COM, watch the header read + "Bad DIP file"
+    error-code setter) remains the recommended fallback.

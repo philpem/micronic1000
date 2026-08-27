@@ -47,16 +47,37 @@ whatever list `ec49` currently points at.
 
   | offset | field | value (758b) | meaning |
   |--------|-------|--------------|---------|
-  | +0 | buildStub | 0xefec | per-record builder fn (bank-called) |
-  | +2 | stub2 | 0xf0f8 | stub fn |
-  | +4 | stub3 | 0xef98 | stub fn |
-  | +6 | stub4 | 0xefd8 | stub fn |
+  | +0 | buildStub | 0xefec | per-record builder trampoline (see below) |
+  | +2 | stub2 | 0xf0f8 | trampoline slot |
+  | +4 | stub3 | 0xef98 | trampoline slot |
+  | +6 | stub4 | 0xefd8 | trampoline slot |
   | +8 | flags | 0x0801 | flags (LIKELY) |
   | +10 | count | 0x20 = 32 | element count (LIKELY) |
   | +12 | dataPtr | 0x757f | field's choice/string table |
 
   The three templates differ only in `count` (0x0120 vs 0x0020) and
   `dataPtr` (757f / 75e1 / 75ff).
+
+  The four "stub" fields are **banked-call trampoline slots**, not function
+  code. Emulator dump of `ram:efec` shows 4-byte stubs `{RST 10h (0xD7),
+  bank, target}` — the deferred-call queue the boot chain fills (134 bank-0
+  + 147 bank-1 constructors). Before the queue drains each slot holds
+  `LD HL,1; RET` (a no-op returning 1); afterwards it holds the trampoline
+  that bank-calls a real ROM01 function. So the form builders are ROM01
+  functions reached through `d828` banked dispatch — nothing is hidden in
+  battery RAM.
+
+## Screen transition dispatch
+
+`Ui_FormExitDispatchNext` (ROM01:06d3) is the form-transition loop. It
+pre-increments a walk index `d2de`, then walks a 5-entry table at `ram:d081`
+(module B's head) of double-indirect pointers: `word @ (d081 + 2·i)` is a
+pointer `P`, then `word @ P` is the callback bank-called via `d828`. When the
+index wraps it rebuilds the comm form (`Form_InitFromTemplates`, 060b) and
+posts descriptors 0x7715/0x7751 via `Ui_PostDescriptor` (6633). Module B is
+therefore *not* purely strings: it opens with this pointer table (and the
+error-code table near `d0e0`) before the banner `"PARCON 1000\n*** Error ***"`
+and the program-load error strings.
 
 ## Menus
 
