@@ -359,27 +359,35 @@ system-compatibility marker and an integrity check.
 ### DIP is a loader-record stream (verified mechanism)
 
 The DIP and COM loaders both funnel into the **kernel loader
-primitives** (copied to battery RAM at `d6f4`+), which consume a
-stream of records:
+primitives** (resident in battery RAM at `d6f4`+), which consume a stream
+of records:
 
 ```
-D6FA = SyscallLoadBlockToMem  - copy an address+len block into RAM
-D713 = SyscallMoveBlockAlt    - block move (swapped operands)
-D727 = SyscallQueueBankedBlock- append {RST10, bank, addr} deferred
-                                banked-call stub to the ED1C queue
+d6fa = memset  (fn=0x0000)  zero-fill addr..addr+count
+d713 = memcpy  (fn=0x0001)  copy src -> dst, count bytes
+d727 = enqueue (fn=0x0002)  append N {RST10h, bank, addr} deferred
+                             banked-call stubs to the queue at d684
+d6de = record dispatcher    (reads fn, indexes d6f4+2*fn)
 ```
 
-A **DIP file is a sequence of these loader records**, terminated by a
-special marker — the same grammar the ROM's own *boot-load chain*
-uses (the reset code reads `(7FFC)` and feeds it to
-`SyscallDispatch`; see decode_chains.py). Each record tags the current
-bank (`port 47` shadow), so a single DIP can place code/data into the
-banked 0000-7FFF window *and* the fixed battery RAM, and can enqueue
-"constructor" calls (the `QueueBankedBlock` stubs) that run on load.
+A **DIP file is a sequence of these loader records**, terminated by
+`fn=FFFF` — the same grammar the ROM's own *boot-load chain* uses (the
+reset code reads `(7FFC)` and feeds it to the record dispatcher; see
+`analysis/decode_chains.py`). Each `fn=2` stub tags the current bank
+(`port 47` shadow, `f791`), so a single DIP can place code/data into the
+banked 0000-7FFF window *and* the fixed battery RAM, and enqueue
+"constructor" calls that run on load.
 
-A stored `.COM`, in contrast, is the ordinary CP/M single-image file;
-the loader validates it (`COM file too big`, `Program corrupt`) but
-has no multi-block structure.
+> The full byte-level spec — record layouts, the 16-bit byte-sum checksum,
+> the ROM footer, and the (still-open) DIP file header — is in
+> [Program formats: COM and DIP](program-formats.md). The record grammar
+> and checksum there are CONFIRMED; the external DIP *file header* layout
+> (magic / system ID / size / block count) has not yet been pinned from
+> the parser, so do not build a DIP file encoder until it is.
+
+A stored `.COM`, in contrast, is the ordinary CP/M single-image file
+loaded at 0100h; the loader validates it (`COM file too big`,
+`Program corrupt`) but has no multi-block structure.
 
 ### Advantages of DIP over .COM
 
@@ -403,12 +411,12 @@ has no multi-block structure.
 - **More loader complexity** — the block-count/size/system/checksum
   checks are extra failure states.
 
-> Note: the exact on-disk DIP header layout (where the block
-> count / system ID live) has not been fully pinned from static
-> analysis — the parser is driven by the runtime session layer that
-> receives the program. The record *grammar* above is verified from
-> the kernel loader; the file-header bytes remain a live-session/
-> capture item.
+> Note: the exact on-disk DIP **header** layout (where the block count /
+> system ID / size live) is still open — the parser is in module A
+> (ROM00:73CE → ram:D893), not yet disassembled. The record *grammar*,
+> the checksum, and the ROM footer are CONFIRMED; the full spec and the
+> open item are in [Program formats: COM and DIP](program-formats.md).
+> Until the header is pinned, treat it as a live-session/capture item.
 
 ---
 

@@ -62,11 +62,14 @@ references:
    number; handler = word[d6f4 + fn×2], tail-jumped via
    `EX (SP),HL / RET`. The copied block's table holds exactly three
    loader primitives:
-   * 0 = D6FA `SyscallLoadBlockToMem` — copy block to memory
-   * 1 = D713 `SyscallMoveBlockAlt` — block move, swapped operands
-   * 2 = D727 `SyscallQueueBankedBlock` — append deferred-call records
-     `{D7h, bank, addrL, addrH}` to a queue at (d684); each record is
-     itself an RST10 banked-call stub ("call address X in bank Y later")
+    * 0 = D6FA `SyscallMemset` — zero-fill a block (fn=0x0000,
+      `{fn, addr, count}`); was mis-named SyscallLoadBlockToMem
+    * 1 = D713 `SyscallMoveBlockAlt` — block move, swapped operands
+      (fn=0x0001, `{fn, src, dst, count}`)
+    * 2 = D727 `SyscallQueueBankedBlock` — append deferred-call records
+      `{D7h, bank, addrL, addrH}` to a queue at (d684); each record is
+      itself an RST10 banked-call stub ("call address X in bank Y later")
+      (fn=0x0002, `{fn, N, addr[N]}`); `fn=FFFF` terminates the stream.
    The general BDOS surface lives at F180 (battery RAM, not in dump).
 8. **Idle loop calls BDOS function 0** (`BC=0 ; CALL 5 ; loop` at
    ram:D6AC) — resident scheduler/command loop rather than a CCP that

@@ -1618,3 +1618,23 @@ State: continuously updated as work progresses.
     are field labels, not menu items (corrects earlier reading). 0x5114
     is a mis-aligned pointer into the 0x510d handler, not an entry point.
     user-guide.md menu map + forms-ui.md Menus section updated.
+- 2026-08-27 (DIP executable format specification):
+  * Wrote manual/program-formats.md as the byte-level spec: COM (no
+    header, load at 0100h) + DIP. RECORD GRAMMAR CONFIRMED (record
+    dispatcher SyscallDispatch ram:d6db, handler table ram:d6f4): fn=0
+    memset {fn,addr,count}, fn=1 memcpy {fn,src,dst,count}, fn=2 enqueue
+    {fn,N,addr[N]} -> N x {0xD7,bank,addr} stubs at queue d684, fn=FFFF
+    terminate (wrap d6f4+2*0xFFFF -> d6f2 -> d6ee pop+ret). CHECKSUM
+    CONFIRMED (ChecksumBytes ram:d7d1 = 16-bit additive byte-sum, not CRC).
+    ROM footer 7FF0-7FFF (chain ptr at 7FFA/7FFC; 7FFE = candidate system
+    ID). MISNOMER FIXED: SyscallLoadBlockToMem -> SyscallMemset (it zero-
+    fills, not copies); renamed + plated all 5 loader primitives; doc
+    mention corrected in os-diposb.md + programmer-guide.md.
+  * DIP FILE HEADER still OPEN: the parser is in module A (ROM00:73CE ->
+    ram:D893, 2145 bytes, boot-chain memcpy at 7D74), not disassembled.
+    Header REQUIRES (from ROM01 error strings 7d3c-7d9d): magic ("Bad DIP
+    file"), system ID ("Program not built for this system"), size ("too
+    big"), block count ("too many blocks"), checksum ("corrupt") - exact
+    offsets unknown. Decoder/linker for the RECORD stream is safe to build
+    now; a full DIP file ENCODER needs the header pinned (disassemble
+    module A, or capture a DIP from a live link session).
