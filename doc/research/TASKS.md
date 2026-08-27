@@ -1519,3 +1519,22 @@ State: continuously updated as work progresses.
     references to the new layout; Makefile + BUILD.md are now mkdocs-only;
     deleted legacy build.py, validate-mermaid.mjs, package.json/lock.
     (committed 46a2c52)
+- 2026-08-27 (user guide + forms-UI docs; plan set):
+  * Added manual/user-guide.md (boot, keypad, special keys, field
+    navigation, menu map, error screens + codes, error list, error
+    recovery) and internals/forms-ui.md (form model, TemplateBuilder,
+    device table 757f, 1f96 field-edit dispatch, keymap, error renderer).
+    Wired into mkdocs nav + README indexes.
+  * Error messages enumerated (ROM00:6d40-6e10): Plinth not connected /
+    Line failure / Modem fault / Failed to connect / Invalid reply /
+    Invalid command / Invalid data string / Not available + statuses
+    (Program received, Session complete, Logging on/off). Qualifiers
+    confirmed for Plinth (8000=default, 8001=case-9); the rest are
+    ROM-derivable (each error site pushes its own literal) and queued.
+  * PARKED (hardware-gated, owner-decision): N/Z vs YES/NO cycle key;
+    function-label effects (CHNGE/REFER/HELP/INSRT/F1/F2/STWDL/LIGHT);
+    menu-item selection mechanism; Diagnostics sub-menu + self-test
+    screens. Documented in user-guide.md "To confirm on hardware".
+  * NEXT (user-guide plan): trace the per-error qualifier literals (ROM-
+    only), map the Diagnostics sub-menu + self-test screens, finish the
+    menu map field detail. Then fold into the final annotation pass.

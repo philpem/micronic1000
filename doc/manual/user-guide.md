@@ -99,26 +99,65 @@ Errors show a dedicated banner:
 PARCON 1000
 
    *** ERROR ***
-       <major>   ( <field1>/<field2> )
+       <major>   ( <rcv1>/<rcv2> )
 <message>
 ```
 
 | part | meaning |
 |------|---------|
-| `<major>` | hard-coded error qualifier, e.g. 8000/8001 (Plinth not connected) |
-| `<field1>/<field2>` | two 3-digit session status values (RCV1/RCV2) |
-| `<message>` | the error text, e.g. "Plinth not connected", "No program in memory" |
+| `<major>` | hard-coded error qualifier (e.g. 8000/8001); distinct per error site |
+| `<rcv1>/<rcv2>` | two 3-digit session status values (RCV1/RCV2) |
+| `<message>` | the error text |
 
 Fatal errors instead show **`*** FATAL ERROR ***` … Consult Dealer**.
 
-Known errors:
+### Error list
 
-| screen | major | condition |
-|--------|-------|-----------|
-| Plinth not connected | 8000 / 8001 | IR link handshake failed |
-| No program in memory | — | Load from an empty WORKSTATION MEMORY |
-| Can't open or create file | — | file open failed on the selected device |
+Session/commstar messages (ROM00:6d40-6e10):
 
-(The `No program in memory` qualifier is still being traced; the error
-renderer is `SessionStateBuild` — see
-[commstar](../protocol/commstar.md).)
+| message | qualifier | meaning |
+|---------|-----------|---------|
+| Plinth not connected | 8000 / 8001 | IR link handshake failed (default / case-9 path) |
+| Line failure | TBD | link dropped / line fault |
+| Modem fault | TBD | modem-side fault |
+| Failed to connect | TBD | connect handshake unsuccessful |
+| Invalid reply | TBD | peer sent an unrecognised reply |
+| Invalid command | TBD | peer sent an unrecognised command |
+| Invalid data string | TBD | malformed received data |
+| Not available | TBD | requested item unavailable |
+| Program received | (status) | a program was received |
+| Session complete | (status) | session finished cleanly |
+| Logging on / Logged on / Logged off | (status) | session log-on progress |
+
+Loader/application errors (ROM01):
+
+| message | major | condition |
+|---------|-------|-----------|
+| No program in memory | TBD | Load from empty WORKSTATION MEMORY |
+| Can't open or create file | TBD | file open/creat failed on the chosen device |
+| System error · Consult dealer | — | unrecoverable system error |
+
+The qualifiers marked TBD are ROM-derivable (each error site pushes its own
+literal before `SessionShowMessage`); they are being traced and will be
+filled in — they do **not** need the hardware.
+
+### Error recovery
+
+* Transient errors (the commstar messages above) clear to the previous
+  screen; retry the operation.
+* **`Press >> to continue`** prompts wait for **ENTER**.
+* **`*** FATAL ERROR ***` … Consult Dealer** is unrecoverable: power-cycle
+  the unit.
+
+## To confirm on hardware
+
+These items cannot be settled from the ROM and are deferred until the unit
+is available:
+
+* Whether the value-cycle key is **N/Z** (operator report) or **YES/NO**
+  (ROM maps next/prev to YES/NO; N/Z type letters).
+* The exact effect of the function labels (`CHNGE`, `REFER`, `HELP`,
+  `INSRT`, `F1`/`F2`, `STWDL`, `LIGHT`, `TOP`, `BOT`, `/POS`).
+* Whether menu items are selected by number (digits are shifted values) or
+  by YES/NO + ENTER.
+* The Diagnostics sub-menu contents and self-test screens.
