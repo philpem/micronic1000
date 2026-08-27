@@ -128,10 +128,14 @@ Session/commstar errors (byte-verified error-code → message map):
 |------|---------|
 | 8000, 8001 | Plinth not connected |
 | 8010, 8012–8015 | Failed to connect |
-| 8011, 8055, 8056, 8151, 8165, 8166 | Not available |
+| 8011, 8055, 8056, 8102, 8151, 8165, 8166 | Not available |
 | 8016 | Modem fault |
 | 8050, 8054, 8150, 8160, 8164 | Line failure |
 | 8053, 8163 | Invalid reply |
+| 8101 | Invalid data stream |
+
+The string "Invalid command" exists in ROM but is **unreferenced** (dead) — it
+never appears on screen.
 
 Status lines (not errors — no error-code prefix): "Program transmitted",
 "Program received", "Session complete", "Logging on", "Logged on",

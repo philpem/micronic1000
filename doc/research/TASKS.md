@@ -1571,3 +1571,22 @@ State: continuously updated as work progresses.
     error banner), same as the typed-value validation path. Discriminating
     test: find the field-edit code that compares typed input and renders a
     rejection string. Parked.
+- 2026-08-27 (screen template struct + field validation; protocol errors):
+  * SCREEN TEMPLATE format decoded (ScreenTemplateHeader struct, 14 bytes,
+    applied to 758b/75eb/760d): {buildStub, stub2, stub3, stub4: pointer}
+    {flags: word 0x0801}{count: word 0x0120/0x0020}{dataPtr: pointer -
+    the field's choice/string table, 0x757f for the comm form}. Records end
+    0xfffe. TemplateBuilder (0271) is used ONLY for these 3 form templates;
+    the MENU (ROM01:7860) is a different structure (menu item records
+    {string, action}) rendered by a separate handler.
+  * FIELD VALIDATION (investigate agent, byte-verified key claims): four
+    field-type validators (ROM00 582a/5834/583e/5848) + Session_FieldParse
+    Validate (612a: numeric parse vs limit table e34f by field idx e88f);
+    they return HL=0 on rejection and do NOT raise the banner. "Invalid
+    reply"/"Invalid data stream" are session PROTOCOL errors dispatched by
+    Session_ProtocolErrorDispatch (4f37): 0x09->"Not available"(8102),
+    0x0A->"Invalid data stream"(8101). "Invalid command" (6dfa) is DEAD
+    (zero refs). Er007 error list updated with 8101/8102; forms-ui.md now
+    documents the template struct + validation.
+  * OPEN (menu): decode the menu-item record format (ROM01:7860) and its
+    per-item handlers - separate sub-project, still pending.

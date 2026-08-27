@@ -40,8 +40,38 @@ whatever list `ec49` currently points at.
   per-record data, and dispatches each record through a function pointer
   (`d828`). The template embeds at `+0x0c` a pointer to the field's choice
   table.
-- **Template descriptor** (e.g. ROM01:758b): a header of stub-function
-  pointers followed by per-field records; `fffe` separates records.
+- **Template descriptor** (e.g. ROM01:758b): a `ScreenTemplateHeader`
+  followed by per-field records; `fffe` separates records. The header
+  (Ghidra struct `ScreenTemplateHeader`) is byte-verified across the three
+  sibling templates 758b/75eb/760d:
+
+  | offset | field | value (758b) | meaning |
+  |--------|-------|--------------|---------|
+  | +0 | buildStub | 0xefec | per-record builder fn (bank-called) |
+  | +2 | stub2 | 0xf0f8 | stub fn |
+  | +4 | stub3 | 0xef98 | stub fn |
+  | +6 | stub4 | 0xefd8 | stub fn |
+  | +8 | flags | 0x0801 | flags (LIKELY) |
+  | +10 | count | 0x20 = 32 | element count (LIKELY) |
+  | +12 | dataPtr | 0x757f | field's choice/string table |
+
+  The three templates differ only in `count` (0x0120 vs 0x0020) and
+  `dataPtr` (757f / 75e1 / 75ff). Menu screens are a *different* structure
+  (item records `{string ptr, action}` at ROM01:7860-78a0), rendered by a
+  menu handler, not `TemplateBuilder`.
+
+## Field validation
+
+Typed input is validated per field type by four field-type validators
+(ROM00:582a / 5834 / 583e / 5848) plus `Session_FieldParseValidate`
+(ROM01:612a, numeric parse against the limit table `e34f` indexed by
+`e88f`). Validators **return HL=0 on rejection** — they do not raise an
+error banner themselves; the caller handles the display. "Invalid
+reply"/"Invalid data stream" are session *protocol* errors, not field
+validation messages, and "Invalid command" is an unreferenced (dead) string.
+The protocol errors are dispatched by `Session_ProtocolErrorDispatch`
+(ROM00:4f37): selectors 0x09→"Not available" (8102), 0x0A→"Invalid data
+stream" (8101).
 
 ## The device list
 
