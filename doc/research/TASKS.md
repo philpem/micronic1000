@@ -23,14 +23,14 @@ State: continuously updated as work progresses.
 13. **RTC RESOLVED: 08h/28h indexed pair IS the HD146818** (address
     latch / data). Register map proven from firmware sequences:
     regs 00,02,04,06,07,08,09 = time file; 0A/0B = status/ctrl;
-    0C = interrupt flags. See rtc-investigation.md. The 4x
+    0C = interrupt flags. See internals/rtc.md. The 4x
     latch cluster (4A/4B/4D/4F) is NOT the RTC (owner-confirmed).
-14. **ROM documentation-coverage baseline** (doc/gap-analysis.md):
+14. **ROM documentation-coverage baseline** (doc/research/gap-analysis.md):
     of 480 functions, only 88 (18 %) carry meaningful names; 392 are
     still auto `FUN_*` (ROM00 237, ROM01 91, RAM modules ~40). The
     named set is the boot/RTC/link/LCD/clock/diagnostic subsystems.
     In-progress tracked there.
-15. **CP/M implementation comparison** (doc/cp-m-comparison.md):
+15. **CP/M implementation comparison** (doc/internals/cp-m-comparison.md):
     BDOS dispatch table ROM00:3708→ram:F1EB; fns 00-24h = CP/M 2.2
     semantics, with DIPOS extensions & stubs. Annotated ~30 `Bdos*`
     functions (dispatch handlers + FCB machine 0824/068D/06C1/09CA/
@@ -44,7 +44,7 @@ State: continuously updated as work progresses.
     F6 get-device, F7 SetActiveConsoleDevice, F8/F9/FA/FB FE83/FE93
     config read/write + device-pair, FC/FD set/get RTC time,
     FE/FF RTC alarm. All renamed+plate-commented in Ghidra.
-17. **DIPOSB programmer's guide** (doc/diposb-programmers-guide.md):
+17. **DIPOSB programmer's guide** (doc/manual/programmer-guide.md):
     self-contained doc to read alongside a CP/M 2.2 guide. Covers the
     BDOS call interface, RAM file system (A/B drives, 16-drive select,
     stubbed alloc/DPB fns), device-routed console I/O, the F3-FF
@@ -123,7 +123,7 @@ State: continuously updated as work progresses.
    discard (1567). **BDOS fn 03 (RDR:) = `BdosReaderInChar` (1080)** is
    a real reader path (1B/count/data via ring F95E). The earlier
    "barcode/light-pen" branding is **not proven** — retitled neutral.
-   See protocol-comms.md + barcode-reader.md (updated).
+   See protocol/commstar.md + manual/barcode-reader.md (updated).
    **Developer tie-in: install decoder at `fbc2`; read via fn 03,
    or arm directly via RST 10h -> ExtBusArm (1221).**
 4. Emulator: verify a full send under trace (needs boot fix).
@@ -156,16 +156,16 @@ State: continuously updated as work progresses.
    with a recovery plate; noise "SessionCommandDispatch" function
    auto-created at 1F96 deleted. 67CA-6F28: bogus 67ca removed;
    discovered 6B53, 6B9B, 6CB2, 6E77; ram losses da4c/dc69 restored.
-   NEXT: name the survivors (gap-analysis.md lists them).
+   NEXT: name the survivors (research/gap-analysis.md lists them).
 7. **ROM01 / UI survey for `fbc5` and `fbc2` writers** (review §6.3) and
    **`fbc7/fbc8` consumers** (§6.4, BDOS fn F9 presets) — likely a
    "device" settings screen in ROM01. **CLOSED 2026-08-24 (§6.2)**: the
    reader-completion event bit is `fbc9` bit0, posted by
    `ExtBusComplete`(14A3)→`LinkResetSession`(30BD); that wakes the
-   fn-03 `EventWaitForLink` HALT (see barcode-reader.md).
+   fn-03 `EventWaitForLink` HALT (see manual/barcode-reader.md).
 8. **Residual inverted-dispatcher doc claims** (found by the docs
-   agent 2026-08-24): `doc/cp-m-comparison.md:27-28` and
-   `doc/protocol-comms.md:611` still carry the pre-fix "25h-F2h
+   agent 2026-08-24): `doc/internals/cp-m-comparison.md:27-28` and
+   `doc/protocol/commstar.md:611` still carry the pre-fix "25h-F2h
    extended table" framing. Fix them with the corrected model (fn
    <25h→F1EB; F3-FF→F1D1 wrap via DEC B; unmatched 25h-F2h → wild
    pointer, nothing rejected).
@@ -181,16 +181,16 @@ State: continuously updated as work progresses.
 8c. **Static writers of d2dc/d2de (06d3 globals)** and of the EA14/
     EA1C chunk-state blocks — not in defined code post-repair;
     re-check after the thunk-sweep and get_callers pass.
-9. **Stale barcode-reader.md leftovers** — **DONE (verified 2026-08-27):**
-   barcode-reader.md H1 and the "What a symbology decoder does" section
+9. **Stale manual/barcode-reader.md leftovers** — **DONE (verified 2026-08-27):**
+   manual/barcode-reader.md H1 and the "What a symbology decoder does" section
    no longer carry the stale "(was ...)" / "(if this is a light-pen)"
-   wording. NOTE: protocol-comms.md §400 still titles the external-device
+   wording. NOTE: protocol/commstar.md §400 still titles the external-device
    bus "(was "barcode/light-pen")" and §434 asserts "no barcode strings" —
    that predates the owner adjudication and needs a separate review pass.
 10. **Name `FUN_ROM00__35c9`** (the quiet-bus helper in the capture
      path, review §2.3) during the work-item-queue analysis (item 5).
 11. **Decode the error-screen format** — **DONE (2026-08-27, see
-     protocol-comms.md "Error / status screen format").** Owner observed
+     protocol/commstar.md "Error / status screen format").** Owner observed
      "Error 8000 (238/001) Plinth not connected". CONFIRMED: 8000 = major
      error qualifier (literal 0x1F40, or 0x1F41=8001 for the 0x0009 case),
      NOT the e488 code (6); the "(238/001)" pair = RCV1/RCV2 session
@@ -226,7 +226,7 @@ State: continuously updated as work progresses.
        config-descriptor table, ram:e105 font copy, ram:d0e0 error-string
        table, and the 27 dispatch tables' `tbl_` labels + index->handler
        plate comments.
-    6. **Refresh gap-analysis.md** (the single coverage tracker) after the
+    6. **Refresh research/gap-analysis.md** (the single coverage tracker) after the
        sweep; do not keep competing %-named claims elsewhere.
 
     Sequencing: one Ghidra-writing agent at a time, `save_program` between,
@@ -281,8 +281,8 @@ State: continuously updated as work progresses.
     StrTableLookup/TextOut*; RAM dispatch slots SessionOpStub_*.
     The only auto created `FUN_ram_8c0c` was a false positive over a
     zero buffer (spurious CALL from a jump-table byte) — deleted.
-19. **DIP program format documented** (diposb-programmers-guide.md §7b +
-    os-diposb.md): DIP = block-structured loader-record stream, same
+19. **DIP program format documented** (manual/programmer-guide.md §7b +
+    internals/os-diposb.md): DIP = block-structured loader-record stream, same
     grammar as the boot chain (fn 0 copy / 1 move / 2 queue-banked-call
     / FFFF term, bank-tagged); COM = plain single image. Advantages
     (multi-bank, init calls, streamable, diagnostics) vs. .COM; exact
@@ -313,7 +313,7 @@ State: continuously updated as work progresses.
 - 2026-08-24 (AGENTS.md maintenance): reconciled the rules file with
   owner adjudication + repo facts. IR-port positions settled by owner:
   **V24 ADAPTOR = top, PLINTH = back** (corrected micronic_notes.md,
-  os-diposb.md, AGENTS.md §3 — an earlier "bottom/front" reading was
+  internals/os-diposb.md, AGENTS.md §3 — an earlier "bottom/front" reading was
   discarded); tagged bit5 port-select as byte-verified (LinkBlockTx
   3278 `AND 0x20` → LinkPortSelect 3454); made `Barcode_` the declared
   module prefix for the port-2D capture front end everywhere (§3/§7/
@@ -339,12 +339,12 @@ State: continuously updated as work progresses.
   transceiver datasheet") removed; RtcRegWrite (22DB) indirect OUT
   (C),B @22DD got EOL "C=8: RTC_ADDR port". FUN_ram_8c0c (false
   positive over a zero buffer) deleted again — watch for re-creation
-  after any run_analysis (gap-analysis.md records it). Program saved.
-- 2026-08-24 (docs batch — delegated; site rebuilt): os-diposb.md +
-  diposb-programmers-guide.md dispatcher claims corrected (+HAZARD);
-  memory-map.md FE83/FE93 rows fixed (16 one-byte wire ids; letter
+  after any run_analysis (research/gap-analysis.md records it). Program saved.
+- 2026-08-24 (docs batch — delegated; site rebuilt): internals/os-diposb.md +
+  manual/programmer-guide.md dispatcher claims corrected (+HAZARD);
+  internals/memory-map.md FE83/FE93 rows fixed (16 one-byte wire ids; letter
   indexing is FE93's); RST2 listings got the missing `LD E,(HL)` in
-  memory-map.md + interrupts.md (stray "0186C" fixed); barcode-reader
+  internals/memory-map.md + internals/interrupts.md (stray "0186C" fixed); barcode-reader
   fbb7 typo + header re-stated with the owner adjudication.
 - 2026-08-24 (emulator research — delegated): stall at 16C9 is the
   keyboard-event wait (fbca=07, caller 1105); INT injection coarse and
@@ -353,7 +353,7 @@ State: continuously updated as work progresses.
   emulator in-progress entry; scratch /tmp/opencode/boot_diag.py,
   boot_timeline.py, fixB_regen.py.
 - 2026-08-24 (coverage audit #2): 668 functions, 610 (91 %) named, 58
-  FUN_* remaining (ROM00 1, ROM01 14, ram 43) — doc/gap-analysis.md
+  FUN_* remaining (ROM00 1, ROM01 14, ram 43) — doc/research/gap-analysis.md
   refreshed and is the single canonical tracker.
 - 2026-08-24 (tooling): opencode.json now points the annotate + docs
   subagents at the cheap model opencode/x-preview-f-free — takes
@@ -408,7 +408,7 @@ State: continuously updated as work progresses.
     OR 0x40; ClearAlarmInterrupt AND 0xDF; no RegA writes) - RTC_WakeReasonFetch
     plate upgraded. fbc9 full bit map CONFIRMED (bit0 session event @30C0,
     bit1 date-changed @2235, bit2 kbd @18E0/1968, bit3 date-wait-ack @170B
-    via deferred callback; bits 4-7 unused) - barcode-reader.md updated.
+    via deferred callback; bits 4-7 unused) - manual/barcode-reader.md updated.
     Descriptor records 7715/7751 NOT yet repeatable-commentable (field
     layout inconsistent) - trace Ui_PostDescriptor instead.
   * ram sweep applied: runtime page Session_Not16 (was misnamed
@@ -454,9 +454,9 @@ State: continuously updated as work progresses.
     0x7F (clear SET) - the FD4F bit5 wake path is LIVE when armed.
     LinkStatusWatcher (2468) corrected: polls RTC regs 07/08 (alarm
     sec/min) -> FD9B/FD9C, NOT Reg C.
-  * Docs: cp-m-comparison.md 25h-F2h wild-pointer claim fixed (item 8
-    CLOSED); SessionBdosPrep renames propagated (os-diposb.md,
-    protocol-comms.md).
+  * Docs: internals/cp-m-comparison.md 25h-F2h wild-pointer claim fixed (item 8
+    CLOSED); SessionBdosPrep renames propagated (internals/os-diposb.md,
+    protocol/commstar.md).
   * Coverage: 686 fns / 672 named (98.0 %), 14 FUN_* left (9 ROM01
     incl. the five Ui_PostDescriptor case handlers + 6e77; 5 ram
     ee00-eedc/f8ef with empty listings - GUI pass needed).
@@ -575,7 +575,7 @@ State: continuously updated as work progresses.
     to all 64 banks so IRQs/RSTs work in any selected bank. Real RAM
     sizing = ram_page_test_4banks (2530, called from reset_entry 01BB,
     fail flag FDB0) + contig_ram_map_test (267A).
-  * SURVIVES (documented in memory-map.md + the four plates): the
+  * SURVIVES (documented in internals/memory-map.md + the four plates): the
     64-bank sweep implies 2 MB of addressable banked-window capacity
     (6-bit bank latch, LIKELY); installed 256K RAM backs part of it.
   * RAM-disk block I/O LOCATED: BdosReadRecordBlock (ram:f4e7) CALLs
@@ -590,7 +590,7 @@ State: continuously updated as work progresses.
     FFA3/FFA5/FEFF/F8B8 commented; f498 entry EOL'd (bank arg comes
     from FEFE - the envelope's saved-bank cell is reused as the block
     I/O bank operand). BdosReadRecordBlock: C = bank, 0x80B read via
-    KernSwapCopySrc. memory-map.md: owner-confirmed rationale for the
+    KernSwapCopySrc. internals/memory-map.md: owner-confirmed rationale for the
     per-bank vector replication added (COM not bank-aware, DIP may be;
     IRQ/RST must work in any bank).
   * Open next: 049f/04c8 block-address helpers (f822/f8b0 math) -
@@ -638,7 +638,7 @@ State: continuously updated as work progresses.
     artifacts), f1c5/f1ce renamed BdosDispatch_TablePath/_GoHandler.
     Docs fixed: the stale "FD->0DE9, FC->024D, F6->1893, F7->2477"
     examples and the fn 40h -> ~F06B wild-pointer example (now F26B)
-    in cp-m-comparison.md / os-diposb.md / diposb-programmers-guide.md.
+    in internals/cp-m-comparison.md / internals/os-diposb.md / manual/programmer-guide.md.
   * Syscall families named: the 11-entry FB family (ids 0C,0F,12,15,
     18,1B,1E,24,27,2A,2D -> Syscall_InvokeServiceFB_IdXX + Tail) and
     the second family (Syscall_RestartCold f2c4 -> JP 01A6,
@@ -651,7 +651,7 @@ State: continuously updated as work progresses.
     defaults + zero ROM writers + loader fn 0/1 write-anywhere +
     d828 indirect caller with settable bank byte + F168 sentinel
     guards); design-intent (public patch sockets for DIP bug-patching/
-    extensions) LIKELY. Full table in memory-map.md "Patch/hook
+    extensions) LIKELY. Full table in internals/memory-map.md "Patch/hook
     surfaces". Hardware test to settle LIKELY->CONFIRMED recorded.
   * Main-agent review caught + fixed: the e05a plate was WRONG (it is
     the NOT-EQUAL test: HL=1 iff !=; Z=1 <=> equal) - the third
@@ -808,7 +808,7 @@ State: continuously updated as work progresses.
     re-derive the whole second farm's boundaries and rename every
     entry by its true id.
   * NEW follow-ups: FF7F/FFA5 vs FEFF/FFA3 staging pairs -> add a
-    memory-map.md row; BankedCallCommonEntry's ROM00:230A call lands
+    internals/memory-map.md row; BankedCallCommonEntry's ROM00:230A call lands
     mid-ClockSelftestPeriphCfg - hand-check that boundary;
     ROM01::1b0a nested subroutine = split candidate; the 1fbe EOL
     ("id==13: fall through") may contradict the e04b convention -
@@ -867,7 +867,7 @@ State: continuously updated as work progresses.
     getter) -> StateWordGet_E8D6; ui_OpenSaveDialog doc-grep done
     (only historical TASKS logs).
 - 2026-08-26 (recommended-order rounds; saved serially):
-  * 675A renamed StateWordGet_E8D6 + plate. memory-map.md gained the
+  * 675A renamed StateWordGet_E8D6 + plate. internals/memory-map.md gained the
     block-I/O staging-cells row (FF7F/FFA5 read pair, FEFF/FFA3 write
     pair, F8B8 dir buffer).
   * LAB batch 7 APPLIED (40 renames: RxIncr/DecrCounter, CountBytes,
@@ -1049,7 +1049,7 @@ State: continuously updated as work progresses.
     -> DELETED. FUN_* back to 0.
   * Coverage re-enumerated: 750 total (ROM00 394 / ROM01 164 / ram 192),
     FUN_*=0, thunk=13, plateless=299 (ROM00 238 / ROM01 61).
-    gap-analysis.md refreshed (5th audit).
+    research/gap-analysis.md refreshed (5th audit).
   * NEXT: plateless tranche 8 (ROM01's 61), then ROM00's 238; LAB batch
     12 (~160 in-fn labels above 4730, evidence dump in-hand).
 - 2026-08-26 (ROM01 plateless CLOSED; 3 read-only investigate agents +
@@ -1082,7 +1082,7 @@ State: continuously updated as work progresses.
     RTC/periph + diag/LCD-print + link transport; TTY/coroutine +
     session screens + TX/RX protocol). Final coverage: 749 total /
     FUN_*=0 / thunk=13 / plateless=0 (ROM00, ROM01, ram all saturated).
-    gap-analysis.md refreshed (6th audit). This closes the plate debt
+    research/gap-analysis.md refreshed (6th audit). This closes the plate debt
     that started at 498-plateless on 2026-08-25.
   * AGENT QUALITY NOTE: investigate agents were reliable on callee
     NAMES and general mechanics but have a ~5-10% detail error rate
@@ -1187,7 +1187,7 @@ State: continuously updated as work progresses.
     - Session cluster (ROM00 354c-6811) verified CLEAN (agent found 0).
   * BeepAndLatchWrite (14ff) renamed Barcode_AttentionStrobe (stale
     "ReaderBeepAttention"/"light-pen" plate fixed; drives 2A/2C route
-    latches + arms fbbf). io-map.md updated.
+    latches + arms fbbf). internals/io-map.md updated.
   * NEXT: byte-verify wave 2 (re-scan for remaining detail errors;
     data-typing + find_code_gaps for the out-fn tail); guarded re-bases
     (2f74/52a5/4a25); emulator run (memory-gated).
@@ -1338,7 +1338,7 @@ State: continuously updated as work progresses.
     Banner (self-test), so the session-connect "Plinth not connected" must
     use a DIFFERENT probe. OPEN: which fn probes the link during connect
     (LinkPresent 34ec / LinkWaitReady 34f8 / SessionConnectCheck 2b43?).
-    Documented in protocol-comms.md "Error-path triggers".
+    Documented in protocol/commstar.md "Error-path triggers".
    * EMULATOR NOTE: chase "No program in memory" by driving Load/Run
      Program in boot_hw_visible.py and tracing which BDOS/session error
      code populates d0e0 and e48d/e488. (Error-code->string table is
@@ -1413,7 +1413,7 @@ State: continuously updated as work progresses.
     zero-padded), template at ROM00:7310 (now tbl_sess_status_fmt) with
     field names RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC. Annotated: plates on
     7310/e488/e701(g_wSessRcv1)/e6ff(g_wSessRcv2)/SessionStateBuild; EOLs
-    at 47ca/47b7/47d0/4380/4399. protocol-comms.md gained "Error/status
+    at 47ca/47b7/47d0/4380/4399. protocol/commstar.md gained "Error/status
     screen format (CONFIRMED)".
   * MISNOMER FLAGGED: ROM00:403b (named FileSearchNextCb) is actually a
     decimal-to-ASCII formatter (div-10 digit loop + 0x30); used by
@@ -1485,3 +1485,12 @@ State: continuously updated as work progresses.
   * NEXT (large): annotate the ~96 new handler functions (name + plate +
     labels) - dispatch via annotate agent, serialized. Continue the
     choice-cycle trace (d8ce transform + the From field's choice table).
+- 2026-08-27 (MkDocs diagram rendering):
+  * Added MkDocs custom fences and ordered client-side Mermaid/WaveDrom
+    assets. Mermaid fences now become Mermaid containers; WaveDrom fences
+    are converted from escaped code to the `script[type=WaveDrom]` format
+    required by WaveDrom after the document loads.
+  * Restored a non-session Mermaid sequence diagram for the CONFIRMED
+    controller-facing transmit ordering in protocol/commstar.md. The former
+    host/peer and state diagrams remain intentionally absent: the current
+    protocol evidence does not establish normative session transitions.

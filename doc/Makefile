@@ -1,32 +1,18 @@
-# Micronic 1000 doc build
-# See doc/BUILD.md for full instructions.
+# Micronic 1000 documentation build — MkDocs only.
+# Run from doc/ (targets `cd ..` to reach the repo-root mkdocs.yml).
+# See doc/BUILD.md.
 
-MD       := $(shell find . \( -path './research' -o -path './node_modules' -o -path './site-html' \) -prune -o -name '*.md' -print)
-OUT      := site-html
-MKDOCS   ?= mkdocs
+MKDOCS ?= mkdocs
 
-html: $(OUT)/index.html
-
-mkdocs:
+build: ## build the site into ../site-mkdocs
 	cd .. && $(MKDOCS) build
 
-$(OUT)/index.html: build.py $(MD)
-	python3 build.py
+serve: ## live preview at http://127.0.0.1:8000/
+	cd .. && $(MKDOCS) serve
 
-validate: ## validate Mermaid and WaveDrom diagrams, then build HTML
-	@test -d node_modules/mermaid || { echo "diagram dependencies missing; run: npm install"; exit 1; }
-	python3 build.py --validate-mermaid --validate-wavedrom
+clean: ## remove the generated site
+	rm -rf ../site-mkdocs
 
-svg: ## pre-render mermaid to svg (needs mmdc)
-	@command -v mmdc >/dev/null 2>&1 || { echo "mmdc not found; install with: npm i -g @mermaid-js/mermaid-cli"; exit 1; }
-	mkdir -p $(OUT)/svg
-	@for f in $$(grep -rl '```mermaid' *.md); do \
-	  echo "$$f"; done
-
-clean:
-	rm -rf $(OUT)
-
-.PHONY: html validate svg clean
-.PHONY: help mkdocs
+.PHONY: build serve clean
 help:
-	@grep -E '^[a-z]+:' Makefile
+	@grep -E '^[a-z-]+:' Makefile

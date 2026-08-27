@@ -15,7 +15,7 @@ asked.
 
 This file records **durable process rules**. Current findings, open
 questions, and the identity of contested subsystems live in
-`doc/TASKS.md` and the `doc/` write-ups — those change every session;
+`doc/research/TASKS.md` and the `doc/` write-ups — those change every session;
 this file should almost never change. When a finding is revised, edit
 TASKS.md and the docs, not this file.
 
@@ -144,7 +144,7 @@ is silent. Currently on record:
   CCD scanner gun also exists.
 - The two IR ports are physically: **V24 ADAPTOR = top port, PLINTH
   = back port** (owner-stated 2026-08-24; this supersedes the earlier
-  "bottom/front" wording in `micronic_notes.md` and os-diposb.md,
+  "bottom/front" wording in `micronic_notes.md` and internals/os-diposb.md,
   both corrected on that date). Firmware selects between the two 4x
   port configurations by wire-id bit5 (LinkBlockTx `AND 0x20` →
   LinkPortSelect, byte-verified); which bit5 value is which physical
@@ -202,7 +202,7 @@ hand:
   re-type them at every call site, and record the convention in the
   callee's plate.
 - **Restart vectors.** All are kernel entries here (see
-  doc/memory-map.md §page zero): 0008 → JP F180 (BDOS dispatch),
+  doc/internals/memory-map.md §page zero): 0008 → JP F180 (BDOS dispatch),
   0010 → JP F5E1 (banked-call dispatcher), 0020 → JP F5EA,
   0028 → JP F5ED, 0030 → JP F5F0, 0038 → JP F5F3 (doubles as the
   IM 1 IRQ entry), NMI at 0066 → JP F5F6. Keep them labelled in
@@ -274,7 +274,7 @@ call site**, not just inside the callee.
   an unproven identity in a name: prefer a mechanics name
   (`ExtBusAcquireEdge`, `EdgeCapture*`) plus a tagged comment over a
   speculative identity name. The current identity of contested
-  subsystems is recorded in `doc/TASKS.md`, not here.
+  subsystems is recorded in `doc/research/TASKS.md`, not here.
 
 ### Rename hygiene (a rename is not just a rename)
 
@@ -477,8 +477,8 @@ Avoid (all restate the opcode or say nothing):
 
 DIPOS-B exposes a CP/M-2.2-style interface but is **not** stock CP/M —
 standard CP/M structure is a *starting hypothesis* to verify, never a
-fact to assume. The established picture is in `doc/os-diposb.md`,
-`doc/cp-m-comparison.md` and `doc/diposb-programmers-guide.md`; read
+fact to assume. The established picture is in `doc/internals/os-diposb.md`,
+`doc/internals/cp-m-comparison.md` and `doc/manual/programmer-guide.md`; read
 them before touching BDOS code. Deviations from stock CP/M (RAM
 "disks", device-routed console, the F3-FF extension table, the banked
 RST 10h call, the unchecked 25h-F2h dispatch) are among the most
@@ -492,7 +492,7 @@ them into the standard name.
 When you hit an I/O port or RAM region with unknown function:
 
 1. Record every access: address, direction, value/mask, surrounding
-   control flow (→ `doc/io-map.md` / `doc/memory-map.md`).
+   control flow (→ `doc/internals/io-map.md` / `doc/internals/memory-map.md`).
 2. Characterise the access **pattern** before naming anything:
    init-time single write, polled spin loop, bit-test status, byte
    stream, handshake pair, edge timing.
@@ -501,7 +501,7 @@ When you hit an I/O port or RAM region with unknown function:
 4. State the **discriminating observation** for the top two candidates.
 5. If the ROM alone cannot discriminate: write both candidates into the
    doc as SUSPECTED, bookmark it in Ghidra, add it to the open items in
-   `doc/TASKS.md`, and move on. **The owner can test on hardware. Do
+   `doc/research/TASKS.md`, and move on. **The owner can test on hardware. Do
    not pick one to keep the narrative moving.**
 
 This procedure is how the RTC was correctly separated from the 4x link
@@ -529,7 +529,7 @@ Efficiency:
 - Prefer following a concrete call chain over breadth-first sweeps.
 - If you've made ten tool calls on one function without a taggable
   conclusion, stop and report where you're stuck.
-- Check `doc/TASKS.md` and `doc/gap-analysis.md` for what's next
+- Check `doc/research/TASKS.md` and `doc/research/gap-analysis.md` for what's next
   before starting ad-hoc exploration.
 - **Clear-flow repairs must be diff-guarded.** `clear_flow_and_repair`
   follows flow beyond the seed and silently deletes real functions
@@ -553,18 +553,19 @@ Efficiency:
 
 The `doc/` files are the notes system — do not create parallel files:
 
-- `doc/io-map.md` — port table with evidence labels (the IO_PORTS log)
-- `doc/memory-map.md` — ROM/RAM/banking + system variables
-- `doc/TASKS.md` — worklist, open questions (each with the observation
+- `doc/internals/io-map.md` — port table with evidence labels (the IO_PORTS log)
+- `doc/internals/memory-map.md` — ROM/RAM/banking + system variables
+- `doc/research/TASKS.md` — worklist, open questions (each with the observation
   that would resolve it), session log, "do not regress" list, and the
   **current-identity list for contested subsystems**
-- `doc/gap-analysis.md` — the **single canonical coverage tracker**.
+- `doc/research/gap-analysis.md` — the **single canonical coverage tracker**.
   Refresh it after any pass that creates or renames functions; do not
   keep competing "%-named" claims in other files.
 
 At the end of every session: update the docs touched, append a short
 session entry to TASKS.md (what was analysed, concluded, overturned),
-rebuild with `cd doc && python3 build.py`, and save the Ghidra program.
+rebuild the site with `mkdocs build` (or `cd doc && make build`), and
+save the Ghidra program.
 
 ---
 
@@ -596,7 +597,7 @@ rebuild with `cd doc && python3 build.py`, and save the Ghidra program.
   Neither is "comms"/modem-indexed-register hardware.
 - No serial EEPROM; serial number is user-entered, stored near FEAB.
 - RST vector roles (0010 banked dispatch, 0038 IRQ, 0066 NMI) as
-  documented in memory-map.md.
+  documented in internals/memory-map.md.
 - Port-2D capture subsystem identity is **CLOSED**: it is the barcode
   reader front end (owner-adjudicated 2026-08-24, §3); new names there
   take the `Barcode_` prefix. Existing `ExtBus*` names in the DB are

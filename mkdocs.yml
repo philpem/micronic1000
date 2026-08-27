@@ -37,10 +37,7 @@ exclude_docs: |
   research/**
   node_modules/**
   BUILD.md
-  build.py
   Makefile
-  package*.json
-  validate-mermaid.mjs
 markdown_extensions:
   - admonition
   - attr_list
