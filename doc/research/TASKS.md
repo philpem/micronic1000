@@ -1661,3 +1661,22 @@ State: continuously updated as work progresses.
     parser). DIP parser still to locate - likely ROM01 Load/Run Program
     handler or the dispatch-module RAM block d681+. Header offsets remain
     OPEN (see manual/program-formats.md).
+- 2026-08-27 (Load/Run loader path - traced to the runtime-stub wall):
+  * Load/Run Program form template at ROM01:7750 (and the Main Menu table
+    at 7720 and Diagnostics at 7860 all share the same form/menu
+    descriptor grammar). The Load/Run form has fields {label "Name"
+    0x7b04, attr 0x0005} and {label "From" 0x7b09, attr 0x0104}. Form
+    descriptors carry 4 "stub" handler pointers that are RAM addresses in
+    the ZEROED region (e.g. 0xef50/0xef3c/0xefec/0xf0f8): these are
+    INSTALLED AT RUNTIME by the boot-chain's enqueued constructor calls
+    (bank0 enqueues 134 far-call stubs, bank1 147) - NOT statically
+    present. So the program loader (and its DIP header validation) is a
+    runtime-installed form-submit action, not reachable as static ROM code.
+  * CONCLUSION for the DIP spec: the header cannot be pinned from static
+    analysis alone. Discriminating observations: (1) trace the boot-chain
+    enqueued constructors to find which one installs the loader/forms stubs
+    and then read the installed code at ef50/ef3c ...; or (2) emulator:
+    drive Load/Run with a crafted DIP file and watch the ef50/ef3c stub
+    execution + which BDOS reads the header; or (3) capture a real DIP file
+    from a live Commstar session. Record grammar + checksum remain CONFIRMED
+    and safe to implement (see manual/program-formats.md).

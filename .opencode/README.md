@@ -5,9 +5,28 @@ the reasons behind the non-obvious model and agent settings.
 
 ## Model selection
 
-The top-level default is `openrouter/deepseek/deepseek-v4-pro`. The utility model and
-routine `general`/`docs` work use free OpenCode models to limit paid and
-subscription usage.
+The top-level default is `openrouter/deepseek/deepseek-v4-pro`. The utility
+model and routine `general`/`docs` work use free OpenCode models to limit paid
+and subscription usage. DeepSeek through OpenRouter is metered, not free; the
+default preserves subscription allowance at the cost of OpenRouter spend.
+
+Choose the primary session model with `/model` or the model-selection key
+binding. These are the recommended front-end choices:
+
+| Workload | Primary model | Trade-off | Reviewer |
+| --- | --- | --- | --- |
+| Normal reverse-engineering work; preferred subscription balance | `anthropic/claude-sonnet-5` | Strong default while Anthropic allowance is available; preserves Opus usage | `review_openai` |
+| Difficult, ambiguous, or cross-cutting analysis | `anthropic/claude-opus-5` | Highest-priority Anthropic choice; slower and consumes more allowance | `review_openai` |
+| Normal work when using the OpenAI subscription | `openai/gpt-5.6-terra` | Balanced OpenAI alternative | `review_anthropic` |
+| Difficult work needing an OpenAI frontier model | `openai/gpt-5.6-sol` | Accuracy-first OpenAI choice; use when the extra capability justifies its usage | `review_anthropic` |
+| Preserve subscription allowance or recover from subscription unavailability | `openrouter/deepseek/deepseek-v4-pro` | Capable independent default, but incurs metered OpenRouter cost | `review_anthropic` |
+| Lightweight coordination or clearly mechanical work | `anthropic/claude-fable-5` or `openai/gpt-5.6-luna` | Faster/lower-usage, but not the primary choice for consequential binary analysis | Reviewer matching the producer family |
+
+Prefer Anthropic over OpenAI when both subscriptions are available because the
+Anthropic subscription has the larger usable allowance. Reassess that ordering
+if the providers' quotas change. The primary still owns evidence adjudication
+and workflow control, so use Sonnet, Terra, or better whenever the prompt may
+lead to consequential findings.
 
 `investigate` intentionally has **no `model` entry and no `temperature`**. An
 OpenCode subagent without a model inherits the invoking primary session's live
