@@ -538,8 +538,8 @@ State: continuously updated as work progresses.
   * Write twin FOUND (already named): BdosPrepWriteBuf (f510: 0x80B
     record FFA3 -> FEFF staging, banked via f498) + BdosDoneWriteBuf
     (f523: FEFF -> FFA3). BdosPrepReadFromBuf (f4eb: 0x24B header
-    stage via FF7F) + BdosSwpDirectory (f535: record -> F8B8 dir
-    buffer) complete the layer. All five plated; staging cells FF7F/
+    stage via FF7F) + BdosSwpDirectory (f535: F8B8 dir buffer ->
+    [FFA3] DMA) complete the layer. All five plated; staging cells FF7F/
     FFA3/FFA5/FEFF/F8B8 commented; f498 entry EOL'd (bank arg comes
     from FEFE - the envelope's saved-bank cell is reused as the block
     I/O bank operand). BdosReadRecordBlock: C = bank, 0x80B read via
@@ -1210,14 +1210,16 @@ State: continuously updated as work progresses.
     the FCB/session-specific (Session_CharTranslate, Session_FcbCharTrans,
     Session_FcbParseFilename) and the VM register-file ops. (Nugget:
     the underlying 32-bit divide engine might be general-purpose - open.)
-  * SERIAL NUMBER (refines owner note): ram:FEAB is WRITTEN by
+  * RAM SIZE vs SERIAL (CORRECTION, owner-flagged): ram:FEAB is WRITTEN by
     DelayCountUp (ROM00:271F) at cold start as FEAB = FEA9*0x20 (FEA9 =
-    count of 0xFF bytes from the RAM scan) - so it is a COMPUTED default,
-    DISPLAYED on the banner, NOT entered at the banner. The banner only
-    waits for ENTER (0x0D) at 02D8. The "Enter the Workstation serial
-    number shown on the back" dialog is ROM01 app UI (strings 7A8E-7AB2,
-    template 76E4), post-boot - this is where the user entry (overwriting
-    FEAB) happens. Consistent with owner + nuance to record in §3.
+    count of 0xFF bytes from the RAM scan) - this is the RAM SIZE code,
+    DISPLAYED on the banner as "Ram: NN K.B." - I mistook it for the
+    serial number; BOTH are shown on the boot screen. The banner waits
+    only for ENTER (0x0D) at 02D8. The "Enter the Workstation serial
+    number shown on the back" dialog (strings 7A8E-7AB2, template 76E4)
+    is ROM01 app UI, post-boot - that is where the user-entered serial
+    (in the FEAB AREA, owner-confirmed) is written; the exact serial CELL
+    has not been pinned yet.
   * EMULATOR STALL SOLVED: root cause was NOT a bank-walk bug - it was the
     genuine banner HALT-wait (16CA, ffa8=1, fbc9=0); the --drive-kbd cheat
     spammed ENTER faster than the ring was consumed. Fix (in /tmp/
@@ -1229,3 +1231,82 @@ State: continuously updated as work progresses.
     slice count at the same wall time; MAX_SLICES 300k sufficient.
     NEXT: merge the paced-injection + --drive-serial flags into
     analysis/boot_hw.py.
+- 2026-08-27 (emulator visibility + naming convention; agents + main):
+  * EMULATOR UPGRADE: analysis/boot_hw_visible.py adds (1) LCD render of
+    FC06-FCA5 (20x8) to the terminal, (2) an expect-DSL (--expect
+    "text:keys" / --expect-file JSON / --expect-timeout) so scripts can
+    wait-for-text-then-type, (3) multi-bank RAM (--ram 256|512; ports 47h
+    bank select banks 0=ROM0/1=ROM1/2..N=RAM pages; --dump-bank N). Boots
+    to the Main Menu with the LCD animated. Boot reached via expect:
+    "To Continue Press>>:\r" + "serial number:\r12345678\r" + "Main Menu:".
+    (Keeps boot_hw_serial.py working variant; not yet merged into boot_hw.py.)
+  * NAMING CONVENTION (per owner): RAM stdlib -> Lib_; ROM utilities ->
+    omit prefix or _rom0/_rom1 suffix; Session_ only for real session
+    handling. APPLIED: 25 renames - 21 Session*32 -> RegFile_* (the
+    E3B1-E3BF register-file arithmetic: RegFile_Add32/And32/Shl32/Neg32/
+    CmpCarry32/CmpSigned32/TestNonzero/DivResult/ShiftSubDiv/LoadOp1/2/
+    StoreOp1/2/SetWord32/SaveArgs2/Shr32/CondNeg32/DivS32/ModS32/DivShl/
+    CmpGtDispatch); SessionAnd16 -> Lib_And16; SessionNeg16 -> Lib_Neg16;
+    Session_SyscallFromGlobals -> Bdos_CallFromGlobals;
+    session_bdos_prep_call -> Bdos_PreparedCall. Plus Fcb_CharTrans/
+    Fcb_ParseFilename (earlier). FUN_*=0.
+  * DEFERRED naming proposals (agent audit, NOT applied - await owner
+    preference): 30+ SessionOpStub_ee* -> OpStub_ee*; Session_CmpBranchGlue
+    /DispatchThunk -> Vm_*; SessionDialogRenderer/DialogIdGet/DialogState
+    Check -> Dialog_*; Session_TableRender7288/73de + SessionDrawFieldLine
+    -> Ui_*; Util_HlPlus2Cy/HlMinus2Cy/Shr16A -> *_rom0; Str*/Text* ->
+    *_rom1; Session_CharTranslate -> Lib_ (conflicting evidence, keep
+    Session_ for now); Session_EnvThunkD7d1 -> Util_ChecksumThunk.
+- 2026-08-27 (emulator RAM/FF + --help; error-path q's; labels; churn):
+  * EMULATOR FIX (general agent): not-present banked pages now READ 0xFF
+    (and discard writes), so --ram 256 reports "Ram: 256 K.B." not 2016K;
+    --ram 512 -> 512K. boot_hw_visible.py gained full --help docstring +
+    an analysis/README.md "Emulator" section (options, expect DSL grammar,
+    RAM model). Not merged into boot_hw.py yet.
+  * ERROR-PATH Q's (investigate): "Plinth not connected" (ROM00:6d6f) =
+    LinkProbe (348a) hardware probe failure - 0x1F->port 4F, LINK_CTRL(4A)
+    bit5/0/6/7 toggles, read LINK_STATUS(4B); error code 6 in e488; NO
+    data packets (4Dh/4Ch) in the probe stage (0xE0/0xEE frames come later
+    in the connect handshake). "No program in memory" (ROM01:7d07) and
+    "Can't open or create file" (ROM01:7cdb) are behind a RUNTIME
+    error-code->string table (ram:d0e0 / ROM01 7c80) - exact condition
+    needs emulator/RAM trace (LOW confidence).
+  * LABELS: applied g_ labels to 9 hot RAM cells (g_bEventFlags fbc9,
+    g_bActiveDevice fbc5, g_bActiveDrive fbc6, g_pScreenDesc ec49,
+    g_wEventWord ec41, g_wTxResult e681, g_bLinkCtrlShadow f794,
+    g_bLinkState fdd5, g_bWireId fdca) with repeatables. The comment-
+    rewrite pass (cite labels, not raw addrs) is still open.
+  * DATA-TYPING proposals (investigate, not yet applied): ROM00 7d80 word
+    [104] + 7e50 word[~27] fn-ptr tables, 7c50/7c30 font-metric data,
+    ROM01 7545-7fff config-descriptor table, ram:e105 font copy, ram:d0e0
+    error-string table, ram:f1f9 (already typed as BdosFnHandlers).
+  * CHURN: 15 FUN_* re-triaged (all real session coroutines, LD DE,0/d837
+    proem, in the ROM00 session TX/RX code gaps) -> named SessionSub<addr>;
+    their proper plates are queued. FUN_* = 0.
+  * NEXT: proper plates for the 15 SessionSub* + data-typing apply +
+    comment-rewrite labels migration; guarded re-bases (2f74/52a5/4a25);
+    merge boot_hw_visible.py into boot_hw.py.
+- 2026-08-27 (LinkProbe question + emulator-chase note; documented):
+  * Owner-flagged: LinkProbe (348a) is called ONLY by ColdStartSelftest
+    Banner (self-test), so the session-connect "Plinth not connected" must
+    use a DIFFERENT probe. OPEN: which fn probes the link during connect
+    (LinkPresent 34ec / LinkWaitReady 34f8 / SessionConnectCheck 2b43?).
+    Documented in protocol-comms.md "Error-path triggers".
+   * EMULATOR NOTE: chase "No program in memory" by driving Load/Run
+     Program in boot_hw_visible.py and tracing which BDOS/session error
+     code populates d0e0 and e48d/e488. (Error-code->string table is
+     runtime-built; not statically visible.)
+- 2026-08-27 (byte-verify wave-2 fix + boot_hw merge verified; main):
+  * BdosSwpDirectory (ram:f535) plate CORRECTED: copies 0x80 bytes FROM
+    the F8B8 directory buffer TO [FFA3] (the BDOS DMA address) - the
+    earlier plate had the direction reversed. Byte-verified: HL=[FFA3],
+    EX DE,HL -> HL=F8B8 src, DE=[FFA3] dst, KernMemCopy(HL=src,DE=dst).
+  * Two data-cell plates corrected in the same pass: FFA3 is a 2-byte
+    DMA POINTER (set by BDOS fn 1A at BdosSetDmaAddress), not a
+    "128-byte record cell"; F8B8 = directory buffer that SwpDirectory
+    copies OUT of (not into). FEFF staging-buffer plate was already
+    correct. TASKS.md 2026-08-25 block-I/O-layer entry updated to match.
+  * boot_hw.py MERGE VERIFIED: it is the canonical single harness
+    (LCD+expect+banking+snapshot+--help), --help smoke-tested clean;
+    usage examples now cite analysis/boot_hw.py (was boot_hw_visible.py).
+    boot_hw_visible.py remains the untracked compat copy.

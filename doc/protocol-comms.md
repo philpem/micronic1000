@@ -904,6 +904,35 @@ bytes of the file being sent) — not a static wire constant. The frame
 wrapper, type codes, length, and reply handshake around them are all
 static/verified; only the file content is session-data dependent.
 
+## Error-path triggers (load / connect)
+
+**"Plinth not connected"** (ROM00:6d6f, emitted by
+`SessionMsgPlinthNotConnected` at ROM00:445d). The decision is a dispatch
+on the session state selector `e488` via inline {case:handler} tables at
+46d6/47e3 (after `CALL ram:e0b2`): 0x0000 -> success, 0x0009 -> error,
+DEFAULT -> "Plinth not connected" (handler arg 0x1F40/0x1F41). `e488` is
+session state set during the connect attempt (via Session_Tx4Param 5669 /
+Session_Tx5Param 56a4 etc.), so it is a link-handshake OUTCOME, not a
+direct probe.
+
+**LinkProbe (ROM00:348a) is SELF-TEST ONLY (CONFIRMED).** Two call sites,
+both in ColdStartSelftestBanner (2026-08-27; earlier assumed general).
+It is NEVER used in the connect path.
+
+**The connect check is the LINK_STATUS/LINK_CMD handshake**, not the 0x1F
+probe: LinkBlockTx (3277) does port-select (LinkPortSelect), link reset
+(34d2), LINK_CTRL toggles, LinkPresent (34ec: LinkWaitReady then ACK 0x81
+to LINK_CMD 4Ch), LinkWaitReady (34f8: poll LINK_STATUS 4Bh bit7, timeout
+0x2DA), write wire-id to LINK_TXD 4Dh, poll 4Bh bits 4/6/5, transmit;
+failure returns 0xEB/0xEC/0xEE with carry set.
+
+**"No program in memory"** (ROM01:7d07) and **"Can't open or create file"**
+(ROM01:7cdb): selected through a RUNTIME-built error-code -> string table
+(ram:d0e0, with a ROM01 7c80 pointer table), so the exact triggering
+condition is not statically visible. EMULATOR NOTE: drive the
+Load/Run Program path and trace which BDOS/session error code populates
+d0e0 and the e48d/e488 cells (task logged in TASKS.md).
+
 ## Open items
 
 * **Reply payload contents** - the literal bytes a *reply* frame

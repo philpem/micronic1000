@@ -1,0 +1,5 @@
+[
+  {"match": "To Continue Press>>", "keys": "\\r"},
+  {"match": "serial number", "keys": "\\r12345678\\r"},
+  {"match": "Main Menu", "keys": ""}
+]

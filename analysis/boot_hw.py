@@ -1,191 +1,789 @@
 #!/usr/bin/env python3
-"""boot_hw.py - boot the Micronic 1000 firmware with a MAME-accurate
-I/O stub and an RTC-model-driven periodic interrupt.
+"""boot_hw.py - canonical harness (merged from boot_hw_visible + boot_hw_serial)
 
-The HD146818 periodic interrupt (rate programmed into RTC Register A)
-drives the Z80 INT line. This harness keeps a micronic.rtc.RTC146818
-model in sync with the firmware's port-08/28 writes, and fires
-on_handle_active_int() at exactly the period that corresponds to the
-RS nibble the firmware programmed - so the cadence follows the RTC,
-not a hardcoded value.
+Canonical single-harness: paced keyboard injection (--drive-serial/--serial,
+--drive-kbd fixed), LCD render (--lcd/--no-lcd/--lcd-rate), expect-DSL
+(--expect/--expect-file/--expect-timeout), multi-bank RAM (--ram/--ram-size
+FF on absent pages), --dump-bank, snapshot (--dump-mem/--snapshot), --help.
+Drop-in: no args still does basic trace (prints help then boots).
 
-Usage:  python3 boot_hw.py     (drops a trace to /tmp/opencode/)
+This file is the merged boot_hw_visible.py content (LCD+expect+banking) with
+snapshot support; it is the single canonical harness. boot_hw_visible.py
+remains as an alias/compat copy.
+
+Visible additions over original boot_hw.py:
+
+Three additions over boot_hw_serial.py / boot_hw.py:
+
+1. LCD DISPLAY  (FC06-FCA5 = 160 bytes = 20 cols × 8 rows, ASCII)
+   Verified from firmware: LcdRefreshScreen (ROM00:1E27) streams the
+   160-byte buffer at FC06 via lcd_putc (ROM00:1F79) → ports 23h/03h;
+   lcd_clear_spaces (ROM00:1Exx) writes 0xA0 (160) space chars to FC06.
+   Memory map doc confirms FC06 160 bytes, 20×8 layout.
+   Rendered to terminal as 8 rows of 20 chars, home-cursor (\\x1b[H)
+   whenever the framebuffer CHANGES (or every --lcd-rate slices).
+   Escape/CR/LF/space rendered as space/visible, not raw control.
+
+2. expect-STYLE WAIT DSL
+   Express boot as ordered steps: wait until substrings appear in LCD
+   text, then inject key bytes.  Steps come from --expect on the CLI
+   or --expect-file JSON.  Each step waits for ALL its match substrings
+   (AND) to be present, then its keys are paced into the keyboard ring
+   exactly like the manual inject path (port 16C9 HALT wait, FBC9 bit2).
+
+3. MULTI-BANK RAM
+   Port 47h (BANK_SEL, shadow F791) selects the 32K banked window
+   0000-7FFF: 0=ROM0, 1=ROM1, 2..N = RAM pages (32K each).  Fixed RAM
+   8000-FFFF is always present (32K).  Default 256K total = 32K fixed +
+   7 banked pages (banks 2..8).  --ram 512 → 32K fixed + 15 pages
+   (banks 2..16).  Banking is save/restore: on 47h write the current
+   low window is written back to its RAM page (if >=2 and <=BANK_MAX)
+   before the new window is loaded.  Non-present banks (>BANK_MAX)
+   read as 0xFF (unprogrammed RAM / open bus) and writes are discarded;
+   this matches hardware and makes --ram 256 report 256K (not 2016K).
+   --dump-bank N dumps any 32K page (ROM or RAM); when dumping the
+   currently-mapped bank the live window is returned.
+
+Memory safety: single process, timeout 300, --max-slices bounded,
+log ring 200k, gc.disable() + manual collect.
+
+USAGE
+  analysis/venv/bin/python3 analysis/boot_hw.py [options]
+  timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py [options]
+
+OPTIONS
+  -h, --help              Show this help and exit. Also shown when no args.
+  --drive-serial          Legacy serial-drive: auto-type ENTER, SERIAL_TEXT,
+                          ENTER at the banner/key wait (ring injection at
+                          0x16C9 when FBC9 bit2 clear). Uses --serial text.
+  --serial TEXT           Serial string for --drive-serial (default 12345678).
+                          Also accepted as --drive-serial's payload when used
+                          with expect DSL via --expect "Serial:TEXT\\r".
+  --max-slices N          Max Z80 slices (each ~3400 ticks) before stop.
+                          Default 900000. Bounded; use timeout 300 wrapper.
+  --dump-bank N           At exit dump 32K bank N to analysis/ram_bank_NN.bin.
+                          0=ROM0, 1=ROM1, 2..BANK_MAX=RAM, >BANK_MAX=0xFF-filled.
+                          If N is currently mapped, live window is dumped.
+  --lcd / --no-lcd        Enable/disable LCD rendering (default on). LCD is the
+                          20×8 framebuffer at FC06 rendered via \\x1b[H home.
+  --lcd-rate N            Render period: heartbeat every N slices plus on-change.
+                          Default 5000 (or on-change only if --lcd given alone
+                          in older versions). Lower = more chatter.
+  --expect SPEC           Add one expect step. Can be repeated. Grammar:
+                            SPEC := MATCH [ :KEYS | ::KEYS | |KEYS ]
+                            MATCH := "" (immediate) or substrings joined by
+                                     ',' or '&' meaning AND (all must appear).
+                                     Example: "Ram:,K.B." waits for both.
+                            KEYS  := bytes to inject after match, with escapes.
+                          If multiple --expect are given they run in order.
+                          When no --expect and --drive-serial is set, legacy
+                          queue is used; otherwise expect DSL drives injection.
+  --expect-file FILE      JSON file of steps. Each entry is either
+                            {"match": "a,b", "keys": "\\r"}  or
+                            {"match": ["a","b"], "keys": "\\r"}  or
+                            ["match","keys"] tuple.
+                          JSON escapes follow python unicode_escape.
+  --expect-timeout N      Slices to wait per step before warning+skip (0=forever).
+  --ram N / --ram-size N  Total RAM in KB: 128, 256 (default), or 512. Controls
+                          banked window size:
+                            256K = 32K fixed (8000-FFFF) + 7×32K banks 2..8
+                            512K = 32K fixed + 15×32K banks 2..16
+                            128K = 32K fixed + 3×32K banks 2..4
+                          Banks beyond the configured max read as 0xFF and
+                          writes are discarded (Boot_BankWalkInit walks 0x41..1).
+  --dump-mem ADDR[:LEN]   Hex-dump RAM at ADDR for LEN bytes (default 16) on
+                          each expect match and at exit. Repeatable; also
+                          --mem-dump alias. Example: --dump-mem e488:8
+                          --dump-mem d0e0:32
+  --snapshot / --mem-snapshot
+                          Shorthand: dump task-relevant cells on each expect
+                          match and at exit: e488,e48d,e48c,e520,d0e0,e681,
+                          fbc9,f791 (plus any --dump-mem ranges). Use for
+                          chasing "No program in memory" (ROM01:7d07 via d0e0).
+
+EXPECT DSL GRAMMAR
+  match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
+                          then type keys into the keyboard ring (paced, one per
+                          HALT loop at 16C9 when FBC9 bit2 clear, FFA8==1).
+  AND via commas:         "Ram:,K.B." or "Ram:&K.B." means both "Ram:" AND "K.B."
+                          must be visible before advancing. Use --expect-file
+                          with ["Ram:","K.B."] list for explicit AND without
+                          comma ambiguity.
+  Escape sequences:       Keys decode via python unicode_escape plus \\e -> ESC:
+                            \\r, \\n -> 0x0D (ENTER; \\n is mapped to \\r for
+                                     firmware convenience),
+                            \\t      -> 0x09,
+                            \\e / \\E -> 0x1B,
+                            \\\\     -> \\,
+                            \\xNN    -> byte NN hex,
+                            \\uNNNN  -> unicode.
+                          Example: --expect "To Continue Press>>:\\r"
+                                   --expect "Serial:\\r12345678\\r"
+                                   --expect "Main Menu:1"
+
+EXAMPLES
+  # Watch boot with LCD (default on):
+  timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --lcd --max-slices 300000
+
+  # Drive serial prompt then menu via expect DSL:
+  timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --lcd --expect "To Continue Press>>:\\r" --expect "Serial:\\r12345678\\r" --expect "Main Menu:1"
+
+  # Expect from file + 512K RAM + dump bank 2:
+  timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-file /tmp/steps.json --dump-bank 2
+
+  # JSON steps file example:
+  # [{"match": "To Continue Press>>", "keys": "\\r"},
+  #  {"match": ["Ram:", "K.B."], "keys": "\\r"},
+  #  {"match": "Main Menu", "keys": "1"}]
+
+RAM MODEL
+  Port 47h selects 0000-7FFF. Banks 0/1 are ROM. Banks 2..BANK_MAX are RAM
+  (bytearray 0x8000 each, save/restore on switch). Banks >BANK_MAX are not
+  installed: reads return 0xFF, writes discarded. Installed size is counted
+  by contig_ram_map_test (267A) + ram_page_test_4banks (2530); DelayCountUp
+  (271F) computes FEAB = FEA9*0x20 (FEA9 = count of 0xFF-probed present pages)
+  which is displayed as "Ram: NN K.B." on the banner.
+
+SEE ALSO
+  doc/memory-map.md (banking + RAM layout), doc/TASKS.md (RAM SIZE vs SERIAL),
+  micronic_notes.md (hardware), analysis/README.md (Emulator section).
 """
-import gc; gc.disable()
-import sys
-import z80
 
+import gc; gc.disable()
+import sys, re, json, os
 sys.path.insert(0, "/home/philpem/Micronic-1000/analysis")
+import z80
 from micronic.rtc import RTC146818
 
-# --drive-kbd: opt-in cheat that posts ENTER at the ROM00:16C9 key wait;
-# without it the pristine hardware path runs (boot parks in the wait).
-DRIVE_KBD = "--drive-kbd" in sys.argv[1:]
-# --dump-bank N: at end of run, write bank N's 32K page (RAM banks >= 2)
-# to analysis/ram_bank_NN.bin - for loading into the Ghidra RAM02 overlay.
+# ---------- CLI args ----------
+def get_arg(name, default=None, cast=None):
+    if name in sys.argv:
+        try:
+            v = sys.argv[sys.argv.index(name)+1]
+            return cast(v) if cast else v
+        except:
+            return default
+    # also --name=VALUE
+    for a in sys.argv:
+        if a.startswith(name+"="):
+            v = a.split("=",1)[1]
+            return cast(v) if cast else v
+    return default
+
+def has_flag(name):
+    return name in sys.argv
+
+# --help / -h handling: print docstring header and exit for explicit help, print for no args
+if "--help" in sys.argv or "-h" in sys.argv:
+    print(__doc__)
+    sys.exit(0)
+if len(sys.argv) == 1:
+    # Task requires help when no args; show usage but continue with defaults so bare run still boots
+    print(__doc__)
+
+# legacy serial drive
+DRIVE_SERIAL = has_flag("--drive-serial") or has_flag("--drive-kbd")
+SERIAL_TEXT = get_arg("--serial", "12345678")
+
 DUMP_BANK = None
-if "--dump-bank" in sys.argv:
-    try: DUMP_BANK = int(sys.argv[sys.argv.index("--dump-bank") + 1], 0)
-    except (IndexError, ValueError): DUMP_BANK = None
+if has_flag("--dump-bank"):
+    try:
+        DUMP_BANK = int(get_arg("--dump-bank", "0"), 0)
+    except:
+        DUMP_BANK = None
 
-B0 = open("/home/philpem/Micronic-1000/micronic/micron1.bin","rb").read()
-B1 = open("/home/philpem/Micronic-1000/micronic/micron2.bin","rb").read()
-mem = bytearray(0x10000)
-mem[0:0x8000] = B0
-mem[0xD681:0xD681+0x212] = B0[0x7030:0x7242]
-mem[0xF180:0xF180+0x50D] = B0[0x369D:0x369D+0x50D]
-pat = bytes([0x21,1,0,0xC9])
-for off in range(0xED1C,0xF180,4): mem[off:off+4] = pat
-mem[0xFD84:0xFD84+19] = B0[0x2352:0x2352+19]
-mem[0xFE93:0xFEA3] = B0[0x3257:0x3267]
-mem[0xFE83:0xFE93] = B0[0x3267:0x3277]
-mem[0xFC05] = 0x70
+MAX_SLICES = int(get_arg("--max-slices", "900000", cast=lambda x: int(x,0)) if has_flag("--max-slices") else "900000")
 
-RAM = {}; cb = 0
-log = []
-def rd(a): return mem[a & 0xFFFF]
-def wr(a,v): mem[a & 0xFFFF] = v & 0xFF
+# LCD flags
+LCD_ENABLED = True
+if has_flag("--no-lcd"):
+    LCD_ENABLED = False
+elif has_flag("--lcd"):
+    LCD_ENABLED = True
+# default: on when we are going to show it; keep on unless --no-lcd.
+# Allow --lcd-rate N
+LCD_RATE = None
+if has_flag("--lcd-rate"):
+    try: LCD_RATE = int(get_arg("--lcd-rate", "0"),0)
+    except: LCD_RATE = None
+# If LCD enabled but no rate, we render on change only (plus periodic heartbeat every 5000 slices for progress)
+if LCD_ENABLED and LCD_RATE is None:
+    LCD_RATE = 5000  # heartbeat
 
-# one RTC model mirroring the CPU's view of the chip
-rtc = RTC146818()
-rtc_sel = 0x00
+# RAM size
+RAM_KB = 256
+if has_flag("--ram"):
+    try: RAM_KB = int(get_arg("--ram", "256"),0)
+    except: RAM_KB = 256
+if has_flag("--ram-size"):
+    try: RAM_KB = int(get_arg("--ram-size", str(RAM_KB)),0)
+    except: pass
+if RAM_KB not in (256,512):
+    # also allow 128 for testing, but default clamp
+    if RAM_KB not in (128,256,512):
+        print(f"[warn] --ram {RAM_KB} not 256/512, using 256", file=sys.stderr)
+        RAM_KB = 256
+NUM_BANKED_PAGES = RAM_KB // 32 - 1  # 7 for 256K, 15 for 512K
+BANK_MAX = 1 + NUM_BANKED_PAGES  # inclusive max bank number: 8 for 256K, 16 for 512K
+# Note: banks 2..BANK_MAX inclusive (2..8 for 256K, 2..16 for 512K)
 
+# ---------- memory snapshot ----------
+# --dump-mem ADDR[:LEN] repeatable, e.g. --dump-mem e488:16 --dump-mem d0e0:32
+# --snapshot : shorthand for dumping task-relevant cells e488,e48d,e48c,e520,d0e0,e681,fbc9 on each expect match and at exit
+DUMP_MEM_RANGES = []
+# parse --dump-mem (repeatable, also supports --dump-mem=ADDR:LEN)
+args_raw = sys.argv[1:]
+j=0
+while j < len(args_raw):
+    if args_raw[j] == "--dump-mem" and j+1 < len(args_raw):
+        DUMP_MEM_RANGES.append(args_raw[j+1])
+        j+=2
+        continue
+    if args_raw[j].startswith("--dump-mem="):
+        DUMP_MEM_RANGES.append(args_raw[j].split("=",1)[1])
+        j+=1
+        continue
+    j+=1
+# also allow --mem-dump alias
+j=0
+while j < len(args_raw):
+    if args_raw[j] == "--mem-dump" and j+1 < len(args_raw):
+        DUMP_MEM_RANGES.append(args_raw[j+1])
+        j+=2
+        continue
+    if args_raw[j].startswith("--mem-dump="):
+        DUMP_MEM_RANGES.append(args_raw[j].split("=",1)[1])
+        j+=1
+        continue
+    j+=1
+
+SNAPSHOT = has_flag("--snapshot") or has_flag("--dump-snapshot") or has_flag("--mem-snapshot")
+# task-required cells: e488,e48d,e48c,e520 plus runtime string table d0e0 and related e68x/fbc9
+TASK_CELLS = ["e488:8", "e48d:8", "e48c:8", "e520:16", "d0e0:32", "e681:4", "fbc9:2", "f791:2"]
+
+def parse_dump_range(spec):
+    spec=spec.strip()
+    if ":" in spec:
+        a_hex, l_hex = spec.split(":",1)
+        try:
+            a=int(a_hex,16)
+            l=int(l_hex,0)
+        except: a=0; l=16
+    else:
+        try: a=int(spec,16); l=16
+        except: a=0; l=16
+    return a,l
+
+# build final list for snapshot dumps
+SNAPSHOT_RANGES = []
+for s in DUMP_MEM_RANGES:
+    SNAPSHOT_RANGES.append(parse_dump_range(s))
+if SNAPSHOT:
+    for s in TASK_CELLS:
+        SNAPSHOT_RANGES.append(parse_dump_range(s))
+# deduplicate
+seen=set()
+uniq_ranges=[]
+for a,l in SNAPSHOT_RANGES:
+    if (a,l) not in seen:
+        seen.add((a,l))
+        uniq_ranges.append((a,l))
+SNAPSHOT_RANGES=uniq_ranges
+
+def hexdump_mem(label, addr, length):
+    # dump from current mem snapshot (live window + fixed RAM)
+    # handle banked window correctly via rd() for 0x0000-0x7FFF? For snapshot we just dump mem array
+    # as seen by CPU (current window). For addresses >=0x8000 it's fixed RAM, for <0x8000 it's current bank window.
+    try:
+        data = bytes(mem[addr:addr+length])
+        hexs = " ".join(f"{b:02X}" for b in data)
+        ascii_s = "".join(chr(b) if 32<=b<127 else "." for b in data)
+        print(f"[mem] {label} {addr:04X}:{length:02d} {hexs} |{ascii_s}|")
+    except Exception as e:
+        print(f"[mem] {label} {addr:04X} err {e}")
+
+print(f"[cfg] RAM {RAM_KB}K = 32K fixed + {NUM_BANKED_PAGES}×32K banked (banks 2..{BANK_MAX}), MAX_SLICES={MAX_SLICES}, LCD={'on' if LCD_ENABLED else 'off'} rate={LCD_RATE}, DUMP_BANK={DUMP_BANK} dump_mem={DUMP_MEM_RANGES} snapshot={SNAPSHOT}")
+
+# ---------- expect DSL ----------
+def parse_keys(s):
+    """Decode escape sequences in keys string to bytes.
+    Supports \\r, \\n -> 0x0D (ENTER), \\t, \\e (0x1B), \\\\ , \\xNN, \\uNNNN etc via unicode_escape."""
+    if s is None or s == "":
+        return b""
+    # python unicode_escape handles \\r \\n \\t \\x \\u
+    # Need to handle \\e separately (not standard)
+    # Replace \\e with escape char placeholder before decode
+    tmp = s.replace("\\e", "\x1b").replace("\\E", "\x1b")
+    try:
+        decoded = tmp.encode('utf-8').decode('unicode_escape')
+    except Exception as e:
+        # fallback raw
+        decoded = tmp
+    # unicode_escape decodes \\r as \r (0x0D) already; keep.
+    # Ensure we return latin1 bytes (0..255)
+    out = bytearray()
+    for ch in decoded:
+        out.append(ord(ch) & 0xFF)
+    # Special: treat \\n as CR (firmware ENTER is 0x0D) - but keep 0x0A as well; map 0x0A -> 0x0D for convenience
+    # Only if user wrote \\n we emitted 0x0A; convert to 0x0D so "press ENTER" works with either
+    # Keep both? We'll map 0x0A to 0x0D in the injection path optionally, but leave as is and let firmware accept both?
+    # Keep mapping: if they typed \\n we send 0x0A, but firmware expects 0x0D for banner/serial. So convert LF to CR here.
+    for i in range(len(out)):
+        if out[i] == 0x0A:
+            out[i] = 0x0D
+    return bytes(out)
+
+def parse_expect_arg(arg):
+    """Parse one --expect arg of form 'match1[&,]match2:keys' or 'match|keys'."""
+    # Find separator between match and keys: prefer last colon, but also support |
+    # Use first colon that is not at start? Simpler: split on last colon where right side looks like keys (may contain escapes).
+    # We'll split on first ':' or '|' that gives a keys part which when decoded is plausible. Prefer ':'.
+    match_part = arg
+    keys_part = ""
+    # if arg contains "::" use that
+    if "::" in arg:
+        idx = arg.find("::")
+        match_part = arg[:idx]
+        keys_part = arg[idx+2:]
+    elif ":" in arg:
+        # split on last colon to allow colon inside match? But matches rarely contain colon except "To Continue Press>>" no.
+        # Use first colon from right where left side not empty? Use rsplit.
+        # If match contains colon (unlikely), user can escape or use file. So rsplit is ok but may split keys containing colon.
+        # Keys rarely contain colon. So split on first colon.
+        idx = arg.find(":")
+        # If there are multiple colons, treat first as delimiter, rest as part of keys
+        match_part = arg[:idx]
+        keys_part = arg[idx+1:]
+    elif "|" in arg:
+        idx = arg.find("|")
+        match_part = arg[:idx]
+        keys_part = arg[idx+1:]
+    else:
+        match_part = arg
+        keys_part = ""
+    # split match_part into substrs: comma, &, &&, plus
+    substrs = []
+    if match_part.strip() != "":
+        # split on commas or &'s
+        parts = re.split(r"[&,]+", match_part)
+        # also handle "&&" already covered, but keep
+        substrs = [p.strip() for p in parts if p.strip() != ""]
+        # If original contained no delimiter but had e.g. "a|b", already handled
+        # Keep as is: if single string with spaces, it's one substr
+        if not substrs and match_part.strip():
+            substrs = [match_part.strip()]
+    else:
+        substrs = []  # empty match means immediate
+    keys_bytes = parse_keys(keys_part)
+    return {"need": substrs, "keys": keys_bytes, "raw": arg}
+
+EXPECT_STEPS = []
+# collect repeated --expect args (support --expect "a:b" --expect "c:d")
+# Need to handle that sys.argv may have --expect with next token containing spaces (quoted)
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    if args[i] == "--expect" and i+1 < len(args):
+        EXPECT_STEPS.append(parse_expect_arg(args[i+1]))
+        i+=2
+        continue
+    if args[i].startswith("--expect="):
+        EXPECT_STEPS.append(parse_expect_arg(args[i].split("=",1)[1]))
+        i+=1
+        continue
+    i+=1
+# --expect-file
+if has_flag("--expect-file"):
+    fpath = get_arg("--expect-file", None)
+    if fpath and os.path.exists(fpath):
+        try:
+            data = json.load(open(fpath))
+            # data is list of dicts or list of [match,keys]
+            for entry in data:
+                if isinstance(entry, dict):
+                    need = entry.get("match", entry.get("need", ""))
+                    # need may be str or list
+                    if isinstance(need, str):
+                        # split same way
+                        need_list = [s.strip() for s in re.split(r"[&,]+", need) if s.strip()!=""] if need.strip() else []
+                    elif isinstance(need, list):
+                        need_list = [str(s) for s in need]
+                    else:
+                        need_list = []
+                    keys_str = entry.get("keys", entry.get("press", entry.get("press_keys","")))
+                    kb = parse_keys(keys_str) if isinstance(keys_str, str) else bytes(keys_str)
+                    EXPECT_STEPS.append({"need": need_list, "keys": kb, "raw": str(entry)})
+                elif isinstance(entry, (list,tuple)) and len(entry)>=2:
+                    need_raw = entry[0]
+                    keys_raw = entry[1]
+                    if isinstance(need_raw, str):
+                        need_list = [s.strip() for s in re.split(r"[&,]+", need_raw) if s.strip()!=""] if need_raw.strip() else []
+                    elif isinstance(need_raw, list):
+                        need_list = [str(s) for s in need_raw]
+                    else:
+                        need_list=[]
+                    kb = parse_keys(keys_raw) if isinstance(keys_raw,str) else bytes(keys_raw)
+                    EXPECT_STEPS.append({"need": need_list, "keys": kb, "raw": str(entry)})
+        except Exception as e:
+            print(f"[expect-file] failed to load {fpath}: {e}", file=sys.stderr)
+    else:
+        print(f"[expect-file] not found: {fpath}", file=sys.stderr)
+
+# legacy serial drive vs expect: if expect steps supplied, prefer them; otherwise legacy queue
+use_legacy_queue = DRIVE_SERIAL and len(EXPECT_STEPS)==0
+
+print(f"[expect] steps={len(EXPECT_STEPS)} legacy_queue={use_legacy_queue}")
+for idx, st in enumerate(EXPECT_STEPS):
+    print(f"  step {idx}: need={st['need']!r} keys={st['keys']!r} hex={st['keys'].hex()} raw={st['raw']!r}")
+
+# ---------- memory / banking ----------
+B0=open("/home/philpem/Micronic-1000/micronic/micron1.bin","rb").read()
+B1=open("/home/philpem/Micronic-1000/micronic/micron2.bin","rb").read()
+mem=bytearray(0x10000)
+mem[0:0x8000]=B0
+mem[0xD681:0xD681+0x212]=B0[0x7030:0x7242]
+mem[0xF180:0xF180+0x50D]=B0[0x369D:0x369D+0x50D]
+pat=bytes([0x21,1,0,0xC9])
+for off in range(0xED1C,0xF180,4): mem[off:off+4]=pat
+mem[0xFD84:0xFD84+19]=B0[0x2352:0x2352+19]
+mem[0xFE93:0xFEA3]=B0[0x3257:0x3267]
+mem[0xFE83:0xFE93]=B0[0x3267:0x3277]
+mem[0xFC05]=0x70
+RAM={}; cb=0
+log=[]
+# Unmapped bank window: reads return 0xFF, writes discarded. This is critical
+# for RAM sizing. Boot_BankWalkInit sweeps banks 0x41..0x01 (64 slots) regardless
+# of installed RAM, but only banks 2..BANK_MAX are backed by physical RAM
+# (32K fixed 8000-FFFF + N banked 32K pages). DelayCountUp (ROM00:271F) computes
+# FEAB = FEA9 * 0x20 where FEA9 = count of present pages from contig_ram_map_test
+# (267A) / ram_page_test_4banks (2530) probing for non-0xFF. If missing banks
+# read as 0x00 (zero-filled dummy page) the count is inflated: 63*0x20=2016K.
+# Correct: banks >BANK_MAX (including 0x41 sweep) must read as 0xFF.
+FF_PAGE = bytearray([0xFF]*0x8000)
+# For unmapped banks, keep vector area (0x0000-0x00FF) readable as ROM vectors
+# so RST/IRQ still work, but the rest of the window reads as 0xFF (open bus)
+# and writes are discarded except for vector area (so BankWalkInit's vector
+# replication can succeed). This matches the needed hybrid: RAM tests probe
+# at 0x0100+ and see 0xFF, while vectors at 0x0000 remain valid.
+VEC_SIZE = 0x100
+def rd(a):
+    a &= 0xFFFF
+    if a < 0x8000 and cb > BANK_MAX:
+        if a < VEC_SIZE:
+            return mem[a]  # vector area: keep valid so RST/IRQ work
+        return 0xFF
+    return mem[a]
+def wr(a,v):
+    a &= 0xFFFF
+    if a < 0x8000 and cb > BANK_MAX:
+        if a < VEC_SIZE:
+            mem[a]=v & 0xFF  # allow vector writes for missing banks
+            return
+        return  # discard writes to unmapped RAM area
+    mem[a]=v & 0xFF
+rtc=RTC146818(); rtc_sel=0x00
+
+# ---------- LCD helpers ----------
+FC06 = 0xFC06
+FCA5 = 0xFCA5  # inclusive
+FB_SIZE = 0xA0  # 160
+
+def lcd_byte_to_char(b):
+    """Render one framebuffer byte to a visible terminal char.
+    0x00 -> space (cleared), 0x20..0x7E -> as-is, 0x0A/0x0D/0x1B -> space/visible,
+    others -> '.' (middle dot would be more visible but '.' is safe)."""
+    if b == 0x00: return " "  # cleared cell
+    if b == 0x1B: return " "  # ESC - show as space (could be '␛' but keep ASCII)
+    if b in (0x0A, 0x0D): return " "  # CR/LF -> space in 20-char row context
+    if 0x20 <= b < 0x7F: return chr(b)
+    # 0xFF etc
+    return "."  # or "·"
+
+def get_lcd_text(mem_snapshot=None):
+    src = mem if mem_snapshot is None else mem_snapshot
+    fb = src[FC06:FC06+FB_SIZE]
+    # for matching, join rows without newline, but also keep newline version
+    txt = "".join(lcd_byte_to_char(b) for b in fb)
+    return txt, fb
+
+def render_lcd(fb_bytes, slice_idx, bank):
+    txt = "".join(lcd_byte_to_char(b) for b in fb_bytes)
+    # cursor home, clear to end? Use home + 8 rows
+    # Use \x1b[H to go home, then overwrite. For visibility add slice/bank header.
+    out = []
+    out.append("\x1b[H")  # home
+    # Optional clear below? not full clear to avoid flicker
+    out.append(f"\x1b[2K--- LCD slice {slice_idx:6d} bank {bank:02X} RAM {RAM_KB}K ---\n")
+    for r in range(8):
+        row = txt[r*20:(r+1)*20]
+        # render spaces visibly between pipes; keep exactly 20
+        out.append(f"\x1b[2K|{row}|\n")
+    out.append(f"\x1b[2K bank {bank:02X} f791={mem[0xF791]:02X} fbc9={mem[0xFBC9]:02X} ffa8={mem[0xFFA8]:02X}\n")
+    sys.stdout.write("".join(out))
+    sys.stdout.flush()
+
+# ---------- I/O callbacks ----------
 def ich(*a):
-    p = a[0]; p = p[0] if isinstance(p,tuple) else p; p &= 0xFF
-    if p == 0x05: return 0x19
-    if p == 0x4B: return 0x80
-    if p == 0x28: return rtc.reg_read(rtc_sel) & 0xFF
-    if p == 0x00: return 0x00
-    if p == 0x49: return 0x00
-    if p == 0x4E: return 0x00
-    if p == 0x4C: return 0x00
-    if p == 0x48: return 0x00
+    p=a[0]; p=p[0] if isinstance(p,tuple) else p; p&=0xFF
+    if p==0x05: return 0x19
+    if p==0x4B: return 0x80
+    if p==0x28: return rtc.reg_read(rtc_sel) & 0xFF
+    if p==0x00: return 0x00
+    if p==0x49: return 0x00
+    if p==0x4E: return 0x00
+    if p==0x4C: return 0x00
+    if p==0x48: return 0x00
     return 0xFF
 
+out_of_range_warned = set()
 def och(*a):
     global cb, rtc_sel
-    p,v = (a[0],a[1]) if len(a)>=2 else (a[0],0xFF)
-    p = p[0] if isinstance(p,tuple) else p; p &= 0xFF; v &= 0xFF
-    # bounded trace ring: an unbounded list here OOM'd this 2 GB box on
-    # 2026-08-24 (gc is disabled; a long menu-loop run churned LCD writes)
-    if len(log) < 200000:
+    p,v=(a[0],a[1]) if len(a)>=2 else (a[0],0xFF)
+    p=p[0] if isinstance(p,tuple) else p; p&=0xFF; v&=0xFF
+    if len(log)<200000:
         log.append((mach.pc & 0xFFFF, p, v))
-    if p == 0x47:
-        cb = v
-        img = B0 if v==0 else B1 if v==1 else RAM.setdefault(v, bytearray(0x8000))
-        mem[0:0x8000]=img; mem[0xF791]=v
-    elif p == 0x08:
-        rtc_sel = v & 0xFF
-    elif p == 0x28:
-        rtc.reg_write(rtc_sel, v)
+    if p==0x47:
+        # save current window only if it is an installed RAM page
+        prev = cb
+        if 2 <= prev <= BANK_MAX:
+            if prev not in RAM:
+                RAM[prev] = bytearray(0x8000)
+            RAM[prev][:] = mem[0:0x8000]
+        # switch
+        cb=v
+        mem[0xF791]=v & 0xFF
+        if v==0:
+            mem[0:0x8000]=B0
+        elif v==1:
+            mem[0:0x8000]=B1
+        elif 2 <= v <= BANK_MAX:
+            img = RAM.setdefault(v, bytearray(0x8000))
+            mem[0:0x8000]=img
+        else:
+            # out-of-range bank (> max) for current RAM size: this is the
+            # Boot_BankWalkInit sweep (41h..1, 64 slots) which touches all
+            # window slots regardless of installed RAM. Not backed: reads return
+            # 0xFF (FF_PAGE) for RAM area, but vector area (0x0000-0x00FF) must
+            # remain valid so RST/IRQ still work when briefly selecting an
+            # unmapped bank with interrupts enabled. Copy FF only to non-vector
+            # part.
+            mem[0x100:0x8000]=FF_PAGE[0x100:0x8000]
+            # Ensure vector area has at least B0's vectors if not already present
+            # (BankWalkInit will have written correct vectors there via wr()
+            # allowed for <0x100, but on first entry the window still holds old
+            # bank's vectors; keep them).
+            # No need to overwrite vectors here.
+    elif p==0x08: rtc_sel=v & 0xFF
+    elif p==0x28: rtc.reg_write(rtc_sel,v)
 
-mach = z80.Z80Machine()
+mach=z80.Z80Machine()
 mach.set_memory_block(0, bytes(mem))
 mach.set_read_callback(rd); mach.set_write_callback(wr)
 mach.set_input_callback(ich); mach.set_output_callback(och)
-mach.pc = 0x014B; mach.sp = 0xF000
-mem[0xFBD0:0xFBD2] = bytes([0,0xF0])
-
-# Pre-patch the RAM-side image so slow/event-locked self-test steps that
-# our io_stub cannot satisfy return immediately with a "PASS" result:
-#   LinkSelfTestRun (289E) spins forever waiting for a link IRQ event.
-# Patch its entry to RET and pre-set its result latches.
-mem[0x289E] = 0xC9          # RET
-mem[0xFDB7] = 0xFF          # link-present result
-mem[0xFDB6] = 0x00
-# The test at function 20D9 (write RTC regs 40/26) may also spin if
-# the tick never arrives; it is fine as the INT now fires correctly.
-
-# -------- run with RTC-model-driven INT cadence -----------------------
-CPU_HZ = 3_579_545
-SLICE = 3400              # < 1024 Hz RTC period (~3496 cy at 3.579545 MHz)
-acc = 0                   # cycle accumulator since last RTC period boundary
-intburn = 0               # cycles since INT servicing
-
+mach.pc=0x014B; mach.sp=0xF000
+mem[0xFBD0:0xFBD2]=bytes([0,0xF0])
+mem[0x289E]=0xC9; mem[0xFDB7]=0xFF; mem[0xFDB6]=0x00
+CPU_HZ=3_579_545
+SLICE=3400
+acc=0
 def next_int_interval():
-    """CPU cycles between RTC periodic pulses, from the model."""
-    p = rtc.periodic_period
-    if p is None:
-        return None
-    return max(1, int(p * CPU_HZ))
+    p=rtc.periodic_period
+    if p is None: return None
+    return max(1,int(p*CPU_HZ))
 
 ramt=False; contig=False; banner=False
-W = {0x2084:"RtcInit",0x2828:"ClockSelftest",0x02D8:"BannerKeyRead",
-     0x3277:"LinkBlockTx",0x2EAB:"LinkOpen"}
-hits = {k:0 for k in W}
+W={0x2084:"RtcInit",0x2828:"ClockSelftest",0x02D8:"BannerKeyRead",0x3277:"LinkBlockTx",0x2EAB:"LinkOpen"}
+hits={k:0 for k in W}
 last_pc=None; stall=0
-# Slice budget scales with SLICE so the simulated-time envelope stays
-# ~3e9 cycles (was 60000 slices x 50000 cycles before the SLICE fix).
-MAX_SLICES = 900000
-if "--max-slices" in sys.argv:
-    MAX_SLICES = int(sys.argv[sys.argv.index("--max-slices") + 1])
-i = 0
+
+# expect / queue state
+from collections import deque
+legacy_queue=[]
+legacy_qidx=0
+if use_legacy_queue:
+    legacy_queue=[0x0D] + [ord(c) for c in SERIAL_TEXT] + [0x0D]
+    print(f"[init] legacy DRIVE_SERIAL queue {len(legacy_queue)} chars: banner ENTER + '{SERIAL_TEXT}' + ENTER")
+
+pending_keys = deque()
+expect_idx = 0
+expect_timeout = int(get_arg("--expect-timeout", "0", cast=lambda x: int(x,0)) if has_flag("--expect-timeout") else "0")
+# 0 = no timeout; if set, it's slices to wait per step before warning+skip
+expect_step_enter_slice = 0  # slice index when current step started waiting
+
+# LCD state
+prev_fb = None
+if LCD_ENABLED:
+    # clear screen once
+    sys.stdout.write("\x1b[2J\x1b[H")
+    sys.stdout.flush()
+    # initial render
+    _, fb0 = get_lcd_text()
+    prev_fb = bytes(fb0)
+    render_lcd(prev_fb, 0, cb)
+
+i=0
 while i < MAX_SLICES and stall < 8000:
-    if (i & 0xFFF) == 0:
-        gc.collect()  # manual, outside mach.run(): safe re port callbacks
-    mach.ticks_to_stop = SLICE
-    try:
-        mach.run()
-    except Exception as e:
-        print("run err", type(e).__name__, e); break
-    pc = mach.pc & 0xFFFF
-    # model clock: each slice is SLICE cycles. The RTC timebase accrues
-    # unconditionally - gating accrual on the ffa8 IRQ-arm gate let the
-    # clock drift while the gate was shut. push_tick() sets Reg C PF
-    # regardless; the INT itself is only injected once the firmware has
-    # ARMED the interrupt gate (ffa8 != 0).
-    acc += SLICE
-    interval = next_int_interval()
-    while interval is not None and acc >= interval:
-        acc -= interval
+    if (i & 0xFFF)==0: gc.collect()
+    mach.ticks_to_stop=SLICE
+    try: mach.run()
+    except Exception as e: print("run err",type(e).__name__,e); break
+    pc=mach.pc & 0xFFFF
+    acc+=SLICE
+    interval=next_int_interval()
+    while interval is not None and acc>=interval:
+        acc-=interval
         rtc.push_tick()
-        if mem[0xFFA8] != 0:
+        if mem[0xFFA8]!=0:
             try: mach.on_handle_active_int()
-            except Exception: pass
-    # cheat: drive the keyboard event as KeyboardReadChar's ring/post path would (see TASKS.md emulator entry) — VERIFIED 2026-08-24
-    if DRIVE_KBD and 0x16C9 <= pc <= 0x16D2 and mem[0xFFA8] == 1:
-        mem[0xFBC9] |= 0x04
-        rp = mem[0xFBF0] | (mem[0xFBF1] << 8)
-        mem[rp] = 0x0D
+            except: pass
+
+    # ---------- LCD poll & render ----------
+    if LCD_ENABLED:
+        txt_now, fb_now = get_lcd_text()
+        fb_bytes = bytes(fb_now)
+        changed = prev_fb is None or fb_bytes != prev_fb
+        heartbeat = LCD_RATE is not None and (i % LCD_RATE == 0)
+        if changed or heartbeat:
+            if changed:
+                render_lcd(fb_bytes, i, cb)
+                prev_fb = fb_bytes
+            elif heartbeat:
+                # still update header even if no change to show progress; but don't spam full redraw?
+                # For heartbeat, also render to show slice count moving
+                render_lcd(fb_bytes, i, cb)
+
+    # ---------- paced injection ----------
+    # unified injection: if pending_keys non-empty, inject one per qualifying HALT loop
+    # legacy queue also uses pending_keys mechanism; we unify
+    # first, manage expect step progression (only when pending empty)
+    if len(EXPECT_STEPS)>0 and expect_idx < len(EXPECT_STEPS) and len(pending_keys)==0:
+        step = EXPECT_STEPS[expect_idx]
+        txt_now, _ = get_lcd_text()
+        # also consider fb as flat text without newlines; check substrs present
+        matched = all(s in txt_now for s in step["need"]) if step["need"] else True
+        if matched:
+            if step["keys"]:
+                pending_keys.extend(step["keys"])
+                print(f"[{i}] expect step {expect_idx} matched {step['need']!r} -> queue {step['keys']!r} (pc={pc:04X})")
+            else:
+                print(f"[{i}] expect step {expect_idx} matched {step['need']!r} (no keys, wait-only)")
+            # snapshot on expect match if requested
+            if SNAPSHOT_RANGES:
+                print(f"[{i}] --- snapshot on expect match {expect_idx} ---")
+                for a,l in SNAPSHOT_RANGES:
+                    hexdump_mem(f"expect{expect_idx}", a, l)
+            expect_idx+=1
+            expect_step_enter_slice = i
+        else:
+            # timeout?
+            if expect_timeout and (i - expect_step_enter_slice) > expect_timeout:
+                print(f"[{i}] expect step {expect_idx} timeout waiting for {step['need']!r}, txt={txt_now[:60]!r}... (timeout {expect_timeout} slices)", file=sys.stderr)
+                expect_idx+=1
+                expect_step_enter_slice = i
+                print(f"[{i}] expect step skip to {expect_idx}", file=sys.stderr)
+
+    # determine which queue to inject from
+    inject_char = None
+    if len(pending_keys)>0:
+        # Use pending_keys from expect
+        if 0x16C9 <= pc <= 0x16D2 and mem[0xFFA8]==1 and (mem[0xFBC9] & 0x04)==0:
+            rp=mem[0xFBF0]|(mem[0xFBF1]<<8)
+            if rp==0: rp=0xFBE8
+            ch = pending_keys.popleft()
+            mem[rp]=ch & 0xFF
+            mem[0xFBC9]|=0x04
+            print(f"[{i}] inject expect char {chr(ch)!r} ({ch:02X}) pc={pc:04X} rp={rp:04X} remaining={len(pending_keys)}")
+            # also show LCD after inject?
+    elif use_legacy_queue and legacy_qidx < len(legacy_queue) and 0x16C9 <= pc <= 0x16D2 and mem[0xFFA8]==1 and (mem[0xFBC9] & 0x04)==0:
+        rp=mem[0xFBF0]|(mem[0xFBF1]<<8)
+        if rp==0: rp=0xFBE8
+        ch = legacy_queue[legacy_qidx]
+        mem[rp]=ch & 0xFF
+        mem[0xFBC9]|=0x04
+        print(f"[{i}] inject legacy qidx={legacy_qidx} char={chr(ch)!r} pc={pc:04X} rp={rp:04X}")
+        legacy_qidx+=1
+
     # boot skips
     if not ramt and 0x2530 <= pc <= 0x2670:
         for k in range(0x40): mem[0xFEB0+k]=0x0F
         mem[0xFDB1]=0; mem[0xFEAF]=0xFF; mem[0xFDB0]=0
-        mach.pc = 0x01D0; ramt=True; print(f"[{i}] skip RAM test"); continue
-    if not contig and pc == 0x267A:
+        mach.pc=0x01D0; ramt=True; print(f"[{i}] skip RAM test"); continue
+    if not contig and pc==0x267A:
         for k in range(0x40): mem[0xFEB0+k]=0x0F
-        mem[0xFDB1]=0; mach.pc = 0x26E3; contig=True; print(f"[{i}] contig tail"); continue
-    if pc == 0x02D8 and not banner:
-        mach.a = 0x0D; mach.pc = 0x02DB; banner=True; print(f"[{i}] banner ENTER"); continue
-    # LinkSelftestRun was pre-patched to RET; this catch is a fallback
+        mem[0xFDB1]=0; mach.pc=0x26E3; contig=True; print(f"[{i}] contig tail"); continue
+    if pc==0x02D8 and not banner:
+        if not DRIVE_SERIAL and len(EXPECT_STEPS)==0:
+            mach.a=0x0D; mach.pc=0x02DB; banner=True; print(f"[{i}] banner ENTER (legacy)"); continue
     if 0x289E <= pc <= 0x28C0:
-        mach.pc = 0x28C1
-        print(f"[{i}] LinkSelfTestRun re-entry, skipped")
-        continue
+        mach.pc=0x28C1; continue
     if pc in W:
         if hits[pc]==0: print(f"[{i}] HIT {W[pc]} PC={pc:04X} bank={cb:02X}")
         hits[pc]+=1
-    if hits[0x02D8] and hits[0x2084]:
-        print(f"[{i}] banner+RtcInit reached - boot OK (tick rate {rtc.periodic_hz:.0f} Hz)")
-        break
-    if pc == last_pc: stall += 1
+    # check for Main Menu reached
+    # For legacy queue, check qidx progress; for expect, check txt contains Main Menu
+    fb_txt,_ = get_lcd_text()
+    if use_legacy_queue:
+        if legacy_qidx>=len(legacy_queue) and legacy_qidx>0:
+            if "Main Menu" in fb_txt and i>170000:
+                print(f"[{i}] Main Menu reached - boot past serial OK (legacy_qidx={legacy_qidx})")
+                break
+    else:
+        # generic: if any step waited for Main Menu or if fb contains it, report
+        if "Main Menu" in fb_txt and i>150000:
+            # if we have expect steps, only break when all steps done
+            if len(EXPECT_STEPS)==0 or expect_idx>=len(EXPECT_STEPS):
+                print(f"[{i}] Main Menu reached (expect_idx={expect_idx}/{len(EXPECT_STEPS)})")
+                # give a few more slices to render final LCD then break
+                if i>170000 or expect_idx>=len(EXPECT_STEPS):
+                    # allow short settle
+                    if LCD_ENABLED:
+                        _, fb_final = get_lcd_text()
+                        render_lcd(bytes(fb_final), i, cb)
+                    break
+            else:
+                # still have pending expect steps that wait for Main Menu; let them proceed
+                pass
+    if pc==last_pc: stall+=1
     else: stall=0; last_pc=pc
-    i += 1
-print("summary:", {v:hits[k] for k,v in W.items()})
-rt = [x for x in log if x[1] in (0x08,0x28,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F)]
-print(f"RTC/link transactions: {len(rt)}; RTC rate = {rtc.periodic_hz:.1f} Hz (RS={rtc.rate_select:#x})")
+    i+=1
+
+# final framebuffer
+fb=mem[FC06:FC06+FB_SIZE]
+txt="".join(lcd_byte_to_char(b) for b in fb)
+print("\nFramebuffer:")
+for r in range(8):
+    row = txt[r*20:(r+1)*20]
+    print(f" row{r}: {row!r}")
+# also dump raw hex for verification
+print("Framebuffer raw hex:", fb[:32].hex(), "...")
+print("summary:",{v:hits[k] for k,v in W.items()}, f"legacy_qidx={legacy_qidx}/{len(legacy_queue) if use_legacy_queue else 0} expect_idx={expect_idx}/{len(EXPECT_STEPS)} pending={len(pending_keys)}")
+# final snapshot dumps (task-requested cells + any --dump-mem ranges)
+if SNAPSHOT_RANGES:
+    print("\n--- final memory snapshot ---")
+    for a,l in SNAPSHOT_RANGES:
+        hexdump_mem("final", a, l)
+rt=[x for x in log if x[1] in (0x08,0x28,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F)]
+print(f"RTC/link transactions: {len(rt)}; RTC rate ={rtc.periodic_hz:.1f} Hz (RS={rtc.rate_select:#x})")
 with open("/tmp/opencode/micronic_boot_io.txt","w") as f:
     for seq,(pc,p,v) in enumerate(log):
         f.write(f"{seq:7d} PC={pc:04X} {p:02X} = {v:02X}\n")
-print("WROTE /tmp/opencode/micronic_boot_io.txt", len(log), "lines")
-
-# --dump-bank: write the requested bank's 32K page to disk. RAM banks
-# (>= 2) hold runtime content (RAM-disk, session modules); ROM banks
-# 0/1 echo the ROM images. Feed the file into the Ghidra RAM02 overlay.
+print("WROTE /tmp/opencode/micronic_boot_io.txt",len(log),"lines")
 if DUMP_BANK is not None:
-    img = B0 if DUMP_BANK == 0 else B1 if DUMP_BANK == 1 \
-        else RAM.get(DUMP_BANK, bytearray(0x8000))
-    path = f"/home/philpem/Micronic-1000/analysis/ram_bank_{DUMP_BANK:02x}.bin"
-    with open(path, "wb") as f:
-        f.write(bytes(img[:0x8000]) + bytes(0x8000 - len(img)))
-    print(f"DUMPED bank {DUMP_BANK} -> {path} ({len(img)} bytes actual)")
+    # if dumping currently mapped bank, use live window; else from storage
+    if DUMP_BANK==cb:
+        img = bytes(mem[0:0x8000])
+    elif DUMP_BANK==0:
+        img = B0
+    elif DUMP_BANK==1:
+        img = B1
+    else:
+        # Ensure saved window for current bank is flushed if dumping that bank's backing? Already handled cb==DUMP_BANK above.
+        # For other RAM bank, ensure we have backing; if not yet created, zero
+        img = RAM.get(DUMP_BANK, bytearray(0x8000))
+        # If dumping a RAM bank that hasn't been switched away yet but is not current, it's stale but okay.
+        # Also flush current if DUMP_BANK == prev? Already covered.
+        img = bytes(img)
+    path=f"/home/philpem/Micronic-1000/analysis/ram_bank_{DUMP_BANK:02x}.bin"
+    with open(path,"wb") as f: f.write(bytes(img[:0x8000])+bytes(max(0,0x8000-len(img))))
+    print(f"DUMPED bank {DUMP_BANK} -> {path} ({len(img)} bytes actual, RAM_KB={RAM_KB}K)")
+
