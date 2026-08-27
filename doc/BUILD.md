@@ -13,9 +13,25 @@ python3 doc/build.py                  # writes doc/site-html/*.html
 ```
 
 Open `doc/site-html/index.html` in a browser. Mermaid diagrams are
-rendered client-side from `https://cdn.jsdelivr.net/.../mermaid.min.js`.
-If you must work offline, download that JS to `doc/` and point
-`MERMAID_JS` at the local file in `build.py`.
+rendered client-side from Mermaid's `mermaid.esm.min.mjs` bundle on
+jsDelivr. The build uses an ES-module import, so a local replacement
+must also be an ES module. If you must work offline, download that
+bundle to `doc/` and point `MERMAID_JS` at the local file in `build.py`.
+
+## Validate Mermaid diagrams
+
+The HTML build can ask Mermaid's own parser to check every diagram before
+writing the site. This requires Mermaid CLI (`mmdc`):
+
+```bash
+npm install -g @mermaid-js/mermaid-cli@11
+cd doc
+make validate
+```
+
+Equivalently, run `python3 doc/build.py --validate-mermaid` from the
+repository root. A parse failure identifies the Markdown file and diagram
+number and stops the build.
 
 ## Option B — pandoc (if installed)
 
@@ -40,6 +56,7 @@ A Makefile is provided as a convenience:
 
 ```bash
 make html      # python-markdown build (option A)
+make validate  # validate Mermaid with mmdc, then build HTML
 make svg       # if mmdc is available: pre-render mermaid -> svg site
 make clean     # remove doc/site-html
 ```

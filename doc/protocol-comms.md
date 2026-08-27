@@ -257,7 +257,7 @@ sequenceDiagram
     participant H as Host / PC (or 2nd M1000)
     participant U as Micronic 1000
     H->>U: [len=8][type=4][cmd-id=INIT-COMMS][args]
-    Note over U: LinkBlockRx -> FDE4; LinkValidateFrameHeader
+    Note over U: LinkBlockRx -> FDE4, then LinkValidateFrameHeader
     U->>U: LinkProcessCommandFrame: cmd-id vs link slot
     alt valid
         U-->>H: [len][E0 04] ack

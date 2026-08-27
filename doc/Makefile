@@ -9,6 +9,10 @@ html: $(OUT)/index.html
 $(OUT)/index.html: build.py $(MD)
 	python3 build.py
 
+validate: ## parse every Mermaid diagram with mmdc, then build HTML
+	@command -v mmdc >/dev/null 2>&1 || { echo "mmdc not found; install with: npm i -g @mermaid-js/mermaid-cli@11"; exit 1; }
+	python3 build.py --validate-mermaid
+
 svg: ## pre-render mermaid to svg (needs mmdc)
 	@command -v mmdc >/dev/null 2>&1 || { echo "mmdc not found; install with: npm i -g @mermaid-js/mermaid-cli"; exit 1; }
 	mkdir -p $(OUT)/svg
@@ -18,7 +22,7 @@ svg: ## pre-render mermaid to svg (needs mmdc)
 clean:
 	rm -rf $(OUT)
 
-.PHONY: html svg clean
+.PHONY: html validate svg clean
 .PHONY: help
 help:
 	@grep -E '^[a-z]+:' Makefile

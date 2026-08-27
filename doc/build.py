@@ -16,13 +16,19 @@ import argparse
 import html
 import pathlib
 import re
+import shutil
+import subprocess
+import tempfile
 
 import markdown
 
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "site-html"
 MERMAID_JS = (
-    "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
+    "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
+)
+MERMAID_FENCE_RE = re.compile(
+    r"^```mermaid[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL
 )
 STYLE = """
   body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;
@@ -51,6 +57,42 @@ def convert_md(path: pathlib.Path) -> dict:
     )
     return {"name": path.stem, "title": path.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").strip(), "body": body}
 
+
+def validate_mermaid(paths: list[pathlib.Path], mmdc: str) -> int:
+    """Parse every Mermaid fence with Mermaid CLI; return diagram count."""
+    count = 0
+    with tempfile.TemporaryDirectory(prefix="micronic-mermaid-") as temp_dir:
+        temp = pathlib.Path(temp_dir)
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            for diagram_number, diagram in enumerate(
+                MERMAID_FENCE_RE.findall(source), start=1
+            ):
+                count += 1
+                input_path = temp / "diagram.mmd"
+                output_path = temp / "diagram.svg"
+                input_path.write_text(diagram, encoding="utf-8")
+                result = subprocess.run(
+                    [
+                        mmdc,
+                        "--input",
+                        str(input_path),
+                        "--output",
+                        str(output_path),
+                        "--quiet",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode:
+                    detail = result.stderr.strip() or result.stdout.strip()
+                    raise SystemExit(
+                        f"Mermaid validation failed: {path.name} "
+                        f"diagram {diagram_number}\n{detail}"
+                    )
+    return count
+
+
 def wrap(doc: dict, nav: str) -> str:
     return f"""<!doctype html>
 <html lang="en"><head>
@@ -75,10 +117,30 @@ def build_nav_items() -> str:
         links.append(f'<a href="{fn}">{label}</a>')
     return " | ".join(links)
 
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--validate-mermaid",
+        action="store_true",
+        help="parse every Mermaid fence with mmdc before building",
+    )
+    args = parser.parse_args()
+
+    markdown_paths = sorted(ROOT.glob("*.md"))
+    if args.validate_mermaid:
+        mmdc = shutil.which("mmdc")
+        if mmdc is None:
+            parser.error(
+                "--validate-mermaid requires Mermaid CLI (mmdc); "
+                "install @mermaid-js/mermaid-cli@11"
+            )
+        count = validate_mermaid(markdown_paths, mmdc)
+        print(f"Validated {count} Mermaid diagram(s).")
+
     OUT.mkdir(exist_ok=True)
     nav = build_nav_items()
-    for md in ROOT.glob("*.md"):
+    for md in markdown_paths:
         doc = convert_md(md)
         fn = "index.html" if md.stem == "README" else f"{md.stem}.html"
         (OUT / fn).write_text(wrap(doc, nav), encoding="utf-8")

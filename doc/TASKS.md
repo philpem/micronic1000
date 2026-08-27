@@ -1326,3 +1326,12 @@ State: continuously updated as work progresses.
     "Error 8000 (238/001) Plinth not connected") - identify the three
     numeric fields, byte-verify, document as an "error screen format"
     section.
+- 2026-08-27 (documentation Mermaid rendering + validation):
+  * Fixed the HTML builder's module import to load Mermaid's ESM bundle;
+    the previous import treated the non-ESM bundle as a default-exporting
+    module, so diagrams did not render.
+  * Fixed a sequence-diagram note whose semicolon Mermaid parsed as a
+    statement separator. All three diagrams now parse successfully.
+  * Added `build.py --validate-mermaid` and `make validate`; these run
+    every Mermaid fence through `mmdc` and identify the source file and
+    diagram number on failure.
