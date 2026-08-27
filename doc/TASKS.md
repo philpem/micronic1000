@@ -187,16 +187,16 @@ State: continuously updated as work progresses.
    stale versus the owner adjudication. Reword.
 10. **Name `FUN_ROM00__35c9`** (the quiet-bus helper in the capture
      path, review §2.3) during the work-item-queue analysis (item 5).
-11. **Decode the error-screen format** — owner observed on hardware:
-     `Error 8000 (238/001) Plinth not connected`. Determine what the
-     three numeric fields mean (`8000`, `238`, `001` — likely error
-     code / line-or-module / severity or similar, UNKNOWN). Entry
-     points: the "Plinth not connected" path (ROM00:6d6f) and the
-     runtime error-code→string table (ram:d0e0 / ROM01 7c80). Byte-
-     verify the meaning of each field from the renderer that prints the
-     banner, then document it as an "error screen format" section
-     (extend protocol-comms.md "Error-path triggers" or add a new
-     doc section).
+11. **Decode the error-screen format** — **DONE (2026-08-27, see
+     protocol-comms.md "Error / status screen format").** Owner observed
+     "Error 8000 (238/001) Plinth not connected". CONFIRMED: 8000 = major
+     error qualifier (literal 0x1F40, or 0x1F41=8001 for the 0x0009 case),
+     NOT the e488 code (6); the "(238/001)" pair = RCV1/RCV2 session
+     status fields from e701/e6ff (3-digit zero-padded), template at
+     ROM00:7310 (tbl_sess_status_fmt) with field names RCV1/RCV2/SEND/
+     LOAD/PROG/TIME/ENDC. Open: runtime meaning of RCV1/RCV2 (SUSPECTED
+     receive counters) + FileSearchNextCb misnomer (it is a decimal
+     formatter, ROM00:403b — rename pending).
 
 ## Owner corrections to honor
 
@@ -1326,3 +1326,38 @@ State: continuously updated as work progresses.
     "Error 8000 (238/001) Plinth not connected") - identify the three
     numeric fields, byte-verify, document as an "error screen format"
     section.
+- 2026-08-27 (keyboard keymap + UI field-edit keys; main):
+  * KEYMAP TABLE LOCATED: ROM00:1b58 (labelled tbl_kbd_map) is a three
+    36-byte-page keymap (base in ram:fbda, set at ColdStartSelfTestBanner
+    / KbdScanRowDecode). Page 0 unshifted (ASCII letters; 'N'=0x4E idx21,
+    ENTER=0x0D idx22), page 1 shifted (+0x24), page 2 special (+0x48,
+    fbdd==2; 'Z'=0x5A idx21). Function keys use codes 0x01/0x06/0x0b/
+    0x0c/0x11/0x12/0x14/0x1a/0xd0. Kbd_ScanMain (18f0) produces the code
+    into fbe7 -> key ring -> ec41.
+  * FIELD-EDIT KEY DISPATCH: Ui_FieldEditPumpLoop (1e0a) reads ec41 and
+    tail-jumps to CALL ram:e0b2 with inline dispatch table at ROM01:1f99
+    (labelled tbl_fieldkey_dispatch): 0x06/0x0b->1e61, 0x01/0x0c->1ea1,
+    0x11->1ece, 0x12->1eed, default->1f23. SessionKeyProcess (40c4)
+    branches on 0x01/0x06/0x11/0x12.
+  * OWNER KEY MAPPING (hardware, for emulator input): N/Z key edits the
+    active field value; YES/NO keys move between fields. Codes: N=0x4E,
+    Z=0x5A, YES/NO=0x11/0x12 (which-is-which direction TBD), ENTER=0x0D.
+    Recorded in the two Ghidra plates; emulator chase to use these.
+- 2026-08-27 (error-screen format CLOSED; investigate + main, applied):
+  * TASKS #11 answered (investigate agent, byte-verified by main): the
+    "Error 8000 (238/001) Plinth not connected" screen is rendered by
+    SessionStateBuild (4351) via SessionMessageBox (4296). CONFIRMED:
+    8000 = major error qualifier literal 0x1F40 (8001 = 0x1F41 for the
+    0x0009 connect-check case), 11-digit space-padded; NOT e488 (code 6).
+    "(238/001)" = RCV1/RCV2 session status from e701/e6ff (3-digit
+    zero-padded), template at ROM00:7310 (now tbl_sess_status_fmt) with
+    field names RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC. Annotated: plates on
+    7310/e488/e701(g_wSessRcv1)/e6ff(g_wSessRcv2)/SessionStateBuild; EOLs
+    at 47ca/47b7/47d0/4380/4399. protocol-comms.md gained "Error/status
+    screen format (CONFIRMED)".
+  * MISNOMER FLAGGED: ROM00:403b (named FileSearchNextCb) is actually a
+    decimal-to-ASCII formatter (div-10 digit loop + 0x30); used by
+    SessionStateBuild. Rename queued (needs rename-hygiene pass).
+  * "No program in memory" emulator chase: general agent still returned
+    empty twice; will retry with the confirmed key codes (owner: N/Z=
+    0x4E/0x5A edit field, YES/NO=0x11/0x12 move between fields).
