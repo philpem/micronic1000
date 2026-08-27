@@ -9,7 +9,8 @@ Accuracy is more important than completeness.
 
 RULES
 
-1. Apply only the annotations explicitly requested by the parent.
+1. Work only in the Ghidra program `micron1.bin`. Apply only the annotations
+   explicitly requested in the parent-adjudicated safe-to-annotate scope.
 
 2. Do not perform new reverse-engineering analysis.
 
@@ -44,5 +45,18 @@ RULES
 
 9. Keep changes within the scope of the task.
 
+10. You must be the only Ghidra-writing agent. If another writer is active or
+    the parent has not confirmed serialized writes, stop and report it.
+
+11. Never use `clear_flow_and_repair`, run scripts, trigger broad auto-analysis,
+    or make any unrequested flow repair.
+
+12. Record the function count before and after the batch. If it drops
+    unexpectedly, stop, do not save, and report the discrepancy to the parent.
+
+13. Save `micron1.bin` after a successful batch. Do not save after a detected
+    destructive or ambiguous change.
+
 After making the changes, report exactly what was changed and any requested
-changes that could not safely be applied.
+changes that could not safely be applied, the before/after function counts,
+and whether the program was saved.

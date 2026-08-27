@@ -11,7 +11,8 @@ RULES
 
 2. Do not invent missing technical details.
 
-3. Do not strengthen tentative findings into facts.
+3. Do not strengthen tentative findings into facts. Preserve the project's
+   exact CONFIRMED / LIKELY / SUSPECTED evidence tags.
 
 Preserve distinctions such as:
    - known / observed;
@@ -32,7 +33,8 @@ Preserve distinctions such as:
 
 8. Do not make unrelated stylistic rewrites.
 
-9. After editing, run the requested documentation build.
+9. After editing, run the requested documentation build. Unless the parent
+   specifies otherwise, use the build command documented in `doc/BUILD.md`.
 
 10. If the build fails:
     - diagnose problems caused by your changes;
@@ -42,5 +44,6 @@ Preserve distinctions such as:
 Report:
 - files changed;
 - substantive documentation changes;
+- evidence tags preserved or changed as explicitly requested;
 - build result;
 - any conflicts or unresolved issues.

@@ -1,20 +1,21 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "openrouter/deepseek-v4-pro",
+  "model": "openrouter/deepseek/deepseek-v4-pro",
   "small_model": "opencode/nemotron-3.5-lightning-free",
 
   "agent": {
     "general": {
       "model": "opencode/muse-spark-1.2-contributor-free",
+      "mode": "subagent",
       "description": "Low-cost general worker for routine delegated research and project tasks. Do not use for substantive reverse-engineering analysis.",
       "prompt": "{file:./.opencode/prompts/general.txt}"
     },
 
     "annotate": {
-      "model": "opencode/muse-spark-1.2-contributor-free",
+      "model": "openrouter/deepseek/deepseek-v4-flash",
       "mode": "subagent",
       "temperature": 0.1,
-      "description": "Applies established findings to Ghidra. No new reverse-engineering inference.",
+      "description": "Applies established, parent-approved findings to Ghidra. No new reverse-engineering inference. Only one Ghidra-writing agent may run at a time.",
       "prompt": "{file:./.opencode/prompts/annotate.txt}"
     },
 
@@ -27,18 +28,115 @@
     },
 
     "investigate": {
-      "model": "openrouter/deepseek/deepseek-v4-flash",
       "mode": "subagent",
-      "temperature": 0.1,
-      "description": "Investigates reverse-engineering questions using Ghidra and reports evidence, hypotheses, confidence, and unresolved questions. Does not modify Ghidra.",
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Read-only firmware investigator. Inherits the invoking session's currently selected model and returns evidence-tagged provisional findings for independent review.",
       "prompt": "{file:./.opencode/prompts/investigate.txt}"
     },
 
     "investigate_deep": {
+      "model": "anthropic/claude-opus-5",
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Deep read-only investigator for difficult, ambiguous, disputed, or cross-cutting reverse-engineering questions.",
+      "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
+    },
+
+    "investigate_deep_openrouter_fallback": {
       "model": "openrouter/deepseek/deepseek-v4-pro",
       "mode": "subagent",
-      "description": "Expensive deep investigator for difficult, ambiguous, or cross-cutting reverse-engineering problems.",
+      "hidden": true,
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Fallback deep investigator when the subscription-backed deep investigator is unavailable.",
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
+    },
+
+    "review_openai": {
+      "model": "openai/gpt-5.6-sol",
+      "mode": "subagent",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Independent read-only frontier reviewer for findings produced by Anthropic. Freshly checks evidence and actively seeks falsification before annotation.",
+      "prompt": "{file:./.opencode/prompts/review.txt}"
+    },
+
+    "review_anthropic": {
+      "model": "anthropic/claude-opus-5",
+      "mode": "subagent",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Independent read-only frontier reviewer for findings produced by OpenAI or DeepSeek. Freshly checks evidence and actively seeks falsification before annotation.",
+      "prompt": "{file:./.opencode/prompts/review.txt}"
+    },
+
+    "review_openrouter_fallback": {
+      "model": "openrouter/deepseek/deepseek-v4-pro",
+      "mode": "subagent",
+      "hidden": true,
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "Fallback reviewer when subscription-backed review models are unavailable.",
+      "prompt": "{file:./.opencode/prompts/review.txt}"
     }
   }
 }

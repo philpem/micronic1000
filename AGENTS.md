@@ -28,13 +28,28 @@ TASKS.md and the docs, not this file.
 When using reverse-engineering subagents:
 
 - Use `investigate` for ordinary binary analysis.
+- `investigate` intentionally has no configured model: it inherits the primary
+  session model selected with `/model` or the model-selection key binding.
 - Use `investigate_deep` only for difficult, ambiguous, cross-cutting, or
   unresolved questions.
 - Treat subagent conclusions as proposals until their supporting evidence has
   been considered.
+- Before annotating a consequential new or revised finding, invoke a reviewer
+  from a different model family: `review_openai` for Anthropic work, and
+  `review_anthropic` for OpenAI/DeepSeek work. Consequential findings include
+  semantic renames, hardware identities, calling conventions, computed-table
+  mappings, overturned findings, and promotion to CONFIRMED.
+- If a subscription-backed deep investigator or reviewer fails because of
+  authentication, quota/rate limiting, timeout, provider outage, model
+  unavailability, or a 5xx response, retry the unchanged task with
+  `investigate_deep_openrouter_fallback` or `review_openrouter_fallback`.
+  Do not use availability fallback for weak analysis, refusals, context-length
+  errors, malformed requests, or tool/schema errors.
+- If review returns REVISE, REJECT, or UNDERDETERMINED, send the disputed
+  claims and review evidence to `investigate_deep`. Resolve disagreements by
+  returning to the bytes, never by model majority vote.
 - Do not ask `annotate` to commit speculative findings.
-- Only send findings to `annotate` once you consider them sufficiently
-  established.
+- Only send the parent-adjudicated, reviewer-approved safe scope to `annotate`.
 - Preserve uncertainty in annotations where the evidence remains tentative.
 - Use `general` for routine delegated work, not substantive binary analysis.
 
