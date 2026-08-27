@@ -135,7 +135,7 @@ and require ROM bank 0 mapped during service — which is exactly what
 
 UI objects are built from chained descriptor blocks in ROM01
 (first at 75EB, `ui_object_descriptor_1`; see also the descriptor
-tables section in memory-map.md):
+tables section in [the memory map](memory-map.md)):
 
 * header: two name-string pointers + word
 * 4-word **vtable of kernel-side methods** (e.g. EFEC/F0F8/EF98/EFD8)
@@ -208,7 +208,7 @@ calls kernel services 1-18 (IO, state, clock...) via this table.
 ### 3. RST trampolines
 
 RST 08/20/28/30 -> F5E1/F5EA/F5ED/F5F0 -> common IRQ/event handler
-(see interrupts.md).
+(see [interrupts](interrupts.md)).
 
 ## Kernel installation (CONFIRMED)
 
@@ -396,22 +396,14 @@ TWO roles:
 * First press during operation therefore suspends; second press
   reboots into the restored session.
 
-## Open questions
+## Remaining internal questions
 
-X
-  and all peripherals are I/O-mapped (no MMIO, no serial EEPROM - the
-  unit serial is user-entered at the banner after battery removal and
-  kept in battery RAM at FEAB). But no port group shows a clean
-  '146818 signature yet. The 4x cluster (4Ah strobes / 4Bh data+status
-  / 4Dh index masked to 1Fh / 46h, driver ROM00:3270-3500) was ruled
-  out by the owner. Decisive next probe: chronological full-I/O trace
-  of boot + self-test under emulation; the clock test must read the
-  RTC twice to verify time advances.
-* IR link pin/bit assignment (PLINTH vs V24) — inside the comms
-  controller's register configuration
-* Physical interrupt source(s) behind IM1 IRQ and NMI
-* Contents of ED1C-ED480 data structures beyond the queue fill
-* BDOS function set at F180 — requires battery-RAM dump or emulation
+* Which link-id bit-5 state selects PLINTH versus V24 ADAPTOR.
+* Physical interrupt source(s) behind IM1 IRQ and NMI.
+* Runtime session data structures and Commstar file-transfer payloads.
+
+The RTC and resident BDOS image are no longer open: ports 08h/28h are the
+HD146818 interface, and the RAM kernel is copied from ROM at cold boot.
 
 ## Interrupt architecture (fully mapped)
 
@@ -443,7 +435,7 @@ power-state transition (reset/suspend/selftest/link-test/shutdown).
 
 The HD146818 is at ports 08h (register select) / 28h (data) — the
 "indexed peripheral" previously mislabelled as comms. See
-rtc-investigation.md for the register map and the traced Set Clock /
+[the RTC reference](rtc.md) for the register map and the traced Set Clock /
 clock-test write/read paths. The 4x latch cluster (4A-4F) is NOT the
 RTC. The PLINTH/V24 IR and side-port data paths are the remaining
 open question — whether they share the 08/28 bus at higher indices

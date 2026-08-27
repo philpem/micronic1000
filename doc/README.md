@@ -1,57 +1,51 @@
-# Micronic 1000 / PARCON 1000 — Technical Findings
+# Micronic 1000 / PARCON 1000 documentation
 
-Reverse-engineering notes for the Micronic 1000 handheld (Z80, 3.58 MHz,
-2 × 27C256 EPROMs, 256K static RAM). Analysis targets: `micron1.bin`
-(bank 0 ROM) and `micron2.bin` (bank 1 ROM), loaded in Ghidra as the
-`ROM00` and `ROM01` overlay address spaces over the shared `ram` space.
+This documentation describes the firmware-derived programming and hardware
+interfaces of the Micronic 1000 (PARCON 1000). It distinguishes a usable
+interface contract from firmware implementation evidence and from open
+reverse-engineering questions.
 
-**Status legend used throughout:**
+## Start here
 
-| Tag | Meaning |
-|-----|---------|
-| CONFIRMED | Directly proven from code/bytes |
-| LIKELY | Strong circumstantial evidence |
-| SUSPECTED | Plausible but unproven |
+* [Programmer's guide](manual/programmer-guide.md) — write CP/M-style
+  applications for DIPOS-B.
+* [BDOS reference](manual/bdos-reference.md) — supported CALL 0005h
+  functions and DIPOS-B extensions.
+* [Barcode reader](manual/barcode-reader.md) — scanner hook and RDR:
+  byte-stream API.
+* [Commstar protocol](protocol/commstar.md) — verified transport contract,
+  implementation readiness, and the remaining session-layer gaps.
 
-## Documents
+The Commstar session and file-transfer format is not yet sufficiently
+decoded for an interoperable host implementation. The protocol document
+states exactly which layers are safe to implement and which require a trace
+or hardware capture.
 
-* [Memory map](memory-map.md) — ROM/RAM organisation, banked window,
-  battery-backed RAM layout, system variables
-* [I/O map](io-map.md) — port assignments and bit-level functions
-* [Interrupts](interrupts.md) — interrupt handling and vector usage
-* [Operating system: DIPOSB](os-diposb.md) — kernel structure, ABI,
-  comparison against standard CP/M (with references)
-* [Commstar transfer protocol](protocol-comms.md) — hardware transport,
-  frame grammar, session/state names, role model (host or unit) and
-  sequence/state diagrams
-* [RTC (HD146818) path](rtc-investigation.md) — the 08h/28h indexed
-  interface, register map, periodic-interrupt rate
-* [Build the HTML site](BUILD.md) — how to render these Markdown
-  documents (with Mermaid diagrams) into HTML
+## Reference and internals
 
-## Summary of headline findings
+* [System architecture](internals/os-diposb.md)
+* [CP/M compatibility comparison](internals/cp-m-comparison.md)
+* [Memory map and RAM extension points](internals/memory-map.md)
+* [I/O map](internals/io-map.md)
+* [Interrupts and banked calls](internals/interrupts.md)
+* [RTC interface](internals/rtc.md)
 
-1. The OS identifies itself as **DIPOSB** (`DIPOSB Ver 228` string @
-   ROM00:041E). It is **not** CP/M, but exposes a **CP/M-style CALL-5
-   program interface** (os-diposb.md).
-2. `0000-7FFF` is a 32K bank-switched window (two ROM images as banks
-   0/1, further banks = 32K RAM pages), selected by **port 47h**
-   (CONFIRMED).
-3. `8000-FFFF` is fixed battery-backed RAM holding the resident DIPOSB
-   kernel, copied from ROM at cold boot (CONFIRMED: `InstallKernelToRam`
-   → F180, 50Dh bytes).
-4. Kernel code is invoked via RST trampolines, per-bank jump tables,
-   and the page-zero CALL-5 gate.
-5. Keyboard matrix fully decoded (`drive 02h` = column bit, `sense 00h`
-   = row bit; `index = row*6+col`); the power-on service combos is
-   **H+L+P**; boot-key bits on port 49h (CONFIRMED).
-6. **Real-time clock = HD146818 on ports 08/28** (register select on
-   08h, data on 28h); periodic interrupt at 1024 Hz drives the scheduler
-   tick (CONFIRMED, see rtc-investigation.md). The 4x latch cluster is
-   **not** the RTC.
-7. **External data link = 4x parallel transport**: TX data 4Dh, RX data
-   4Eh, status 4Bh, control 4Ah — used for PLINTH/V24 IR, side/external
-   port (CONFIRMED; see protocol-comms.md).
-8. **Session roles are reversible**: the M1000 can be the host (initiator)
-   **or** the unit/responder; per-link slots keep it consistent. See
-   protocol-comms.md (role section + diagrams).
+## Evidence labels
+
+| Label | Meaning |
+|---|---|
+| **CONFIRMED** | Directly established by firmware bytes, a trace, or an xref. |
+| **LIKELY** | Firmware evidence combined with a documented hardware fact. |
+| **SUSPECTED** | Plausible but unverified; the required confirming observation is stated. |
+
+## Research records
+
+The worklist, coverage tracker, and historical reviews live under
+`research/` in the source tree. They preserve the reasoning trail but are
+not reader-facing API specifications.
+
+## Building the HTML site
+
+See [BUILD.md](BUILD.md). The builder publishes this landing page plus the
+`manual/`, `protocol/`, and `internals/` trees; it intentionally excludes
+the research archive from site navigation.

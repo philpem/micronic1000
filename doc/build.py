@@ -13,6 +13,7 @@ renderers (or locally vendored JavaScript bundles).
 """
 import argparse
 import html
+import os
 import pathlib
 import re
 import shutil
@@ -23,6 +24,7 @@ import markdown
 
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "site-html"
+PUBLISHED_DIRS = ("manual", "protocol", "internals")
 MERMAID_JS = (
     "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs"
 )
@@ -55,8 +57,31 @@ STYLE = """
   svg{max-width:100%;height:auto}
 """
 
+def published_markdown_paths() -> list[pathlib.Path]:
+    paths = [ROOT / "README.md"]
+    for directory in PUBLISHED_DIRS:
+        paths.extend((ROOT / directory).rglob("*.md"))
+    return sorted(paths)
+
+
+def output_path(path: pathlib.Path) -> pathlib.Path:
+    relative = path.relative_to(ROOT)
+    if relative == pathlib.Path("README.md"):
+        return OUT / "index.html"
+    return OUT / relative.with_suffix(".html")
+
+
+def rewrite_markdown_links(source: str) -> str:
+    """Preserve relative links while converting published Markdown targets."""
+    return re.sub(
+        r"\]\(([^)#]+)\.md(#[^)]+)?\)",
+        lambda match: "](" + match.group(1) + ".html" + (match.group(2) or "") + ")",
+        source,
+    )
+
+
 def convert_md(path: pathlib.Path) -> dict:
-    source = path.read_text(encoding="utf-8")
+    source = rewrite_markdown_links(path.read_text(encoding="utf-8"))
     md = markdown.Markdown(extensions=["tables", "fenced_code", "nl2br"])
     body = md.convert(source)
     # run mermaid code fences -> <pre class="mermaid"> so the JS picks them up
@@ -153,12 +178,13 @@ mermaid.initialize({{ startOnLoad: true }});
 {doc["body"]}
 </body></html>"""
 
-def build_nav_items() -> str:
+def build_nav_items(current: pathlib.Path) -> str:
     links = []
-    for f in sorted(ROOT.glob("*.md")):
-        fn = "index.html" if f.stem == "README" else f"{f.stem}.html"
-        label = f.stem if f.stem != "README" else "index"
-        links.append(f'<a href="{fn}">{label}</a>')
+    current_dir = output_path(current).parent
+    for path in published_markdown_paths():
+        href = os.path.relpath(output_path(path), current_dir).replace(os.sep, "/")
+        label = "home" if path.name == "README.md" else path.stem.replace("-", " ")
+        links.append(f'<a href="{href}">{html.escape(label)}</a>')
     return " | ".join(links)
 
 
@@ -176,7 +202,7 @@ def main():
     )
     args = parser.parse_args()
 
-    markdown_paths = sorted(ROOT.glob("*.md"))
+    markdown_paths = published_markdown_paths()
     if args.validate_mermaid:
         node = shutil.which("node")
         mermaid_package = ROOT / "node_modules" / "mermaid" / "package.json"
@@ -205,12 +231,12 @@ def main():
         print(f"Validated {count} WaveDrom diagram(s).")
 
     OUT.mkdir(exist_ok=True)
-    nav = build_nav_items()
     for md in markdown_paths:
         doc = convert_md(md)
-        fn = "index.html" if md.stem == "README" else f"{md.stem}.html"
-        (OUT / fn).write_text(wrap(doc, nav), encoding="utf-8")
-        print(f"wrote {OUT / fn}")
+        destination = output_path(md)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(wrap(doc, build_nav_items(md)), encoding="utf-8")
+        print(f"wrote {destination}")
     print("Done. Mermaid and WaveDrom render on page open (need CDN access).")
 
 if __name__ == "__main__":

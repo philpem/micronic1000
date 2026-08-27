@@ -1,7 +1,7 @@
 # Micronic 1000 doc build
 # See doc/BUILD.md for full instructions.
 
-MD       := $(wildcard *.md)
+MD       := $(shell find . \( -path './research' -o -path './node_modules' -o -path './site-html' \) -prune -o -name '*.md' -print)
 OUT      := site-html
 
 html: $(OUT)/index.html

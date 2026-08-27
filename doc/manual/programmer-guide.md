@@ -70,13 +70,15 @@ logical storage devices:
 
 | Drive letter | Device | Type | Persistence |
 |--------------|--------|------|-------------|
-| **A:** | **WORKSTATION MEMORY** | fixed 32K battery RAM | survives power-off (coin-cell battery) |
-| **B:** | **WORKSTATION RAMDISK** | 224K banked RAM | volatile (lost if battery removed) |
+| **A:** | **WORKSTATION MEMORY** | fixed RAM area | configuration-dependent |
+| **B:** | **WORKSTATION RAMDISK** | banked RAM area | configuration-dependent |
 
-Other drive letters (C: .. P:) map to **IR/link devices**, not file
-storage. File *I/O* is meaningful on A: and B: only. The drive letter
-is a **user-visible selector**; it indexes a config table, not a
-hardware unit.
+The firmware accepts sixteen drive selectors, but their runtime mapping is
+configuration-dependent. The default FE93 table includes external-link
+entries; do not assume that every unit maps C: through P: identically, or
+that a banked RAM area is not retained by the backup battery. The drive
+letter is a **user-visible selector**, not a hardware-unit number. See
+[devices and storage](devices-and-storage.md).
 
 ### Drive selection
 
@@ -85,7 +87,7 @@ hardware unit.
   return 0xFF (error).
 - **Function 19h (get current disk)**: returns the currently selected
   drive number in the HL register as usual.
-- **Function 24h (get login vector)**: **not really implemented** —
+- **Function 18h (get login vector)**: **not really implemented** —
   returns a stub.
 
 ### FCB layout
@@ -164,19 +166,19 @@ link** rather than the built-in LCD/keyboard.
 | 0Ah | read console buffer |
 | 0Bh | get console status |
 | 03h | reader in (RDR:) — implements the **external-device scan path** as a byte stream (see below) |
-| 04h/05h | punch out / list out (mapped, mostly no-op) |
+| 04h/05h | punch out / list out (device-routed; detailed behaviour varies by configured slot) |
 
 ### Reader input (fn 03h) — external-device capture
 
-`fn 03h` = `BdosReaderInChar` (ROM00:1080) reads the **external-device
-(EXT STORAGE wire-2B / wire-2A) edge-capture pipeline**. Each scan is
+`fn 03h` = `BdosReaderInChar` (ROM00:1080) reads the owner-adjudicated
+**barcode-reader edge-capture pipeline**. Each scan is
 delivered as: `1Bh` (scan-arrived), then `count`, then `count` data
 bytes. The resident firmware default *discards* every capture (the
 decode-hook default at ROM00:1567 zeroes the element count); a
 program installs its own decoder at the hook socket **FBC2** (bank byte
 FBC1, `D7` RST-10 stub at FBC0), which the capture tail (ROM00:1458)
 calls after each capture with `FBB9`/`FBBB` = width-table ptr/count.
-See **barcode-reader.md** (§decoder hook) for the install recipe.
+See [the barcode-reader guide](barcode-reader.md) for the install recipe.
 
 **Important:** `console output` (02h), `console input` (01h) and
 `direct console I/O` (06h) **route through the active device**,
@@ -406,9 +408,9 @@ This guide is based on static analysis of the `micron1.bin` ROM
   CP/M 2.2 handlers.
 - Wrapped extension table ROM00:36EE (RAM copy F1D1) — fn F3-FF.
 - The device/link layer (drive letters → FE83/FE93 config, IR link,
-  session ring) in protocol-comms.md.
+  session ring) in [the Commstar protocol](../protocol/commstar.md).
 - Memory map (battery RAM layout, system variables) in
-  memory-map.md.
+  [the memory map](../internals/memory-map.md).
 
 All `Bdos*` handlers are named and commented in the Ghidra program.
 
