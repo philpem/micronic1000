@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""boot_hw.py - canonical harness (merged from boot_hw_visible + boot_hw_serial)
+"""boot_hw.py - canonical emulator harness for the Micronic 1000.
 
 Canonical single-harness: paced keyboard injection (--drive-serial/--serial,
 --drive-kbd fixed), LCD render (--lcd/--no-lcd/--lcd-rate), expect-DSL
@@ -7,13 +7,9 @@ Canonical single-harness: paced keyboard injection (--drive-serial/--serial,
 FF on absent pages), --dump-bank, snapshot (--dump-mem/--snapshot), --help.
 Drop-in: no args still does basic trace (prints help then boots).
 
-This file is the merged boot_hw_visible.py content (LCD+expect+banking) with
-snapshot support; it is the single canonical harness. boot_hw_visible.py
-remains as an alias/compat copy.
+Feature history (all folded into this one file):
 
-Visible additions over original boot_hw.py:
-
-Three additions over boot_hw_serial.py / boot_hw.py:
+Key additions over the original self-test boot:
 
 1. LCD DISPLAY  (FC06-FCA5 = 160 bytes = 20 cols × 8 rows, ASCII)
    Verified from firmware: LcdRefreshScreen (ROM00:1E27) streams the

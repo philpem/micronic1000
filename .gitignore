@@ -1,3 +1,11 @@
 /doc/site-html
 __pycache__
 *~
+
+# emulator scratch output
+expect.json
+analysis/ram_bank_*.bin
+
+# local scratch / backups
+opencode.json.old
+session-*.md

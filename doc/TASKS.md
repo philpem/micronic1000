@@ -186,7 +186,17 @@ State: continuously updated as work progresses.
    decoder does" still says "(if this is a light-pen)" — both now
    stale versus the owner adjudication. Reword.
 10. **Name `FUN_ROM00__35c9`** (the quiet-bus helper in the capture
-    path, review §2.3) during the work-item-queue analysis (item 5).
+     path, review §2.3) during the work-item-queue analysis (item 5).
+11. **Decode the error-screen format** — owner observed on hardware:
+     `Error 8000 (238/001) Plinth not connected`. Determine what the
+     three numeric fields mean (`8000`, `238`, `001` — likely error
+     code / line-or-module / severity or similar, UNKNOWN). Entry
+     points: the "Plinth not connected" path (ROM00:6d6f) and the
+     runtime error-code→string table (ram:d0e0 / ROM01 7c80). Byte-
+     verify the meaning of each field from the renderer that prints the
+     banner, then document it as an "error screen format" section
+     (extend protocol-comms.md "Error-path triggers" or add a new
+     doc section).
 
 ## Owner corrections to honor
 
@@ -1309,4 +1319,10 @@ State: continuously updated as work progresses.
   * boot_hw.py MERGE VERIFIED: it is the canonical single harness
     (LCD+expect+banking+snapshot+--help), --help smoke-tested clean;
     usage examples now cite analysis/boot_hw.py (was boot_hw_visible.py).
-    boot_hw_visible.py remains the untracked compat copy.
+    boot_hw_visible.py and boot_hw_serial.py both DELETED (fully
+    superseded). boot_hw.py header docstring + analysis/README.md emulator
+    section rewritten for the single canonical harness.
+  * Added TASKS item 11: decode the error-screen format (owner observed
+    "Error 8000 (238/001) Plinth not connected") - identify the three
+    numeric fields, byte-verify, document as an "error screen format"
+    section.

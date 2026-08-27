@@ -22,16 +22,15 @@ adapter or host program:
 
 Requires the `z80` python module in `venv/`.
 
-- **`boot_hw.py`** — boot the firmware to kernel/self-test with a
-  MAME-accurate I/O stub and an **RTC-model-driven periodic INT**.
-  Proves the HD146818 write path live; writes a full I/O trace to
+- **`boot_hw.py`** — the single canonical harness. Boots the firmware to
+  kernel/self-test with a MAME-accurate I/O stub and an **RTC-model-driven
+  periodic INT** (proves the HD146818 write path live), and adds paced
+  keyboard injection (`--drive-serial`/`--serial`), LCD rendering
+  (`--lcd`/`--no-lcd`/`--lcd-rate`), an expect DSL (`--expect`/
+  `--expect-file`/`--expect-timeout`), multi-bank RAM (`--ram`/`--ram-size`,
+  `--dump-bank`), and snapshot dumps (`--dump-mem`/`--snapshot`). `--help`
+  prints full usage. Writes a full I/O trace to
   `/tmp/opencode/micronic_boot_io.txt`. Uses `micronic.rtc`.
-- **`boot_hw_serial.py`** — extends boot_hw.py with paced keyboard injection
-  at the 16C9 HALT wait (FBC9 bit2 / FFA8) to drive past the banner and the
-  "Enter serial" prompt. `--drive-serial` / `--serial TEXT` queue ENTER + serial + ENTER.
-- **`boot_hw_visible.py`** — extends boot_hw_serial.py with **LCD rendering**,
-  an **expect DSL**, and **multi-bank RAM**. This is the user-visible harness.
-  `timeout 300 analysis/venv/bin/python3 analysis/boot_hw_visible.py --help` prints full usage.
 - **`comms_tx_test.py`** — directed verification of the TX path:
   seed the link state + FDEA `{count, ptr}` descriptor, call
   `LinkTransferService` (2F86), capture port-4Dh bytes, compare
@@ -41,7 +40,7 @@ Requires the `z80` python module in `venv/`.
   capture the 4A strobe handshake. Confirms `proto.Link.rx()`
   mirrors the firmware (4Eh gated on 4Bh bit0).
 
-### `boot_hw_visible.py` — visible harness details
+### `boot_hw.py` — visible harness details
 
 **Memory safety:** single process, `timeout 300`, bounded `--max-slices`, 200k I/O log ring, `gc.disable()` + manual `collect`.
 
@@ -59,9 +58,9 @@ Requires the `z80` python module in `venv/`.
 
 **Examples:**
 ```sh
-timeout 300 analysis/venv/bin/python3 analysis/boot_hw_visible.py --lcd --max-slices 300000
-timeout 300 analysis/venv/bin/python3 analysis/boot_hw_visible.py --lcd --expect "To Continue Press>>:\\r" --expect "Serial:\\r12345678\\r" --expect "Main Menu:1"
-timeout 300 analysis/venv/bin/python3 analysis/boot_hw_visible.py --ram 512 --expect-file /tmp/steps.json --dump-bank 2
+timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --lcd --max-slices 300000
+timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --lcd --expect "To Continue Press>>:\\r" --expect "Serial:\\r12345678\\r" --expect "Main Menu:1"
+timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-file /tmp/steps.json --dump-bank 2
 # steps.json: [{"match":"To Continue Press>>","keys":"\\r"},{"match":["Ram:","K.B."],"keys":"\\r"},{"match":"Main Menu","keys":"1"}]
 ```
 
