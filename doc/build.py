@@ -25,6 +25,11 @@ import markdown
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "site-html"
 PUBLISHED_DIRS = ("manual", "protocol", "internals")
+NAV_GROUPS = (
+    ("Manual", "manual/README.md"),
+    ("Protocol", "protocol/README.md"),
+    ("Internals", "internals/README.md"),
+)
 MERMAID_JS = (
     "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs"
 )
@@ -53,7 +58,10 @@ STYLE = """
   h1,h2,h3{margin-top:1.6em}
   blockquote{border-left:4px solid #ccc;margin-left:0;padding-left:1rem;
              color:#444}
+  nav{font-size:.95rem;margin-bottom:1.5rem}
   nav a{color:#0366d6}
+  nav .nav-group{display:inline-block;margin-left:1rem}
+  nav .nav-group:first-child{margin-left:0}
   svg{max-width:100%;height:auto}
 """
 
@@ -179,13 +187,34 @@ mermaid.initialize({{ startOnLoad: true }});
 </body></html>"""
 
 def build_nav_items(current: pathlib.Path) -> str:
-    links = []
     current_dir = output_path(current).parent
-    for path in published_markdown_paths():
+    paths = {path.relative_to(ROOT).as_posix(): path
+             for path in published_markdown_paths()}
+
+    def link(path: pathlib.Path, label: str) -> str:
         href = os.path.relpath(output_path(path), current_dir).replace(os.sep, "/")
-        label = "home" if path.name == "README.md" else path.stem.replace("-", " ")
-        links.append(f'<a href="{href}">{html.escape(label)}</a>')
-    return " | ".join(links)
+        return f'<a href="{href}">{html.escape(label)}</a>'
+
+    groups = []
+    home = paths["README.md"]
+    href = os.path.relpath(output_path(home), current_dir).replace(os.sep, "/")
+    groups.append(f'<a href="{href}">Home</a>')
+    for title, index in NAV_GROUPS:
+        index_path = paths[index]
+        entries = [link(index_path, title)]
+        prefix = index.rsplit("/", 1)[0] + "/"
+        for key in sorted(paths):
+            if key.startswith(prefix) and key != index:
+                path = paths[key]
+                entries.append(link(path, path.stem.replace("-", " ")))
+        groups.append(
+            '<span class="nav-group"><strong>'
+            + html.escape(title)
+            + ':</strong> '
+            + " · ".join(entries)
+            + "</span>"
+        )
+    return " | ".join(groups)
 
 
 def main():
