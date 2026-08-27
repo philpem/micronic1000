@@ -409,6 +409,68 @@ CALL LinkBlockTx       ; call LinkBlockTx        <- repeats the label
 
 …and never assert an unproven identity in a repeatable comment (§3).
 
+### Plate template (copy the skeleton)
+
+```
+<One-line purpose — imperative or declarative.>
+<2–4 lines of mechanics: cells/ports read+written, the key algorithm
+  step. Wrapped ~70 cols. No pseudo-asm, no caller list.>
+In:   <registers / stack args and their meaning>
+Out:  <return + flag contract, e.g. "HL=1 if HL<=DE" / "carry set on err">
+<Clobbers: … — only when a caller cares>
+CONFIRMED: <entry>-<end>.   (or LIKELY / SUSPECTED + one-phrase why)
+```
+
+Re-flow prose to ~70 cols, one fact per line, never hand-wrap mid-token.
+Plates MUST be multi-line ASCII with real newlines — never one squashed
+line. Structure: **brief** one-line purpose, **longer** description
+(mechanics/why), then **Input / Output / Clobbers**, each on its own line,
+then the evidence tag.
+
+SHORT form — for trivial functions whose whole contract fits one sentence,
+a single descriptive line is allowed instead of the full In/Out/Clobbers
+block. Example: `Lib_SignedLe16` = "Signed 16-bit less-or-equal (EX DE,HL
+into SignedGe16)" + repeatable "HL=1 if HL<=DE (signed) else 0".
+
+LABELS, not addresses: do not cite a RAM cell or I/O port by its numeric
+address in a comment. Give it a descriptive label and mention the label —
+e.g. "clear g_bLinkActive" not "clear fbc9 bit0"; "read g_sessionResultW"
+not "read e681". If the cell has no label yet, create one before
+reference.
+
+### Reusable "comment this code" prompt
+
+Paste this block into any agent doing a commenting pass, after the list
+of target functions. It encodes the rules above so you don't restate them.
+
+---
+Annotate Z80 disassembly in this project's Ghidra program. For each target
+function write ONLY comments that add meaning:
+
+1. PLATE (function header), multi-line ASCII with real newlines, wrapped
+   ~70 cols (NEVER one squashed line). Structure: brief one-line purpose,
+   then a longer mechanics/why description, then In:/Out:/Clobbers:, then
+   the evidence tag line (CONFIRMED <entry>-<end> byte-verified, or
+   LIKELY/SUSPECTED with a reason). NO pseudo-asm restatement, NO caller
+   list. SHORT form (a single descriptive line, no In/Out/Clobbers) is
+   allowed only for trivial functions whose contract fits a sentence.
+2. EOL: at most ONE line (<=60 chars), only where the instruction alone
+   doesn't convey the MEANING — name the bit, the magic number's source,
+   or the branch's significance. Never restate the opcode.
+3. PRE: an explanation spanning several instructions (idiom, stack/pointer
+   trick, multi-register dance) — multi-line, wrapped, says WHY.
+4. Magic numbers and bit masks MUST be decoded in place ("0x25 = error
+   code, short buffer"; "bit5 = port select"), never left as bare hex.
+5. LABELS, not addresses: never cite a RAM cell or I/O port by its raw
+   numeric address in a comment. Use (or propose) a descriptive label and
+   mention the label — e.g. "clear g_bLinkActive" not "clear fbc9 bit0".
+6. If a cell/register meaning is only guessed, tag it LIKELY/SUSPECTED;
+   never claim CONFIRMED for an unverified identity.
+
+Avoid (all restate the opcode or say nothing):
+  LD A,0x14  ; put 14h in A
+  INC HL     ; next byte
+  CALL x     ; maybe does a thing
 ---
 
 ## 9. The DIPOS-B / CP/M layer
