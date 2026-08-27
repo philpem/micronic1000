@@ -3,6 +3,8 @@
 The programmer manual is the task-oriented reference for software that runs
 on, or communicates with, a Micronic 1000.
 
+- [User guide](user-guide.md) — operator reference: keyboard, special
+  keys, menu map, and error-screen format.
 - [Programmer guide](programmer-guide.md) — DIPOS-B and CP/M-compatible entry
   points.
 - [BDOS reference](bdos-reference.md) — callable services and deviations from

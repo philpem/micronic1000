@@ -7,6 +7,7 @@ extend DIPOS-B, or interpret a ROM/RAM disassembly.
 - [I/O map](io-map.md) — peripheral ports and evidence status.
 - [Interrupts](interrupts.md) — restart, IRQ, and NMI entry points.
 - [DIPOS-B OS](os-diposb.md) — kernel structure and resident services.
+- [Forms and UI](forms-ui.md) — form templates, field editing, keymap.
 - [CP/M comparison](cp-m-comparison.md) — deliberate deviations from CP/M 2.2.
 - [RTC](rtc.md) — HD146818 register access and clock support.
 

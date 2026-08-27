@@ -56,6 +56,7 @@ nav:
   - Home: README.md
   - Programmer manual:
       - manual/README.md
+      - User guide: manual/user-guide.md
       - Programmer guide: manual/programmer-guide.md
       - BDOS reference: manual/bdos-reference.md
       - Devices and storage: manual/devices-and-storage.md
@@ -70,5 +71,6 @@ nav:
       - I/O map: internals/io-map.md
       - Interrupts: internals/interrupts.md
       - DIPOS-B OS: internals/os-diposb.md
+      - Forms and UI: internals/forms-ui.md
       - CP/M comparison: internals/cp-m-comparison.md
       - RTC: internals/rtc.md
