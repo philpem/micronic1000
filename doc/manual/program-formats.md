@@ -139,11 +139,21 @@ unresolved.
 
 ## Where the parser lives (next trace)
 
-Module A: `ROM00:73CE` → `ram:D893` (2145 bytes, boot-chain `memcpy` at
-`ROM00:7D74`). Disassembling it and locating the compare against the magic /
-system-ID / size / block-count / checksum will pin the header. The checksum
-call site is not yet found (no direct xref to `ram:d7d1`; it is reached by
-computed dispatch, or the parser uses its own sum loop).
+The five error strings live in **module B** (ROM01:7BCB → ram:D081, 586
+bytes), which is data (banner + error strings, `D0BD`–`D180` in RAM) — not
+the parser. **Module A** (ROM00:73CE → ram:D893, 2145 bytes) has been
+disassembled and contains the session file/FCB/string functions but no
+DIP parser either. The kernel loader primitives are referenced **only** by
+the boot chain (`ROM00:7038` feeds both banks' `7FFC` chains through
+`d6db`) and kernel init — nothing at runtime calls them, so the runtime
+DIP loader is a separate path. The parser is therefore most likely the
+ROM01 `Load/Run Program` handler (or the resident dispatch block at
+`ram:d681`), which reads the file and validates the header directly.
+
+The discriminator: find the code that reads a program file and compares a
+magic / system-ID / size / block count before copying records into RAM.
+Until then the header offsets stay OPEN — the record grammar and checksum
+above remain the implement-safe part.
 
 ## Related
 
