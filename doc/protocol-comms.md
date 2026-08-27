@@ -915,6 +915,36 @@ session state set during the connect attempt (via Session_Tx4Param 5669 /
 Session_Tx5Param 56a4 etc.), so it is a link-handshake OUTCOME, not a
 direct probe.
 
+### Error / status screen format (CONFIRMED)
+
+The on-screen error banner the owner observed —
+
+```
+   *** ERROR ***
+      8000     (238/001)
+Plinth not connected
+```
+
+— is assembled by `SessionStateBuild` (ROM00:4351) and painted through
+`SessionMessageBox` (ROM00:4296). The three numeric fields mean:
+
+| Field | Example | Source | Meaning |
+|-------|---------|--------|---------|
+| `8000` | 8000 | literal `0x1F40` pushed by the error handler | major error qualifier, hard-coded per error path (11-digit space-padded decimal). The `0x0009` connect-check case pushes `0x1F41` = **8001**. Neither is the internal `e488` code (which is 6 for this path). |
+| `238` | session value | RAM cell `e701` (g_wSessRcv1) | **RCV1** field — first of the `(RCV1/RCV2)` pair, 3-digit zero-padded. |
+| `001` | session value | RAM cell `e6ff` (g_wSessRcv2) | **RCV2** field — second of the pair, 3-digit zero-padded. |
+
+The bracket template and the field names are a data table at ROM00:7310
+(`tbl_sess_status_fmt`): `"     (" \0 "/" \0 ")" \0` then the named-field
+descriptors **RCV1(3), RCV2(3), SEND(5), LOAD(4), PROG(6), TIME(2),
+ENDC(12)** — i.e. it is a general session-status field list, and the error
+screen renders just the `(RCV1/RCV2)` slice plus the message. RCV1/RCV2 are
+almost certainly receive counters/status for the two session channels,
+but their runtime semantics depend on `Session_Tx4Param`/`Session_Tx5Param`
+populating `e701`/`e6ff` (SUSPECTED: exact meaning not statically proven —
+needs an emulator/RAM trace). The field-name→cell pairing (e701=RCV1,
+e6ff=RCV2) is LIKELY from template order, not yet byte-proven.
+
 **LinkProbe (ROM00:348a) is SELF-TEST ONLY (CONFIRMED).** Two call sites,
 both in ColdStartSelftestBanner (2026-08-27; earlier assumed general).
 It is NEVER used in the connect path.
