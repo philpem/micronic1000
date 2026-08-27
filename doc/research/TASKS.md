@@ -1494,3 +1494,28 @@ State: continuously updated as work progresses.
     controller-facing transmit ordering in protocol/commstar.md. The former
     host/peer and state diagrams remain intentionally absent: the current
     protocol evidence does not establish normative session transitions.
+- 2026-08-27 (cycle key pinned; form/template functions named; docs mkdocs):
+  * CYCLE KEY PINNED: the next/prev value cycle is YES/NO (0x06/0x01),
+    and their Sun variants Sun+YES=0x0B / Sun+NO=0x0C - NOT N/Z. The 1f96
+    dispatch handlers increment/decrement the choice index e739 and the
+    5-byte-stride cursor e734 (byte-verified: 1e8b INC e739 / e734+=5;
+    1eb8 DEC / e734-=5). 0x11 -> first-choice (1ece), Sun+ENTER=0x12 ->
+    last-choice (1eed), default 1f23 = letter-match. So the owner "N/Z
+    cycles the value" is NOT what this firmware does - N/Z (0x4E/0x5A)
+    type letters and fall to the letter-match default. OPEN: reconcile
+    with owner on hardware.
+  * KEYMAP CORRECTION: Sun+YES = 0x0B (idx23 page2), NOT 0x11 (earlier
+    mis-read). Full Sun page: Sun+NO=0x0C, Sun+ENTER=0x12, Sun+YES=0x0B,
+    Sun+N=Z=0x5A, Sun+J=Y=0x59, Sun+F=X=0x58, Sun+backspace=0x1A, and
+    0x11 at idx34 (col5 row4 = no physical key). tbl_kbd_map + 1f99 plates
+    corrected.
+  * RENAMED: Ui_CommSetupFormInit (060b) -> Form_InitFromTemplates (it is
+    generic form init, builds 3 template instances via TemplateBuilder
+    0271); FUN_ handlers -> Form_ChoiceNext/Prev/First/Last/LetterMatch,
+    all plated. Device-name table at ROM01:757f (WORKSTATION MEMORY,
+    WORKSTATION RAMDISK, PLINTH, V24 ADAPTOR, EXT STORAGE ADAPTER),
+    embedded in form template 758b (+0x0c), built by TemplateBuilder.
+  * DOCS: mkdocs restructure adopted. Updated TASKS.md/AGENTS.md doc-path
+    references to the new layout; Makefile + BUILD.md are now mkdocs-only;
+    deleted legacy build.py, validate-mermaid.mjs, package.json/lock.
+    (committed 46a2c52)
