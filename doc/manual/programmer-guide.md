@@ -194,6 +194,18 @@ Functions 07h (get IOBYTE) and 08h (set IOBYTE) exist but are
 Device selection is done with the extension functions, not the
 IOBYTE.
 
+### The shell's own screen UI
+
+When no program is running (or between programs), the LCD shows the
+DIPOS-B shell: a tree of **menus** (digit-keyed item lists) and **forms**
+(field lists edited with YES/NO/ENTER). This is *not* a callable BDOS
+library — the shell draws it on the same console device your program uses
+(§3), and a loaded program's console I/O simply takes over the screen. The
+**8000-series `*** ERROR ***` banner** (e.g. `8000` Plinth not connected)
+is the shell/session layer's *own* error display and is unrelated to your
+program's BDOS return codes. See the [user guide](user-guide.md) (operator
+view) and [forms and UI](../internals/forms-ui.md) (internals).
+
 ---
 
 ## 4. Extended / system functions

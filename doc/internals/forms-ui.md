@@ -73,11 +73,16 @@ title record `{label ptr, attr}` followed by 4 `MenuItem` records
 | '4' | Diagnostics | 0x0001 |
 
 Selection is by **typing the digit** — the letter-match handler matches the
-key against each record's `key` byte, then the record's `attr` selects the
-next screen. The menu-advance handler lives at ROM01:5114/510d (stores the
-key in e84d). The Diagnostics screen (ROM01:7860) is itself a form whose
-choice entries are "Set Debug mode" / "Status" / "Device"; the per-item
-target screens are indexed by the attr value and still being traced.
+key against each record's `key` byte. The menu table header (7722) holds a
+handler pointer **0x510d** (the menu item label/index resolver: its reads a
+key + a table pointer, indexes `table[key*2]` to fetch the item, then
+`strlen`/copies the label); **0x5114** is the second menu handler. The
+window title "PARCON 1000" (0x7a82) precedes the menu title "Main Menu"
+(0x7ac4). The Diagnostics screen (ROM01:7860) is itself a form whose
+choice entries are "Set Debug mode" / "Status" / "Device" (`{label, attr}`
+records — no digit key). The `attr` value is the screen/action id used to
+select the target screen; resolving `attr → screen` (the screen-builder
+dispatch) is the one remaining trace, logged in `research/TASKS.md`.
 
 ## Field validation
 

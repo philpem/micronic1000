@@ -1599,3 +1599,12 @@ State: continuously updated as work progresses.
     ROM01:5114/510d (stores key in e84d). Diagnostics menu (7860) is a FORM
     with choice entries (Set Debug mode/Status/Device), not a keyed menu -
     its per-item target screens (attr -> screen id) still to trace.
+- 2026-08-27 (menu handlers + programmer-guide cross-refs):
+  * Menu machinery pinned further: the menu-table header (7722) holds
+    handler ptr 0x510d = the menu label/index resolver (reads key + table,
+    indexes table[key*2], strlen/copies the label); 0x5114 = second menu
+    handler. Window title "PARCON 1000" (7a82) precedes "Main Menu"
+    (7ac4). The remaining attr -> screen-builder dispatch is the one open
+    piece. forms-ui.md updated; programmer-guide.md §3 gained a "shell's
+    own screen UI" cross-reference (menus/forms are not a BDOS library;
+    8000-series banner is the shell's, not the program's).
