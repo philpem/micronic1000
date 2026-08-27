@@ -1556,3 +1556,18 @@ State: continuously updated as work progresses.
     (No program in memory / Requested program not in memory / Program not
     built for this system / Program corrupt); boot self-test screens added
     to the menu map. Diagnostic menu sub-detail still to trace (ROM-only).
+- 2026-08-27 (Diagnostics menu + "invalid" strings: partial, parked):
+  * Diagnostics menu (Main Menu item 4) is defined by a self-referential
+    menu template at ROM01:7860-78d0 (item strings "Set Debug mode"/"Set
+    Debug Mode" 7b52/7b61, "Status" 7b70, "Device" 7b77; embedded
+    pointers 7874/789c/78a0 + action bytes 03/05). It is rendered by the
+    same TemplateBuilder (0271) machinery as the form templates. The
+    per-item HANDLER addresses (which screen each opens) are inside the
+    nested pointer records and need a full menu-template decode - parked
+    as a sub-project (ROM-only, no hardware).
+  * "Invalid command" (6dfa) / "Invalid data string" (6e0b) have no direct
+    xref and no SessionMsg wrapper (unlike "Invalid reply" 6de9 = 44bd).
+    LIKELY they are field-VALIDATION messages shown inline (not via the
+    error banner), same as the typed-value validation path. Discriminating
+    test: find the field-edit code that compares typed input and renders a
+    rejection string. Parked.
