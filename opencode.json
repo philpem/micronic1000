@@ -5,13 +5,13 @@
 
   "agent": {
     "general": {
-      "model": "opencode/muse-spark-1.2-free",
+      "model": "opencode/muse-spark-1.2-contributor-free",
       "description": "Low-cost general worker for routine delegated research and project tasks. Do not use for substantive reverse-engineering analysis.",
       "prompt": "{file:./.opencode/prompts/general.txt}"
     },
 
     "annotate": {
-      "model": "opencode/muse-spark-1.2-free",
+      "model": "opencode/muse-spark-1.2-contributor-free",
       "mode": "subagent",
       "temperature": 0.1,
       "description": "Applies established findings to Ghidra. No new reverse-engineering inference.",
@@ -19,7 +19,7 @@
     },
 
     "docs": {
-      "model": "opencode/muse-spark-1.2-free",
+      "model": "opencode/muse-spark-1.2-contributor-free",
       "mode": "subagent",
       "temperature": 0.1,
       "description": "Applies established findings to project documentation and rebuilds the documentation site. No new reverse-engineering inference.",
@@ -35,7 +35,7 @@
     },
 
     "investigate_deep": {
-      "model": "openrouter/deepseek-v4-pro",
+      "model": "openrouter/deepseek/deepseek-v4-pro",
       "mode": "subagent",
       "description": "Expensive deep investigator for difficult, ambiguous, or cross-cutting reverse-engineering problems.",
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
