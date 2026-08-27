@@ -31,6 +31,26 @@ Selector: **`fdca` (active external wire-id)**. `LinkCommandCheck`
 > ADAPTER is NOT bound to wire 0x2B — its attachment point is
 > unadjudicated, its data flows over the 4x byte transport.
 
+### Representative edge capture
+
+This diagram is not to scale and does not assert the idle polarity or a
+barcode symbology. **CONFIRMED:** `ExtBusAcquireEdge` polls
+`EXTBUS_EDGE` bit0, counts while its level is unchanged, and stores the
+completed level width when the next edge arrives (ROM00:13E5–1402,
+byte-verified 2026-08-27). The unequal widths below are illustrative.
+
+```wavedrom
+{
+  signal: [
+    { name: 'EXTBUS_EDGE bit0', wave: '1..0.1...0..1.' },
+    { name: 'firmware: store',  wave: '0..1010..10.10' },
+    { name: 'width table',      wave: 'x..=.=...=..=.',
+      data: ['w0', 'w1', 'w2', 'w3'] }
+  ],
+  head: { text: 'Representative barcode edge capture (not to scale)' }
+}
+```
+
 ## The capture pipeline (ExtBusAcquireEdge, 13B8)
 
 1. Arm: `ExtBusArm` (1221) — caller `DE`=envelope buffer → `fbb7`(buf

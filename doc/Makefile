@@ -9,9 +9,10 @@ html: $(OUT)/index.html
 $(OUT)/index.html: build.py $(MD)
 	python3 build.py
 
-validate: ## parse every Mermaid diagram with mmdc, then build HTML
+validate: ## validate Mermaid and WaveDrom diagrams, then build HTML
 	@command -v mmdc >/dev/null 2>&1 || { echo "mmdc not found; install with: npm i -g @mermaid-js/mermaid-cli@11"; exit 1; }
-	python3 build.py --validate-mermaid
+	@command -v wavedrom >/dev/null 2>&1 || { echo "wavedrom not found; install with: npm i -g wavedrom@3.6.2"; exit 1; }
+	python3 build.py --validate-mermaid --validate-wavedrom
 
 svg: ## pre-render mermaid to svg (needs mmdc)
 	@command -v mmdc >/dev/null 2>&1 || { echo "mmdc not found; install with: npm i -g @mermaid-js/mermaid-cli"; exit 1; }

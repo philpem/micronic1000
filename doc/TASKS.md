@@ -1335,3 +1335,13 @@ State: continuously updated as work progresses.
   * Added `build.py --validate-mermaid` and `make validate`; these run
     every Mermaid fence through `mmdc` and identify the source file and
     diagram number on failure.
+- 2026-08-27 (WaveDrom documentation integration):
+  * Added client-side rendering for `wavedrom` WaveJSON fences and a
+    matching `--validate-wavedrom` build option using WaveDrom CLI.
+  * Added a representative, explicitly not-to-scale timing diagram for
+    the barcode edge-capture loop. Its store-on-edge behavior was
+    byte-verified at ROM00:13E5-1402; WaveDrom 3.6.2 parsed both current
+    WaveDrom examples successfully.
+  * Browser integration corrected after review: WaveDrom 3.6.2's engine
+    expects `window.WaveSkin`, so the pinned default-skin bundle now loads
+    before `wavedrom.min.js`. A DOM smoke test rendered the example SVG.
