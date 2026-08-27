@@ -77,19 +77,19 @@ Cold boot
     Full Ram · Contig Ram
      └─ banner + "Press >> to continue"
          └─ serial-number prompt
-             └─ MAIN MENU
-                 ├─ 1  Load/Run Program
-                 │     └─ fields: Name (text), From (choice: PLINTH / V24 … )
-                 │        └─ From=PLINTH → Log-on information
-                 │             └─ Mode (LOCAL LINK) · Linespeed (9600)
-                 │                User id · Password · Group id · Telephone number
-                 ├─ 2  Set Clock
-                 │     └─ fields: Time, Date
-                 ├─ 3  Display Status
-                 │     └─ System Status · Version · Serial No.
-                 │        Program · total RAM · RAMdisk size
-                 └─ 4  Diagnostics
-                       └─ Set Debug mode · Status · Device
+              └─ MAIN MENU
+                  ├─ 1  Load/Run Program
+                  │     └─ fields: Name (text), From (choice: PLINTH / V24 … )
+                  │        └─ From=PLINTH → Log-on information
+                  │             └─ Mode (LOCAL LINK) · Linespeed (9600)
+                  │                User id · Password · Group id · Telephone number
+                  ├─ 2  Set Clock
+                  │     └─ fields: Time (00.00), Date (01/01/84)
+                  ├─ 3  Display Status
+                  │     └─ Version (Q229) · Serial No. · total RAM · RAMdisk size
+                  └─ 4  Diagnostics
+                        └─ Set Debug mode → "Set Debug Mode" screen
+                              └─ Status (ON/OFF) · Device (PLINTH choice)
 ```
 
 Menu items are selected by their number (type the digit — digits are the

@@ -1608,3 +1608,13 @@ State: continuously updated as work progresses.
     piece. forms-ui.md updated; programmer-guide.md §3 gained a "shell's
     own screen UI" cross-reference (menus/forms are not a BDOS library;
     8000-series banner is the shell's, not the program's).
+- 2026-08-27 (attr->screen mapping resolved empirically via emulator):
+  * Drove boot -> Main Menu -> digit with the harness. Main Menu: '1'
+    Load/Run (Name/From), '2' Set Clock (Time 00.00, Date 01/01/84),
+    '3' Display Status (Version Q229, Serial No., total RAM 256k, RAMdisk
+    size), '4' Diagnostics. Diagnostics has a single entry "Set Debug
+    mode" (attr 0x0003) -> "Set Debug Mode" screen whose FIELDS are
+    Status (ON/OFF) and Device (PLINTH). "Status"/"Device" (7b70/7b77)
+    are field labels, not menu items (corrects earlier reading). 0x5114
+    is a mis-aligned pointer into the 0x510d handler, not an entry point.
+    user-guide.md menu map + forms-ui.md Menus section updated.

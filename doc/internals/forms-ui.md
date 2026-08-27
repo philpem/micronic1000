@@ -72,17 +72,26 @@ title record `{label ptr, attr}` followed by 4 `MenuItem` records
 | '3' | Display Status | 0x0106 |
 | '4' | Diagnostics | 0x0001 |
 
-Selection is by **typing the digit** — the letter-match handler matches the
-key against each record's `key` byte. The menu table header (7722) holds a
-handler pointer **0x510d** (the menu item label/index resolver: its reads a
-key + a table pointer, indexes `table[key*2]` to fetch the item, then
-`strlen`/copies the label); **0x5114** is the second menu handler. The
+Selection is by **typing the digit**. The `attr` is the screen id; the
+mapping is confirmed by driving the emulator (boot → Main Menu → digit):
+
+| key | attr | screen opened |
+|-----|------|---------------|
+| '1' | 0x0104 | Load/Run Program |
+| '2' | 0x0105 | Set Clock (Time/Date) |
+| '3' | 0x0106 | Display Status (Version/Serial/RAM) |
+| '4' | 0x0001 | Diagnostics |
+
+The menu table header (7722) holds handler pointer **0x510d** (the menu item
+label/index resolver: it reads a key + a table pointer, indexes
+`table[key*2]` to fetch the item, then `strlen`/copies the label); the
 window title "PARCON 1000" (0x7a82) precedes the menu title "Main Menu"
-(0x7ac4). The Diagnostics screen (ROM01:7860) is itself a form whose
-choice entries are "Set Debug mode" / "Status" / "Device" (`{label, attr}`
-records — no digit key). The `attr` value is the screen/action id used to
-select the target screen; resolving `attr → screen` (the screen-builder
-dispatch) is the one remaining trace, logged in `research/TASKS.md`.
+(0x7ac4). The Diagnostics screen (ROM01:7860) has one entry — "Set Debug
+mode" (7b52, attr 0x0003) — which opens the **"Set Debug Mode"** screen
+(title 7b61) whose *fields* are "Status" (7b70, ON/OFF) and "Device"
+(7b77, PLINTH choice); "Status"/"Device" are field labels, not menu items.
+(0x5114 is a mis-aligned pointer into the 0x510d function, not a separate
+entry point.)
 
 ## Field validation
 
