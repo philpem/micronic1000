@@ -135,6 +135,27 @@ State: continuously updated as work progresses.
 
 ## Next (priority order)
 
+### No-hardware priorities
+
+1. **Publish per-function BDOS contract cards from existing ROM evidence.**
+   Start with the portable COM subset, then the RTC and configuration calls;
+   record register inputs/outputs, flags, blocking, side effects, and errors.
+2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
+   CONFIRMED runtime grammar and limits; this does not require a physical
+   loader or a real device.
+3. **Implement a stateful link-peer model in the emulator.** Exercise the
+   already-confirmed byte-latch handshake and collect a full send/receive
+   trace. This can close software-model defects but cannot identify electrical
+   bit meanings.
+4. **Continue static session-module and UI analysis.** Resolve remaining
+   writers/consumers, runtime error/status fields, and session state-machine
+   payload handling from the loaded RAM modules and ROM call graph.
+5. **Complete the deferred annotation and typing sweep.** Name/plate remaining
+   `FUN_*` functions, repair data/table types, and refresh the coverage tracker
+   after the semantic work stabilises.
+
+### Hardware-dependent priorities
+
 1. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
@@ -1852,3 +1873,13 @@ State: continuously updated as work progresses.
     `peer-ready`, `idle/run`, etc.) and the `LINK_PROBE` physical/reset
     effect remain unproven and require a hardware trace / bus capture to
     resolve.
+- 2026-08-28 (programmer-manual review actions):
+  * Added `manual/supported-profile.md` and made it the programmer-manual
+    starting point. It states the CONFIRMED COM boundary and explicitly
+    excludes unsafe dispatch, configuration mutation, barcode hooks, and
+    unproven Commstar interoperability.
+  * Reclassified the BDOS index as ABI evidence rather than a blanket
+    supported API, updated navigation, and standardised the guide on `RST 10h`
+    (restart vector 2). Added a no-hardware priority order above the hardware
+    capture tasks. Contract cards, host-side validation tooling, emulator peer
+    work, and final annotation remain open.

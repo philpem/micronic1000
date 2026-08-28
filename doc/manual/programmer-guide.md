@@ -16,8 +16,8 @@ interface is here. It does not re-teach CP/M.
 ## 1. What DIPOS-B is
 
 DIPOS-B is a CP/M-2.2-compatible BDOS with a set of proprietary
-extensions, entirely in ROM (there is **no disk BIOS**, no bootstrap
-loader, no CP/M disk). The whole OS runs from the Micronic 1000's ROM,
+extensions, entirely in ROM (there is **no CP/M disk bootstrap** or CP/M
+disk). The whole OS runs from the Micronic 1000's ROM,
 with the kernel copied to battery-backed RAM at boot. The "disks" are
 **RAM**.
 
@@ -50,7 +50,7 @@ The 64K address space is split:
 - **8000-FFFFh** — fixed, **battery-backed** static RAM (32K of the
   256K total), used by the kernel and user program area.
 
-A program normally lives in the RAM area. **RST 2 (0010h) is a
+A program normally lives in the RAM area. **RST 10h (restart vector 2) is a
 banked-call dispatcher** — a DIPOS-B addition you will not find in
 stock CP/M (see §6).
 

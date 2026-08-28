@@ -59,6 +59,7 @@ nav:
   - Programmer manual:
       - manual/README.md
       - User guide: manual/user-guide.md
+      - Supported application profile: manual/supported-profile.md
       - Programmer guide: manual/programmer-guide.md
       - BDOS reference: manual/bdos-reference.md
       - Devices and storage: manual/devices-and-storage.md

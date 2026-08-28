@@ -34,6 +34,17 @@ and `clock` were deliberately withdrawn: they remain **SUSPECTED** pending a
 hardware trace. This strengthens the evidence boundary but does not resolve
 the missing live RECORD/BLOCK payload capture or session grammar.
 
+### Implementation status
+
+The manual now includes a conservative [supported application
+profile](manual/supported-profile.md), and the BDOS index uses explicit
+ABI/evidence classifications rather than presenting behaviour-only findings as
+stable contracts. Navigation exposes that profile before the broader guide.
+The remaining recommendations are deliberately open: contract cards require
+per-routine evidence, a first-program tutorial requires executable examples
+and a deployment route, and configuration wrappers must await complete F6h-
+FBh contracts. The no-hardware priority order is maintained in `TASKS.md`.
+
 ## Findings
 
 ### P0 -- the BDOS reference is not yet an implementable API reference

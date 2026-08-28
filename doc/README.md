@@ -8,6 +8,8 @@ reverse-engineering questions.
 ## Start here
 
 * [User guide](manual/user-guide.md) — keyboard, menus, and error screens.
+* [Supported application profile](manual/supported-profile.md) — conservative
+  boundary for portable COM applications.
 * [Programmer's guide](manual/programmer-guide.md) — write CP/M-style
   applications for DIPOS-B.
 * [BDOS reference](manual/bdos-reference.md) — supported CALL 0005h
