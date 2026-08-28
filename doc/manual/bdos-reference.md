@@ -274,6 +274,25 @@ unmatched values return carry clear. No application-stable result ABI exists.
 `Bdos_SharedErrorStub`, `ROM00:1893-1896`; dispatcher and diagnostic paths
 `ram:F382-F407` and `ROM00:2B55-2BCC`.
 
+### Special-dispatch extensions
+
+**2Dh -- banked-call wrapper:** switches to bank 0, invokes the fixed
+bank-0 vector, restores the previous bank, and applies the kernel IRQ policy.
+Its argument and return ABI are not application-safe; use it only as an
+internal system mechanism.
+
+**2Eh -- directory helper:** runs the FCB/directory search helper. Its mutable
+FCB state and result conventions are internal filesystem mechanics, not a
+portable application API.
+
+**30h -- shared diagnostic dispatch:** reaches the same unsafe
+`Bdos_SharedErrorStub` as F4h; caller `A` selects diagnostic behavior.
+
+**62h -- integrity check:** invokes the filesystem integrity-check shim.
+Input, result, and repair semantics remain ABI-incomplete.
+
+**68h/69h:** both reach the same one-instruction `RET` compatibility stub.
+
 ### Direct compatibility stubs
 
 **07h/08h -- IOBYTE:** both reach one `RET` instruction. Neither reads nor
