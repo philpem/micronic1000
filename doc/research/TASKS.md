@@ -139,10 +139,10 @@ State: continuously updated as work progresses.
 
 1. **Resolve the corrected BDOS table's unsafe/unknown entries before
    publishing broad contracts.** Raw `ROM00:3738-3751` bytes confirm
-   `1F->1893`, `20->1890`, `21->0C50`, `22->0BF3`, `23->12F1`, and
+   `1F->1893`, `20->1890`, `21->0C50`, `22->0BF3`, `23->0CF1`, and
    `24->0CB4`; earlier docs were offset/misidentified. Trace the shared
-   `1893` RST-28 path (including whether C=FE is fatal) and determine what
-   fn 23 actually does before treating it as a CP/M file-size call.
+   `1893` RST-28 path (including whether C=FE is fatal) before treating its
+   callers as ordinary CP/M stubs.
 2. **Publish per-function BDOS contract cards from existing ROM evidence.**
    Start with the portable COM subset, then the RTC and configuration calls;
    record register inputs/outputs, flags, blocking, side effects, and errors.

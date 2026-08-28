@@ -73,7 +73,7 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
 | 20 | Get/set user code | 1890 | returns A=00h (stub) |
 | 21 | Read random | 0C50 | handler entry corrected from 0C80 |
 | 22 | Write random | 0BF3 | |
-| 23 | CP/M file-size slot | 12F1 | DIPOS-B behavior OPEN; do not assume CP/M semantics |
+| 23 | Compute file size | 0CF1 | writes record count to FCB random-record field |
 | 24 | Set random record | 0CB4 | |
 
 ## Shared FCB machinery (annotated)

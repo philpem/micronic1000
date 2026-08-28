@@ -46,7 +46,7 @@ carry/error convention where the firmware does not provide one.
 | 1Ch, 1Eh, 1Fh | write protect / attributes / DPB | unsafe RST-28 path; do not call |
 | 20h | get/set user code | stub (A=00h) |
 | 21h, 22h, 24h | random read/write/set record | CONFIRMED behaviour; ABI incomplete |
-| 23h | CP/M file-size slot | DIPOS-B behavior OPEN; do not call as file-size |
+| 23h | compute file size | CONFIRMED behaviour; ABI incomplete |
 
 Functions in the otherwise unallocated range 25h-F2h are unsafe. The
 dispatcher can read a handler pointer from unrelated kernel bytes; an
@@ -145,6 +145,27 @@ bank before return.
 
 **Evidence:** dispatch word at `ROM00:3724`; `BdosSelectDisk`,
 `ROM00:15B3-15C6`; `Mem_BankSweepPutByte`, `ram:F46D-F47C`.
+
+### 23h -- compute file size
+
+**Status:** CONFIRMED behaviour; ABI incomplete.
+
+**In:** `DE` points to an FCB on a RAM drive.
+
+**Out:** on success, `A=00h` and the three-byte little-endian random-record
+field at FCB offsets `+33..+35` receives the size in 128-byte records. A
+missing matching directory entry returns `A=FFh` with carry set. A non-RAM
+drive follows the `A=2Bh` error path.
+
+**Effects:** temporarily wildcards the FCB extent, searches matching directory
+entries, then restores the original extent. It computes the final record count
+from the highest matching extent and that extent's record count.
+
+**Limit:** remaining register/flag preservation and the exact `2Bh` user error
+mapping are not yet a public contract.
+
+**Evidence:** dispatch word at `ROM00:374E`; `BdosComputeFileSize`,
+`ROM00:0CF1-0D6A`.
 
 ## DIPOS-B extensions
 
