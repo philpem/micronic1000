@@ -167,6 +167,36 @@ mapping are not yet a public contract.
 **Evidence:** dispatch word at `ROM00:374E`; `BdosComputeFileSize`,
 `ROM00:0CF1-0D6A`.
 
+### Standard console calls (ABI-incomplete)
+
+**00h -- warm restart:** transfers into the restart sequence; it is not a
+normal returning subroutine and no preserved-register contract is published.
+
+**01h -- console input:** enters the device-routed console-input path. Locally
+buffered paths return a byte in `A`; blocking, no-input, transport-error, and
+flag behavior remain OPEN.
+
+**02h -- console output:** `E` is sent through the active console route. One
+observed device-send failure returns `A=FFh` with carry set, but this is not a
+uniform result contract.
+
+**03h -- reader input:** enters the staged reader stream. The documented scan
+stream begins with `1Bh`, then a count byte and that many data bytes; wait and
+error behavior remain device-dependent.
+
+**04h/05h -- punch/list output:** `E` is the output byte, but each uses a
+distinct device path. Do not assume fn 02h's result behavior or nonblocking
+properties.
+
+**09h -- print string:** `DE` points to bytes terminated by `$` (`24h`). The
+routine emits each preceding byte through the output helper and restores `DE`;
+output failure behavior is incomplete.
+
+**0Ah -- buffered console input:** `DE[0]` supplies a maximum count, `DE[1]`
+receives the accepted count, and accepted bytes begin at `DE+2`. CR, `7Fh`, and
+`1Bh` receive special handling. Full-buffer and returned-flag behavior remain
+OPEN.
+
 ## DIPOS-B extensions
 
 | Function | Service | Status |
