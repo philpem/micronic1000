@@ -18,12 +18,15 @@ an assumption.
   port 4Eh  RX data byte  (read)
   port 4Fh  probe (0x1F)
 
-## Frames
+## Frames (RX logical buffer, CONFIRMED)
 
-Every frame is a length-prefixed record:
-   [len][type][cmd-id][payload...]
-with type in {2,3,4} and the unit's link-id byte carried in the
-frame for the software address filter (XOR-compared to fdd4).
+RX logical header (LinkValidateFrameHeader ROM00:30DC): [+0..1 LE total
+length][+2 type][+3 per-link sequence][+4 active link id][+5 unread by ROM
+link code][+6... payload]. Type in {2,3,4}; byte +4 is XOR-compared to
+fdd4. TX via LinkFramePrefixWrite (316B) writes [+0..1 LE len][+2 type]
+[+3 sequence][+4 0x7F] and leaves +5 untouched — 0x7F meaning is SUSPECTED.
+Byte +5 is never read by ROM link code (may be writable by loaded code).
+Link path no checksum verified.
 
 ## Replies (unit -> host), written into the FE14 frame:
 
@@ -295,6 +298,7 @@ class Link:
 
     @staticmethod
     def validate_header(wire, expect_id):
-        """The firmware's LinkValidateFrameHeader: an id byte at
-        offset +5 must match (XOR == 0)."""
-        return len(wire) >= 6 and (wire[5] ^ (expect_id & 0xFF)) == 0
+        """The firmware's LinkValidateFrameHeader ROM00:30DC: id byte at
+        offset +4 (RX logical header) must match fdd4 (XOR == 0); offset +5
+        is never read by ROM link code."""
+        return len(wire) >= 6 and (wire[4] ^ (expect_id & 0xFF)) == 0

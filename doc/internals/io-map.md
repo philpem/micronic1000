@@ -79,8 +79,8 @@ to the IR clock/data lines lives off-pump and its semantics remain OPEN.
 **No hardware address-filter or CRC register exists in this block** —
 the only non-data write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
 (probe). Multidrop addressing is done in software: the frame's byte
-at offset +5 is XOR-matched against the unit's link id `fdd4`
-(LinkValidateFrameHeader 30DC). See [the Commstar protocol](../protocol/commstar.md).
+at offset +4 is XOR-matched against the unit's link id `fdd4`
+(`LinkValidateFrameHeader` ROM00:30DC). TX offset +4 constant `0x7F` (via `LinkFramePrefixWrite` 316B) is **SUSPECTED**; offset +5 is never read by ROM link code and may be writable by loaded code — link-path checksum **OPEN** (none verified). See [the Commstar protocol](../protocol/commstar.md).
 
 ## MAME driver (`micronic.cpp`) cross-check — what it confirms
 

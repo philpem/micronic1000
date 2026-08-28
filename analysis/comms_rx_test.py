@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """comms_rx_test.py - verify the firmware RX path by feeding it a
-frame (with the unit's link id at address offset +5) and calling the
+frame (with the unit's link id at RX logical offset +4, XOR-compared to
+fdd4 at ROM00:30DC; offset +5 unread by ROM link code) and calling the
 RX dispatcher (2FBD), capturing any response on port 4Dh.
 """
 import gc; gc.disable()
@@ -27,10 +28,14 @@ mem[0xFDD5] = 0x03
 mem[0xFDD6] = 0x32
 mem[0xFDDC] = 0x0E; mem[0xFDDD] = 0xFE   # fddc = word 0xFE0E (frame pointer)
 
-# frame: [type=4][cmd_hi=44][cmd_lo=00][addr=LINK_ID][data="OK"]
-# (LinkValidateFrameHeader checks byte[+5] == fdd4 after a 2-byte len)
-frame = bytes([4,0x44,0x00,LINK_ID]) + b"OK"
-full = bytes([len(frame)&0xFF, (len(frame)>>8)&0xFF]) + frame
+# RX logical frame (CONFIRMED): [+0..1 LE len][+2 type][+3 sequence][+4 link id][+5 unread][+6... payload]
+# LinkValidateFrameHeader ROM00:30DC XOR-compares byte[+4] == fdd4; byte[+5] never read by ROM link code.
+# TX LinkFramePrefixWrite (316B) would write [+4]=0x7F (SUSPECTED) and leave +5 untouched.
+frame = bytes([4, 0x44, LINK_ID, 0x00]) + b"OK"
+# type=4, seq=0x44, id=LINK_ID at +4, unread +5=0, payload "OK" at +6
+# Full RX buffer includes 2-byte LE length prefix before the 6-byte-minimum header
+full = bytes([len(frame)+2 &0xFF, (len(frame)+2>>8)&0xFF]) + frame
+# Note: length field is total received length (header+payload); keep length consistent with validation.
 deliver = list(full)
 rx_i = [0]
 

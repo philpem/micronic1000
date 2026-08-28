@@ -1892,7 +1892,15 @@ transport regression, not a live Commstar session or electrical-bit finding.
     electrical bit function.
   * `analysis/comms_duplex.py` now uses that peer to run the real firmware
     byte pumps in both directions. CONFIRMED software result: firmware TX
-    writes `05 04 44 00 "from-M1000"`, parsed by the adapter model; firmware
-    RX consumes all 14 bytes of the adapter's
-    `05 03 04 E0 "reply-to-M"` stream. This does not establish session-level
-    compatibility, live RECORD/BLOCK payload content, or physical timing.
+     writes `05 04 44 00 "from-M1000"`, parsed by the adapter model; firmware
+     RX consumes all 14 bytes of the adapter's
+     `05 03 04 E0 "reply-to-M"` stream. This does not establish session-level
+     compatibility, live RECORD/BLOCK payload content, or physical timing.
+- 2026-08-28 (documentation maintenance — reviewer-verified link header correction, Ghidra-applied):
+   * **CORRECTED off-by-one (CONFIRMED):** `LinkValidateFrameHeader` (ROM00:30DC) compares RX logical offset **+4**, not +5, to `fdd4`. RX header is `+0..1 LE total length; +2 type; +3 per-link sequence; +4 active link id; +5 never read by ROM link code`. Previous docs (commstar.md validated-frame table, io-map.md address-filter line, `micronic/proto.py:validate_header`, `comms_rx_test.py` comment/frame) said +5 — fixed to +4.
+   * **TX prefix (CONFIRMED mechanical, SUSPECTED meaning):** `LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as `{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. Constant `0x7F` at TX +4 is **SUSPECTED**; do not call it an id or broadcast.
+   * **Transport framing constraints (CONFIRMED):** `LinkBlockTx` prelude is low 5 bits (`link_id & 1Fh`) sent before descriptor bytes and excluded from descriptor counts; `LinkBlockRx` returns `DE = bytes_read - 2` — identity of the two excluded bytes is **OPEN**. Descriptors: RX `FE0E {6->FDE4, 3->FE38, 0}`, RX `FE32 {9->FE3A, 0}`, TX `FDEA {6->FDDE, 0}`.
+   * **Sequencing & replies (CONFIRMED):** sequence slot is `FE43h + (fdd4 & 3Fh)`, init 1; mismatch reply `01EF` tied to type-4 sequence check; reply word `03EE` exists along with `01EE,02E0,02EE,04E0,05E0,01EF` (now 7 values).
+   * **Inline dispatch (CONFIRMED numeric cases, local control flow only):** `5A69` abort `44,45,60,61,64`; `53C7` `0..5`; `5410` `0,4,8,9`; `5291` `0,4,9` — do not name as wire commands. Table at `6A4A` is **CONFIRMED** 16 state-display pointers, not a wire map. Link path **no checksum verified**.
+   * **Docs updated:** `protocol/commstar.md` (validated-frame table + validation sentence + LinkFramePrefixWrite/TX-0x7F note + LinkBlockRx/Tx prelude/DE-2 + descriptors + sequence slot + 03EE + numeric cases + 6A4A + no-checksum), `internals/io-map.md` (address-filter offset +4 and SUSPECTED/OPEN notes), `analysis/micronic/proto.py` (frame header docstring + `validate_header` offset +4), `analysis/comms_rx_test.py` (comment + RX frame construction to place link id at +4).
+   * **Outstanding (OPEN/SUSPECTED, do not guess):** meaning of TX `0x7F` (SUSPECTED); whether offset +5 may be writable by loaded code (OPEN, never read by ROM); identity of the two bytes excluded from `LinkBlockRx` DE count (OPEN); session payload grammar and per-record/per-block byte content still runtime/open (needs live capture or loaded-module trace); connector mapping and electrical bit meanings remain OPEN.

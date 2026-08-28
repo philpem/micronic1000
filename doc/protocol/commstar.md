@@ -129,21 +129,27 @@ session-message specification.
 |---:|---:|---|---|
 | 0 | 2 | Total received length, little-endian | **CONFIRMED**: must equal the received byte count. |
 | 2 | 1 | Frame type | **CONFIRMED**: dispatcher tests 2, 3, and 4. |
-| 3 | 1 | Per-link sequence/expected-byte field | **CONFIRMED**: type-4 processing compares it with the link slot. |
-| 4 | 1 | Header field | **OPEN**: helper-built frames initialise it to `7Fh`; meaning unproven. |
-| 5 | 1 | Target link id | **CONFIRMED**: must equal `fdd4`. |
-| 6 | n | Session payload | **OPEN**: format depends on the runtime session module. |
+| 3 | 1 | Per-link sequence | **CONFIRMED**: `LinkProcessCommandFrame` compares it with `FE43h + (fdd4 & 3Fh)` (init 1); mismatch path yields `01EF`. |
+| 4 | 1 | Active link id | **CONFIRMED**: `LinkValidateFrameHeader` (ROM00:30DC) XOR-compares byte 4 to `fdd4`. |
+| 5 | 1 | Unread by ROM link code | **OPEN**: never read by ROM link code; may be writable by loaded code — do not assume unused. |
+| 6 | n | Session payload | **OPEN**: format depends on the runtime session module; link path no checksum verified. |
 
 Validation rejects frames shorter than six bytes, frames whose embedded
-length differs from the received count, and frames whose byte 5 differs from
-the active link id. The comparison is an equality test implemented with XOR;
+length differs from the received count, and frames whose byte 4 differs from
+the active link id (`fdd4`). The comparison is an equality test implemented with XOR;
 it is an address filter, not a checksum.
 
+`LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as `{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. The TX offset-4 constant `0x7F` is **SUSPECTED**; do not call it an id or broadcast.
+
 `LinkProcessCommandFrame` reads byte 3, compares it with the per-link byte
-at `FE43h + (fdd4 & 3Fh)`, and accepts either the expected value or one
+at `FE43h + (fdd4 & 3Fh)` (initialised to 1), and accepts either the expected value or one
 behind it in a specific retry state. It does **not** establish a generic
 16-bit command word. Do not encode the values `{2B,2A,23,03}` as session
 commands: they belong to a separate local device-route lookup.
+
+`LinkBlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the descriptor payload; the prelude is excluded from the descriptor byte count. `LinkBlockRx` returns `DE = bytes_read - 2`; the identity of those two excluded bytes is **OPEN**.
+
+Descriptor lists (byte-verified): RX `FE0E` = `{6 -> FDE4, 3 -> FE38, 0}`; RX `FE32` = `{9 -> FE3A, 0}`; TX `FDEA` = `{6 -> FDDE, 0}`. The sequence table is `FE43h + (fdd4 & 3Fh)`.
 
 ## Types, replies, and session state
 
@@ -158,13 +164,13 @@ with `{count: u16le} {case: u16le, handler: u16le} x count
 {default_handler: u16le}`. The dispatcher probes the declared number of
 cases, then tail-jumps to the trailing default when none matches. This
 mechanism is local module control flow, not evidence that the case values
-are wire-command identifiers.
+are wire-command identifiers. Numeric case values observed at `5A69` (abort `44,45,60,61,64`), `53C7` (`0..5`), `5410` (`0,4,8,9`), and `5291` (`0,4,9`) are **CONFIRMED** inline cases — do not name them as wire commands. The table at `6A4A` is **CONFIRMED** as 16 state-display pointers, not a wire map.
 
 The firmware writes these little-endian words into a reply buffer on some
-paths: `01EE`, `02E0`, `02EE`, `04E0`, `05E0`, and `01EF`. Only
-`01EF` is directly tied to the type-4 sequence mismatch. The complete
+paths: `01EE`, `02E0`, `02EE`, `03EE`, `04E0`, `05E0`, and `01EF`. Only
+`01EF` is directly tied to the type-4 sequence mismatch (per-link sequence at `FE43h + (fdd4 & 3Fh)`). The complete
 reply envelope, payload, and mapping of the remaining values to session
-meaning remain open.
+meaning remain open. No checksum is verified on the link path.
 
 Consequently, no state diagram or host/peer session sequence is normative
 yet. A capture must establish each transition as:
@@ -177,11 +183,10 @@ yet. A capture must establish each transition as:
 
 The active link id is retained in `fdd4`.
 
-* Its low five bits are transmitted first as the controller prelude.
+* Its low five bits are transmitted first as the controller prelude (excluded from descriptor counts).
 * Its bit 5 selects one of two firmware-controlled line states through
   `LinkPortSelect` (ROM00:3454).
-* The complete id appears at validated-frame byte 5 and selects a
-  per-link sequence slot by `id & 3Fh`.
+* The complete id appears at validated-frame byte 4 (RX offset +4, XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
 This does not prove a multidrop physical topology, address allocation policy,
 or a PLINTH/V24 mapping. Treat those as open hardware questions.
