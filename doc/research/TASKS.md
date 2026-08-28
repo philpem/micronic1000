@@ -137,35 +137,32 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Resolve the corrected BDOS table's unsafe/unknown entries before
-   publishing broad contracts.** Raw `ROM00:3738-3751` bytes confirm
-   `1F->1893`, `20->1890`, `21->0C50`, `22->0BF3`, `23->0CF1`, and
-   `24->0CB4`; earlier docs were offset/misidentified. Trace the shared
-   `1893` RST-28 path. Resolved 2026-08-28: its C=FE write is overwritten;
-   normal BDOS dispatch restores caller A, which selects fatal/recoverable/
-   silent diagnostic behavior. Do not treat fn 0D/1C/1E/1F/30/F4 as ordinary
-   CP/M stubs.
+1. **Resolve the corrected BDOS table's unsafe/unknown entries.** Raw
+   `ROM00:3738-3751` bytes confirm `1F->1893`, `20->1890`, `21->0C50`,
+   `22->0BF3`, `23->0CF1`, and `24->0CB4`; earlier docs were offset/misidentified.
+   DONE 2026-08-28: the shared `1893` RST-28 path was traced - its `C=FEh`
+   write is overwritten, and normal BDOS dispatch restores the caller's `A`,
+   which selects fatal/recoverable/silent diagnostic behavior (do not treat fn
+   0D/1C/1E/1F/30/F4 as ordinary CP/M stubs).
 2. **Publish per-function BDOS contract cards from existing ROM evidence.**
-   Start with the portable COM subset, then the RTC and configuration calls;
-   record register inputs/outputs, flags, blocking, side effects, and errors.
-   * 2026-08-28: added byte-verified cards for fn 06h direct console I/O and
-     fn 0Bh console status in `manual/bdos-reference.md`. Fn 06h documents
-     `E=FFh` as the nonblocking poll and leaves the output ABI incomplete;
-     fn 0Bh has its full `A`/`Z` contract. The meanings of the pending-event
-     bit, `1Eh`, and the empty-ring pending byte remain OPEN. Ghidra has a
-     label/plate at `ROM00:0FC5`; an overlapping erroneous instruction blocks
-     function creation there, so repair is deferred to a diff-guarded pass.
-   * 2026-08-28: fn 0Ch `BdosReturnVersion` card added: no inputs, returns
-     `HL=0023h`, preserves flags, and has no side effects or errors
-     (`ROM00:3720` -> `ROM00:15C7-15CA`).
-   * 2026-08-28: fn 0Eh `BdosSelectDisk` card added: E=0..0Fh selects a
-     drive (`A=00h`); E>=10h returns `A=FFh` and flags are unreliable. Valid
-     selections update `g_bActiveDrive` and use `Mem_BankSweepPutByte` to
-     replicate page-zero cell 4 across banks. Corrected the prior unsupported
-     "disk login/DPB refresh" description in Ghidra.
-3. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
-   CONFIRMED runtime grammar and limits; this does not require a physical
-   loader or a real device.
+   DONE 2026-08-28 (except the flagged device/routed residual paths): every
+   dispatched function 00-24h, special 2D/2E/30/62/68/69, and F3-FF now has a
+   card in `manual/bdos-reference.md` with byte-verified In/Out registers,
+   blocking, effects, and errors.
+   * **Uniform envelope contract (CONFIRMED, supersedes earlier per-card flag
+     claims):** through `CALL 0005h` only `A` and `HL` are the handler's
+     results; `BC/DE/IX/IY` pass through; **flags are never handler-derived**
+     - the return continuation `ram:F3CA AND 7` on the hook gate `FDBD` is the
+     flag state the caller sees (`Z=1,C=0,S=0,P/V=1` when `FDBD&7==0`).
+   * Corrected earlier cards (06h/0Bh/0Ch/0Eh/23h/13h) that had implied Z/carry
+     semantics; added result-`A` contracts for 01h/02h/0Ah/F5/F6/F7/F9/FC/FD.
+   * Residual OPEN items (device/transport-dependent, not resolvable from ROM
+     alone): fn 00 returning restart; fn 03/edit blocking; fn 04 punch falls
+     off into RST 38h; fn 05 routed-wait result; the FCB invalid-drive
+     (09CA) shared error path's final return value.
+3. **Build host-side COM/DIP validation tooling with golden inputs.** DONE
+   2026-08-28: `micronic/program.py` + `validate_program.py` + 35 golden tests
+   in `test_program.py` implement only the CONFIRMED grammar.
 4. **Continue static session-module and UI analysis.** Resolve remaining
    writers/consumers, runtime error/status fields, and session state-machine
    payload handling from the loaded RAM modules and ROM call graph.

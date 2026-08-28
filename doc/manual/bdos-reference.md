@@ -16,13 +16,29 @@ is CP/M-shaped, but not stock CP/M. Start with the
 
 ## Calling convention
 
-Put the function number in C, pass a pointer in DE when the individual
-function requires one, and call 0005h. The dispatcher is installed in
-battery-backed RAM but the entry gate exists in every mapped bank.
+Put the function number in **C**, pass a pointer argument in **DE** when the
+individual function requires one, and `CALL 0005h`. The dispatcher is installed
+in battery-backed RAM, but the entry gate exists in every mapped bank.
 
-Each function's return register and error convention must be verified from its
-implementation before relying on it. The tables below do not invent a uniform
-carry/error convention where the firmware does not provide one.
+The complete call envelope is byte-verified (`Kernel_BankedCallEnvelope`
+`ram:F376-F3C3` plus its return continuation `ram:F3C4-F407`, and
+`KernRestoreBankNotify` `ram:F54E`, which preserves AF):
+
+- **Into the handler** the dispatcher passes `A` = the caller's original `A`,
+  `HL` = `ram:FEFA`, `DE` = the caller's `DE`, `B` = 0, and `C` = function
+  number. Handlers normally read only `E`/`DE` (or nothing).
+- **Out of the call**, `A` and `HL` are the handler's own `A`/`HL` results;
+  `BC`, `DE`, `IX`, and `IY` pass through exactly as the handler left them.
+- **Flags are not handler-derived.** The return continuation executes
+  `AND 0x07` on `ram:FDBD` at `ram:F3CA`, and that result is the flag state
+  the caller sees. With no hook armed (`FDBD & 7 == 0`, the default) the caller
+  sees `Z=1, C=0, S=0, P/V=1`. A handler's own carry/zero exits are therefore
+  **not observable** through `CALL 0005h`.
+
+Consequently only the `A` (and, where documented, `HL`) value is a portable
+return. The cards below state those results and never promise `carry`/`zero`
+semantics; where an earlier card mentioned flags, that has been superseded by
+this uniform rule.
 
 ## Standard CP/M-shaped functions
 
@@ -64,9 +80,9 @@ is passed as the output byte to the fn 02h console-output path.
 **Out, poll:** the result is path-dependent. If the pending-event bit is
 set, the call clears it and returns `A=1Eh`. Otherwise it checks the selected
 device's keyboard input and then the console ring. A ring byte is returned
-and consumed when present. An empty ring atomically returns and clears a
-separate pending byte; therefore `A` need not agree with `Z` on that path.
-There is no single return-flag contract for every poll result.
+and consumed when present. An empty ring atomically reads and clears a
+separate pending byte, so `A` is the only reliable result. Flags are never
+meaningful through `CALL 0005h` (see Calling convention).
 
 **Blocks:** the `E=FFh` path is nonblocking: it contains no wait loop or
 `HALT`. The output path can retry its transport call, so it is not guaranteed
@@ -76,8 +92,9 @@ nonblocking.
 ring pointers, or clear the pending byte. Output is routed through the active
 console-device selection.
 
-**Errors:** the output path explicitly returns `A=FFh` with carry set when
-its device-send helper fails. The byte-level cause remains open.
+**Errors:** the output path explicitly returns `A=FFh` when its device-send
+helper fails. The byte-level cause remains open. (Flags are not observable
+through `CALL 0005h`.)
 
 **Limit:** the meanings of the pending-event bit, `1Eh`, and the empty-ring
 pending byte are not yet established. `E=FEh` and `E=FDh` are ordinary output
@@ -93,9 +110,9 @@ bytes here, not additional CP/M-style input modes.
 
 **In:** no register input is read.
 
-**Out:** `A=FFh`, `Z=0`, and carry clear when either the pending-event bit is
-set or the current keyboard-ring byte is nonzero. Otherwise `A=00h`, `Z=1`,
-and carry clear.
+**Out:** `A=FFh` when either the pending-event bit is set or the current
+keyboard-ring byte is nonzero; otherwise `A=00h`. Flags are not meaningful
+through `CALL 0005h`.
 
 **Blocks:** no; the handler has no calls, loop, or `HALT`.
 
@@ -115,8 +132,8 @@ and it does not identify the event bit's source.
 
 **In:** no register input is read.
 
-**Out:** `HL=0023h` (CP/M 2.3-style version value). The constant load leaves
-the incoming flags unchanged.
+**Out:** `HL=0023h` (CP/M 2.3-style version value). Flags are not meaningful
+through `CALL 0005h`.
 
 **Blocks:** no.
 
@@ -131,8 +148,8 @@ the incoming flags unchanged.
 
 **In:** `E` is the drive number, `00h` through `0Fh` (A: through P:).
 
-**Out:** `A=00h` after a valid selection; `A=FFh` when `E>=10h`. Test `A`,
-not flags: `Z` can be set on the `E=10h` error path.
+**Out:** `A=00h` after a valid selection; `A=FFh` when `E>=10h`. Test `A`;
+flags are not meaningful through `CALL 0005h`.
 
 **Blocks:** no. A valid selection performs a bounded 64-bank replication
 sweep, with no wait loop or `HALT`.
@@ -154,8 +171,8 @@ bank before return.
 
 **Out:** on success, `A=00h` and the three-byte little-endian random-record
 field at FCB offsets `+33..+35` receives the size in 128-byte records. A
-missing matching directory entry returns `A=FFh` with carry set. A non-RAM
-drive follows the `A=2Bh` error path.
+missing matching directory entry returns `A=FFh`. A non-RAM drive follows the
+`A=2Bh` error path.
 
 **Effects:** temporarily wildcards the FCB extent, searches matching directory
 entries, then restores the original extent. It computes the final record count
@@ -167,40 +184,49 @@ mapping are not yet a public contract.
 **Evidence:** dispatch word at `ROM00:374E`; `BdosComputeFileSize`,
 `ROM00:0CF1-0D6A`.
 
-### Standard console calls (ABI-incomplete)
+### Console and line input/output
 
 **00h -- warm restart:** transfers into the restart sequence; it is not a
 normal returning subroutine and no preserved-register contract is published.
 
-**01h -- console input:** enters the device-routed console-input path. Locally
-buffered paths return a byte in `A`; blocking, no-input, transport-error, and
-flag behavior remain OPEN.
+**01h -- console input:** enters the device-routed console-input path and
+returns the input byte in `A`. It returns `A=1Eh` when a pending input event
+was consumed instead of a character; no-input and transport-error paths enter
+device helper code whose blocking meaning is device-dependent.
 
-**02h -- console output:** `E` is sent through the active console route. One
-observed device-send failure returns `A=FFh` with carry set, but this is not a
-uniform result contract.
+**02h -- console output:** `E` is sent through the active console route. On the
+verified local paths it returns `A=00h` after a successful device send and
+`A=FFh` after a device-send failure; the no-destination path returns the device
+descriptor byte in `A`. Flags are not meaningful.
 
 **03h -- reader input:** enters the staged reader stream. The documented scan
 stream begins with `1Bh`, then a count byte and that many data bytes; wait and
-error behavior remain device-dependent.
+error behavior remain device-dependent (see [barcode-reader](barcode-reader.md)).
 
-**04h/05h -- punch/list output:** `E` is the output byte, but each uses a
-distinct device path. Do not assume fn 02h's result behavior or nonblocking
-properties.
+**04h -- punch output:** stores `E` in the output byte, derives a device index
+from the active selector (`fbc5 >> 4 & 1Fh`), then falls off the handler
+suffix. There is no normal return; treat this call as unresolved.
+
+**05h -- list output:** `E` is the output byte. On the routed path it builds a
+request in shared work storage and waits until a completion cell is nonzero;
+the local path calls the device output helper. Its return `A` is
+path-dependent.
 
 **09h -- print string:** `DE` points to bytes terminated by `$` (`24h`). The
-routine emits each preceding byte through the output helper and restores `DE`;
-output failure behavior is incomplete.
+routine emits each preceding byte through the output helper and restores `DE`
+before return; output failure behavior is incomplete.
 
-**0Ah -- buffered console input:** `DE[0]` supplies a maximum count, `DE[1]`
-receives the accepted count, and accepted bytes begin at `DE+2`. CR, `7Fh`, and
-`1Bh` receive special handling. Full-buffer and returned-flag behavior remain
-OPEN.
+**0Ah -- buffered console input:** `DE[0]` supplies the maximum count;
+`DE[1]` receives the accepted count and accepted bytes are written from
+`DE[2]` upward. `0Dh` terminates, `7Fh` backspaces, and `1Bh`/`FFh` abort. The
+handler returns `A = accepted count`, matching `DE[1]`.
 
 ### FCB directory calls (ABI-incomplete)
 
 These calls take `DE` as a mutable FCB-like buffer. They normalize bytes
-`DE+1..+11`; invalid-drive paths do not provide a uniform `A`/flag ABI.
+`DE+1..+11`; invalid-drive paths enter a shared error helper whose final
+return value is not established (flags are never meaningful, see Calling
+convention).
 
 **0Fh/10h -- open/close:** local success returns `A=00h`; local failure
 returns `A=FFh`. Open copies directory bytes `+1..+31` to the caller buffer;
@@ -211,8 +237,8 @@ result index in `A`; failure returns `A=FFh`. Both temporarily write `3Fh` at
 caller offset `+12`, restore it, and copy a 128-byte result to the DMA buffer.
 Search-next uses global continuation state.
 
-**13h -- delete:** local success returns `A=00h`; no-match returns `A=FFh`
-with carry set. It permanently writes `3Fh` at `+12`, marks matched entries
+**13h -- delete:** local success returns `A=00h`; no-match returns `A=FFh`.
+It permanently writes `3Fh` at `+12`, marks matched entries
 `E5h`, and processes eight words at offsets `+16..+31`; their meaning is OPEN.
 
 **16h -- make:** local success returns `A=00h`; existing/local-failure paths
@@ -228,7 +254,7 @@ record; its completed-path `A` is not a portable success indicator.
 **14h/15h -- sequential read/write:** normal paths transfer one 128-byte
 record through the configured DMA buffer and return `A=00h`. Both advance
 caller `+20`; rollover increments `+12` and clears `+20`. Nonzero results are
-path-dependent; do not use carry as a general result test.
+path-dependent.
 
 **21h/22h -- random read/write:** use caller `+21..+23` to select state,
 transfer one 128-byte record on a normal path, and return `A=00h`. Selection
@@ -249,13 +275,13 @@ does not transfer data and has no established result ABI.
 | 68h, 69h | no-op stubs | compatibility only |
 | F3h | no-op | compatibility only |
 | F4h | shared diagnostic path | Advanced / unsafe; caller A selects diagnostic behavior |
-| F5h | event-wait delay | CONFIRMED behaviour; ABI incomplete |
+| F5h | event-wait delay | CONFIRMED behaviour; A = previous period byte |
 | F6h/F7h | get/set active device selector | Advanced / unsafe; persistent selector mutation |
 | F8h/FAh | read/write 16-byte device-slot table FE83 | Advanced / unsafe; persistent configuration |
-| F9h | set device-pair preset | ABI incomplete; runtime consumer not fully decoded |
+| F9h | set device-pair preset | CONFIRMED behaviour; result values documented |
 | FBh | write 16-byte drive configuration table FE93 | Advanced / unsafe; persistent configuration |
-| FCh/FDh | set/get RTC | CONFIRMED behaviour; ABI incomplete; see RTC evidence |
-| FEh/FFh | set/control RTC alarm | CONFIRMED behaviour; ABI incomplete |
+| FCh/FDh | set/get RTC | CONFIRMED behaviour; FC returns A=00h |
+| FEh/FFh | set/control RTC alarm | CONFIRMED behaviour; result ABI limited |
 
 ### F4h -- shared diagnostic dispatch
 
@@ -264,9 +290,10 @@ does not transfer data and has no established result ABI.
 **In:** the normal BDOS path restores the caller's `A` before entering the
 handler. The handler's `C=FEh` assignment is overwritten before comparison.
 
-**Out:** values in the fatal diagnostic table do not return. Recoverable
-values can show a retry dialog and return carry set when retry is selected;
-unmatched values return carry clear. No application-stable result ABI exists.
+**Out:** values in the fatal diagnostic table do not return. Other values
+return, but the caller-visible result is not meaningful: `A` echoes the
+caller's own value and flags are envelope-derived (see Calling convention).
+There is no application-stable result.
 
 **Effects:** may display a diagnostic or wait for input.
 
@@ -313,20 +340,23 @@ mutation, not a no-op; its downstream record-I/O ABI remains incomplete.
 **F3h:** one-instruction `RET` compatibility no-op.
 
 **F5h:** takes `E` as an event-wait period byte; values below `04h` become
-`0Fh`, writes the result to the period cell, and clears its counter. Units
-remain OPEN.
+`0Fh`, writes the result to the period cell, and clears its counter. Returns
+`A = previous period byte`. The stored period is `FBD6:FBD7` (the result in
+the high byte); its units remain OPEN.
 
-**F6h/F7h:** get/set the active-device byte in `A`/`E`. F7 also replicates the
-new byte into banked page-zero state; it performs no value validation.
+**F6h/F7h:** get/set the active-device byte. F6h returns `A=(fbc5)`. F7h
+stores `E` to `fbc5` and replicates it into banked page-zero state (returns
+`A=00h` from the bank sweep); it performs no value validation.
 
 **F8h:** copies exactly 16 bytes from the FE83 configuration table to the
 writable buffer at `DE`. **FAh** copies exactly 16 bytes from `DE` to FE83;
-**FBh** does the same to FE93. Table-field meanings and persistence remain
-OPEN.
+**FBh** does the same to FE93. These leave `A` as the caller bank byte (no
+portable result). Table-field meanings and persistence remain OPEN.
 
 **F9h:** indexes one of five fixed two-byte presets with `E=00h..04h`, writing
-the selected pair to the active device-pair cells. Values `>=05h` do not write
-the pair; this is not a documented error convention.
+the selected pair to the active device-pair cells (`fbc8`,`fbc7`). Valid input
+returns `A = the pair's second byte`; `E>=05h` writes nothing and returns
+`A=E`. Preset field meanings remain OPEN.
 
 ### RTC and alarm extensions
 
@@ -342,8 +372,8 @@ Byte `+0` remains OPEN.
 
 **FEh -- alarm work-item wait:** this is not a general alarm-time setter.
 Its low `E` byte is shifted by four, registers a work item, and blocks in a
-`HALT` loop until the work-item word clears. Carry set reports a full work-item
-table. Its implicit execution-context requirement remains ABI-incomplete.
+`HALT` loop until the work-item word clears. The full-slot condition is not
+caller-observable through the envelope, and no portable result is defined.
 
 **FFh -- program or clear RTC alarm:** `DE=0000h` clears RTC Reg-B AIE.
 Otherwise, `DE` points to eight source bytes; the service waits for UIP clear,
