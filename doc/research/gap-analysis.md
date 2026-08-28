@@ -1,6 +1,6 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-28 (7th audit, runtime DIP/COM loader closed), firmware
+Status: 2026-08-28 (8th audit, BDOS record handlers added), firmware
 `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
 This is a **documentation-coverage** audit: which functions have *we* named
 and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
@@ -9,10 +9,10 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 394 | **62** | 332 |
-| ROM01 | 172 | **66** | 106 (incl. the new `Program_*` loader functions) |
-| ram   | 261 | **10** | 251 |
-| **Total** | **827** | **138** | **689 (83.3 %)** |
+| ROM00 | 478 | **64** | 414 |
+| ROM01 | 196 | **66** | 130 |
+| ram | 164 | **11** | 153 |
+| **Total** | **838** | **141** | **697 (83.2 %)** |
 
 **Refreshed directly from Ghidra on 2026-08-28.** The 2026-08-28 loader pass
 added/renamed ROM01
@@ -22,9 +22,10 @@ functions in `0A67-10CE` (`Program_PrepareLoadGeometry` 0A67,
 `Program_LoadDipOrCom` 0CE7, `Program_ReportLoadError` 0CCB,
 `Program_RunByName` 106F, `Program_NormalizeLoadRange` 0AE3) plus
 `ram:D7F0` `RunLoadedProgram` and `ram:D081` `g_apScreenHandlerTables` /
-`ram:D0F0` `g_apLoadRunHandlers` labels. Current function count is **827**;
-`search_functions_enhanced` reports **138** auto-named functions (62 ROM00,
-66 ROM01, 10 ram). These are the remaining analysis backlog, not completed
+`ram:D0F0` `g_apLoadRunHandlers` labels. The later BDOS pass created direct
+dispatch entries `BdosReadRandom` (0C50), `BdosWriteRandom` (0BF3), and
+`BdosSetRandomRecord` (0CB4). The full inventory reports **838** functions;
+**141** are auto-named (64 ROM00, 66 ROM01, 11 ram). These are the remaining analysis backlog, not completed
 coverage.
 
 Plate completeness was not recomputed in this pass. The loader functions
