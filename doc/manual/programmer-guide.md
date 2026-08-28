@@ -134,11 +134,11 @@ no-op / HL=0:
 | fn | operation | what actually happens |
 |----|-----------|-----------------------|
 | 0Dh | reset disk system | far-call stub |
-| 1Ah | set DMA address | returns without effect |
+| 1Ah | set DMA address | stores the DMA pointer; full ABI incomplete |
 | 1Bh / 1Dh | get allocation / read-only vector | returns HL=0 |
 | 1Ch | write protect disk | far-call stub |
 | 1Eh | set file attributes | far-call stub |
-| 1Fh | get DPB address | returns HL=0 |
+| 1Fh | get DPB address | unsafe RST-28 path; do not call |
 
 There is no DPB/allocation-vector scheme to query because the
 "disks" are fixed-size RAM partitions. **Do not rely on functions

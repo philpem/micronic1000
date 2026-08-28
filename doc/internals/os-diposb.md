@@ -124,7 +124,7 @@ The table maps 1:1 onto CP/M 2.2 BDOS numbering:
 | 0D/0E | Disk reset / Select disk | 1893 / 15B3 | disk reset is a stub |
 | 0F-17 | File ops (open…rename) | 0877-0910 | real implementations |
 | 18-20 | Login vector…User code | 1888-1890 | mostly stubs/vectors |
-| 21-24 | Random read/write/size/record | 0C80 / 0BF3 / 12F1 / 0CB4 | |
+| 21-24 | Random read/write/CP-M-size slot/record | 0C50 / 0BF3 / 12F1 / 0CB4 | fn 23 DIPOS-B behavior OPEN |
 
 Shared and stubbed handlers confirm the numbering: fn 7=8 share,
 fn 1B=1D share (static vector returns), and the disk-oriented stubs

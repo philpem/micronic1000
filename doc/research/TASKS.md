@@ -137,7 +137,13 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Publish per-function BDOS contract cards from existing ROM evidence.**
+1. **Resolve the corrected BDOS table's unsafe/unknown entries before
+   publishing broad contracts.** Raw `ROM00:3738-3751` bytes confirm
+   `1F->1893`, `20->1890`, `21->0C50`, `22->0BF3`, `23->12F1`, and
+   `24->0CB4`; earlier docs were offset/misidentified. Trace the shared
+   `1893` RST-28 path (including whether C=FE is fatal) and determine what
+   fn 23 actually does before treating it as a CP/M file-size call.
+2. **Publish per-function BDOS contract cards from existing ROM evidence.**
    Start with the portable COM subset, then the RTC and configuration calls;
    record register inputs/outputs, flags, blocking, side effects, and errors.
    * 2026-08-28: added byte-verified cards for fn 06h direct console I/O and
@@ -155,13 +161,13 @@ State: continuously updated as work progresses.
      selections update `g_bActiveDrive` and use `Mem_BankSweepPutByte` to
      replicate page-zero cell 4 across banks. Corrected the prior unsupported
      "disk login/DPB refresh" description in Ghidra.
-2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
+3. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
    CONFIRMED runtime grammar and limits; this does not require a physical
    loader or a real device.
-3. **Continue static session-module and UI analysis.** Resolve remaining
+4. **Continue static session-module and UI analysis.** Resolve remaining
    writers/consumers, runtime error/status fields, and session state-machine
    payload handling from the loaded RAM modules and ROM call graph.
-4. **Complete the deferred annotation and typing sweep.** Name/plate remaining
+5. **Complete the deferred annotation and typing sweep.** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the coverage tracker
    after the semantic work stabilises.
 

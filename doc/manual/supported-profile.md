@@ -35,7 +35,7 @@ documented value as volatile, and do not turn this list into an ABI guarantee.
 
 * Do not call the dispatcher range `25h-F2h`: it can derive a target from
   unrelated kernel bytes.
-* Do not rely on CP/M disk-management calls 0Dh and 1Ah-1Fh; they are stubs or
+* Do not rely on CP/M disk-management calls 0Dh and 1Bh-1Fh; they are stubs or
   no-ops in DIPOS-B.
 * Do not modify the active-device selector or FE83/FE93 configuration tables
   until the complete F6h-FBh contracts and restoration rules are published.

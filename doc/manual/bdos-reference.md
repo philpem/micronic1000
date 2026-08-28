@@ -41,10 +41,12 @@ carry/error convention where the firmware does not provide one.
 | 19h | get current drive | CONFIRMED behaviour; ABI incomplete |
 | 0Fh-17h | FCB open through rename | CONFIRMED behaviour; ABI incomplete |
 | 18h | login vector | stub |
-| 1Ah | set DMA address | stub |
-| 1Bh, 1Dh, 1Fh | allocation/read-only/DPB vectors | stubs |
-| 1Ch, 1Eh | write protect / attributes | stubs |
-| 20h-24h | user code and random-file operations | CONFIRMED behaviour; ABI incomplete; see the CP/M comparison |
+| 1Ah | set DMA address | CONFIRMED behaviour; ABI incomplete |
+| 1Bh, 1Dh | allocation/read-only vectors | stubs (HL=0000h) |
+| 1Ch, 1Eh, 1Fh | write protect / attributes / DPB | unsafe RST-28 path; do not call |
+| 20h | get/set user code | stub (A=00h) |
+| 21h, 22h, 24h | random read/write/set record | CONFIRMED behaviour; ABI incomplete |
+| 23h | CP/M file-size slot | DIPOS-B behavior OPEN; do not call as file-size |
 
 Functions in the otherwise unallocated range 25h-F2h are unsafe. The
 dispatcher can read a handler pointer from unrelated kernel bytes; an

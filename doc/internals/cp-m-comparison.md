@@ -62,19 +62,19 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
 | 15 | Write sequential | 0B09 | BdosWriteSequential |
 | 16 | Make file | 0843 | BdosMakeFile |
 | 17 | Rename file | 0910 | BdosRenameFile |
-| 18 | Get login vector | 1888 | BdosGetLoginVector (HL=0 stub) |
+| 18 | Get login vector | 1888 | BdosGetLoginVector (HL=FFFFh) |
 | 19 | Get current disk | 15AF | BdosGetCurrentDisk (returns fbc6) |
 | 1A | Set DMA address | 0CEC | BdosSetDmaAddress (5-byte stub) |
 | 1B | Get allocation vector | 188C | BdosGetAllocationVector (**HL=0 stub**) |
 | 1C | Write protect disk | 1893 | RST28 stub (unimplemented) |
 | 1D | Get read-only vector | 188C | same HL=0 stub |
 | 1E | Set file attributes | 1893 | RST28 stub (unimplemented) |
-| 1F | Get DPB address | 1890 | HL=0 stub |
-| 20 | Get/set user code | 0C96 | BdosGetSetUserCode |
-| 21 | Read random | 0BF3 | BdosReadRandom |
-| 22 | Write random | 0CF1 | BdosWriteRandom |
-| 23 | Compute file size | 0CB4 | BdosComputeFileSize |
-| 24 | Set random record | ... | (table end at 24h) |
+| 1F | Get DPB address | 1893 | RST-28 path; application ABI unsafe |
+| 20 | Get/set user code | 1890 | returns A=00h (stub) |
+| 21 | Read random | 0C50 | handler entry corrected from 0C80 |
+| 22 | Write random | 0BF3 | |
+| 23 | CP/M file-size slot | 12F1 | DIPOS-B behavior OPEN; do not assume CP/M semantics |
+| 24 | Set random record | 0CB4 | |
 
 ## Shared FCB machinery (annotated)
 
