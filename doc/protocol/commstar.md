@@ -46,20 +46,30 @@ handshake. The exact register catalogue is in
 
 ## Controller transaction
 
+LinkBlockTx (ROM00:3277-3377) and LinkBlockRx (ROM00:3378-3453) mechanically
+drive `LINK_CTRL` (4Ah) and poll `LINK_STATUS` (4Bh). **No electrical names
+for status or control bits are proven** — the descriptions below list only the
+bit numbers polled/driven and the timeout constants observed in the bytes.
+
 ### Transmit
 
-**CONFIRMED:** `LinkBlockTx` (ROM00:3277) performs the following sequence.
+**CONFIRMED:** `LinkBlockTx` (ROM00:3277-3377) ordered controller-facing
+sequence (byte-verified):
 
-1. Mask the active link id with `20h` and call the port-select helper.
-2. Reset/prepare the control latch, then issue `LINK_CMD = 81h` after the
-   ready poll.
-3. Write `link_id & 1Fh` to `LINK_TXD`. This is a controller prelude, not
-   part of the in-memory frame descriptor.
-4. Wait for `LINK_STATUS` bit 4 and bit 6 at the two controller handshake
-   stages; timeout returns `EBh` or `ECh` as applicable.
-5. Stream each payload byte to `LINK_TXD`, waiting for `LINK_STATUS` bit 7
-   before each `OUTI`. A per-byte timeout returns `EEh`.
-6. Release the control-latch enables before returning.
+1. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
+   `B=0x80` DJNZ delay.
+2. `LinkPresent` → `LinkWaitReady`: poll `LINK_STATUS` bit 7 with timeout
+   `DE=0x02DA`; on success write `0x81` to `LINK_CMD` (4Ch).
+3. Write low five bits of input `A` (held in `C`, `link_id & 1Fh`) to
+   `LINK_TXD` (4Dh) as a controller prelude. This byte is not part of the
+   in-memory frame descriptor payload.
+4. Wait for `LINK_STATUS` bit 4 (`DE=0x026C` timeout → `EBh`); then set
+   `LINK_CTRL` bit 5, set `LINK_CTRL` bit 4; `B=0x20` DJNZ delay; clear
+   `LINK_CTRL` bit 5; wait for `LINK_STATUS` bit 6 (`DE=0x026C` timeout →
+   `ECh`).
+5. Stream descriptor payload bytes: each `OUTI` to `LINK_TXD` is gated by
+   `LINK_STATUS` bit 7 with per-byte timeout `DE=0x06F9` (timeout → `EEh`).
+6. Cleanup: clear `LINK_CTRL` bit 4, clear `LINK_CTRL` bit 0 before returning.
 
 The payload source is a **descriptor list** in RAM. Each four-byte entry is
 `{ count_lo, count_hi, ptr_lo, ptr_hi }`; `LinkReadBufferDescriptor`
@@ -68,34 +78,45 @@ list. These descriptors are not transmitted.
 
 The diagram below is the confirmed controller-facing transmit ordering. It is
 not a Commstar session exchange and makes no claim about the external
-controller's electrical timing.
+controller's electrical timing or the meaning of any status/control bit beyond
+the mechanical poll/drive listed above.
 
 ```mermaid
 sequenceDiagram
     participant F as M1000 firmware
     participant C as Link controller
-    F->>C: Select port and prepare LINK_CTRL
-    F->>C: LINK_CMD = 81h
+    F->>C: Drive LINK_CTRL bits 0/4 and delay
+    F->>C: Poll LINK_STATUS bit 7 then LINK_CMD = 81h
     F->>C: LINK_TXD = link_id & 1Fh prelude
-    Note over F,C: Handshake polls LINK_STATUS bits 4 and 6
+    Note over F,C: Poll LINK_STATUS bit 4 then drive LINK_CTRL bits 5/4 then poll bit 6
     loop Each descriptor payload byte
-        F->>C: LINK_TXD = payload byte
-        Note over F,C: Firmware waits for LINK_STATUS bit 7
+        F->>C: Poll LINK_STATUS bit 7 then OUTI LINK_TXD = payload byte
     end
-    F->>C: Release LINK_CTRL enables
+    F->>C: Clear LINK_CTRL bits 4 and 0
 ```
 
 ### Receive
 
-**CONFIRMED:** `LinkBlockRx` (ROM00:3378) uses control-latch strobes,
-performs one synchronising `LINK_RXD` read, and drains descriptor-directed
-buffers with `INI` while `LINK_STATUS` bit 0 indicates a byte is available.
-Bits 1 and 2 participate in end/phase handling. Their exact external timing
-and polarity still require a trace.
+**CONFIRMED:** `LinkBlockRx` (ROM00:3378-3453) mechanically drives
+`LINK_CTRL` and polls `LINK_STATUS`; no electrical names for status or control
+bits are proven. Byte-verified sequence: clear `LINK_CTRL` bit 0, set
+`LINK_CTRL` bit 5, single `IN` from `LINK_RXD` (4Eh), set `LINK_CTRL` bit 4,
+`B=0x20` DJNZ delay, clear `LINK_CTRL` bit 5; then `INI` from `LINK_RXD`
+only while `LINK_STATUS` bit 0 is set. If bit 0 is clear, bit 1 set continues
+to bits 2/3 decode while bit 1 clear waits/retries with `DE=0x06F9`; bit 2 set
+performs an extra `INI`; bit 3 set returns `EC`. Cleanup toggles
+`LINK_CTRL` bit 1, sets then clears `LINK_CTRL` bit 0, clears `LINK_CTRL`
+bit 4, toggles `LINK_CTRL` bit 1.
 
 An adapter emulator must model the stateful handshake, not merely present a
 flat byte stream. The current experimental Python model is not a conformance
 implementation.
+
+### Probe
+
+**CONFIRMED:** `LinkProbe` (ROM00:3489) writes `0x1F` to `LINK_PROBE` (4Fh)
+then executes a `LINK_CTRL` latch sequence. The physical or reset meaning of
+this probe remains **SUSPECTED**.
 
 ## Validated frame envelope
 

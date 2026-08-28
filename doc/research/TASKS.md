@@ -100,29 +100,23 @@ State: continuously updated as work progresses.
   * `ram:d86e` = stack-param->E0FE copy then jump
   * `e06a/e085` = 16-bit comparison helpers
   * session RX loop `FUN_ROM00_59fb`, TX loop `FUN_ROM00_5f58`
-- **Full emulator boot to a live link I/O** (updated 2026-08-24,
-  emulator research round — scratch scripts in /tmp/opencode:
-  boot_diag.py / boot_timeline.py / fixB_regen.py):
+- **Full emulator boot to a live link I/O** (updated 2026-08-28):
   * The 16C9 HALT-wait is the **keyboard event wait**, not just the
     tick: kernel EI/LD A,1/LD (FFA8),A/HALT at 16C3-16C9, wake checks
     fbc9&fbca; measured fbca=07 → caller 1105 = keyboard read waiting
     for fbc9 bit2. tick => fd4f/fbca recompute, but exit needs an
     event bit that no emulated source ever posts.
-  * INT injection works (7219/8057 offered INTs accepted) but is
-    coarse: one INT per 50000-cycle slice (~71 Hz worst case), and
-    `push_tick()` is never called → RTC RegC PF never set → date-
-    change/alarm paths dead (fd4f=00).
-  * Fix A (timebase): SLICE=3400 (< one 1024Hz period ~3496 cyc),
-    accrue unconditionally (drop the ffa8 gate), call rtc.push_tick()
-    per elapsed period, then on_handle_active_int() when ffa8!=0.
-  * Fix B (events, VERIFIED working): when PC parks in 16C9-16D2 with
-    ffa8=1 → fbc9 |= 0x04 and store 0x0D (ENTER) into the FBF0 key
-    ring; boot left the wait and entered the dispatch module; repeat
-    per menu prompt. Matrix injection via ports 00/02 is NOT viable
-    (firmware never scans them during the wait — measured).
-  * Recommend A+B together; B commented as a cheat. Also replace the
-    slice-boundary PC watchdogs (miss all target PCs) with
-    mach.set_breakpoint if the wheel supports it.
+  * **Timebase fixed:** `boot_hw.py` uses 3400-tick slices and derives RTC
+    phase from the measured `SLICE_TICKS - ticks_to_stop` execution budget.
+    It calls `rtc.push_tick()` for each elapsed RTC period, then offers INT
+    only when `FFA8 != 0`; thus breakpoints/watchpoints cannot make the RTC
+    run faster than the emulated CPU.
+  * **Events verified:** when PC parks in 16C9-16D2 with `FFA8=1`, the harness
+    writes one queued byte through the FBF0 keyboard ring and sets FBC9 bit2.
+    The serial-driven boot enters the Main Menu. Matrix injection via ports
+    00/02 is not viable because firmware does not scan them during this wait.
+  * Remaining: model a live link peer and capture a complete send/receive
+    transaction; the current I/O stubs still cannot establish that exchange.
 
 ## In progress
 
@@ -144,9 +138,10 @@ State: continuously updated as work progresses.
 1. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-2. **Confirm the exact TX/RX status bits** (4Bh bit0/1/2 RRCA chain,
-   bit7 RLCA) and 4Ah strobe timing from LinkBlockRx (branch-confirmed,
-   needs traces for timing).
+2. **Capture the electrical timing and meanings of the link status/control
+   bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
+   a hardware trace is still required to map 4Bh/4Ah bits to electrical
+   functions and to measure connector-facing timing.
 3. **Side/external port — barcode front end (owner-adjudicated 2026-08-24)**:
     I/O **2Dh** (`EXTBUS_EDGE`) + **2A/2C** latches are the bit-banged
     **barcode-reader edge-capture front end** (`Barcode_` prefix for new
@@ -166,7 +161,8 @@ State: continuously updated as work progresses.
     See protocol/commstar.md + manual/barcode-reader.md (updated).
     **Developer tie-in: install decoder at `fbc2`; read via fn 03,
     or arm directly via RST 10h -> ExtBusArm (1221).**
-4. Emulator: verify a full send under trace (needs boot fix).
+4. Emulator: verify a full send under trace (boot/timebase fix is complete;
+   needs a live link peer model).
 5. **Examine the queued work-item system** — **DONE (2026-08-25,
    delegated analysis, applied + saved).** The FD5C queue is a 10-slot
    countdown-timer/callback table serviced from the RTC wake path, not
@@ -1819,3 +1815,40 @@ State: continuously updated as work progresses.
     barcode-hook example risks, storage-guidance conflict, deployment/tooling
     gap, terminology cleanup, and a prioritised roadmap. No firmware finding
     or Ghidra annotation was changed. `mkdocs build --strict` passes.
+- 2026-08-28 (reviewer-approved link transaction byte verification):
+  * **Finding (all ROM00, CONFIRMED mechanical):** `LinkBlockTx` 3277-3377
+    and `LinkBlockRx` 3378-3453 mechanically drive `LINK_CTRL` (4Ah) and
+    poll `LINK_STATUS` (4Bh); no electrical names for status/control bits are
+    proven. TX ordered sequence: clear ctrl b0, set b0, clear b4, `B=0x80`
+    DJNZ delay; `LinkPresent`→`LinkWaitReady` polls status b7 `DE=0x02DA`
+    then `0x81` to `LINK_CMD`; low five bits of input `A` (held `C`) to
+    `LINK_TXD`; wait status b4 `DE=0x026C`; set ctrl b5, set ctrl b4,
+    `B=0x20` delay, clear ctrl b5, wait status b6 `DE=0x026C`; each `OUTI`
+    to `LINK_TXD` gated by status b7 `DE=0x06F9`; cleanup clears ctrl b4,b0.
+    RX: clear b0, set b5, single `LINK_RXD` read, set b4, `B=0x20` delay,
+    clear b5; `INI` from `LINK_RXD` only if status b0 set; if b0 clear,
+    b1 set continues b2/b3 decode while b1 clear waits/retries `DE=0x06F9`;
+    b2 set extra `INI`; b3 set `EC`; cleanup toggles b1, sets/clears b0,
+    clears b4, toggles b1. `LinkProbe` emits `0x1F` to `LINK_PROBE` then
+    latch sequence; physical/reset meaning remains SUSPECTED.
+  * **Docs updated:** `protocol/commstar.md` rewritten to list only
+    mechanical bit numbers and timeout constants, removing unqualified
+    electrical labels (`TX-ready`, `RX-ready`, `ACK`, `peer-ready`/`type`,
+    `idle/run`, `talk`/`RX-enable`, `clock`, `IR select`) and adding the
+    ordered TX/RX/Probe sequences plus Probe SUSPECTED note;
+    `internals/io-map.md` revised (4Ah/4Bh rows, Interface-shape section,
+    Ghidra label table) to report only confirmed drive/poll behaviour.
+    Owner statement preserved: link-id bit 5 selects one of two IR line
+    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; which
+    `LINK_CTRL` bit 1 value maps to which physical connector remains OPEN.
+   * **Ghidra:** retained the existing `LINK_CTRL`/`LINK_STATUS`/`LINK_CMD`/
+     `LINK_PROBE` labels; added plates and EOL comments to `LinkBlockTx`,
+     `LinkBlockRx`, `LinkWaitReady`, `LinkPresent`, and `LinkProbe` for the
+     CONFIRMED mechanical sequence. Electrical semantics remain OPEN and were
+     not encoded as repeatable claims. Program saved; function count remained
+     827.
+  * **Open electrical semantics:** the mapping from status/control bit
+    numbers to electrical functions (`TX-ready`, `RX-ready`, `ACK`,
+    `peer-ready`, `idle/run`, etc.) and the `LINK_PROBE` physical/reset
+    effect remain unproven and require a hardware trace / bus capture to
+    resolve.

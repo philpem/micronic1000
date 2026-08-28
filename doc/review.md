@@ -14,6 +14,26 @@ Markdown links therefore work in the current build. The principal gaps are
 API completeness, safe examples, end-to-end workflow, and clear separation
 of a stable application contract from implementation evidence.
 
+## Update: newly completed evidence work
+
+The review remains substantially unchanged after the latest reverse-engineering
+pass, but two improvements should be reflected in its scope.
+
+`analysis/boot_hw.py` now drives the RTC from measured Z80 execution progress,
+rather than charging a fixed execution slice, and reliably paces injected
+keyboard events through the firmware's event ring. It has been verified through
+the banner serial-entry path to the Main Menu. This improves the internal
+emulator as an evidence and regression tool; it does not yet provide the
+end-to-end developer deployment or live-link workflow identified below.
+
+The 4Ah-4Fh Commstar controller path is now byte-verified in both directions.
+`LinkBlockTx` and `LinkBlockRx` have documented latch ordering, status-bit
+branches, delays, and timeout bounds; the corresponding Ghidra plates and
+comments were updated. Earlier electrical labels such as `TX-ready`, `ACK`,
+and `clock` were deliberately withdrawn: they remain **SUSPECTED** pending a
+hardware trace. This strengthens the evidence boundary but does not resolve
+the missing live RECORD/BLOCK payload capture or session grammar.
+
 ## Findings
 
 ### P0 -- the BDOS reference is not yet an implementable API reference

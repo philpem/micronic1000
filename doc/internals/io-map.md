@@ -31,34 +31,50 @@ Confidence legend:
 | 47h | W | io47_bank_sel | Bank select, 32K window 0000-7FFF: values 0/1 = ROM images ROM00/ROM01, higher = 32K RAM pages. Shadow: f791 | CONFIRMED |
 | 48h | W | io48_lcd_strobe | Control lines, bits 0-1: forced to 11 at cold init (FUN_0323), power-down (PowerDownSuspend) and toggled during link self-test. Paired sense port 49h. Bits look like control/power enables rather than per-link IR data | bits usage CONFIRMED, function SUSPECTED |
 | 49h | R | io49_bootkeys | Bits 0-1 = boot-key status at reset; echoed to 48h by diagnostics. Suspected detector/status lines paired with 48h | bits used CONFIRMED, IR role SUSPECTED |
-| 4Ah | W | io4a_ctrl | **External-link control latch** (shadow f794). Bit6/7 = link online/enable; **bit1 = IR port/line select** (toggled by LinkPortSelect 3454 per link-id bit5); bit0/4/5 = per-transfer strobes. Driver 3270-3500 | CONFIRMED |
+| 4Ah | W | io4a_ctrl | **External-link control latch** (shadow f794). Firmware mechanically drives bits 0, 4, 5 around transfers and toggles bit 1 via `LinkPortSelect` (3454) according to the active link id bit 5 (`AND 0x20` at ROM00:3277). Owner confirms link-id bit 5 selects one of two IR line states (V24 ADAPTOR top vs PLINTH back); which `LINK_CTRL` bit 1 value maps to which physical connector remains OPEN. No electrical names for control bits are proven. Drivers `LinkBlockTx` 3277-3377 / `LinkBlockRx` 3378-3453 | CONFIRMED mechanical |
+| 4Bh | R | io4b_link_status | **Link status**: firmware polls bit 7 before each `OUTI` to 4Dh and bits 4/6 at handshake stages in `LinkBlockTx`, and bits 0-3 in `LinkBlockRx`. No electrical names (`TX-ready`, `RX-ready`, `ACK`, `peer-ready`/`type`, `frame phase`) are proven. MAME's "TX buffer empty"/"RX buffer full" comment is consistent with the bit 7 / bit 0 polls, but its driver does not implement the 4x ports. | CONFIRMED mechanical (firmware); electrical SUSPECTED |
+| 4Ch | W | io4c_link_cmd | Mechanical: `0x81` written by `LinkPresent` (34EC) after `LINK_STATUS` bit 7 poll (`DE=0x02DA`) at TX open. Electrical label `command/ACK` remains SUSPECTED. | CONFIRMED mechanical |
+| 4Dh | W | io4d_tx_data | **TX data byte**: `OUTI` (memory to port) per byte, gated by `LINK_STATUS` bit 7 polling (`DE=0x06F9` per-byte timeout in `LinkBlockTx`). | CONFIRMED mechanical |
+| 4Eh | R | io4e_rx_data | **RX data byte**: `INI` (port to memory) per byte, gated/decoded via `LINK_STATUS` bits 0-3 in `LinkBlockRx`. | CONFIRMED mechanical |
+| 4Fh | W | io4f_probe | Mechanical: `0x1F` written by `LinkProbe` (3489), then a `LINK_CTRL` latch sequence. Physical/reset meaning remains SUSPECTED. | CONFIRMED mechanical |
 
-### Interface shape: byte-parallel latch, NOT an SCC/ADLC
+### Interface shape: byte-latch access — firmware behaviour CONFIRMED, electrical function OPEN
 
-The 4x block is a **byte-oriented parallel interface**, not a Z80
-SCC/SIO/ADLC. Evidence:
+The firmware accesses the 4x block with **distinct latch addresses** and
+status-gated byte pumps, which does not match a Z80 SCC/SIO/ADLC
+register-select model. Distinguishing observations (mechanical, byte-verified):
 
 * TX and RX use **distinct latch addresses** (4Dh write-only, 4Eh
   read-only) — an SCC has one bidirectional data port.
-* Data moves via `OUTI` (mem->4Dh) / `INI` (4Eh->mem) straight-line
-  byte pumps, not register-select + data sequences. No WR0/WR1-style
+* Data moves via `OUTI` (mem→4Dh) gated by `LINK_STATUS` bit 7 and `INI`
+  (4Eh→mem) gated by `LINK_STATUS` bit 0 (with bits 1-3 participating in the
+  `LinkBlockRx` decode), not register-select + data sequences. No WR0/WR1-style
   command/register programming occurs.
-* 4Ah is a control latch (bit6/7 link online), 4Bh a status port
-  (bit7 present/ready, bit4 type, bits0-2 RX frame phase), 4Ch a
-  command/ACK latch (0x81), 4Fh a probe.
+* 4Ah is a control latch mechanically driven as bits 0/4/5 around transfers
+  with bit 1 toggled per link-id bit 5 — electrical labels such as
+  `idle/run`, `talk`/`RX-enable`, `clock`, or `online/enable` (bits 6/7) are
+  **not proven**.
+* 4Bh is a status port mechanically polled as bits 7, 4 and 6 in the TX
+  handshake and bits 0-3 in the RX path — firmware polls are **CONFIRMED**;
+  electrical labels such as `TX-ready` (bit 7), `RX-ready` (bit 0), `ACK`
+  (bit 6), `peer-ready`/`type` (bit 4) or `frame phase` (bits 1/2) are
+  **not proven**.
+* 4Ch receives `0x81` after a `LINK_STATUS` bit 7 poll (`LinkPresent` →
+  `LinkWaitReady`, `DE=0x02DA`); 4Fh receives `0x1F` during `LinkProbe`
+  followed by a `LINK_CTRL` latch sequence — mechanical writes are **CONFIRMED**;
+  labelling them `command/ACK` or `probe/reset` for the physical meaning
+  remains **SUSPECTED**.
 * The synchronous clock+data IR pairs (2 photodiodes + 2 LEDs per
   port, per US 4,423,319) are downstream of this byte interface —
-  the M1000's Z80 only pushes/pulls whole bytes and checks ready
-  flags.
+  the M1000's Z80 mechanically pushes/pulls whole bytes while polling
+  `LINK_STATUS`; electrical timing on the connector-facing side remains to be
+  traced.
 
-So the M1000 sees: `control (4A) + status (4B) + tx-latch (4D) +
-rx-latch (4E) + command (4C) + probe (4F)`. The physical serializing
-to the IR clock/data lines lives off-pump in the adapter.
-| 4Bh | R | io4b_link_status | **Link status/ready**: bit7 = TX-ready (polled `RLCA` before every OUTI to 4Dh - firmware-derived); bit0 = RX-ready (polled `RRCA` before every INI from 4Eh - firmware-derived). MAME's header comment reads these as "TX buffer empty"/"RX buffer full" — consistent with the firmware polls, but the MAME driver does NOT implement the 4x ports, so that is a suggestion only | CONFIRMED (firmware) / MAME comment=consistent |
-| 4Ch | W | io4c_link_cmd | Link command/ACK register: `0x81` written by LinkPresent (34EC) after device-ready poll, at TX open | CONFIRMED |
-| 4Dh | W | io4d_tx_data | **TX data byte** — OUTI (memory->port) per byte, gated on 4Bh bit7 | CONFIRMED data out |
-| 4Eh | R | **io4e_rx_data** | **RX data byte** — INI (port->memory) per byte, gated on 4Bh bits 0/1/2 | CONFIRMED data in |
-| 4Fh | W | io4f_probe | Device probe/reset: written `0x1F` by LinkProbe (3489), self-test only | CONFIRMED probe |
+So the M1000 firmware sees six I/O addresses — `control (4A) + status (4B) +
+tx-latch (4D) + rx-latch (4E) + 4C (0x81 write) + 4F (0x1F write)` — with the
+mechanical drive/poll sequences listed under `LinkBlockTx` (3277-3377),
+`LinkBlockRx` (3378-3453) and `LinkProbe` (3489). The physical serializing
+to the IR clock/data lines lives off-pump and its semantics remain OPEN.
 
 **No hardware address-filter or CRC register exists in this block** —
 the only non-data write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
@@ -233,9 +249,9 @@ function names are grandfathered. See
 | `BANK_SEL` | 47h | 32K bank select |
 | `LCD_STROBE` | 48h | LCD drive/sense strobe (with 49h) |
 | `BOOTKEYS` | 49h | boot-key/probe sense (with 48h) |
-| `LINK_CTRL` | 4Ah | external link control latch (bits: 0 idle/run, 4 talk/RX-enable, 5 clock, 1 port select) |
-| `LINK_STATUS` | 4Bh | link status (bits: 7 TX-ready, 6 ACK, 4 peer-ready, 0 RX-byte, 1/2 frame phase) |
-| `LINK_CMD` | 4Ch | link command/ACK (`0x81`) |
-| `LINK_TXD` | 4Dh | link TX data byte |
-| `LINK_RXD` | 4Eh | link RX data byte |
-| `LINK_PROBE` | 4Fh | link probe/reset (`0x1F`) |
+| `LINK_CTRL` | 4Ah | external link control latch (firmware drives bits 0/4/5, toggles bit 1 per link-id bit 5; no electrical names such as idle/run, talk/RX-enable, clock, or port-select are proven — see mechanical sequences) |
+| `LINK_STATUS` | 4Bh | link status (firmware polls bits 7/4/6 in TX handshake and bits 0-3 in RX decode; no electrical names such as TX-ready, RX-ready, ACK, peer-ready/type, or frame-phase are proven) |
+| `LINK_CMD` | 4Ch | 4Ch latch (mechanical `0x81` write after `LINK_STATUS` bit 7 poll; electrical label `command/ACK` SUSPECTED) |
+| `LINK_TXD` | 4Dh | link TX data byte (`OUTI` gated by `LINK_STATUS` bit 7) |
+| `LINK_RXD` | 4Eh | link RX data byte (`INI` gated via `LINK_STATUS` bits 0-3) |
+| `LINK_PROBE` | 4Fh | 4Fh latch (mechanical `0x1F` write then `LINK_CTRL` sequence; physical/reset meaning SUSPECTED) |
