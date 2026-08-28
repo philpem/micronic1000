@@ -59,16 +59,15 @@ overwrite to patch ROM bugs or add functionality. Investigated
 | `tbl_FieldOpSlots` ram:ee00-ef37 (66×4B) | direct CALLs from ROM01 UI (`CD 00 EE` @11a4 …), content = `21 01 00 C9` no-op defaults; no ROM writer | CONFIRMED shape; patch purpose LIKELY |
 | Stub farm B ram:f100-f17f (32×4B) | direct CALLs from ROM00 (e.g. `CD 38 F1` @41ba); 0/1-word stack args; same defaults | LIKELY |
 | Pointer slots + F168 sentinel + `ram:d828` | UI cells (eb00/eb39/ec51/eb08…) hold callback ptrs; F168 = "unset"; guards skip extra work; d828 calls cell via JP (HL) for ≥ED00 targets or self-patching RST 10h stub (d834=target, d833=bank) | CONFIRMED |
-| `g_tblFieldTypeRecPtrs` ram:d081 → cells {D0F0,D13D,D121,D12F,D14B} | double indirection, both levels DIP-writable; D0F0 used as sentinel at ROM01::0360 | CONFIRMED consumption; patch LIKELY |
+| `g_apScreenHandlerTables` ram:D081 → `ram:D0F0` (entry 0) | five per-screen handler-table pointers indexed by active-screen selector at `ROM01:034B`; `Ui_FormExitDispatchNext` (ROM01:06D3) double-dereferences `word@(D081+2*i) → P → word@P` via `d828`; entry 0 = `g_apLoadRunHandlers` at `ram:D0F0` for the `ROM01:0A67-10CE` Load/Run loader | CONFIRMED |
+| (was `g_tblFieldTypeRecPtrs` → cells `{D0F0,D13D,D121,D12F,D14B}` — superseded) | — | — | — |
 | `fbc2` decode hook | ExtDecodeHookInstall/Discard; documented recipe ([barcode reader](../manual/barcode-reader.md)) | CONFIRMED |
 
-Loader primitives give any DIP arbitrary RAM write + execution control:
-record fn 0 (`ram:d6fa` write-anywhere copy), fn 1 (`d713` move),
-fn 2 (`d727` queue {D7,bank,addr} banked calls), and `d7f0/d7f3`
-sets the d828 bank byte before jumping into loaded code.
-Discriminating hardware test (would promote the LIKELYs to CONFIRMED):
-load a DIP whose fn-0 record overwrites ee00 (or F138) and observe the
-UI behaviour change.
+The runtime DIP format provides equivalent patching power without using the
+boot `fn` grammar: type-0 blocks copy payloads to a selected bank/address,
+and type-1 blocks install `{D7,bank,target}` banked-call trampolines. The
+runtime loader then transfers through `RunLoadedProgram` (`ram:d7f0`). The
+`ram:d6fa`/`d713`/`d727` record handlers belong only to the ROM boot chain.
 
 ## Low memory (per-bank page zero)
 
@@ -158,7 +157,8 @@ copied from ROM (see [the operating-system overview](os-diposb.md)). The ROM dum
 
 | Address | Name | Size | Function |
 |---------|------|------|----------|
-| D681 | bdos_dispatcher | 212h | Kernel dispatch/loader block copied from ROM00:7030 by ROM00:3BAA. Implements CALL-5 syscalls, program loading, checksum verify |
+| D081 | `g_apScreenHandlerTables` / `g_pProgramLoadCeiling` value | — | First byte of resident module B (`ROM01:7BCB → ram:D081`, 0x24A bytes). Kernel startup writes D081 to `g_pProgramLoadCeiling`; this is the exclusive upper bound for COM loading. Thus COM occupies 0100-D080 and is limited to CF81h bytes |
+| D681 | `bdos_dispatcher` / kernel dispatch & **boot-loader** block | 212h | Copied from `ROM00:7030` by `ROM00:3BAA`. Implements CALL-5 syscalls and the **boot-load chain** (`ram:D6DB` / `ram:D6F4` `fn=0/1/2/FFFF` + `ram:D7D1` checksum) that installs ROM banks at cold boot. **Not** the runtime COM/DIP loader — the runtime Load/Run loader is separate in `ROM01:0A67-10CE` via `ram:D081 → ram:D0F0` (`Program_LoadDipOrCom`, `Program_Generate/VerifyBlockChecksums`, `ram:D7F0` `RunLoadedProgram`) |
 | D79C..D86x | — | — | Dispatcher subroutines: self-modifying trampolines, coroutine-style SP/IX/IY context switch (d837/d850/d858) |
 | ED1C-ED480 | kernel data area | 464h | Initialised by d6C0 LDIR chain at dispatcher init |
 | EF88 | kernel routine | — | Called once during dispatcher start-up |

@@ -70,14 +70,24 @@ whatever list `ec49` currently points at.
 ## Screen transition dispatch
 
 `Ui_FormExitDispatchNext` (ROM01:06d3) is the form-transition loop. It
-pre-increments a walk index `d2de`, then walks a 5-entry table at `ram:d081`
-(module B's head) of double-indirect pointers: `word @ (d081 + 2·i)` is a
-pointer `P`, then `word @ P` is the callback bank-called via `d828`. When the
-index wraps it rebuilds the comm form (`Form_InitFromTemplates`, 060b) and
-posts descriptors 0x7715/0x7751 via `Ui_PostDescriptor` (6633). Module B is
-therefore *not* purely strings: it opens with this pointer table (and the
-error-code table near `d0e0`) before the banner `"PARCON 1000\n*** Error ***"`
-and the program-load error strings.
+pre-increments a walk index at `d2de`, then walks the 5-entry table at
+`ram:D081` — now `g_apScreenHandlerTables` (was `g_tblFieldTypeRecPtrs`):
+**five per-screen handler-table pointers indexed by the active-screen
+selector at `ROM01:034B`**. `word @ (D081 + 2*i)` is a pointer `P` to the
+screen's handler table, then `word @ P` is the handler bank-called via
+`d828` (double-dereference). **Entry 0 points to `g_apLoadRunHandlers` at
+`ram:D0F0`**, the Load/Run loader's handler table — the path through which
+`ROM01:0A67-10CE` (`Program_PrepareLoadGeometry`, `Program_LoadByName`,
+`Program_LoadDipOrCom`, `Program_RunByName`, `Program_GenerateBlockChecksums`,
+`Program_VerifyBlockChecksums`, `RunLoadedProgram` at `ram:D7F0`, etc.) is
+reached. When the index wraps it rebuilds the comm form
+(`Form_InitFromTemplates`, `060b`) and posts descriptors `0x7715`/`0x7751`
+via `Ui_PostDescriptor` (`6633`). Module B (`ROM01:7BCB` → `ram:D081`,
+586 bytes) is therefore *not* purely strings: it opens with this pointer
+table (and the error-code table near `d0e0`) before the banner
+`"PARCON 1000\n*** Error ***"` and the program-load error strings.
+The earlier mapping of the five `D081` entries to five devices is
+superseded.
 
 ## Menus
 
