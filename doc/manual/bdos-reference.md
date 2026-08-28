@@ -203,6 +203,41 @@ unmatched values return carry clear. No application-stable result ABI exists.
 `Bdos_SharedErrorStub`, `ROM00:1893-1896`; dispatcher and diagnostic paths
 `ram:F382-F407` and `ROM00:2B55-2BCC`.
 
+### Direct compatibility stubs
+
+**07h/08h -- IOBYTE:** both reach one `RET` instruction. Neither reads nor
+writes an IOBYTE; do not use them for device routing.
+
+**18h -- login vector:** returns `HL=FFFFh`. No login-vector computation is
+performed.
+
+**19h -- current drive:** returns the active-drive byte in `A`.
+
+**1Ah -- DMA address:** stores `DE` as the DMA pointer. This is a real state
+mutation, not a no-op; its downstream record-I/O ABI remains incomplete.
+
+**20h -- user code:** returns `A=00h`; no user-code state is read or written.
+
+### Safe extension mechanics
+
+**F3h:** one-instruction `RET` compatibility no-op.
+
+**F5h:** takes `E` as an event-wait period byte; values below `04h` become
+`0Fh`, writes the result to the period cell, and clears its counter. Units
+remain OPEN.
+
+**F6h/F7h:** get/set the active-device byte in `A`/`E`. F7 also replicates the
+new byte into banked page-zero state; it performs no value validation.
+
+**F8h:** copies exactly 16 bytes from the FE83 configuration table to the
+writable buffer at `DE`. **FAh** copies exactly 16 bytes from `DE` to FE83;
+**FBh** does the same to FE93. Table-field meanings and persistence remain
+OPEN.
+
+**F9h:** indexes one of five fixed two-byte presets with `E=00h..04h`, writing
+the selected pair to the active device-pair cells. Values `>=05h` do not write
+the pair; this is not a documented error convention.
+
 ## Related documentation
 
 * [Programmer's guide](programmer-guide.md) — compatibility differences,
