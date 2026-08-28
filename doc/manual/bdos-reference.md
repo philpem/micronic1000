@@ -177,7 +177,7 @@ mapping are not yet a public contract.
 | 62h | filesystem/directory check | Advanced / unsafe |
 | 68h, 69h | no-op stubs | compatibility only |
 | F3h | no-op | compatibility only |
-| F4h | far-call stub | not an application API |
+| F4h | shared diagnostic path | Advanced / unsafe; caller A selects diagnostic behavior |
 | F5h | event-wait delay | CONFIRMED behaviour; ABI incomplete |
 | F6h/F7h | get/set active device selector | Advanced / unsafe; persistent selector mutation |
 | F8h/FAh | read/write 16-byte device-slot table FE83 | Advanced / unsafe; persistent configuration |
@@ -185,6 +185,23 @@ mapping are not yet a public contract.
 | FBh | write 16-byte drive configuration table FE93 | Advanced / unsafe; persistent configuration |
 | FCh/FDh | set/get RTC | CONFIRMED behaviour; ABI incomplete; see RTC evidence |
 | FEh/FFh | set/control RTC alarm | CONFIRMED behaviour; ABI incomplete |
+
+### F4h -- shared diagnostic dispatch
+
+**Status:** Advanced / unsafe. Do not use as a far-call service.
+
+**In:** the normal BDOS path restores the caller's `A` before entering the
+handler. The handler's `C=FEh` assignment is overwritten before comparison.
+
+**Out:** values in the fatal diagnostic table do not return. Recoverable
+values can show a retry dialog and return carry set when retry is selected;
+unmatched values return carry clear. No application-stable result ABI exists.
+
+**Effects:** may display a diagnostic or wait for input.
+
+**Evidence:** wrapped dispatch word at `ROM00:36F0`; shared handler
+`Bdos_SharedErrorStub`, `ROM00:1893-1896`; dispatcher and diagnostic paths
+`ram:F382-F407` and `ROM00:2B55-2BCC`.
 
 ## Related documentation
 

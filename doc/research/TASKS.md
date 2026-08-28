@@ -141,8 +141,10 @@ State: continuously updated as work progresses.
    publishing broad contracts.** Raw `ROM00:3738-3751` bytes confirm
    `1F->1893`, `20->1890`, `21->0C50`, `22->0BF3`, `23->0CF1`, and
    `24->0CB4`; earlier docs were offset/misidentified. Trace the shared
-   `1893` RST-28 path (including whether C=FE is fatal) before treating its
-   callers as ordinary CP/M stubs.
+   `1893` RST-28 path. Resolved 2026-08-28: its C=FE write is overwritten;
+   normal BDOS dispatch restores caller A, which selects fatal/recoverable/
+   silent diagnostic behavior. Do not treat fn 0D/1C/1E/1F/30/F4 as ordinary
+   CP/M stubs.
 2. **Publish per-function BDOS contract cards from existing ROM evidence.**
    Start with the portable COM subset, then the RTC and configuration calls;
    record register inputs/outputs, flags, blocking, side effects, and errors.

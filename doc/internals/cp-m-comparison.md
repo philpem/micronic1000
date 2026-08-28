@@ -132,7 +132,7 @@ in Ghidra:
 | fn | handler (ROM00) | name | purpose |
 |----|-----------------|------|---------|
 | F3 | 1FDF | BdosF3NoOp | no-op (`RET`) |
-| F4 | 1893 | (RST28 stub) | far-call stub |
+| F4 | 1893 | Bdos_SharedErrorStub | caller-A-selected diagnostic path; unsafe |
 | F5 | 1877 | BdosF5SetDelay | set delay/period (fbd6, clamped >=0xF) used by event-wait loop |
 | F6 | 15A0 | BdosF6ActiveDev | get active console/link device (returns fbc5) |
 | F7 | 15A4 | SetActiveConsoleDevice | set active device (fbc5) + kernel notify |
