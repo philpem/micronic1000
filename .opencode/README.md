@@ -15,18 +15,13 @@ binding. These are the recommended front-end choices:
 
 | Workload | Primary model | Trade-off | Reviewer |
 | --- | --- | --- | --- |
-| Normal reverse-engineering work; preferred subscription balance | `anthropic/claude-sonnet-5` | Strong default while Anthropic allowance is available; preserves Opus usage | `review_openai` |
-| Difficult, ambiguous, or cross-cutting analysis | `anthropic/claude-opus-5` | Highest-priority Anthropic choice; slower and consumes more allowance | `review_openai` |
-| Normal work when using the OpenAI subscription | `openai/gpt-5.6-terra` | Balanced OpenAI alternative | `review_anthropic` |
-| Difficult work needing an OpenAI frontier model | `openai/gpt-5.6-sol` | Accuracy-first OpenAI choice; use when the extra capability justifies its usage | `review_anthropic` |
-| Preserve subscription allowance or recover from subscription unavailability | `openrouter/deepseek/deepseek-v4-pro` | Capable independent default, but incurs metered OpenRouter cost | `review_anthropic` |
-| Lightweight coordination or clearly mechanical work | `anthropic/claude-fable-5` or `openai/gpt-5.6-luna` | Faster/lower-usage, but not the primary choice for consequential binary analysis | Reviewer matching the producer family |
+| Normal reverse-engineering work; balanced subscription choice | `openai/gpt-5.6-terra` | Balanced OpenAI choice; use while the subscription is available | `review_openrouter` |
+| Difficult, ambiguous, or cross-cutting analysis | `openai/gpt-5.6-sol` | Accuracy-first OpenAI choice; slower or higher usage | `review_openrouter` |
+| Preserve subscription allowance or recover from OpenAI unavailability | `openrouter/deepseek/deepseek-v4-pro` | Capable independent default, but incurs metered OpenRouter cost | `review_openai` |
+| Lightweight coordination or clearly mechanical work | `openai/gpt-5.6-luna` or a free OpenCode model | Faster/lower-usage, but not the primary choice for consequential binary analysis | Reviewer matching the producer family |
 
-Prefer Anthropic over OpenAI when both subscriptions are available because the
-Anthropic subscription has the larger usable allowance. Reassess that ordering
-if the providers' quotas change. The primary still owns evidence adjudication
-and workflow control, so use Sonnet, Terra, or better whenever the prompt may
-lead to consequential findings.
+The primary still owns evidence adjudication and workflow control. Use Terra,
+Sol, or DeepSeek V4 Pro whenever the prompt may lead to consequential findings.
 
 `investigate` intentionally has **no `model` entry and no `temperature`**. An
 OpenCode subagent without a model inherits the invoking primary session's live
@@ -34,9 +29,8 @@ model selection, including a choice made with `/model` or the model-selection
 key binding. Omitting temperature also allows it to inherit models that do not
 accept that parameter.
 
-`investigate_deep` is pinned to `anthropic/claude-opus-5`. Its first
-availability fallback is `openai/gpt-5.6-sol`; its final fallback is
-OpenRouter DeepSeek V4 Pro. `annotate` is pinned to DeepSeek V4 Flash because
+`investigate_deep` is pinned to `openai/gpt-5.6-sol`; its availability fallback
+is OpenRouter DeepSeek V4 Pro. `annotate` is pinned to DeepSeek V4 Flash because
 Ghidra writes are mechanical but consequential.
 
 ## Independent review
@@ -46,14 +40,12 @@ are sent to `annotate`:
 
 | Producer | Reviewer |
 | --- | --- |
-| Anthropic | `review_openai` (GPT-5.6 Sol) |
-| OpenAI | `review_anthropic` (Claude Opus 5) |
-| DeepSeek/OpenRouter | `review_anthropic` (Claude Opus 5) |
+| OpenAI | `review_openrouter` (DeepSeek V4 Pro) |
+| DeepSeek/OpenRouter | `review_openai` (GPT-5.6 Sol) |
 
-`review_openrouter_fallback` is an availability fallback, not an independent
-vote. It is independent for findings produced by Anthropic or OpenAI, but not
-for findings produced by DeepSeek. If DeepSeek produced the finding and no
-Anthropic or OpenAI reviewer is available, defer consequential annotation.
+If the preferred cross-provider reviewer is unavailable, use the other reviewer
+as a same-provider fallback. This is a degraded review, but is preferable to
+no review. If both reviewers are unavailable, defer consequential annotation.
 Model agreement never replaces byte-level adjudication by the parent.
 
 Review is required for semantic renames, hardware identities, calling
@@ -76,15 +68,14 @@ OpenCode currently assigns one model to an agent and does not provide native
 cross-model fallback. For deep investigation, the parent retries the unchanged
 task in this order:
 
-1. `investigate_deep` — Claude Opus 5.
-2. `investigate_deep_openai_fallback` — GPT-5.6 Sol.
-3. `investigate_deep_openrouter_fallback` — DeepSeek V4 Pro.
+1. `investigate_deep` — GPT-5.6 Sol.
+2. `investigate_deep_openrouter_fallback` — DeepSeek V4 Pro.
 
 Advance through the chain only for authentication, quota/rate-limit, timeout,
 provider-outage, model-unavailability, or 5xx failures. A subscription-backed
-reviewer uses `review_openrouter_fallback` for the same failures. Do not use
-availability fallback to hide weak reasoning, refusals, context-length errors,
-malformed requests, or tool/schema errors.
+reviewer uses the other reviewer as a same-provider fallback for the same
+failures. Do not use availability fallback to hide weak reasoning, refusals,
+context-length errors, malformed requests, or tool/schema errors.
 
 If the primary session model selected with `/model` is itself unavailable, it
 cannot orchestrate its own fallback. Select `openrouter/deepseek/deepseek-v4-pro`

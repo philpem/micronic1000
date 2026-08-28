@@ -35,21 +35,19 @@ When using reverse-engineering subagents:
 - Treat subagent conclusions as proposals until their supporting evidence has
   been considered.
 - Before annotating a consequential new or revised finding, invoke a reviewer
-  from a different model family: `review_openai` for Anthropic work, and
-  `review_anthropic` for OpenAI/DeepSeek work. Consequential findings include
-  semantic renames, hardware identities, calling conventions, computed-table
-  mappings, overturned findings, and promotion to CONFIRMED.
+  from a different model family where available. For OpenAI-produced work use
+  `review_openrouter` first, then `review_openai` as a same-provider fallback.
+  For DeepSeek/OpenRouter-produced work use `review_openai` first, then
+  `review_openrouter` as a same-provider fallback. Consequential findings
+  include semantic renames, hardware identities, calling conventions,
+  computed-table mappings, overturned findings, and promotion to CONFIRMED.
 - If `investigate_deep` fails because of authentication, quota/rate limiting,
   timeout, provider outage, model unavailability, or a 5xx response, retry the
-  unchanged task with `investigate_deep_openai_fallback`. If that fails for
-  the same class of reason, retry it with
-  `investigate_deep_openrouter_fallback`.
-- If a subscription-backed reviewer fails for one of those availability
-  reasons, retry the unchanged review with `review_openrouter_fallback`.
-  DeepSeek review is independent only when DeepSeek did not produce the
-  finding. If DeepSeek produced it and no Anthropic or OpenAI reviewer is
-  available, defer consequential annotation rather than treating same-model
-  review as an independent gate.
+  unchanged task with `investigate_deep_openrouter_fallback`.
+- If the preferred cross-provider reviewer fails for one of those availability
+  reasons, retry the unchanged review with the same-provider reviewer listed
+  above. A same-provider review is a degraded fallback, but is preferable to
+  no review. If both reviewers are unavailable, defer consequential annotation.
 - Do not use availability fallback for weak analysis, refusals, context-length
   errors, malformed requests, or tool/schema errors.
 - If review returns REVISE, REJECT, or UNDERDETERMINED, send the disputed

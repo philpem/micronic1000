@@ -45,7 +45,7 @@
     },
 
     "investigate_deep": {
-      "model": "anthropic/claude-opus-5",
+      "model": "openai/gpt-5.6-sol",
       "mode": "subagent",
       "permission": {
         "edit": "deny",
@@ -59,25 +59,6 @@
         "ghidra-mcp_run_script": "deny"
       },
       "description": "Deep read-only investigator for difficult, ambiguous, disputed, or cross-cutting reverse-engineering questions.",
-      "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
-    },
-
-    "investigate_deep_openai_fallback": {
-      "model": "openai/gpt-5.6-sol",
-      "mode": "subagent",
-      "hidden": true,
-      "permission": {
-        "edit": "deny",
-        "ghidra-mcp_rename_*": "deny",
-        "ghidra-mcp_set_*": "deny",
-        "ghidra-mcp_create_*": "deny",
-        "ghidra-mcp_clear_*": "deny",
-        "ghidra-mcp_delete_*": "deny",
-        "ghidra-mcp_remove_*": "deny",
-        "ghidra-mcp_save_program": "deny",
-        "ghidra-mcp_run_script": "deny"
-      },
-      "description": "First availability fallback for deep investigation when Claude Opus 5 is unavailable.",
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
     },
 
@@ -96,7 +77,7 @@
         "ghidra-mcp_save_program": "deny",
         "ghidra-mcp_run_script": "deny"
       },
-      "description": "Final availability fallback for deep investigation when Claude Opus 5 and GPT-5.6 Sol are unavailable.",
+      "description": "Final availability fallback for deep investigation when GPT-5.6 Sol is unavailable.",
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
     },
 
@@ -115,30 +96,11 @@
         "ghidra-mcp_save_program": "deny",
         "ghidra-mcp_run_script": "deny"
       },
-      "description": "Independent read-only frontier reviewer for findings produced by Anthropic. Freshly checks evidence and actively seeks falsification before annotation.",
+      "description": "Independent read-only reviewer for findings produced by DeepSeek/OpenRouter, and same-provider fallback for OpenAI findings. Freshly checks evidence and actively seeks falsification before annotation.",
       "prompt": "{file:./.opencode/prompts/review.txt}"
     },
 
-    "review_anthropic": {
-      "model": "anthropic/claude-opus-5",
-      "mode": "subagent",
-      "steps": 10,
-      "permission": {
-        "edit": "deny",
-        "ghidra-mcp_rename_*": "deny",
-        "ghidra-mcp_set_*": "deny",
-        "ghidra-mcp_create_*": "deny",
-        "ghidra-mcp_clear_*": "deny",
-        "ghidra-mcp_delete_*": "deny",
-        "ghidra-mcp_remove_*": "deny",
-        "ghidra-mcp_save_program": "deny",
-        "ghidra-mcp_run_script": "deny"
-      },
-      "description": "Independent read-only frontier reviewer for findings produced by OpenAI or DeepSeek. Freshly checks evidence and actively seeks falsification before annotation.",
-      "prompt": "{file:./.opencode/prompts/review.txt}"
-    },
-
-    "review_openrouter_fallback": {
+    "review_openrouter": {
       "model": "openrouter/deepseek/deepseek-v4-pro",
       "mode": "subagent",
       "hidden": true,
@@ -154,7 +116,7 @@
         "ghidra-mcp_save_program": "deny",
         "ghidra-mcp_run_script": "deny"
       },
-      "description": "Fallback reviewer when subscription-backed review models are unavailable.",
+      "description": "Independent DeepSeek reviewer for OpenAI findings, and same-provider fallback reviewer when OpenAI review is unavailable.",
       "prompt": "{file:./.opencode/prompts/review.txt}"
     }
   }
