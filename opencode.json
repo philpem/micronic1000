@@ -62,6 +62,25 @@
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
     },
 
+    "investigate_deep_openai_fallback": {
+      "model": "openai/gpt-5.6-sol",
+      "mode": "subagent",
+      "hidden": true,
+      "permission": {
+        "edit": "deny",
+        "ghidra-mcp_rename_*": "deny",
+        "ghidra-mcp_set_*": "deny",
+        "ghidra-mcp_create_*": "deny",
+        "ghidra-mcp_clear_*": "deny",
+        "ghidra-mcp_delete_*": "deny",
+        "ghidra-mcp_remove_*": "deny",
+        "ghidra-mcp_save_program": "deny",
+        "ghidra-mcp_run_script": "deny"
+      },
+      "description": "First availability fallback for deep investigation when Claude Opus 5 is unavailable.",
+      "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
+    },
+
     "investigate_deep_openrouter_fallback": {
       "model": "openrouter/deepseek/deepseek-v4-pro",
       "mode": "subagent",
@@ -77,7 +96,7 @@
         "ghidra-mcp_save_program": "deny",
         "ghidra-mcp_run_script": "deny"
       },
-      "description": "Fallback deep investigator when the subscription-backed deep investigator is unavailable.",
+      "description": "Final availability fallback for deep investigation when Claude Opus 5 and GPT-5.6 Sol are unavailable.",
       "prompt": "{file:./.opencode/prompts/investigate-deep.txt}"
     },
 

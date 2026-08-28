@@ -34,9 +34,10 @@ model selection, including a choice made with `/model` or the model-selection
 key binding. Omitting temperature also allows it to inherit models that do not
 accept that parameter.
 
-`investigate_deep` is pinned to `anthropic/claude-opus-5`; its OpenRouter
-fallback is pinned to DeepSeek V4 Pro. `annotate` is pinned to DeepSeek V4
-Flash because Ghidra writes are mechanical but consequential.
+`investigate_deep` is pinned to `anthropic/claude-opus-5`. Its first
+availability fallback is `openai/gpt-5.6-sol`; its final fallback is
+OpenRouter DeepSeek V4 Pro. `annotate` is pinned to DeepSeek V4 Flash because
+Ghidra writes are mechanical but consequential.
 
 ## Independent review
 
@@ -50,7 +51,10 @@ are sent to `annotate`:
 | DeepSeek/OpenRouter | `review_anthropic` (Claude Opus 5) |
 
 `review_openrouter_fallback` is an availability fallback, not an independent
-vote. Model agreement never replaces byte-level adjudication by the parent.
+vote. It is independent for findings produced by Anthropic or OpenAI, but not
+for findings produced by DeepSeek. If DeepSeek produced the finding and no
+Anthropic or OpenAI reviewer is available, defer consequential annotation.
+Model agreement never replaces byte-level adjudication by the parent.
 
 Review is required for semantic renames, hardware identities, calling
 conventions, computed table mappings, overturned findings, and promotion to
@@ -69,11 +73,18 @@ The project uses a post-investigation review gate rather than an advisor agent:
 ## Availability fallback
 
 OpenCode currently assigns one model to an agent and does not provide native
-cross-model fallback. The parent retries a subscription-backed deep
-investigator or reviewer with its OpenRouter fallback only for authentication,
-quota/rate-limit, timeout, provider-outage, model-unavailability, or 5xx
-failures. It must not use fallback to hide weak reasoning, refusals,
-context-length errors, malformed requests, or tool/schema errors.
+cross-model fallback. For deep investigation, the parent retries the unchanged
+task in this order:
+
+1. `investigate_deep` — Claude Opus 5.
+2. `investigate_deep_openai_fallback` — GPT-5.6 Sol.
+3. `investigate_deep_openrouter_fallback` — DeepSeek V4 Pro.
+
+Advance through the chain only for authentication, quota/rate-limit, timeout,
+provider-outage, model-unavailability, or 5xx failures. A subscription-backed
+reviewer uses `review_openrouter_fallback` for the same failures. Do not use
+availability fallback to hide weak reasoning, refusals, context-length errors,
+malformed requests, or tool/schema errors.
 
 If the primary session model selected with `/model` is itself unavailable, it
 cannot orchestrate its own fallback. Select `openrouter/deepseek/deepseek-v4-pro`

@@ -39,11 +39,18 @@ When using reverse-engineering subagents:
   `review_anthropic` for OpenAI/DeepSeek work. Consequential findings include
   semantic renames, hardware identities, calling conventions, computed-table
   mappings, overturned findings, and promotion to CONFIRMED.
-- If a subscription-backed deep investigator or reviewer fails because of
-  authentication, quota/rate limiting, timeout, provider outage, model
-  unavailability, or a 5xx response, retry the unchanged task with
-  `investigate_deep_openrouter_fallback` or `review_openrouter_fallback`.
-  Do not use availability fallback for weak analysis, refusals, context-length
+- If `investigate_deep` fails because of authentication, quota/rate limiting,
+  timeout, provider outage, model unavailability, or a 5xx response, retry the
+  unchanged task with `investigate_deep_openai_fallback`. If that fails for
+  the same class of reason, retry it with
+  `investigate_deep_openrouter_fallback`.
+- If a subscription-backed reviewer fails for one of those availability
+  reasons, retry the unchanged review with `review_openrouter_fallback`.
+  DeepSeek review is independent only when DeepSeek did not produce the
+  finding. If DeepSeek produced it and no Anthropic or OpenAI reviewer is
+  available, defer consequential annotation rather than treating same-model
+  review as an independent gate.
+- Do not use availability fallback for weak analysis, refusals, context-length
   errors, malformed requests, or tool/schema errors.
 - If review returns REVISE, REJECT, or UNDERDETERMINED, send the disputed
   claims and review evidence to `investigate_deep`. Resolve disagreements by
