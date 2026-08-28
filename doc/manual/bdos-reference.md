@@ -36,7 +36,7 @@ carry/error convention where the firmware does not provide one.
 | 09h, 0Ah | string output, line input | CONFIRMED behaviour; ABI incomplete |
 | 0Bh | console status | CONFIRMED ABI |
 | 0Ch | return version | CONFIRMED ABI: HL=0023h |
-| 0Dh | reset disk system | stub |
+| 0Dh | reset disk system | Advanced / unsafe shared diagnostic path |
 | 0Eh | select disk | CONFIRMED ABI |
 | 19h | get current drive | CONFIRMED behaviour; ABI incomplete |
 | 0Fh-17h | FCB open through rename | CONFIRMED behaviour; ABI incomplete |
@@ -244,7 +244,7 @@ does not transfer data and has no established result ABI.
 |---:|---|---|
 | 2Dh | banked-call wrapper | Advanced / unsafe system service |
 | 2Eh | directory-search helper | Advanced / unsafe system service |
-| 30h | far-call stub | Not an application API |
+| 30h | shared diagnostic dispatch | Advanced / unsafe; caller A selects diagnostic behavior |
 | 62h | filesystem/directory check | Advanced / unsafe |
 | 68h, 69h | no-op stubs | compatibility only |
 | F3h | no-op | compatibility only |
