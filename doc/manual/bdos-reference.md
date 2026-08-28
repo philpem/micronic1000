@@ -37,7 +37,8 @@ carry/error convention where the firmware does not provide one.
 | 0Bh | console status | CONFIRMED ABI |
 | 0Ch | return version | CONFIRMED ABI: HL=0023h |
 | 0Dh | reset disk system | stub |
-| 0Eh, 19h | select/get current drive | CONFIRMED behaviour; ABI incomplete |
+| 0Eh | select disk | CONFIRMED ABI |
+| 19h | get current drive | CONFIRMED behaviour; ABI incomplete |
 | 0Fh-17h | FCB open through rename | CONFIRMED behaviour; ABI incomplete |
 | 18h | login vector | stub |
 | 1Ah | set DMA address | stub |
@@ -121,6 +122,27 @@ the incoming flags unchanged.
 
 **Evidence:** dispatch word at `ROM00:3720`; `BdosReturnVersion`,
 `ROM00:15C7-15CA`.
+
+### 0Eh -- select disk
+
+**Status:** CONFIRMED ABI.
+
+**In:** `E` is the drive number, `00h` through `0Fh` (A: through P:).
+
+**Out:** `A=00h` after a valid selection; `A=FFh` when `E>=10h`. Test `A`,
+not flags: `Z` can be set on the `E=10h` error path.
+
+**Blocks:** no. A valid selection performs a bounded 64-bank replication
+sweep, with no wait loop or `HALT`.
+
+**Effects:** stores the selected value as the current drive and copies it to
+page-zero cell 4 in every bank. The BDOS dispatcher restores the caller's
+bank before return.
+
+**Errors:** `A=FFh` for drive numbers outside `00h..0Fh`.
+
+**Evidence:** dispatch word at `ROM00:3724`; `BdosSelectDisk`,
+`ROM00:15B3-15C6`; `Mem_BankSweepPutByte`, `ram:F46D-F47C`.
 
 ## DIPOS-B extensions
 

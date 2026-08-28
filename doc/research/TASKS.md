@@ -150,6 +150,11 @@ State: continuously updated as work progresses.
    * 2026-08-28: fn 0Ch `BdosReturnVersion` card added: no inputs, returns
      `HL=0023h`, preserves flags, and has no side effects or errors
      (`ROM00:3720` -> `ROM00:15C7-15CA`).
+   * 2026-08-28: fn 0Eh `BdosSelectDisk` card added: E=0..0Fh selects a
+     drive (`A=00h`); E>=10h returns `A=FFh` and flags are unreliable. Valid
+     selections update `g_bActiveDrive` and use `Mem_BankSweepPutByte` to
+     replicate page-zero cell 4 across banks. Corrected the prior unsupported
+     "disk login/DPB refresh" description in Ghidra.
 2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
    CONFIRMED runtime grammar and limits; this does not require a physical
    loader or a real device.
