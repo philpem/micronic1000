@@ -238,6 +238,29 @@ OPEN.
 the selected pair to the active device-pair cells. Values `>=05h` do not write
 the pair; this is not a documented error convention.
 
+### RTC and alarm extensions
+
+**FCh -- set RTC time:** `DE` points to an eight-byte source buffer. The
+service copies it to RTC scratch state, writes the RTC time registers under
+the SET/divider-stop sequence, and returns `A=00h`. The source byte at `+0`
+is copied but its meaning is OPEN; fields `+1..+7` map to the RTC time file.
+
+**FDh -- get RTC time:** `DE` points to an eight-byte writable destination.
+The service waits for RTC Reg-A UIP to clear, reads the time file, and writes
+the result to that buffer. A permanently asserted UIP bit prevents return.
+Byte `+0` remains OPEN.
+
+**FEh -- alarm work-item wait:** this is not a general alarm-time setter.
+Its low `E` byte is shifted by four, registers a work item, and blocks in a
+`HALT` loop until the work-item word clears. Carry set reports a full work-item
+table. Its implicit execution-context requirement remains ABI-incomplete.
+
+**FFh -- program or clear RTC alarm:** `DE=0000h` clears RTC Reg-B AIE.
+Otherwise, `DE` points to eight source bytes; the service waits for UIP clear,
+programs alarm registers, and enables AIE. Only the bytes consumed for those
+alarm registers are established; field names and lifecycle semantics remain
+OPEN.
+
 ## Related documentation
 
 * [Programmer's guide](programmer-guide.md) — compatibility differences,
