@@ -143,16 +143,18 @@ State: continuously updated as work progresses.
 2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
    CONFIRMED runtime grammar and limits; this does not require a physical
    loader or a real device.
-3. **Implement a stateful link-peer model in the emulator.** Exercise the
-   already-confirmed byte-latch handshake and collect a full send/receive
-   trace. This can close software-model defects but cannot identify electrical
-   bit meanings.
-4. **Continue static session-module and UI analysis.** Resolve remaining
+3. **Continue static session-module and UI analysis.** Resolve remaining
    writers/consumers, runtime error/status fields, and session state-machine
    payload handling from the loaded RAM modules and ROM call graph.
-5. **Complete the deferred annotation and typing sweep.** Name/plate remaining
+4. **Complete the deferred annotation and typing sweep.** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the coverage tracker
    after the semantic work stabilises.
+
+**Completed 2026-08-28:** reusable `micronic.proto.LinkPeer` now bridges
+queue/latch callbacks to the actual firmware transport. `comms_duplex.py`
+verified firmware TX (`05 04 44 00 "from-M1000"`) parsed by the adapter and
+all 14 adapter-sent bytes consumed by firmware RX. This is a software-only
+transport regression, not a live Commstar session or electrical-bit finding.
 
 ### Hardware-dependent priorities
 
@@ -1883,3 +1885,14 @@ State: continuously updated as work progresses.
     (restart vector 2). Added a no-hardware priority order above the hardware
     capture tasks. Contract cards, host-side validation tooling, emulator peer
     work, and final annotation remain open.
+- 2026-08-28 (reusable link peer and duplex regression):
+  * Added `LinkPeer` to `analysis/micronic/proto.py`: a reusable M1000-facing
+    queue/latch peer with captured TX, queued RX, control/command/probe logs,
+    and explicitly configurable non-data status bits. It deliberately names no
+    electrical bit function.
+  * `analysis/comms_duplex.py` now uses that peer to run the real firmware
+    byte pumps in both directions. CONFIRMED software result: firmware TX
+    writes `05 04 44 00 "from-M1000"`, parsed by the adapter model; firmware
+    RX consumes all 14 bytes of the adapter's
+    `05 03 04 E0 "reply-to-M"` stream. This does not establish session-level
+    compatibility, live RECORD/BLOCK payload content, or physical timing.

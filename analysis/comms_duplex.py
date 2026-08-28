@@ -36,10 +36,9 @@ LINK_ID = 0x45
 mem[0xFDD4] = LINK_ID; mem[0xFDD5] = 0x03; mem[0xFDD6] = 0x32
 mem[0xFDDC] = 0x0E; mem[0xFDDD] = 0xFE
 
-# ---- port bus bridges --------------------------------------------------
-mto_mod = []      # M1000 OUT(4Dh) -> model read (IN 4Eh of the model)
-mod_to_m = []     # model tx -> M1000 IN(4Eh)
-m_rxi = [0]
+# ---- port bus bridge ---------------------------------------------------
+peer = proto.LinkPeer()
+m1000_rx_count = [0]
 
 def rd(a): return mem[a & 0xFFFF]
 def wr(a,v): mem[a & 0xFFFF] = v & 0xFF
@@ -47,11 +46,10 @@ def wr(a,v): mem[a & 0xFFFF] = v & 0xFF
 def ich_m1000(*a):
     p = a[0]; p = p[0] if isinstance(p,tuple) else p; p &= 0xFF
     if p == 0x4E:
-        if m_rxi[0] < len(mod_to_m):
-            v = mod_to_m[m_rxi[0]]; m_rxi[0] += 1; return v
-        return 0
+        m1000_rx_count[0] += 1
+        return peer.read_rx()
     if p == 0x4B:
-        return 0x80 | (0x01 if (len(mod_to_m) - m_rxi[0]) > 0 else 0)
+        return peer.firmware_status()
     if p == 0x05: return 0x19
     return 0x00
 
@@ -59,7 +57,13 @@ def och_m1000(*a):
     p,v = (a[0],a[1]) if len(a)>=2 else (a[0],0xFF)
     p = p[0] if isinstance(p,tuple) else p; p &= 0xFF; v &= 0xFF
     if p == 0x4D:
-        mto_mod.append(v & 0xFF)
+        peer.write_tx(v)
+    elif p == 0x4A:
+        peer.write_control(v)
+    elif p == 0x4C:
+        peer.write_command(v)
+    elif p == 0x4F:
+        peer.write_probe(v)
     elif p == 0x47:
         img = B0 if v==0 else B1 if v==1 else b"\x00"*0x8000
         mem[0:0x8000] = img
@@ -79,15 +83,8 @@ def run_until(fn, cap=400000):
         if time.time()-t0>25: return False
     return False
 
-# ---- the peer model -----------------------------------------------------
-# Direction 1: the model's port-in reads bytes the M1000 put on 4Dh
-model_buf = []
-peer = proto.Link(
-    port_out=lambda b: mod_to_m.append(b & 0xFF),
-    port_in=lambda: (mto_mod.pop(0) if mto_mod else 0),
-    port_status=lambda: (0x81 if mto_mod else 0x80),
-    port_ctrl=lambda v: None,
-    id_byte=LINK_ID)
+# ---- reusable peer model -----------------------------------------------
+adapter = peer.make_adapter_link(LINK_ID)
 
 print("=== Direction 1: M1000 -> model ===")
 # seed FDEA descriptor {count, ptr}
@@ -99,11 +96,11 @@ mem[0xFDEB] = (len(payload1)>>8) & 0xFF
 mem[0xFDEC] = PPTR & 0xFF; mem[0xFDED] = (PPTR>>8) & 0xFF
 mem[0xFDD8] = len(payload1)
 mach.pc = 0x2F86
-ok1 = run_until(lambda: len(mto_mod) >= len(payload1)+1)
-wire1 = bytes(mto_mod)
+ok1 = run_until(lambda: peer.pending_tx >= len(payload1) + 1)
+wire1 = peer.peek_tx()
 print("  M1000 OUT(4Dh):", wire1.hex())
 # model receives: prelude + payload
-rx = peer.rx(max_len=len(payload1))
+rx = adapter.rx(max_len=len(payload1)) if ok1 else None
 d1_ok = False
 if rx:
     print("  model parsed: type=%d cmd=0x%04X payload=%r" %
@@ -114,15 +111,9 @@ print("  direction1:", "OK" if d1_ok else "FAIL")
 
 print("=== Direction 2: model -> M1000 ===")
 reply = proto.Frame(proto.TYPE_ANSWER, 0x04E0, b"reply-to-M")
-mod_to_m.clear(); m_rxi[0]=0
-peer2 = proto.Link(
-    port_out=lambda b: mod_to_m.append(b & 0xFF),
-    port_in=lambda: 0,
-    port_status=lambda: 0x80,
-    port_ctrl=lambda v: None,
-    id_byte=LINK_ID)
-peer2.tx(reply)
-wire2 = bytes(mod_to_m)
+m1000_rx_count[0] = 0
+adapter.tx(reply)
+wire2 = reply.wire(LINK_ID)
 print("  model wire:", wire2.hex())
 # Seed the firmware's RX descriptor at its frame buffer (FE0E) so
 # LinkBlockRx's 3508 count read knows how many bytes to expect.
@@ -130,9 +121,17 @@ mem[0xFE0E] = len(wire2) & 0xFF
 mem[0xFE0F] = (len(wire2)>>8) & 0xFF
 mem[0xFE10] = 0x12; mem[0xFE11] = 0xFE     # ptr = FE12 (payload buffer)
 mach.pc = 0x2FBD
-ok2 = run_until(lambda: m_rxi[0] >= len(wire2))
-print("  M1000 consumed %d/%d bytes" % (m_rxi[0], len(wire2)))
-d2_ok = (m_rxi[0] == len(wire2))
+ok2 = run_until(lambda: m1000_rx_count[0] >= len(wire2))
+print(
+    "  M1000 LINK_RXD reads: %d; queued bytes consumed: %d/%d"
+    % (m1000_rx_count[0], len(wire2) - peer.pending_rx, len(wire2))
+)
+# LinkBlockRx performs a controller-facing read before its descriptor pump.
+# Count queued bytes, not raw port reads, as the transport completion result.
+d2_ok = ok2 and peer.pending_rx == 0 and m1000_rx_count[0] >= len(wire2)
 print("  direction2:", "OK" if d2_ok else "partial/FAIL")
+
+print("  LINK_CTRL writes:", [f"{v:02X}" for v in peer.ctrl_writes])
+print("  LINK_CMD writes:", [f"{v:02X}" for v in peer.command_writes])
 
 print("=== RESULT:", "BIDIRECTIONAL EXCHANGE OK" if (d1_ok and d2_ok) else "CHECK NEEDED")

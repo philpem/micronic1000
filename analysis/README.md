@@ -39,6 +39,10 @@ Requires the `z80` python module in `venv/`.
   port-4Eh input callback into `LinkBlockRx`/RX dispatcher (2FBD),
   capture the 4A strobe handshake. Confirms `proto.Link.rx()`
   mirrors the firmware (4Eh gated on 4Bh bit0).
+- **`comms_duplex.py`** — reusable `proto.LinkPeer` regression: bridges the
+  model's queue/latch interface to the actual firmware byte pumps and verifies
+  a complete software-only exchange in both directions. It validates transport
+  mechanics, not a live Commstar session or electrical bit identities.
 
 ### `boot_hw.py` — visible harness details
 

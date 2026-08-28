@@ -79,8 +79,9 @@ by seeding the link state (fdd4/fdd5/fdd6) and calling
 
 - first byte on port 4Dh = the **link-id prelude** (`0x45 & 0x1F = 0x05`)
 - then `count` bytes from a `{count, ptr}` descriptor at FDEA, sent
-  via `OUTI (4Dh)` gated on 4Bh bit7 (TX empty)
-- 4Ah control latch strobes (0x02/0x03...), 4Ch = 0x81 (LinkPresent ACK)
+  via `OUTI (4Dh)` gated on 4Bh bit7
+- 4Ah control-latch writes (0x02/0x03...), 4Ch = 0x81 after the status-bit-7
+  poll; electrical meanings remain unproven
 
 ## Bidirectional exchange (verified)
 
@@ -95,8 +96,25 @@ shared port bus:
   `[05][03][04][E0]"reply-to-M"`, `Link.tx()` emits it, and the
   firmware's RX dispatcher consumes all 14 bytes.
 
-Result: **BIDIRECTIONAL EXCHANGE OK**. The reusable `micronic.proto`
-model is a working peer for the M1000's IR/link transport.
+Result: **BIDIRECTIONAL EXCHANGE OK**. `proto.LinkPeer` is the reusable
+queue-and-latch peer for an M1000-facing transport implementation. It captures
+`LINK_TXD`, queues `LINK_RXD`, records latch writes, and has configurable
+non-data status bits; it does not assign electrical names to those bits.
+
+```python
+peer = proto.LinkPeer()
+
+# M1000 I/O callbacks use peer.firmware_status(), peer.read_rx(),
+# peer.write_tx(), peer.write_control(), peer.write_command(), and
+# peer.write_probe().
+adapter = peer.make_adapter_link(id_byte=0x45)
+adapter.tx(proto.Frame(proto.TYPE_ANSWER, 0x04E0, b"reply"))
+```
+
+The default status policy matches the directed firmware traces: status bit 7
+is supplied for TX, bit 0 while queued RX bytes remain, and no inferred
+completion bit. A production adapter can set `status_bits` and
+`completion_bits` only from its own observed hardware behaviour.
 
 Note: the FDEA buffer is a *descriptor* `{count_lo, count_hi, ptr_lo,
 ptr_hi}` (read by FUN_3508), NOT a flat frame - the payload lives at

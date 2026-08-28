@@ -11,9 +11,9 @@ an assumption.
 
 ## Hardware transport (the byte pump)
 
-  port 4Ah  control latch (bit6/7 link online, bit1 = IR port line select)
-  port 4Bh  status   (bit7 = TX buffer empty, bit0 = RX buffer full)
-  port 4Ch  command/ACK latch (0x81 = present)
+  port 4Ah  control latch (firmware drives bits 0/1/4/5)
+  port 4Bh  status (firmware polls bits 7/4/6 for TX and 0-3 for RX)
+  port 4Ch  latch (firmware writes 0x81 after a status-bit-7 poll)
   port 4Dh  TX data byte  (write)
   port 4Eh  RX data byte  (read)
   port 4Fh  probe (0x1F)
@@ -41,6 +41,8 @@ record and reply set are symmetric. Exactly one side sends the first
 frame; the other holds the per-link slot with the expected id.
 """
 from __future__ import annotations
+
+from collections import deque
 
 # ------------------------------------------------------------------- consts
 PORT_CTRL   = 0x4A
@@ -126,6 +128,105 @@ class Frame:
                    payload[3:])
 
 
+class LinkPeer:
+    """Stateful byte-latch peer for a firmware or adapter implementation.
+
+    The peer models only the firmware-observed register protocol. It queues
+    bytes arriving at the M1000's RX latch, captures M1000 TX-latch writes,
+    records control/command/probe writes, and synthesizes the status branches
+    needed by ``LinkBlockTx`` and ``LinkBlockRx``. It deliberately assigns no
+    electrical name to any control or status bit.
+
+    ``firmware_status`` exposes bit 7 and RX bit 0 while inbound bytes remain.
+    Optional ``status_bits`` and ``completion_bits`` let an adapter add
+    observed status bits without giving them an inferred electrical name. The
+    default completion value is zero, matching the directed firmware traces.
+    """
+
+    _TX_READY = 0x80  # Mechanical: established directed TX test status.
+    _RX_DATA = 0x01
+
+    def __init__(self, rx_bytes=b"", status_bits=0, completion_bits=0):
+        self._rx_bytes = deque()
+        self._tx_bytes = deque()
+        self.status_bits = status_bits & 0x7C
+        self.completion_bits = completion_bits & 0x7F
+        self.ctrl_writes = []
+        self.command_writes = []
+        self.probe_writes = []
+        self.feed_rx(rx_bytes)
+
+    def feed_rx(self, data):
+        """Queue bytes for the M1000 to read from LINK_RXD."""
+        if isinstance(data, int):
+            self._rx_bytes.append(data & 0xFF)
+        else:
+            self._rx_bytes.extend(bytes(data))
+
+    def read_rx(self):
+        """Read one byte from the M1000-facing LINK_RXD latch."""
+        return self._rx_bytes.popleft() if self._rx_bytes else 0
+
+    def write_tx(self, value):
+        """Capture one byte written by the M1000 to LINK_TXD."""
+        self._tx_bytes.append(value & 0xFF)
+
+    def read_tx(self):
+        """Read one byte captured from the M1000-facing LINK_TXD latch."""
+        return self._tx_bytes.popleft() if self._tx_bytes else 0
+
+    def drain_tx(self):
+        """Return and clear all bytes captured from LINK_TXD."""
+        data = bytes(self._tx_bytes)
+        self._tx_bytes.clear()
+        return data
+
+    def peek_tx(self):
+        """Return captured LINK_TXD bytes without consuming them."""
+        return bytes(self._tx_bytes)
+
+    @property
+    def pending_tx(self):
+        """Number of M1000 TX-latch bytes awaiting adapter consumption."""
+        return len(self._tx_bytes)
+
+    @property
+    def pending_rx(self):
+        """Number of bytes queued for the M1000 RX latch."""
+        return len(self._rx_bytes)
+
+    def firmware_status(self):
+        """Return status for the M1000's LINK_STATUS reads."""
+        return self._TX_READY | self.status_bits | (
+            self._RX_DATA if self._rx_bytes else self.completion_bits
+        )
+
+    def adapter_status(self):
+        """Return status for an adapter consuming captured M1000 bytes."""
+        return 0x80 | (
+            self._RX_DATA if self._tx_bytes else self.completion_bits
+        )
+
+    def write_control(self, value):
+        self.ctrl_writes.append(value & 0xFF)
+
+    def write_command(self, value):
+        self.command_writes.append(value & 0xFF)
+
+    def write_probe(self, value):
+        self.probe_writes.append(value & 0xFF)
+
+    def make_adapter_link(self, id_byte=0):
+        """Return a :class:`Link` wired to this peer's adapter-facing side."""
+        return Link(
+            port_out=self.feed_rx,
+            port_in=self.read_tx,
+            port_status=self.adapter_status,
+            port_ctrl=self.write_control,
+            id_byte=id_byte,
+        )
+
+
 class Link:
     """The M1000 external-link byte transport (a side that must pump
     4x ports).  This is the reusable primitive for an adapter:
@@ -150,7 +251,7 @@ class Link:
     def tx(self, frame: Frame) -> int:
         """Send a frame. Mirrors the firmware TX path:
         1. prelude: link-id low 5 bits -> TX port
-        2. payload bytes, each gated on TX-empty (status bit7).
+        2. payload bytes, each gated on status bit 7.
         """
         # prelude = our id's low 5 bits (address/select word)
         self._wait_tx_ready()
@@ -164,10 +265,9 @@ class Link:
         """Receive a frame from the peer.
 
         Mirrors the firmware RX path (verified: LinkBlockRx reads
-        port 4Eh gated on 4Bh bit0 = RX buffer full, with control
-        latch strobes):
+        port 4Eh when 4Bh bit0 is set, with control-latch strobes):
           1. prelude byte (peer's link id)
-          2. up to `max_len` payload bytes, each gated on RX-full
+         2. up to `max_len` payload bytes, each gated on status bit 0
         Returns the parsed Frame, or None on timeout.
         """
         pre = self._read_bytes(1, timeout)
@@ -186,7 +286,7 @@ class Link:
         out = bytearray()
         while len(out) < n:
             if not (self.on_st() & 0x01):
-                # RX not full yet
+                # Firmware-observed RX data bit not asserted yet.
                 if timeout is not None and timeout <= 0:
                     return None
                 continue
