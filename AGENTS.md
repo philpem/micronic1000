@@ -389,6 +389,20 @@ Ghidra comment kinds, used deliberately:
 doesn't?** Restating the operation fails. Decoding flags, bits, magic
 numbers, idioms, and intent passes.
 
+### Error-code references
+
+Firmware commonly stores error IDs in hexadecimal while the error screen
+shows the same value in decimal. When documenting or commenting a mapped,
+user-visible error, always include both forms and the exact quoted text:
+
+```
+0x2334 (9012), "DIP file has too many blocks."
+```
+
+Use this format in docs, plates, EOL/PRE comments, and replies. Do not invent
+a message for an unmapped ID; retain its code alone and record what would map
+it.
+
 ```asm
 ; -- branch/flag semantics: say what the branch MEANS --
 CP   0x25
