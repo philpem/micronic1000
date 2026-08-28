@@ -141,14 +141,25 @@ Status lines (not errors — no error-code prefix): "Program transmitted",
 "Program received", "Session complete", "Logging on", "Logged on",
 "Logged off".
 
-Loader errors (ROM01, Load/Run Program):
+Loader errors (ROM01, Load/Run Program — `ROM01:0A67-10CE` via `ram:D081→ram:D0F0`).
+The error screen shows decimal IDs; hexadecimal IDs are included for RE use:
 
-| message | condition |
-|---------|-----------|
-| No program in memory | Load from empty WORKSTATION MEMORY |
-| Requested program not in memory | named program absent |
-| Program not built for this system | incompatible build |
-| Program corrupt | failed checksum/validation |
+| error shown | condition (CONFIRMED) |
+|-------------|-----------------------|
+| `0x2328` (9000), "No program in memory." | Load from empty WORKSTATION MEMORY |
+| `0x2329` (9001), "Requested program not in memory." | named program absent |
+| `0x232A` (9002), "DIP file too big." | `destination + payload` exceeds memory boundary |
+| `0x2334` (9012), "DIP file has too many blocks." | block count `>5` and related bank-range bound |
+| `0x2331` (9009), "Program not built for this system." | system ID at header `+2` is neither `0` (wildcard) nor `0x00E5` |
+| `0x232B` (9003), "Bad DIP file." | truncated 8-byte block header or truncated payload read (NOT bad magic) |
+| `0x232C` (9004), "COM file too big." | raw COM exceeds `0xCF81` bytes (53,121 bytes); COM occupies `0x0100-D080` because resident module B begins at `0xD081` |
+| `0x2332` (9010), "Program corrupt." | post-load block checksum mismatch — `Program_VerifyBlockChecksums` (`09C2`) recompute vs `Program_GenerateBlockChecksums` (`0957`) value at descriptor `+8`; i.e. **loaded program memory changed / failed integrity**, not a file-header checksum |
+
+COM vs DIP discrimination (CONFIRMED): if the first input chunk is `<14`
+bytes or its first word `!= 0xC8C9` (`C9 C8`), the loader treats it as raw
+COM, loads at `0x0100`, run-bank `0`, entry `0x0100`. DIP magic `0xC8C9`
+is at header `+0`. See [Program formats](program-formats.md) for the full
+14-byte header and type 0/1 block grammar.
 
 ### Error recovery
 

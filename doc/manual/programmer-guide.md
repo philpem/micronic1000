@@ -349,74 +349,90 @@ gate.
 
 Apart from standard CP/M `.COM` files, DIPOS-B has its own
 block-structured **DIP** program format ("DIP files"), plus a
-`Fastcode:` transfer mode used over the link. The loader's error
-strings are visible in ROM1 (`DIP file too big`, `Bad DIP file`,
-`COM file too big`, `Program not built for this system`,
-`Program corrupt`, `DIP file has too many blocks`) — these prove the
-format parser enforces a size cap, a block-count cap, a
-system-compatibility marker and an integrity check.
+`Fastcode:` transfer mode used over the link. The loader is the
+**runtime Load/Run loader** in ROM01 (`ROM01:0A67-10CE` via
+`ram:D081 -> ram:D0F0`); it is distinct from the ROM boot-load chain
+(`ram:D6DB` / `ram:D6F4` `fn=0/1/2/FFFF`), which is boot-only.
 
-### DIP is a loader-record stream (verified mechanism)
+### DIP file grammar (CONFIRMED)
 
-The DIP and COM loaders both funnel into the **kernel loader
-primitives** (resident in battery RAM at `d6f4`+), which consume a stream
-of records:
+A DIP file begins with a **14-byte header** (little-endian):
 
-```
-d6fa = memset  (fn=0x0000)  zero-fill addr..addr+count
-d713 = memcpy  (fn=0x0001)  copy src -> dst, count bytes
-d727 = enqueue (fn=0x0002)  append N {RST10h, bank, addr} deferred
-                             banked-call stubs to the queue at d684
-d6de = record dispatcher    (reads fn, indexes d6f4+2*fn)
-```
+| +0 | `u16` magic `0xC8C9` (bytes `C9 C8`) | +2 `u16` system ID (`0` wildcard or `0x00E5`) |
+| +4 | `u16` entry-bank offset | +6 `u16` image size (clamped to `0x8000`) |
+| +8 | `u16` run-bank offset | +10 `u16` entry address |
+| +12 | `u16` block count (max `5`) | |
 
-A **DIP file is a sequence of these loader records**, terminated by
-`fn=FFFF` — the same grammar the ROM's own *boot-load chain* uses (the
-reset code reads `(7FFC)` and feeds it to the record dispatcher; see
-`analysis/decode_chains.py`). Each `fn=2` stub tags the current bank
-(`port 47` shadow, `f791`), so a single DIP can place code/data into the
-banked 0000-7FFF window *and* the fixed battery RAM, and enqueue
-"constructor" calls that run on load.
+Then `blockCount` blocks: each an **8-byte header**
+`{u16 type, u16 dest bank offset, u16 dest address, u16 payload count}`
+followed by payload. **Type 0** copies payload directly to the
+destination; **type 1** payload is 4-byte `{bank offset, target address}`
+items expanded into `{0xD7, resolved bank, target LE}` RST 10h trampolines.
+Only types `0`/`1` have defined handlers; other values take the dispatch
+table's default next-block path without an explicit error. At load time
+each header expands to a **10-byte
+`DIP_LoadedBlockDescriptor`** — `Program_GenerateBlockChecksums`
+(`ROM01:0957`) writes an additive checksum at `+8`; before run
+`Program_VerifyBlockChecksums` (`ROM01:09C2`) recomputes it and mismatch
+reports `0x2332` (9010), **"Program corrupt."** (loaded memory changed, not a file
+checksum).
 
-> The full byte-level spec — record layouts, the 16-bit byte-sum checksum,
-> the ROM footer, and the (still-open) DIP file header — is in
-> [Program formats: COM and DIP](program-formats.md). The record grammar
-> and checksum there are CONFIRMED; the external DIP *file header* layout
-> (magic / system ID / size / block count) has not yet been pinned from
-> the parser, so do not build a DIP file encoder until it is.
+Loader entry points (CONFIRMED):
+`Program_PrepareLoadGeometry` (`0A67`), `Program_LoadByName` (`0B82`),
+`Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
+`Program_RunByName` (`106F`), `Program_NormalizeLoadRange` (`0AE3`),
+`Program_ReportLoadError` (`0CCB`), final transfer `ROM01:10C6 -> ram:D7F0`
+(`RunLoadedProgram`). Source bytes arrive via coroutine/provider machinery
+around `0C12`/`0CE7` and `ram:D370`; the exact physical source-reader is
+**not** identified — BDOS `open`/`read`/`search` are generic FCB services,
+there is no BDOS execute function.
+
+Fallback to COM (CONFIRMED): if the first chunk is **<14 bytes** or its
+first word **`!= 0xC8C9`**, the loader treats input as **raw COM**, copies
+to `0x0100`, run-bank `0`, entry `0x0100`. The exclusive load ceiling is
+`0xD081`, the start of resident module B, so the maximum COM length is
+`0xD081 - 0x0100 = 0xCF81` bytes (**53,121 bytes**); the last loaded byte is
+at `0xD080`.
+
+For DIP, the entry-bank offset (`+4`) establishes the load range relative
+to the selected program-bank base. The run-bank offset (`+8`) is resolved
+separately immediately before execution, and the entry address (`+10`) is
+the Z80 address jumped to in that bank. Block count (`+12`) controls how
+many following block header/payload pairs are loaded and later checksum-
+verified; the fixed runtime descriptor array permits at most five.
+
+> Full byte-level spec, error catalogue and boot-chain distinction: see
+> [Program formats: COM and DIP](program-formats.md). The DIP header,
+> block grammar and 8→10-byte expansion are CONFIRMED there; `ram:ECDA`
+> as the maximum available entry-bank offset is **LIKELY** only.
 
 A stored `.COM`, in contrast, is the ordinary CP/M single-image file
 loaded at 0100h; the loader validates it (`COM file too big`,
-`Program corrupt`) but has no multi-block structure.
+`Program corrupt` — the latter is the same post-load checksum mismatch)
+but has no multi-block structure.
 
 ### Advantages of DIP over .COM
 
 1. **Multi-segment + banked placement** — one image can target
    several 32K banks and battery RAM, beating the flat 64K limit.
-2. **On-load initialisation** — the deferred banked-call records let
-   a DIP bundle setup calls that run after transfer.
-3. **Incremental / streamable** — the record stream loads in
-   fixed-size chunks, which is exactly what the Commstar link
-   RECORD/BLOCK transfer delivers as it arrives.
+2. **Banked-call initialisation** — type-1 blocks install RST 10h
+   banked-call trampolines at selected destinations.
+3. **Streamable** — the block stream loads in chunks via the provider
+   (`0BAC`/`0CE7`/`D370`).
 4. **Better diagnostics** — explicit "too big / too many blocks /
-   not built for this system / corrupt" stages vs a one-line ".COM
-   too big".
+    not built for this system / `0x2332` (9010), "Program corrupt." stages
+    vs a one-line
+    ".COM too big". `0x232B` (9003), "Bad DIP file." means a truncated 8-byte
+   block header or payload, not bad magic.
 
 ### Disadvantages vs .COM
 
 - **Not standard** — a DIP must be built by a DIPOS-B-aware tool;
   you cannot just drop a stock CP/M .COM and rename it.
-- **Overhead** — per-block headers and per-record metadata are heavier
-  than a raw .COM, especially over a slow IR link.
+- **Overhead** — per-block headers and per-block trampoline expansion are
+  heavier than a raw .COM.
 - **More loader complexity** — the block-count/size/system/checksum
   checks are extra failure states.
-
-> Note: the exact on-disk DIP **header** layout (where the block count /
-> system ID / size live) is still open — the parser is in module A
-> (ROM00:73CE → ram:D893), not yet disassembled. The record *grammar*,
-> the checksum, and the ROM footer are CONFIRMED; the full spec and the
-> open item are in [Program formats: COM and DIP](program-formats.md).
-> Until the header is pinned, treat it as a live-session/capture item.
 
 ---
 

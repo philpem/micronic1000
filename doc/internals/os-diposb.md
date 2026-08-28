@@ -254,18 +254,23 @@ The dispatcher startup (ram:D681, source ROM00:7030) reads `(7FFC)`
 of the active bank and walks its chain; both banks' chains run so both
 banks' modules install.
 
-### The record grammar
+### The record grammar — boot chain only (CONFIRMED)
 
 Records are little-endian words. The first word selects the type;
-the handlers are the three loader syscalls in ram:D681-D7C8. Each
-record handler tail-jumps (JP d6de) to run the next record, and a
-hidden table terminator (d6f2 → d6ee) ends the walk.
+the handlers are the three loader syscalls in `ram:D681-D7C8`. Each
+record handler tail-jumps (`JP d6de`) to run the next record, and a
+hidden table terminator (`d6f2 → d6ee`) ends the walk. **This grammar
+is the ROM boot-load chain only — it is NOT the runtime DIP file
+format** (see [Program formats: COM and DIP](../manual/program-formats.md)).
+The runtime Load/Run loader (`ROM01:0A67-10CE` via `ram:D081 → ram:D0F0`)
+has its own 14-byte header + 8-byte block grammar with type 0/1 and
+8→10-byte checksum expansion.
 
 | fn | Fields | Action |
 |----|--------|--------|
-| `0000` | `addr`, `count` | memset(addr, 0, count) |
-| `0001` | `src`, `dst`, `count` | memcpy(dst ← src, count) |
-| `0002` | `N`, `word[N]` | enqueue N far-call stubs `{D7h, bank, target}` at the deferred-call cursor `*(d684)` |
+| `0000` | `addr`, `count` | `memset(addr, 0, count)` |
+| `0001` | `src`, `dst`, `count` | `memcpy(dst ← src, count)` |
+| `0002` | `N`, `word[N]` | enqueue `N` far-call stubs `{D7h, bank, target}` at the deferred-call cursor `*(d684)` |
 | `FFFF` | — | terminate |
 
 ### The verified chains (from `analysis/decode_chains.py`)
@@ -344,15 +349,39 @@ TWO roles:
   RST2 tails; saves current bank, switches to bank 0, calls kernel
   (F54E) then bank-0 worker (2C00), restores bank, re-notifies kernel.
 
-## Code-loading paths (from strings; static evidence)
+## Runtime program loading — Load/Run loader (CONFIRMED)
 
-* Session states: `NOT-STARTED / DISCONNECTED / CONNECTED /
-  READY-RX-DATA / READY-RX-PROG / READY-TX-* / RECORD-* / BLOCK-* …`
+* Loader: **ROM01:0A67-10CE** via `ram:D081` (`g_apScreenHandlerTables`) →
+  `ram:D0F0` (`g_apLoadRunHandlers`), entered through
+  `Ui_FormExitDispatchNext` (ROM01:06D3). Key routines:
+  `Program_PrepareLoadGeometry` (`0A67`), `Program_NormalizeLoadRange`
+  (`0AE3`), `Program_GenerateBlockChecksums` (`0957`),
+  `Program_VerifyBlockChecksums` (`09C2`), `Program_LoadByName` (`0B82`),
+  `Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
+  `Program_ReportLoadError` (`0CCB`), `Program_RunByName` (`106F`),
+  final transfer `10C6 → ram:D7F0` (`RunLoadedProgram`).
+* **DIP vs COM**: magic `0xC8C9` (`C9 C8`) at `+0`, system ID `0`/`0x00E5`,
+  14-byte header, max 5 blocks, type `0`=direct copy / `1`=RST 10h
+  trampoline expansion, 8→10-byte descriptor with additive checksum at `+8`
+  (`0957`/`09C2`, `0x2332` (9010), "Program corrupt." = mismatch). COM fallback when
+  first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
+  run-bank `0`, entry `0x0100`. See [Program formats](..//manual/program-formats.md).
+* **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
+  services. Source bytes arrive via coroutine/provider around `0C12`/`0CE7`
+  and `ram:D370`; the exact physical source-reader is **not** identified
+  (open item).
+* `ram:ECDA` as maximum available entry-bank offset from selected-storage
+  geometry is **LIKELY** only.
+* Session states (separate transport layer): `NOT-STARTED / DISCONNECTED /
+  CONNECTED / READY-RX-DATA / READY-RX-PROG / READY-TX-* / RECORD-*
+  / BLOCK-* …`
 * Transports named in UI strings: PLINTH (IR, back connector),
   V24 ADAPTOR (IR strap, top), EXT STORAGE ADAPTOR, LOCAL LINK,
   modem (auto-answer / dial / manual).
 * Menu: `Load/Run Program`. Reception messages: `Receiving prog`,
   `Program received`, `Invalid data stream`.
+
+### Code-loading paths (from strings; static evidence) — legacy strings
 
 ## Debug facilities
 
