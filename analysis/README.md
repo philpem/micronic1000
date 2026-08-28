@@ -16,6 +16,14 @@ adapter or host program:
   `[link_id&0x1F]` prelude + payload via an `on_tx` callable, gated
   on `on_st() & 0x80` (TX empty); `rx()` reads from `on_rx` gated on
   `on_st() & 0x01` (RX full).
+* `micronic.program` — host-side COM/DIP image validator (CONFIRMED grammar
+  from `doc/manual/program-formats.md`): classifies by first-chunk rule
+  (`<14` bytes or first word != `C9 C8` → COM), validates DIP 14-byte LE
+  header (magic `C9 C8`, system ID `0`/`E5 00`, block count ≤5), parses
+  blocks, checks payload lengths and type-1 `len % 4 == 0`, enforces COM
+  max `0xCF81`; error identifiers match the loader catalogue
+  (`0x232B`/`0x2331`/`0x2334`/`0x232C`) where applicable and clamps image
+  size at `0x8000` without rejection.
 * Verified **byte-for-byte** against the firmware (`comms_tx_test.py`).
 
 ## Emulator harnesses (Python `z80` module)
@@ -67,6 +75,18 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --lcd --expect "To Con
 timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-file /tmp/steps.json --dump-bank 2
 # steps.json: [{"match":"To Continue Press>>","keys":"\\r"},{"match":["Ram:","K.B."],"keys":"\\r"},{"match":"Main Menu","keys":"1"}]
 ```
+
+## Program image validator
+
+- **`validate_program.py`** — CLI for COM/DIP validation (no hardware): reads
+  a file (or stdin), classifies via first-chunk rule, validates per
+  `doc/manual/program-formats.md`, prints human or `--json` output.
+  Exit `0`=valid, `1`=invalid, `2`=error. Example:
+  `analysis/venv/bin/python3 analysis/validate_program.py prog.dip --json`
+- **`test_program.py`** — self-contained golden regression tests for
+  `micronic.program` (stdlib only, 35 tests). Run with
+  `analysis/venv/bin/python3 analysis/test_program.py` or
+  `python3 analysis/test_program.py` or `python3 -m unittest analysis.test_program`.
 
 ## Decode scripts (static)
 

@@ -11,6 +11,7 @@ micronic/
   __init__.py   package exports
   rtc.py        HD146818 register model (RTC tick cadence)
   proto.py      Commstar IR-link frame/transport model
+  program.py    COM/DIP image validator (CONFIRMED grammar)
 ```
 
 ## rtc.py — the RTC / tick source
@@ -120,6 +121,48 @@ Note: the FDEA buffer is a *descriptor* `{count_lo, count_hi, ptr_lo,
 ptr_hi}` (read by FUN_3508), NOT a flat frame - the payload lives at
 the pointer. The record/block *data contents* at that pointer are the
 only remaining runtime detail; the transport and framing are verified.
+
+## program.py — COM/DIP image validator
+
+Host-side validator for the runtime Load/Run Program loader (ROM01:0A67-10CE,
+`Program_LoadDipOrCom` at `ROM01:0CE7`). Implements **only** the CONFIRMED
+grammar from `doc/manual/program-formats.md`:
+
+* **COM/DIP discrimination** by first-chunk rule: `<14` bytes or first word
+  != `0xC8C9` (`C9 C8`) → COM, else DIP.
+* **DIP header** exactly 14 bytes LE: magic `0xC8C9`, system ID `0` or
+  `0x00E5`, image size clamped to `0x8000` (not rejected), block count `≤5`.
+* **Blocks**: 8-byte header + payload; payload length validated; type-1
+  payload must be multiple of 4; unknown types are allowed (ROM takes the
+  default dispatch path).
+* **COM** max `0xCF81` (`0xD081 - 0x0100`) bytes.
+* Error identifiers match the loader catalogue where applicable:
+  `0x232B` (9003) "Bad DIP file.", `0x2331` (9009)
+  "Program not built for this system.", `0x2334` (9012)
+  "DIP file has too many blocks.", `0x232C` (9004) "COM file too big.".
+  Type-1 alignment uses validator-specific `DIP_TYPE1_ALIGN`.
+
+```python
+from micronic.program import validate, build_dip_file
+
+# Build a minimal DIP for testing
+data = build_dip_file(blocks=[(0, 0, 0x1000, b"hello")])
+res = validate(data)
+assert res.valid and res.kind == "DIP"
+
+# Validate a file
+from micronic.program import validate_file
+res = validate_file("prog.dip")
+print(res.valid, res.errors)
+
+# CLI
+# analysis/venv/bin/python3 analysis/validate_program.py prog.dip --json
+```
+
+Builders `build_dip_header` / `build_dip_block` / `build_dip_file` are
+provided for host tooling and golden tests. The validator never invents
+constraints not in the docs (e.g. it does **not** reject `image_size >
+0x8000` — the loader clamps it).
 
 ## boot_hw.py — emulator harness
 
