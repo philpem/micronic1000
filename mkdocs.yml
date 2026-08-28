@@ -36,6 +36,7 @@ extra_javascript:
   - javascripts/diagrams.js
 exclude_docs: |
   research/**
+  review.md
   node_modules/**
   BUILD.md
   Makefile

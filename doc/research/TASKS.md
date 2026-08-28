@@ -1813,3 +1813,9 @@ State: continuously updated as work progresses.
   * Ghidra: labelled/typed `g_pProgramLoadCeiling`, annotated its startup
     writer, COM remaining-capacity calculation/error path, boot copy record,
     runtime DIP header and loader plates. Program saved after verification.
+- 2026-08-28 (documentation quality review):
+  * Added `doc/review.md`: a programmer-manual review of the published
+    documentation. It records the incomplete BDOS/RTC/configuration ABIs,
+    barcode-hook example risks, storage-guidance conflict, deployment/tooling
+    gap, terminology cleanup, and a prioritised roadmap. No firmware finding
+    or Ghidra annotation was changed. `mkdocs build --strict` passes.
