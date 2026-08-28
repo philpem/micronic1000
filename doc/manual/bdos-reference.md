@@ -197,6 +197,47 @@ receives the accepted count, and accepted bytes begin at `DE+2`. CR, `7Fh`, and
 `1Bh` receive special handling. Full-buffer and returned-flag behavior remain
 OPEN.
 
+### FCB directory calls (ABI-incomplete)
+
+These calls take `DE` as a mutable FCB-like buffer. They normalize bytes
+`DE+1..+11`; invalid-drive paths do not provide a uniform `A`/flag ABI.
+
+**0Fh/10h -- open/close:** local success returns `A=00h`; local failure
+returns `A=FFh`. Open copies directory bytes `+1..+31` to the caller buffer;
+close copies those caller bytes back and writes the entry.
+
+**11h/12h -- search first/next:** local success returns a four-slot directory
+result index in `A`; failure returns `A=FFh`. Both temporarily write `3Fh` at
+caller offset `+12`, restore it, and copy a 128-byte result to the DMA buffer.
+Search-next uses global continuation state.
+
+**13h -- delete:** local success returns `A=00h`; no-match returns `A=FFh`
+with carry set. It permanently writes `3Fh` at `+12`, marks matched entries
+`E5h`, and processes eight words at offsets `+16..+31`; their meaning is OPEN.
+
+**16h -- make:** local success returns `A=00h`; existing/local-failure paths
+return `A=FFh`. It clears caller `+12`, creates a zeroed 32-byte entry, and
+copies resulting directory bytes back to the caller buffer.
+
+**17h -- rename:** expects two adjacent FCB-like records, the second at
+`DE+10h`. It updates the selected entry's eleven name bytes from the second
+record; its completed-path `A` is not a portable success indicator.
+
+### FCB record calls (ABI-incomplete)
+
+**14h/15h -- sequential read/write:** normal paths transfer one 128-byte
+record through the configured DMA buffer and return `A=00h`. Both advance
+caller `+20`; rollover increments `+12` and clears `+20`. Nonzero results are
+path-dependent; do not use carry as a general result test.
+
+**21h/22h -- random read/write:** use caller `+21..+23` to select state,
+transfer one 128-byte record on a normal path, and return `A=00h`. Selection
+mutates caller `+20`; observed nonzero results are not public error names.
+
+**24h -- set random record:** derives and writes a three-byte little-endian
+value at caller `+21..+23` from `+12` and `+20`; its high byte is zero. It
+does not transfer data and has no established result ABI.
+
 ## DIPOS-B extensions
 
 | Function | Service | Status |
