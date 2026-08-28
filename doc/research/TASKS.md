@@ -45,11 +45,49 @@ State: continuously updated as work progresses.
     config read/write + device-pair, FC/FD set/get RTC time,
     FE/FF RTC alarm. All renamed+plate-commented in Ghidra.
 17. **DIPOSB programmer's guide** (doc/manual/programmer-guide.md):
-    self-contained doc to read alongside a CP/M 2.2 guide. Covers the
-    BDOS call interface, RAM file system (A/B drives, 16-drive select,
-    stubbed alloc/DPB fns), device-routed console I/O, the F3-FF
-    extension fns (device/config/RTC/alarm/delay), banked calls (RST2),
-    and a practical differences/avoid table.
+     self-contained doc to read alongside a CP/M 2.2 guide. Covers the
+     BDOS call interface, RAM file system (A/B drives, 16-drive select,
+     stubbed alloc/DPB fns), device-routed console I/O, the F3-FF
+     extension fns (device/config/RTC/alarm/delay), banked calls (RST2),
+     and a practical differences/avoid table.
+18. **Runtime DIP/COM Load/Run loader — file format CLOSED (2026-08-28)**:
+     `ROM01:0A67-10CE` via `ram:D081` (`g_apScreenHandlerTables`, was
+     `g_tblFieldTypeRecPtrs`) → `ram:D0F0` (`g_apLoadRunHandlers`),
+     `Ui_FormExitDispatchNext` (ROM01:06D3) double-dereference. Ghidra
+     names: `Program_PrepareLoadGeometry` 0A67, `Program_LoadByName` 0B82,
+     `Program_ConsumeInputChunk` 0BAC, `Program_LoadDipOrCom` 0CE7,
+     `Program_RunByName` 106F, `Program_GenerateBlockChecksums` 0957,
+     `Program_VerifyBlockChecksums` 09C2, `Program_NormalizeLoadRange`
+     0AE3, `Program_ReportLoadError` 0CCB, `RunLoadedProgram` ram:D7F0
+     (final transfer at 10C6). **No BDOS execute function** — BDOS
+     open/read/search are generic FCB services; source bytes via
+     coroutine/provider around `0C12`/`0CE7`/`ram:D370`, exact physical
+     source-reader remains open — do not claim identified. DIP is
+     **distinct from boot record dispatcher `ram:D6DB`** (`fn=0/1/2/FFFF`
+     grammar is boot-only, not DIP). DIP grammar (LE, CONFIRMED): 14-byte
+     header `{magic 0xC8C9 (C9 C8), system ID 0/0x00E5, entry-bank, image
+     size clamped 0x8000, run-bank, entry addr, blockCount max 5}` then
+     blocks `{u16 type, u16 dest bank off, u16 dest addr, u16 payload
+     count}+payload`; type 0 direct copy, type 1 = 4-byte `{bank off,
+     addr}` → `{0xD7, resolved bank, addr LE}` RST10 trampolines; only
+     types 0/1 accepted (other type → default/next logic only if
+     applicable, phrased explicitly). 8→10-byte
+     `DIP_LoadedBlockDescriptor` expansion — `0957` writes additive
+     checksum at `+8`, `09C2` recomputes, mismatch `0x2332` (9010),
+     "Program corrupt." = **loaded memory changed** (not file checksum). COM
+     fallback if first chunk `<14` or first word `!=0xC8C9` → copy to
+     `0x0100`, run-bank `0`, entry `0x0100`. Errors: `0x232B` (9003),
+     "Bad DIP file." = short/truncated 8-byte header or payload (not bad
+     magic); `0x2331` (9009), "Program not built for this system." = ID
+     mismatch; `0x2334` (9012), "DIP file has too many blocks." = count>5;
+     `0x232A` (9002), "DIP file too big." = dest+payload over boundary;
+     `0x232C` (9004), "COM file too big." = raw COM over capacity.
+     `ram:ECDA` max entry-bank offset is **LIKELY** only. `ram:D681` is
+     the kernel dispatch/boot-loader block, **not** the runtime loader
+     (ROM01 separate). Supersedes old header-open / funnel-into-D6DB
+     / `g_tblFieldTypeRecPtrs` device-mapping claims.
+     Docs updated: program-formats.md (rewritten), programmer-guide.md
+     §7b, forms-ui.md, memory-map.md, os-diposb.md, user-guide.md.
 
 ## In progress
 
@@ -109,23 +147,25 @@ State: continuously updated as work progresses.
 2. **Confirm the exact TX/RX status bits** (4Bh bit0/1/2 RRCA chain,
    bit7 RLCA) and 4Ah strobe timing from LinkBlockRx (branch-confirmed,
    needs traces for timing).
-3. **Side/external port — model corrected & fully grounded (2026-08-24)**:
-   I/O **2Dh** (`EXTBUS_EDGE`) + **2A/2C** latches are a bit-banged
-   **external-device bus front end** (ExtBus*, ROM00 120F-14EE),
-   dispatched by **active wire-id `fdca`** via LinkCommandLookup
-   `{2B,2A,23,03}` → `0x1221` (2B/2A) / `0x1893` (dead). The default
-   FE83 wire table = `{0xAB,0x2B,0x67,0x67}`; **0x2B = EXT STORAGE
-   ADAPTER** (the only named device + "V24 ADAPTOR"). **Internal A:/B:
-   drives are pure RAM** (never on this bus). **EXT STORAGE data moves
-   over the 4x byte transport** (`LinkTransportCall`/`LinkBlockTx/Rx`);
-   the 2D edge-bang is a *separate* 2-wire front end. A **user decoder
-   hook** lives at `fbc2` (fbc1=bank, fbc0=RST10 stub), defaulted to
-   discard (1567). **BDOS fn 03 (RDR:) = `BdosReaderInChar` (1080)** is
-   a real reader path (1B/count/data via ring F95E). The earlier
-   "barcode/light-pen" branding is **not proven** — retitled neutral.
-   See protocol/commstar.md + manual/barcode-reader.md (updated).
-   **Developer tie-in: install decoder at `fbc2`; read via fn 03,
-   or arm directly via RST 10h -> ExtBusArm (1221).**
+3. **Side/external port — barcode front end (owner-adjudicated 2026-08-24)**:
+    I/O **2Dh** (`EXTBUS_EDGE`) + **2A/2C** latches are the bit-banged
+    **barcode-reader edge-capture front end** (`Barcode_` prefix for new
+    names; existing `ExtBus*`/`Barcode_*` coexist until a rename pass),
+    dispatched by **active wire-id `fdca`** via LinkCommandLookup
+    `{2B,2A,23,03}` → `0x1221` (2B/2A) / `0x1893` (dead). The default
+    FE83 wire table = `{0xAB,0x2B,0x67,0x67}`; **0x2B = EXT STORAGE
+    ADAPTER** (the only named device + "V24 ADAPTOR"). **Internal A:/B:
+    drives are pure RAM** (never on this bus). **EXT STORAGE data moves
+    over the 4x byte transport** (`LinkTransportCall`/`LinkBlockTx/Rx`);
+    the 2D edge capture is a *separate* front end — adjudicated the
+    **barcode reader** (AGENTS.md §3, Micronic US 4,423,319; side-port
+    5-pin pen + CCD gun). A **user decoder hook** lives at `fbc2`
+    (fbc1=bank, fbc0=RST10 stub), defaulted to discard (1567).
+    **BDOS fn 03 (RDR:) = `BdosReaderInChar` (1080)** is the reader byte-
+    stream path (1B/count/data via ring F95E).
+    See protocol/commstar.md + manual/barcode-reader.md (updated).
+    **Developer tie-in: install decoder at `fbc2`; read via fn 03,
+    or arm directly via RST 10h -> ExtBusArm (1221).**
 4. Emulator: verify a full send under trace (needs boot fix).
 5. **Examine the queued work-item system** — **DONE (2026-08-25,
    delegated analysis, applied + saved).** The FD5C queue is a 10-slot
@@ -1201,12 +1241,13 @@ State: continuously updated as work progresses.
     FE83 = 4 device slots [0x80,wire,0x63,0x43] = 0xAB/0x2B/0x67/0x67.
     BDOS std file ops (fn<0x25) reject non-zero wire-id -> external probe
     (DiskKeyedSearch -> LinkTransportOpen). Plates set on FE93/FE83.
-  * Device-selection callbacks (ram:D081 = 5 indirect ptrs, Module B):
-    [0] WORKSTATION MEMORY -> 0A67 (dialog config),
-    [1] WORKSTATION RAMDISK -> 156F (reset slots + banked dispatch),
-    [2] PLINTH -> 1177 (no-op), [3] V24 ADAPTOR -> 1177 (no-op),
-    [4] EXT STORAGE ADAPTER -> 156F (different param 0x41 vs 0x42).
-    "RAMdisk size" string at 7B45. Plate set on ram:D081.
+  * `ram:D081` = `g_apScreenHandlerTables` (was `g_tblFieldTypeRecPtrs`): **five
+    per-screen handler-table pointers indexed by active-screen selector at
+    `ROM01:034B`** (CONFIRMED). Entry 0 = `g_apLoadRunHandlers` at `ram:D0F0`
+    for the `ROM01:0A67-10CE` Load/Run loader (`Program_LoadByName`,
+    `Program_LoadDipOrCom`, `Program_RunByName`, `Program_GenerateBlockChecksums`
+    etc.); supersedes the earlier device-callback mapping
+    `{D0F0,D13D,D121,D12F,D14B}`. Plate corrected on `ram:D081`.
   * VERDICT: WORKSTATION MEMORY/RAMDISK are config FLOWS, not hardcoded
     wire-ids; the wire-id values are RUNTIME (dialog result / banked-call
     param), so static analysis cannot read them. NEXT: hardware/emulator
@@ -1645,9 +1686,9 @@ State: continuously updated as work progresses.
     the loader primitives (d6db/d6f4/d6fa/d713/d727/d7d1) or the DIP
     error strings. Module B (ROM01:7BCB, 586B) is DATA: the banner
     "PARCON 1000\n*** Error ***" (D090) + ALL the program-load error
-    strings (D0BD "No program in memory", D0F2 "DIP file too big", D103
-    "Bad DIP file", D110 "COM file too big", D121 "Program not built...",
-    D143 "Program corrupt", D153 "DIP file has too many blocks").
+    strings (D1BD "No program in memory", D1F2 "DIP file too big", D203
+    "Bad DIP file", D210 "COM file too big", D221 "Program not built...",
+    D243 "Program corrupt", D253 "DIP file has too many blocks").
   * KEY: the kernel loader primitives (d6db record dispatcher + handler
     table d6f4 + d684 queue) are referenced ONLY by the boot-chain feeder
     (ROM00:7038 CALL d6db for both banks' 7FFC chains) and kernel init
@@ -1711,7 +1752,64 @@ State: continuously updated as work progresses.
     descriptors 7715/7751 (Ui_PostDescriptor 6633). forms-ui.md updated
     (trampoline semantics + new "Screen transition dispatch" section).
   * DIP loader STILL one step out: it is the Load/Run form's submit action
-    (ENTER on From), reached through this dispatch/descriptor machinery -
-    the exact function that reads the DIP header is not yet pinned. Emulator
-    drive (craft a bad DIP/COM, watch the header read + "Bad DIP file"
-    error-code setter) remains the recommended fallback.
+     (ENTER on From), reached through this dispatch/descriptor machinery -
+     the exact function that reads the DIP header is not yet pinned. Emulator
+     drive (craft a bad DIP/COM, watch the header read + "Bad DIP file"
+     error-code setter) remains the recommended fallback.
+- 2026-08-28 (runtime DIP/COM loader — documentation maintenance, reviewed findings):
+  * **Overturned**: (a) runtime DIP funnels into `ram:D6DB` / safely uses
+    `fn=0/1/2/FFFF` grammar — **distinct**: `D6DB` is boot-only; runtime DIP
+    has its own 14-byte header + 8-byte blocks; (b) exact DIP header still
+    open — **closed**: header 14 bytes `{magic 0xC8C9, sysID 0/0x00E5,
+    entry-bank, size clamped 0x8000, run-bank, entry addr, blockCount max 5}`
+    LE, plus block `{type, dest bank off, dest addr, payload count}+payload`,
+    type 0 direct / type 1 RST10-trampoline expansion; (c) `g_tblFieldTypeRecPtrs`
+    as device callbacks — now `g_apScreenHandlerTables` (five per-screen
+    tables indexed by selector at `ROM01:034B`, entry 0 → `g_apLoadRunHandlers`
+    at `ram:D0F0`); `Ui_FormExitDispatchNext` double-dereferences; (d)
+    `ram:D681` as runtime COM/DIP block — now kernel dispatch/boot-loader
+    block, runtime loader is `ROM01:0A67-10CE`; (e) old prose names
+    `UiDialogOpen3F`/`UiDialogListItem`/`Dialog_StateCheck`/`UiCloseDialog`/
+    `SessionHelperRouter0CE7`/`DialogListAction` superseded by
+    `Program_*`/`Ui_FormExitDispatchNext`/`g_apScreenHandlerTables`; (f)
+     `Bad DIP file` as bad magic — now `0x232B` (9003), "Bad DIP file." =
+     truncated block header/payload; `0x2332` (9010), "Program corrupt." =
+     block-checksum mismatch
+    (`0957` add at `+8` vs `09C2` recompute, i.e. loaded memory changed);
+    (g) COM fallback now `<14 bytes` or first word `!=0xC8C9` → `0x0100`.
+  * **Exact format (CONFIRMED unless noted)**: DIP header 14 bytes as above
+    (LE); blocks 8-byte header + payload; type 0/1 only (other type →
+    default/next logic only if applicable, phrased explicitly). Runtime
+    expands to 10-byte `DIP_LoadedBlockDescriptor` (checksum at `+8` via
+    `Program_GenerateBlockChecksums` `0957`, NOT in file; verified by
+    `Program_VerifyBlockChecksums` `09C2`). `ram:ECDA` max entry-bank
+    offset is **LIKELY** only. Loader functions named:
+    `Program_PrepareLoadGeometry` `0A67`, `Program_LoadByName` `0B82`,
+    `Program_ConsumeInputChunk` `0BAC`, `Program_LoadDipOrCom` `0CE7`,
+    `Program_RunByName` `106F`, `Program_NormalizeLoadRange` `0AE3`,
+    `Program_ReportLoadError` `0CCB`, `Program_GenerateBlockChecksums`
+    `0957`, `Program_VerifyBlockChecksums` `09C2`, final `10C6→ram:D7F0`
+    `RunLoadedProgram`. No BDOS execute; provider around `0C12`/`0CE7`/
+    `ram:D370` still open.
+  * **File layout no longer open**; open item updated: physical
+    input-provider path / captured real DIP remains open.
+  * Docs updated: `program-formats.md` (rewritten), `programmer-guide.md`
+    §7b, `forms-ui.md`, `memory-map.md`, `os-diposb.md`, `user-guide.md`,
+    `TASKS.md`, `gap-analysis.md` (827 functions). Build `mkdocs build`
+    run; no commit.
+- 2026-08-28 (COM size ceiling + DIP execution-field semantics):
+  * **COM maximum CONFIRMED = 0xCF81 bytes (53,121)**. Kernel startup
+    writes D081h to `g_pProgramLoadCeiling` (`ram:D6A3-D6A8`); COM starts
+    at 0100h, so capacity is `D081-0100=CF81`, covering 0100h-D080h.
+    D081h is not an aligned format constant: the bank-1 boot record at
+    `ROM01:7E23` copies resident module B `7BCB→D081`, length 024Ah, making
+     D081 the first occupied resident byte. Further COM input reports
+     `0x232C` (9004), "COM file too big."
+  * Header-field use documented: entry-bank offset + image size establish
+    the load range relative to `g_wProgramBankBase`; run-bank offset is
+    resolved separately before execution; entry address is the Z80 target
+    passed to `RunLoadedProgram`; block count drives 0..5 file-block and
+    runtime-descriptor iterations.
+  * Ghidra: labelled/typed `g_pProgramLoadCeiling`, annotated its startup
+    writer, COM remaining-capacity calculation/error path, boot copy record,
+    runtime DIP header and loader plates. Program saved after verification.

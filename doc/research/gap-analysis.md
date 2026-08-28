@@ -1,40 +1,51 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-26 (6th audit, plateless campaign COMPLETE), firmware
+Status: 2026-08-28 (7th audit, runtime DIP/COM loader closed), firmware
 `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
 This is a **documentation-coverage** audit: which functions have *we* named
 and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 ## Headline
 
-| Space | Functions | Auto `FUN_*` (undocumented) | Named by us |
-|-------|-----------|------------------------------|-------------|
-| ROM00 | 394 | **0** | all named |
-| ROM01 | 164 | **0** | all named |
-| ram   | 192 | **0** | all named |
-| **Total** | 750 | **0** | **100 %** (naming) |
+| Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
+|-------|-----------|------------------------------|-------------------|
+| ROM00 | 394 | **62** | 332 |
+| ROM01 | 172 | **66** | 106 (incl. the new `Program_*` loader functions) |
+| ram   | 261 | **10** | 251 |
+| **Total** | **827** | **138** | **689 (83.3 %)** |
 
-**PASS A COMPLETE (2026-08-25), re-verified 2026-08-26**: zero `FUN_*`
-remain. Deferred auto-analysis keeps resurrecting a few `FUN_*` shells;
-each reappearance is triaged and either named (if real code) or deleted
-(if a NOP/zero-buffer artifact) in the same pass — see the 2026-08-26
-session entries in TASKS.md. The naming invariant is `FUN_* == 0`.
+**Refreshed directly from Ghidra on 2026-08-28.** The 2026-08-28 loader pass
+added/renamed ROM01
+functions in `0A67-10CE` (`Program_PrepareLoadGeometry` 0A67,
+`Program_GenerateBlockChecksums` 0957, `Program_VerifyBlockChecksums` 09C2,
+`Program_LoadByName` 0B82, `Program_ConsumeInputChunk` 0BAC,
+`Program_LoadDipOrCom` 0CE7, `Program_ReportLoadError` 0CCB,
+`Program_RunByName` 106F, `Program_NormalizeLoadRange` 0AE3) plus
+`ram:D7F0` `RunLoadedProgram` and `ram:D081` `g_apScreenHandlerTables` /
+`ram:D0F0` `g_apLoadRunHandlers` labels. Current function count is **827**;
+`search_functions_enhanced` reports **138** auto-named functions (62 ROM00,
+66 ROM01, 10 ram). These are the remaining analysis backlog, not completed
+coverage.
 
-**Plate debt: 0.** Every named function now carries a plate comment
-(ROM00, ROM01 and ram all saturated). 13 thunks are intentionally
-excluded from the plate requirement. Completed 2026-08-26 (ROM00's 238
-finished in three agent waves; see TASKS.md).
+Plate completeness was not recomputed in this pass. The loader functions
+named on 2026-08-28 carry plates; the 138 auto-named functions remain
+undocumented by definition.
 
-Earlier audits (480/88, 668/58, 686/1, 689/0) are history.
+Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0) are history.
 
 ## Notes
 
-- Numbers drift ±3 with deferred auto-analysis; re-run the
+- Numbers can drift with deferred auto-analysis; re-run the
   `search_functions FUN_` check after any run_analysis and delete/
-  name any new 1-byte artifacts rather than recording them as coverage.
+  name real code and delete only byte-verified artifacts rather than
+  recording either class as completed coverage.
 - RAM02 overlay exists (owner-created): uninitialised block 0000-7FFF
   over `ram`; MCP cannot read uninit overlay bytes - load a hardware
   RAM dump in the GUI to visualise a RAM bank page.
+- Loader docs are now closed for file format (see
+  `manual/program-formats.md`); the **open item is the physical
+  input-provider path** (coroutine/provider around `0C12`/`0CE7`/
+  `ram:D370`), not the on-disk layout.
 
 ## Known ghost: ram:8c0c
 
