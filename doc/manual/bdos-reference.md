@@ -35,7 +35,7 @@ carry/error convention where the firmware does not provide one.
 | 07h, 08h | get/set IOBYTE | Stub; setting has no routing effect |
 | 09h, 0Ah | string output, line input | CONFIRMED behaviour; ABI incomplete |
 | 0Bh | console status | CONFIRMED ABI |
-| 0Ch | return version | CONFIRMED: returns 23h; remaining ABI incomplete |
+| 0Ch | return version | CONFIRMED ABI: HL=0023h |
 | 0Dh | reset disk system | stub |
 | 0Eh, 19h | select/get current drive | CONFIRMED behaviour; ABI incomplete |
 | 0Fh-17h | FCB open through rename | CONFIRMED behaviour; ABI incomplete |
@@ -105,6 +105,22 @@ and it does not identify the event bit's source.
 
 **Evidence:** dispatch word at `ROM00:371E`; handler entry
 `BdosGetConsoleStatus`, `ROM00:0FC5-0FD5`.
+
+### 0Ch -- return version
+
+**Status:** CONFIRMED ABI.
+
+**In:** no register input is read.
+
+**Out:** `HL=0023h` (CP/M 2.3-style version value). The constant load leaves
+the incoming flags unchanged.
+
+**Blocks:** no.
+
+**Effects and errors:** none.
+
+**Evidence:** dispatch word at `ROM00:3720`; `BdosReturnVersion`,
+`ROM00:15C7-15CA`.
 
 ## DIPOS-B extensions
 

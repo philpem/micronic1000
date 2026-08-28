@@ -147,6 +147,9 @@ State: continuously updated as work progresses.
      bit, `1Eh`, and the empty-ring pending byte remain OPEN. Ghidra has a
      label/plate at `ROM00:0FC5`; an overlapping erroneous instruction blocks
      function creation there, so repair is deferred to a diff-guarded pass.
+   * 2026-08-28: fn 0Ch `BdosReturnVersion` card added: no inputs, returns
+     `HL=0023h`, preserves flags, and has no side effects or errors
+     (`ROM00:3720` -> `ROM00:15C7-15CA`).
 2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
    CONFIRMED runtime grammar and limits; this does not require a physical
    loader or a real device.
