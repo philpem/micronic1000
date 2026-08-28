@@ -1,5 +1,6 @@
 site_name: Micronic 1000 Programmer Manual
 site_description: Programmer-facing and internal documentation for DIPOS-B
+site_url: https://philpem.github.io/micronic1000/
 docs_dir: doc
 site_dir: site-mkdocs
 theme:
