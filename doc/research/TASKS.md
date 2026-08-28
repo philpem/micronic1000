@@ -140,6 +140,13 @@ State: continuously updated as work progresses.
 1. **Publish per-function BDOS contract cards from existing ROM evidence.**
    Start with the portable COM subset, then the RTC and configuration calls;
    record register inputs/outputs, flags, blocking, side effects, and errors.
+   * 2026-08-28: added byte-verified cards for fn 06h direct console I/O and
+     fn 0Bh console status in `manual/bdos-reference.md`. Fn 06h documents
+     `E=FFh` as the nonblocking poll and leaves the output ABI incomplete;
+     fn 0Bh has its full `A`/`Z` contract. The meanings of the pending-event
+     bit, `1Eh`, and the empty-ring pending byte remain OPEN. Ghidra has a
+     label/plate at `ROM00:0FC5`; an overlapping erroneous instruction blocks
+     function creation there, so repair is deferred to a diff-guarded pass.
 2. **Build host-side COM/DIP validation tooling with golden inputs.** Use the
    CONFIRMED runtime grammar and limits; this does not require a physical
    loader or a real device.

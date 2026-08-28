@@ -29,11 +29,12 @@ carry/error convention where the firmware does not provide one.
 | Function | Service | Status |
 |---:|---|---|
 | 00h | system reset / warm boot | CONFIRMED behaviour; ABI incomplete |
-| 01h, 02h, 06h | console input, output, direct I/O | CONFIRMED behaviour; ABI incomplete; device-routed |
+| 01h, 02h, 06h | console input, output, direct I/O | fn 06 poll ABI confirmed; output ABI incomplete; device-routed |
 | 03h | reader input | CONFIRMED behaviour; ABI incomplete; barcode-reader stream |
 | 04h, 05h | punch and list output | CONFIRMED behaviour; ABI incomplete; device-routed |
 | 07h, 08h | get/set IOBYTE | Stub; setting has no routing effect |
-| 09h, 0Ah, 0Bh | string output, line input, status | CONFIRMED behaviour; ABI incomplete |
+| 09h, 0Ah | string output, line input | CONFIRMED behaviour; ABI incomplete |
+| 0Bh | console status | CONFIRMED ABI |
 | 0Ch | return version | CONFIRMED: returns 23h; remaining ABI incomplete |
 | 0Dh | reset disk system | stub |
 | 0Eh, 19h | select/get current drive | CONFIRMED behaviour; ABI incomplete |
@@ -47,6 +48,63 @@ carry/error convention where the firmware does not provide one.
 Functions in the otherwise unallocated range 25h-F2h are unsafe. The
 dispatcher can read a handler pointer from unrelated kernel bytes; an
 application must not probe this range.
+
+## Verified contract cards
+
+### 06h -- direct console I/O
+
+**Status:** CONFIRMED behaviour; output ABI incomplete.
+
+**In:** `E=FFh` selects the nonblocking input/status poll. Any other value
+is passed as the output byte to the fn 02h console-output path.
+
+**Out, poll:** the result is path-dependent. If the pending-event bit is
+set, the call clears it and returns `A=1Eh`. Otherwise it checks the selected
+device's keyboard input and then the console ring. A ring byte is returned
+and consumed when present. An empty ring atomically returns and clears a
+separate pending byte; therefore `A` need not agree with `Z` on that path.
+There is no single return-flag contract for every poll result.
+
+**Blocks:** the `E=FFh` path is nonblocking: it contains no wait loop or
+`HALT`. The output path can retry its transport call, so it is not guaranteed
+nonblocking.
+
+**Effects:** poll can clear the pending-event bit, advance/reset the console
+ring pointers, or clear the pending byte. Output is routed through the active
+console-device selection.
+
+**Errors:** the output path explicitly returns `A=FFh` with carry set when
+its device-send helper fails. The byte-level cause remains open.
+
+**Limit:** the meanings of the pending-event bit, `1Eh`, and the empty-ring
+pending byte are not yet established. `E=FEh` and `E=FDh` are ordinary output
+bytes here, not additional CP/M-style input modes.
+
+**Evidence:** dispatch word at `ROM00:3714`; handler
+`BdosDirectConsoleIo`, `ROM00:0FD6-1014`; output router
+`DeviceConsoleOut2`, `ROM00:0F37-0FA3`.
+
+### 0Bh -- console status
+
+**Status:** CONFIRMED ABI.
+
+**In:** no register input is read.
+
+**Out:** `A=FFh`, `Z=0`, and carry clear when either the pending-event bit is
+set or the current keyboard-ring byte is nonzero. Otherwise `A=00h`, `Z=1`,
+and carry clear.
+
+**Blocks:** no; the handler has no calls, loop, or `HALT`.
+
+**Effects:** enables interrupts with `EI`; it otherwise does not modify RAM.
+
+**Errors:** none encoded.
+
+**Limit:** this status test does not inspect the console ring used by fn 06h,
+and it does not identify the event bit's source.
+
+**Evidence:** dispatch word at `ROM00:371E`; handler entry
+`BdosGetConsoleStatus`, `ROM00:0FC5-0FD5`.
 
 ## DIPOS-B extensions
 

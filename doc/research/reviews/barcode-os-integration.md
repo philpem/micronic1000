@@ -273,7 +273,7 @@ hook:                   ; called in OS context after each capture:
 ```
 
 Notes: fn 3 blocks in a HALT loop (EventWaitForLink) — for a
-non-blocking design, poll with fn 06h/E=FF (BdosDirectConsoleIoAlt,
+non-blocking design, poll with fn 06h/E=FF (BdosDirectConsoleIo,
 0FD6, drains the same F95E ring without arming), or arm directly with
 the banked call (§4.4). On program exit the hook should be restored to
 0x1567 (or the program left resident), since a dangling `fbc2` into a
