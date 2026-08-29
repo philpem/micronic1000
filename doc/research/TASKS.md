@@ -120,43 +120,35 @@ State: continuously updated as work progresses.
 
 ## In progress
 
-- **Decode Commstar session/frame layer** — DONE for the *static*
-  surface: LinkTransferService (2F86), LinkTransportCall (2F1A), RX
-  dispatcher (2FBD), LinkValidateFrameHeader (30DC), frame builders
-  (3106/3130), session bootstrap (0F40-10FB), hardware path (4Dh TX /
-  4Eh RX / 4Bh status / 4Ah ctrl). Closed: command-id↔name mapping
-  (LinkCommandLookup table 31F2 = 2B/2A/23/03; abort set 44/45/60/61/64;
-  TX set 00/04/09/0C), link-id/slot (FE83 → fbc5 bits6-7), RECORD/BLOCK
-  framing (FDE6 type 2/4 + FDE4 len + cmd-id FDE7), reply prefixes
-  (EE01 idle, EF01 mismatch, E0 02/EE 02, E0 04=state3, E0 05=state2).
-  Remaining (runtime/live): the per-record/per-block **frame byte**
-  content in the session state machine (RECORD-*, BLOCK-*, C-COMMAND)
-  — needs a live session or hardware capture.
+- **Decode Commstar session/frame layer** — DONE only for the ROM-visible
+  transport and partial validated envelope: LinkTransferService (2F86),
+  LinkTransportCall (2F1A), RX dispatcher (2FBD),
+  LinkValidateFrameHeader (30DC), frame builders (3106/3130), session
+  bootstrap (0F40-10FB), and the 4Ah-4Fh byte-latch path. Numeric types,
+  reply words, and inline-dispatch cases are confirmed observations, not a
+  command-name or payload grammar. Remaining: trace RECORD/BLOCK/C-COMMAND
+  payload construction and consumption, resolve the complete reply envelope
+  and session transitions, and capture a complete software/live exchange.
 
 ## Next (priority order)
 
 ### No-hardware priorities
 
-1. **Review `protocol/commstar.md` end to end.** Reconcile every frame-field,
-   sequence, reply, state-machine, and error-screen claim with fresh ROM/RAM
-   bytes and the current `micronic.proto.LinkPeer` model. Remove stale names
-   and preserve OPEN payload/electrical meanings instead of filling gaps from
-   protocol convention.
-2. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+1. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
-3. **Run a complete software-only Commstar session.** Extend the existing
+2. **Run a complete software-only Commstar session.** Extend the existing
    byte-level `LinkPeer` duplex regression through the real session state
    machine under bounded emulation. This may establish software framing and
    sequencing, but not connector-level electrical meanings.
-4. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+3. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
-5. **Finish guarded structural repairs before semantic naming.** Repair the
+4. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
    `d2dc/d2de` / `EA14/EA1C` writers.
-6. **Final annotation and typing sweep (deferred).** Name/plate remaining
+5. **Final annotation and typing sweep (deferred).** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the canonical
    `research/gap-analysis.md` inventory only after semantic work stabilises.
 
@@ -1912,3 +1904,68 @@ current priority order; the concise lists above are authoritative.
    * **Review update:** `doc/review.md` RTC-incomplete finding marked resolved for byte layout, preserving OPEN `+0`/day-numbering/range-validation.
    * **fn04 alignment verified:** no doc change; `fn04` already aligned to `Device_LookupConfigEntry` findings in prior pass.
    * **Build:** `mkdocs build --strict` (see below); no commit; no new inference.
+ - 2026-08-29 (parent-approved Commstar review and correction pass):
+   * **ROM-visible buffer + TX prefix (CONFIRMED):** RX `+0..1` LE
+     embedded length, `+2` numeric type, `+3` sequence byte, `+4`
+     active link id, `+5` unread by examined ROM path, payload `+6`;
+     TX prefix `LinkFramePrefixWrite` (ROM00:316B) writes `+0..1`
+     descriptor length, `+2` type, `+3` sequence, `+4=0x7F` (**SUSPECTED**
+     meaning) and leaves `+5` untouched.
+   * **Validation + transport (CONFIRMED unless OPEN):**
+     `LinkValidateFrameHeader` (ROM00:30DC) checks embedded length vs
+     caller logical count and `+4` vs active link id `fdd4`, does not
+     inspect `+5`; `LinkBlockRx` success `DE=bytes consumed minus 2`
+     (identities **OPEN**); examined ROM transport/header path has no
+     checksum — integrity inside unresolved loaded-session payloads
+     remains **OPEN**.
+   * **TX outcomes + retry (CONFIRMED):** bit7 set permits readiness
+     and payload writes; bit4 and bit6 waits exit when the bit clears.
+     `EBh` reports either pre-payload bit7 wait or the bit4-clear wait;
+     `EEh` reports either bit6-clear wait, per-byte bit7 wait, or
+     post-payload bit7 wait; `ECh` reports final status bit5 set;
+     success `A=00h` carry clear. Retry scheduler
+     initial `fdd6=32h/fdd8=6`, later `fdd6=14h/fdd8=3`; caller
+     reschedules without testing `A`/carry.
+   * **Seven static reply triggers (numeric words, not named
+     commands):** `01EE` attempt exhaustion `fdd5=1`; `02EE`
+     exhaustion other state; `02E0/04E0/05E0` numeric
+     unexpected-type paths; `01EF` type-4 sequence mismatch;
+     `03EE` error/reset path ROM00:2E72.
+   * **Descriptors + probe + UI fields (CONFIRMED/OPEN):**
+     `FE0E {6->FDE4,3->FE38,0}` (structurally mutable), `FE32
+     {9->FE3A,0}`, `FDEA {6->FDDE,0}`; `LinkProbe` ROM00:348A writes
+     `1Fh` to `LINK_PROBE`, physical effect **OPEN**; `E701`/`E6FF`
+     width-3 decimal RCV1/RCV2 status fields, runtime meaning **OPEN**,
+     not transport-frame fields.
+   * **Link-id bit5 (CONFIRMED selector, OPEN mapping):** selects one
+     of two external link configurations; which polarity maps to
+     owner-confirmed V24 ADAPTOR (top) vs PLINTH (back), and where
+     EXT STORAGE attaches, remain **OPEN**.
+   * **Retractions (unsupported grammar removed):** removed or
+     retracted `[type][16-bit big-endian command][payload]`, semantic
+     `TYPE_SESSION/ANSWER/COMMAND` constants, named reply meanings,
+     symmetric protocol roles, payload checksums, filenames, and
+     claims of verified bidirectional Commstar exchange.
+   * **Docs corrected:** `protocol/commstar.md` (envelope, validation,
+     TX 0x7F, DE-2, outcomes, retry, reply triggers, descriptors,
+     probe address, RCV1/RCV2, bit5 OPEN, retractions),
+     `internals/io-map.md` (probe address/effect, `+4` filter,
+     SUSPECTED/OPEN notes), `analysis/micronic/README.md`
+     (proto scope -> raw byte-latch scaffold), `analysis/README.md`
+     (model and harness scope), `analysis/micronic/proto.py` (removed
+     unsupported `Frame`/`TYPE_*`/reply semantics), and directed link
+     harnesses (opaque byte mechanics only).
+   * **Ghidra corrected and saved:** independently reviewed status polarity
+     replaced stale `LinkBlockTx`, `LinkWaitReady`, and `LinkPresent`
+     plates/EOLs; `LinkReplyEE03` names the existing direct-call stub at
+     ROM00:31B0 without assigning command semantics. Function count stayed
+     849 across the save. `research/gap-analysis.md` refreshed to 849 total,
+     142 `FUN_*`, 707 named/non-`FUN_*` (83.3%).
+   * **Regression correction:** the old TX test had accepted the prelude
+     alone. It now requires the complete seeded descriptor stream
+     `05 04 44 00 41 42 43 44`; the duplex harness reports directed raw
+     byte-latch tests only. Added three queue/header regressions.
+   * **Verification:** `test_proto.py` 3/3, `test_program.py` 35/35,
+     Python byte-compilation, bounded TX/RX/duplex harnesses,
+     `mkdocs build --strict`, and `git diff --check` all passed.
+     Hardware/runtime questions remain OPEN.

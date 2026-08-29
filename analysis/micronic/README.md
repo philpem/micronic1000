@@ -1,16 +1,15 @@
-# micronic — reusable Micronic 1000 protocol model
+# micronic — reusable Micronic 1000 firmware models
 
-A Python package modelling the hardware + IR-link protocol of the
-Micronic 1000 / PARCON 1000, derived from firmware static analysis
-and the runtime boot trace. Its purpose: give you a **reusable
-protocol description** to build an infrared link adapter (or host
-program) that talks to the M1000.
+A Python package containing evidence-scoped hardware models, image tools,
+and external-link harness helpers for the Micronic 1000 / PARCON 1000. It
+does not yet describe enough of the controller transaction or Commstar
+session to build an interoperable link adapter.
 
 ```
 micronic/
   __init__.py   package exports
   rtc.py        HD146818 register model (RTC tick cadence)
-  proto.py      Commstar IR-link frame/transport model
+  proto.py      raw external-link byte-latch scaffold
   program.py    COM/DIP image validator (CONFIRMED grammar)
 ```
 
@@ -34,93 +33,100 @@ Rate table is the standard MC146818 one (RS 1..15). Register C
 read returns-and-clears the interrupt flags, exactly as firmware
 uses it to ACK each tick.
 
-## proto.py — the IR-link transport
+## proto.py — the IR-link transport (raw byte-latch scaffold)
 
-Models the *external* byte transport as the firmware drives it:
+This module is a raw byte-latch scaffold, not a Commstar session
+implementation. It models only directed reads/writes at the
+M1000-facing latches as the firmware drives them:
 
 | port | role |
 |------|------|
-| 4Ah | control latch (bit1 = IR line select, bit6/7 = online) |
-| 4Bh | status (bit7 TX empty, bit0 RX full) |
-| 4Ch | command/ACK latch (0x81 = present) |
-| 4Dh | TX data byte |
-| 4Eh | RX data byte |
+| 4Ah | control latch (firmware drives bits 0/1/4/5) |
+| 4Bh | status (firmware polls bits 7/4/6 for TX and 0-3 for RX) |
+| 4Ch | latch (firmware writes 0x81 after a status-bit-7 poll) |
+| 4Dh | TX data byte (write) |
+| 4Eh | RX data byte (read) |
 | 4Fh | probe (0x1F) |
 
-Frame (little-endian, length prefixed):
+ROM-visible buffer layout (CONFIRMED):
 
-```
-[len][type][cmd-id-hi][cmd-id-lo][payload...]
-```
-types: 2 = session, 3 = answer/timeout, 4 = command.
+* RX logical buffer: `+0..1` LE embedded length, `+2` numeric type,
+  `+3` sequence byte, `+4` active link id, `+5` unread by the
+  examined ROM path, payload starts `+6`.
+* TX prefix preparation (`LinkFramePrefixWrite` ROM00:316B) writes
+  `+0..1` descriptor length, `+2` numeric type, `+3` sequence,
+  `+4=0x7F`; the meaning of `0x7F` is **SUSPECTED**, and `+5` is
+  untouched by that path.
+* `LinkValidateFrameHeader` (ROM00:30DC) checks embedded length
+  against the caller-supplied logical count and checks `+4` against
+  the active link id; it does not inspect `+5`.
+* Successful `LinkBlockRx` returns `DE=controller bytes consumed
+  minus 2`; the identities of those two bytes are **OPEN**.
+* The examined ROM transport/header path has no checksum; integrity
+  inside unresolved loaded-session payloads remains **OPEN**.
 
-Replies the unit can send (FE14 prefix words):
-`EE01` idle, `02E0`, `02EE`, `04E0` ACK(connected), `05E0` ACK(cmd),
-`01EF` rejected/bad-id.
+Numeric types `2, 3, 4` and seven reply words `01EE, 02EE, 02E0,
+04E0, 05E0, 01EF, 03EE` are observed triggers — treat as numeric
+words/types, not named semantic commands unless the bytes prove a
+meaning. Do not claim a `[type][16-bit big-endian command][payload]`
+grammar, symmetric roles, payload checksums, filenames, or a verified
+bidirectional Commstar exchange.
 
 ```python
 from micronic import proto
-Link = proto.Link(
-    port_out=lambda b: send_byte_to_hw(b),
-    port_in=lambda: read_byte_from_hw(),
-    port_status=lambda: read_status_port(),
-    port_ctrl=lambda v: set_ctrl(v),
-)
-frame = proto.Frame(proto.TYPE_COMMAND, 0x4400, b"data")
-Link.tx(frame)
-rx = Link.rx()
+peer = proto.LinkPeer()  # queues LINK_RXD, captures LINK_TXD
+# Wire the peer callbacks into your harness:
+# peer.write_tx / peer.read_rx / peer.firmware_status
+# peer.write_control / peer.write_command / peer.write_probe
 ```
 
 ## Verification status
 
-The **physical TX prologue** was verified against the real firmware
-by seeding the link state (fdd4/fdd5/fdd6) and calling
-`LinkTransferService` (2F86) under emulation
-(`analysis/comms_tx_test.py`):
+The **controller-facing TX sequence** was verified against the real
+firmware by seeding the link state and calling `LinkBlockTx`-related
+paths under emulation (`analysis/comms_tx_test.py`):
 
-- first byte on port 4Dh = the **link-id prelude** (`0x45 & 0x1F = 0x05`)
-- then `count` bytes from a `{count, ptr}` descriptor at FDEA, sent
-  via `OUTI (4Dh)` gated on 4Bh bit7
-- 4Ah control-latch writes (0x02/0x03...), 4Ch = 0x81 after the status-bit-7
-  poll; electrical meanings remain unproven
+- first byte on port 4Dh = the **link-id prelude** (`link_id & 0x1F`)
+- then bytes from the descriptor list at FDEA (`{count_lo, count_hi,
+  ptr_lo, ptr_hi}` `{6 -> FDDE, 0}`, via `LinkReadBufferDescriptor`
+  ROM00:3508), sent via `OUTI (4Dh)` gated on 4Bh bit7
+- 4Ah control-latch mechanical drive, 4Ch = 0x81 after the
+  status-bit-7 poll; electrical meanings remain unproven
 
-## Bidirectional exchange (verified)
+`LinkBlockTx` outcomes: `EBh` if either pre-payload bit-7 wait or the
+bit-4-clear wait times out; `EEh` if either bit-6-clear wait or a
+payload/post-payload bit-7 wait fails; `ECh` if final status bit5 is
+set; success `A=00h` carry clear. Initialized descriptor chains:
+`FE0E {6->FDE4,3->FE38,0}`
+(structurally mutable), `FE32 {9->FE3A,0}`, `FDEA {6->FDDE,0}`. Retry
+scheduler: initial `fdd6=32h/fdd8=6`, later `fdd6=14h/fdd8=3`; the
+caller reschedules without testing `A`/carry. `LinkProbe` (ROM00:348A)
+writes `1Fh` to `LINK_PROBE`; physical effect is **OPEN**. `LinkBlockRx`
+success returns `DE=bytes consumed minus 2` (identities **OPEN**).
 
-`analysis/comms_duplex.py` drives a real bidirectional exchange
-between the reusable model and the actual M1000 firmware over the
-shared port bus:
+`analysis/comms_duplex.py` bridges the reusable `proto.LinkPeer`
+queue/latch interface to the firmware byte pumps. It validates
+transport mechanics, not a live Commstar session or electrical bit
+identities. Do not claim verified bidirectional Commstar exchange,
+payload checksums, filenames, or symmetric protocol roles — none are
+proven for the examined ROM path.
 
-* **M1000 -> model**: the firmware's `LinkTransferService` transmits
-  `[05][04][44][00]"from-M1000"` on 4Dh; the model's `Link.rx()`
-  parses it as `Frame(type=4, cmd=0x4400, "from-M1000")`.
-* **model -> M1000**: the model builds an ACK
-  `[05][03][04][E0]"reply-to-M"`, `Link.tx()` emits it, and the
-  firmware's RX dispatcher consumes all 14 bytes.
+`proto.LinkPeer` is the reusable queue-and-latch peer: it captures
+`LINK_TXD`, queues `LINK_RXD`, records latch writes, and has
+configurable non-data status bits; it does not assign electrical names
+to those bits. UI fields `E701`/`E6FF` are width-3 decimal RCV1/RCV2
+status fields; runtime meaning is **OPEN** and they are not
+transport-frame fields.
 
-Result: **BIDIRECTIONAL EXCHANGE OK**. `proto.LinkPeer` is the reusable
-queue-and-latch peer for an M1000-facing transport implementation. It captures
-`LINK_TXD`, queues `LINK_RXD`, records latch writes, and has configurable
-non-data status bits; it does not assign electrical names to those bits.
-
-```python
-peer = proto.LinkPeer()
-
-# M1000 I/O callbacks use peer.firmware_status(), peer.read_rx(),
-# peer.write_tx(), peer.write_control(), peer.write_command(), and
-# peer.write_probe().
-adapter = peer.make_adapter_link(id_byte=0x45)
-adapter.tx(proto.Frame(proto.TYPE_ANSWER, 0x04E0, b"reply"))
-```
-
-The default status policy matches the directed firmware traces: status bit 7
-is supplied for TX, bit 0 while queued RX bytes remain, and no inferred
-completion bit. A production adapter can set `status_bits` and
+The default status policy matches the directed firmware traces: status
+bit 7 is supplied for TX, bit 0 while queued RX bytes remain, and no
+inferred completion bit. A future controller harness can set `status_bits` and
 `completion_bits` only from its own observed hardware behaviour.
 
 Note: the FDEA buffer is a *descriptor* `{count_lo, count_hi, ptr_lo,
-ptr_hi}` (read by FUN_3508), NOT a flat frame - the payload lives at
-the pointer. The record/block *data contents* at that pointer are the
-only remaining runtime detail; the transport and framing are verified.
+ptr_hi}` (read by ROM00:3508), not a flat frame — the payload lives
+at the pointer. Record/block *data contents* remain **OPEN**; the
+examined ROM transport/header path has no checksum.
 
 ## program.py — COM/DIP image validator
 

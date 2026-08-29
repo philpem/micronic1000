@@ -2,12 +2,12 @@
 
 Provides:
   rtc.RTC146818   - HD146818 register model (tick cadence from Reg A)
-  proto.Frame     - the wire frame [len][type][cmd][payload]
-  proto.Link      - the 4x byte transport (adapter-facing)
-  proto constants - ports, reply prefixes, command ids
+  proto.LinkPeer/Link - raw byte-latch scaffold for the 4x transport
+    (no frame/session grammar; numeric types 2,3,4 and reply words
+    are observed numeric triggers only)
+  proto constants - ports, observed numeric types/reply words
 
-Intended consumers: the emulation harness (boot_hw.py) and a future
-IR link adapter / host program that must talk to the M1000.
+Intended consumers: the emulation harnesses and evidence-scoped host tools.
 """
 from . import rtc
 from . import proto

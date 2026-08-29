@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""comms_duplex.py - bidirectional data exchange between the reusable
-micronic.proto model (peer/adapter) and the actual M1000 firmware.
+"""Directed byte-latch plumbing between LinkPeer and M1000 firmware.
 
-Direction 1 (M1000 -> model): seed the firmware FDEA {count,ptr}
-descriptor, call LinkTransferService (2F86); capture OUT(4Dh) and
-have the model parse it.
+Direction 1 seeds the firmware FDEA descriptor and captures raw OUT(4Dh)
+bytes. Direction 2 queues opaque bytes and confirms latch consumption only.
 
-Direction 2 (model -> M1000): build a frame with the model, run it
-through proto.Link.tx(); feed those bytes back into the M1000's
-port-4Eh and let the firmware RX dispatcher (2FBD) consume them.
-
-Both use the firmware-verified wire format:
-  prelude (link_id & 0x1F) + [type][cmd_hi][cmd_lo][data...]
+This does not supply a validated Commstar frame or prove a session exchange.
 """
 import gc; gc.disable()
 import sys, time
@@ -84,54 +77,56 @@ def run_until(fn, cap=400000):
     return False
 
 # ---- reusable peer model -----------------------------------------------
-adapter = peer.make_adapter_link(LINK_ID)
+adapter = peer.make_adapter_link()
 
 print("=== Direction 1: M1000 -> model ===")
 # seed FDEA descriptor {count, ptr}
-payload1 = bytes([proto.TYPE_COMMAND, 0x44, 0x00]) + b"from-M1000"
+payload1 = bytes([0x04, 0x44, 0x00]) + b"from-M1000"
 PPTR = 0xFD00
 mem[PPTR:PPTR+len(payload1)] = payload1
 mem[0xFDEA] = len(payload1) & 0xFF
 mem[0xFDEB] = (len(payload1)>>8) & 0xFF
 mem[0xFDEC] = PPTR & 0xFF; mem[0xFDED] = (PPTR>>8) & 0xFF
 mem[0xFDD8] = len(payload1)
+mach.set_memory_block(PPTR, payload1)
+mach.set_memory_block(0xFDEA, bytes(mem[0xFDEA:0xFDEE]))
+mach.set_memory_block(0xFDD8, bytes([mem[0xFDD8]]))
 mach.pc = 0x2F86
 ok1 = run_until(lambda: peer.pending_tx >= len(payload1) + 1)
 wire1 = peer.peek_tx()
 print("  M1000 OUT(4Dh):", wire1.hex())
-# model receives: prelude + payload
-rx = adapter.rx(max_len=len(payload1)) if ok1 else None
-d1_ok = False
-if rx:
-    print("  model parsed: type=%d cmd=0x%04X payload=%r" %
-          (rx.type, rx.cmd, rx.payload.decode(errors="replace")))
-    d1_ok = (rx.type==proto.TYPE_COMMAND and rx.cmd==0x4400
-             and rx.payload==b"from-M1000")
+expected1 = bytes([LINK_ID & 0x1F]) + payload1
+rx = adapter.rx(len(expected1), timeout=100000) if ok1 else None
+d1_ok = rx == expected1
+print("  raw bytes match seeded descriptor:", d1_ok)
 print("  direction1:", "OK" if d1_ok else "FAIL")
 
 print("=== Direction 2: model -> M1000 ===")
-reply = proto.Frame(proto.TYPE_ANSWER, 0x04E0, b"reply-to-M")
+test_bytes = bytes([0x05, 0x03, 0x04, 0xE0]) + b"reply-to-M"
 m1000_rx_count[0] = 0
-adapter.tx(reply)
-wire2 = reply.wire(LINK_ID)
-print("  model wire:", wire2.hex())
+adapter.tx(test_bytes)
+print("  queued opaque bytes:", test_bytes.hex())
 # Seed the firmware's RX descriptor at its frame buffer (FE0E) so
 # LinkBlockRx's 3508 count read knows how many bytes to expect.
-mem[0xFE0E] = len(wire2) & 0xFF
-mem[0xFE0F] = (len(wire2)>>8) & 0xFF
-mem[0xFE10] = 0x12; mem[0xFE11] = 0xFE     # ptr = FE12 (payload buffer)
+RXBUF = 0xFC80
+descriptor_count = max(0, len(test_bytes) - 1)  # one initial controller read
+mem[0xFE0E] = descriptor_count & 0xFF
+mem[0xFE0F] = (descriptor_count >> 8) & 0xFF
+mem[0xFE10] = RXBUF & 0xFF; mem[0xFE11] = RXBUF >> 8
+mem[0xFE12:0xFE16] = b"\x00" * 4           # non-overlapping terminator
+mach.set_memory_block(0xFE0E, bytes(mem[0xFE0E:0xFE16]))
 mach.pc = 0x2FBD
-ok2 = run_until(lambda: m1000_rx_count[0] >= len(wire2))
+ok2 = run_until(lambda: peer.pending_rx == 0)
 print(
     "  M1000 LINK_RXD reads: %d; queued bytes consumed: %d/%d"
-    % (m1000_rx_count[0], len(wire2) - peer.pending_rx, len(wire2))
+    % (m1000_rx_count[0], len(test_bytes) - peer.pending_rx, len(test_bytes))
 )
 # LinkBlockRx performs a controller-facing read before its descriptor pump.
 # Count queued bytes, not raw port reads, as the transport completion result.
-d2_ok = ok2 and peer.pending_rx == 0 and m1000_rx_count[0] >= len(wire2)
-print("  direction2:", "OK" if d2_ok else "partial/FAIL")
+d2_ok = ok2 and peer.pending_rx == 0
+print("  direction2 latch consumption:", "observed" if d2_ok else "incomplete")
 
 print("  LINK_CTRL writes:", [f"{v:02X}" for v in peer.ctrl_writes])
 print("  LINK_CMD writes:", [f"{v:02X}" for v in peer.command_writes])
 
-print("=== RESULT:", "BIDIRECTIONAL EXCHANGE OK" if (d1_ok and d2_ok) else "CHECK NEEDED")
+print("=== RESULT: DIRECTED BYTE-LATCH TESTS ONLY ===")

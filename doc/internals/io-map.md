@@ -36,7 +36,7 @@ Confidence legend:
 | 4Ch | W | io4c_link_cmd | Mechanical: `0x81` written by `LinkPresent` (34EC) after `LINK_STATUS` bit 7 poll (`DE=0x02DA`) at TX open. Electrical label `command/ACK` remains SUSPECTED. | CONFIRMED mechanical |
 | 4Dh | W | io4d_tx_data | **TX data byte**: `OUTI` (memory to port) per byte, gated by `LINK_STATUS` bit 7 polling (`DE=0x06F9` per-byte timeout in `LinkBlockTx`). | CONFIRMED mechanical |
 | 4Eh | R | io4e_rx_data | **RX data byte**: `INI` (port to memory) per byte, gated/decoded via `LINK_STATUS` bits 0-3 in `LinkBlockRx`. | CONFIRMED mechanical |
-| 4Fh | W | io4f_probe | Mechanical: `0x1F` written by `LinkProbe` (3489), then a `LINK_CTRL` latch sequence. Physical/reset meaning remains SUSPECTED. | CONFIRMED mechanical |
+| 4Fh | W | io4f_probe | Mechanical: `0x1F` written by `LinkProbe` (ROM00:348A), then a `LINK_CTRL` latch sequence. Physical/reset effect remains **OPEN**. | CONFIRMED mechanical |
 
 ### Interface shape: byte-latch access — firmware behaviour CONFIRMED, electrical function OPEN
 
@@ -61,9 +61,10 @@ register-select model. Distinguishing observations (mechanical, byte-verified):
   **not proven**.
 * 4Ch receives `0x81` after a `LINK_STATUS` bit 7 poll (`LinkPresent` →
   `LinkWaitReady`, `DE=0x02DA`); 4Fh receives `0x1F` during `LinkProbe`
-  followed by a `LINK_CTRL` latch sequence — mechanical writes are **CONFIRMED**;
-  labelling them `command/ACK` or `probe/reset` for the physical meaning
-  remains **SUSPECTED**.
+  (ROM00:348A) followed by a `LINK_CTRL` latch sequence — mechanical
+  writes are **CONFIRMED**; labelling them `command/ACK` or `probe/
+  reset` for the physical meaning remains **OPEN** (probe effect
+  **OPEN**).
 * The synchronous clock+data IR pairs (2 photodiodes + 2 LEDs per
   port, per US 4,423,319) are downstream of this byte interface —
   the M1000's Z80 mechanically pushes/pulls whole bytes while polling
@@ -72,15 +73,22 @@ register-select model. Distinguishing observations (mechanical, byte-verified):
 
 So the M1000 firmware sees six I/O addresses — `control (4A) + status (4B) +
 tx-latch (4D) + rx-latch (4E) + 4C (0x81 write) + 4F (0x1F write)` — with the
-mechanical drive/poll sequences listed under `LinkBlockTx` (3277-3377),
-`LinkBlockRx` (3378-3453) and `LinkProbe` (3489). The physical serializing
+mechanical drive/poll sequences listed under `LinkBlockTx`
+(3277-3377), `LinkBlockRx` (3378-3453) and `LinkProbe` (ROM00:348A).
+The physical serializing
 to the IR clock/data lines lives off-pump and its semantics remain OPEN.
 
-**No hardware address-filter or CRC register exists in this block** —
-the only non-data write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
+**No hardware address-filter or CRC register exists in this block**
+— the only non-data write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
 (probe). Multidrop addressing is done in software: the frame's byte
 at offset +4 is XOR-matched against the unit's link id `fdd4`
-(`LinkValidateFrameHeader` ROM00:30DC). TX offset +4 constant `0x7F` (via `LinkFramePrefixWrite` 316B) is **SUSPECTED**; offset +5 is never read by ROM link code and may be writable by loaded code — link-path checksum **OPEN** (none verified). See [the Commstar protocol](../protocol/commstar.md).
+(`LinkValidateFrameHeader` ROM00:30DC, does not inspect +5). TX
+offset +4 constant `0x7F` (via `LinkFramePrefixWrite` 316B) is
+**SUSPECTED**; offset +5 is never read by the examined ROM link
+code and may be writable by loaded code — the examined ROM
+transport/header path has no checksum; integrity inside unresolved
+loaded-session payloads remains **OPEN**. See [the Commstar
+protocol](../protocol/commstar.md).
 
 ## MAME driver (`micronic.cpp`) cross-check — what it confirms
 

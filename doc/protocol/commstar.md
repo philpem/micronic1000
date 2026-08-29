@@ -58,15 +58,17 @@ sequence (byte-verified):
 
 1. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
    `B=0x80` DJNZ delay.
-2. `LinkPresent` → `LinkWaitReady`: poll `LINK_STATUS` bit 7 with timeout
-   `DE=0x02DA`; on success write `0x81` to `LINK_CMD` (4Ch).
+2. `LinkPresent` then `LinkWaitReady`: each polls `LINK_STATUS` bit 7 with
+   timeout `DE=0x02DA`; the first successful wait writes `0x81` to
+   `LINK_CMD` (4Ch).
 3. Write low five bits of input `A` (held in `C`, `link_id & 1Fh`) to
    `LINK_TXD` (4Dh) as a controller prelude. This byte is not part of the
    in-memory frame descriptor payload.
-4. Wait for `LINK_STATUS` bit 4 (`DE=0x026C` timeout → `EBh`); then set
+4. Wait for `LINK_STATUS` bit 4 to clear (`DE=0x026C` timeout → `EBh`);
+   then set
    `LINK_CTRL` bit 5, set `LINK_CTRL` bit 4; `B=0x20` DJNZ delay; clear
-   `LINK_CTRL` bit 5; wait for `LINK_STATUS` bit 6 (`DE=0x026C` timeout →
-   `ECh`).
+   `LINK_CTRL` bit 5; wait for `LINK_STATUS` bit 6 to clear
+   (`DE=0x026C` timeout → `EEh`).
 5. Stream descriptor payload bytes: each `OUTI` to `LINK_TXD` is gated by
    `LINK_STATUS` bit 7 with per-byte timeout `DE=0x06F9` (timeout → `EEh`).
 6. Cleanup: clear `LINK_CTRL` bit 4, clear `LINK_CTRL` bit 0 before returning.
@@ -88,7 +90,7 @@ sequenceDiagram
     F->>C: Drive LINK_CTRL bits 0/4 and delay
     F->>C: Poll LINK_STATUS bit 7 then LINK_CMD = 81h
     F->>C: LINK_TXD = link_id & 1Fh prelude
-    Note over F,C: Poll LINK_STATUS bit 4 then drive LINK_CTRL bits 5/4 then poll bit 6
+    Note over F,C: Wait for status bit 4 clear, drive control bits 5/4, then wait for status bit 6 clear
     loop Each descriptor payload byte
         F->>C: Poll LINK_STATUS bit 7 then OUTI LINK_TXD = payload byte
     end
@@ -114,9 +116,9 @@ implementation.
 
 ### Probe
 
-**CONFIRMED:** `LinkProbe` (ROM00:3489) writes `0x1F` to `LINK_PROBE` (4Fh)
-then executes a `LINK_CTRL` latch sequence. The physical or reset meaning of
-this probe remains **SUSPECTED**.
+**CONFIRMED:** `LinkProbe` starts at ROM00:348A and writes `0x1F` to
+`LINK_PROBE` (4Fh) then executes a `LINK_CTRL` latch sequence. The
+physical or reset effect remains **OPEN**.
 
 ## Validated frame envelope
 
@@ -132,24 +134,47 @@ session-message specification.
 | 3 | 1 | Per-link sequence | **CONFIRMED**: `LinkProcessCommandFrame` compares it with `FE43h + (fdd4 & 3Fh)` (init 1); mismatch path yields `01EF`. |
 | 4 | 1 | Active link id | **CONFIRMED**: `LinkValidateFrameHeader` (ROM00:30DC) XOR-compares byte 4 to `fdd4`. |
 | 5 | 1 | Unread by ROM link code | **OPEN**: never read by ROM link code; may be writable by loaded code — do not assume unused. |
-| 6 | n | Session payload | **OPEN**: format depends on the runtime session module; link path no checksum verified. |
+| 6 | n | Session payload | **OPEN**: format depends on the runtime session module; the examined ROM transport/header path performs no checksum. |
 
 Validation rejects frames shorter than six bytes, frames whose embedded
-length differs from the received count, and frames whose byte 4 differs from
-the active link id (`fdd4`). The comparison is an equality test implemented with XOR;
-it is an address filter, not a checksum.
+length differs from the caller-supplied logical count, and frames whose
+byte 4 differs from the active link id (`fdd4`). The comparison is an
+equality test implemented with XOR; it is an address filter, not a
+checksum. `LinkValidateFrameHeader` does not inspect byte +5.
 
-`LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as `{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. The TX offset-4 constant `0x7F` is **SUSPECTED**; do not call it an id or broadcast.
+`LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as
+`{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. The
+TX offset-4 constant `0x7F` is **SUSPECTED**; do not call it an id or
+broadcast. `+5` is untouched by that path.
 
-`LinkProcessCommandFrame` reads byte 3, compares it with the per-link byte
-at `FE43h + (fdd4 & 3Fh)` (initialised to 1), and accepts either the expected value or one
-behind it in a specific retry state. It does **not** establish a generic
-16-bit command word. Do not encode the values `{2B,2A,23,03}` as session
-commands: they belong to a separate local device-route lookup.
+`LinkProcessCommandFrame` reads byte 3, compares it with the per-link
+byte at `FE43h + (fdd4 & 3Fh)` (initialised to 1), and accepts either
+the expected value or one behind it in a specific retry state. It does
+**not** establish a generic 16-bit command word. Do not encode the
+values `{2B,2A,23,03}` as session commands: they belong to a separate
+local device-route lookup.
 
-`LinkBlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the descriptor payload; the prelude is excluded from the descriptor byte count. `LinkBlockRx` returns `DE = bytes_read - 2`; the identity of those two excluded bytes is **OPEN**.
+`LinkBlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the
+descriptor payload; the prelude is excluded from the descriptor byte
+count. `LinkBlockRx` on success returns `DE = controller bytes consumed
+minus 2`; the identities of those two excluded bytes are **OPEN**.
 
-Descriptor lists (byte-verified): RX `FE0E` = `{6 -> FDE4, 3 -> FE38, 0}`; RX `FE32` = `{9 -> FE3A, 0}`; TX `FDEA` = `{6 -> FDDE, 0}`. The sequence table is `FE43h + (fdd4 & 3Fh)`.
+Descriptor lists (byte-verified, structurally mutable where noted): RX
+`FE0E` = `{6 -> FDE4, 3 -> FE38, 0}` (mutable); RX `FE32` =
+`{9 -> FE3A, 0}`; TX `FDEA` = `{6 -> FDDE, 0}`. The sequence table is
+`FE43h + (fdd4 & 3Fh)`.
+
+`LinkBlockTx` outcomes (CONFIRMED, `A` and carry on return):
+
+* `EBh` — either pre-payload bit-7 wait or the bit-4-clear wait timed out.
+* `EEh` — bit-6-clear, per-byte bit-7, or post-payload bit-7
+  failure.
+* `ECh` — final status bit5 set.
+* success `A=00h` carry clear.
+
+Retry scheduler (CONFIRMED): initial `fdd6=32h` / `fdd8=6`, later
+`fdd6=14h` / `fdd8=3`; the caller reschedules after `LinkBlockTx`
+without testing returned `A`/carry.
 
 ## Types, replies, and session state
 
@@ -166,11 +191,20 @@ cases, then tail-jumps to the trailing default when none matches. This
 mechanism is local module control flow, not evidence that the case values
 are wire-command identifiers. Numeric case values observed at `5A69` (abort `44,45,60,61,64`), `53C7` (`0..5`), `5410` (`0,4,8,9`), and `5291` (`0,4,9`) are **CONFIRMED** inline cases — do not name them as wire commands. The table at `6A4A` is **CONFIRMED** as 16 state-display pointers, not a wire map.
 
-The firmware writes these little-endian words into a reply buffer on some
-paths: `01EE`, `02E0`, `02EE`, `03EE`, `04E0`, `05E0`, and `01EF`. Only
-`01EF` is directly tied to the type-4 sequence mismatch (per-link sequence at `FE43h + (fdd4 & 3Fh)`). The complete
-reply envelope, payload, and mapping of the remaining values to session
-meaning remain open. No checksum is verified on the link path.
+The firmware writes these numeric little-endian words into a reply
+buffer on seven static paths (treat as numeric words/types, not named
+semantic commands unless the bytes prove a meaning):
+
+* `01EE` — attempt exhaustion with `fdd5=1`.
+* `02EE` — attempt exhaustion with other state.
+* `02E0`, `04E0`, `05E0` — numeric unexpected-type paths.
+* `01EF` — type-4 sequence mismatch (per-link sequence at
+  `FE43h + (fdd4 & 3Fh)`).
+* `03EE` — error/reset path from ROM00:2E72.
+
+The complete reply envelope, payload, and any session meaning remain
+**OPEN**. The examined ROM transport/header path has no checksum.
+Integrity inside unresolved loaded-session payloads remains **OPEN**.
 
 Consequently, no state diagram or host/peer session sequence is normative
 yet. A capture must establish each transition as:
@@ -183,35 +217,48 @@ yet. A capture must establish each transition as:
 
 The active link id is retained in `fdd4`.
 
-* Its low five bits are transmitted first as the controller prelude (excluded from descriptor counts).
-* Its bit 5 selects one of two firmware-controlled line states through
+* Its low five bits are transmitted first as the controller prelude
+  (excluded from descriptor counts).
+* Its bit 5 selects one of two external link configurations through
   `LinkPortSelect` (ROM00:3454).
-* The complete id appears at validated-frame byte 4 (RX offset +4, XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence slot `FE43h + (fdd4 & 3Fh)` (init 1).
+* The complete id appears at validated-frame byte 4 (RX offset +4,
+  XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence
+  slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
-This does not prove a multidrop physical topology, address allocation policy,
-or a PLINTH/V24 mapping. Treat those as open hardware questions.
+Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
+(back) remains **OPEN**. Where the EXT STORAGE ADAPTER attaches also
+remains **OPEN**. This does not prove a multidrop physical topology or
+address allocation policy; treat those as open hardware questions.
+
+UI fields `E701`/`E6FF` are width-3 decimal RCV1/RCV2 status fields;
+runtime meaning is **OPEN** and they are not transport-frame fields.
 
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:
 
-* the complete session-command table and command-name mapping;
+* the complete session-command table and any command-name mapping;
 * every command payload and RECORD/BLOCK format;
-* reply-frame envelope and reply payloads;
+* reply-frame envelope and reply payloads (beyond the seven numeric
+  words above);
 * startup, abort, retry, and completion transitions;
 * maximum lengths, framing boundaries, and controller timing on the
   connector-facing side; and
 * the physical connector/electrical interface required outside the M1000.
 
-Until those captures exist, an implementation may emulate the M1000-side
-register and validator behaviour, but must not claim Commstar file-transfer
-compatibility.
+Do not claim a grammar such as `[type][16-bit big-endian command]
+[payload]`, symmetric protocol roles, payload checksums, filenames, or
+a verified bidirectional Commstar exchange — none are proven for the
+examined ROM transport/header path. Until captures exist, an
+implementation may emulate the M1000-side register and validator
+behaviour, but must not claim Commstar file-transfer compatibility.
 
 ## Evidence and next captures
 
 The implementation evidence is in `LinkBlockTx` (ROM00:3277),
 `LinkBlockRx` (ROM00:3378), `LinkValidateFrameHeader` (ROM00:30DC),
-`LinkProcessCommandFrame` (ROM00:3084), and the descriptor helper
+`LinkProcessCommandFrame` (ROM00:3084), `LinkFramePrefixWrite`
+(ROM00:316B), `LinkProbe` (ROM00:348A), and the descriptor helper
 (ROM00:3508). The research worklist records the capture tasks in
 `research/TASKS.md` in the source tree; research files are excluded from
 the published site.

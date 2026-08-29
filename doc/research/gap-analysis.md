@@ -1,6 +1,6 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-28 (8th audit, BDOS record handlers added), firmware
+Status: 2026-08-29 (9th audit, BDOS/Commstar review), firmware
 `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
 This is a **documentation-coverage** audit: which functions have *we* named
 and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
@@ -9,12 +9,12 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 478 | **64** | 414 |
+| ROM00 | 484 | **65** | 419 |
 | ROM01 | 196 | **66** | 130 |
-| ram | 164 | **11** | 153 |
-| **Total** | **838** | **141** | **697 (83.2 %)** |
+| ram | 169 | **11** | 158 |
+| **Total** | **849** | **142** | **707 (83.3 %)** |
 
-**Refreshed directly from Ghidra on 2026-08-28.** The 2026-08-28 loader pass
+**Refreshed directly from Ghidra on 2026-08-29.** The 2026-08-28 loader pass
 added/renamed ROM01
 functions in `0A67-10CE` (`Program_PrepareLoadGeometry` 0A67,
 `Program_GenerateBlockChecksums` 0957, `Program_VerifyBlockChecksums` 09C2,
@@ -24,12 +24,16 @@ functions in `0A67-10CE` (`Program_PrepareLoadGeometry` 0A67,
 `ram:D7F0` `RunLoadedProgram` and `ram:D081` `g_apScreenHandlerTables` /
 `ram:D0F0` `g_apLoadRunHandlers` labels. The later BDOS pass created direct
 dispatch entries `BdosReadRandom` (0C50), `BdosWriteRandom` (0BF3), and
-`BdosSetRandomRecord` (0CB4). The full inventory reports **838** functions;
-**141** are auto-named (64 ROM00, 66 ROM01, 11 ram). These are the remaining analysis backlog, not completed
-coverage.
+`BdosSetRandomRecord` (0CB4). The subsequent BDOS/RTC and Commstar reviews
+retained byte-verified direct-call entries exposed by deferred analysis and
+named documented entries including `Device_LookupConfigEntry` (31FF),
+`LinkReplyEE02`/`LinkReplyE004`/`LinkReplyE005` (3066/306C/3072), and
+`LinkReplyEE03` (31B0). The full inventory now reports **849** functions;
+**142** are auto-named (65 ROM00, 66 ROM01, 11 ram). These are the remaining
+analysis backlog, not completed coverage.
 
 Plate completeness was not recomputed in this pass. The loader functions
-named on 2026-08-28 carry plates; the 138 auto-named functions remain
+named on 2026-08-28 carry plates; the 142 auto-named functions remain
 undocumented by definition.
 
 Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0) are history.

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""comms_rx_test.py - verify the firmware RX path by feeding it a
-frame (with the unit's link id at RX logical offset +4, XOR-compared to
-fdd4 at ROM00:30DC; offset +5 unread by ROM link code) and calling the
-RX dispatcher (2FBD), capturing any response on port 4Dh.
+"""Exploratory RX strobe trace; does not verify frame acceptance.
+
+The unresolved controller-byte subtraction means this scaffold cannot yet
+claim that its queued bytes form the exact logical buffer passed to the
+validator.
 """
 import gc; gc.disable()
 import sys, time
@@ -50,7 +51,7 @@ def ich(*a):
             return v
         return 0
     if p == 0x4B:
-        # bit0 = RX buffer full (bytes remaining); bit7 = TX empty
+        # Mechanical test policy: bit0 while bytes remain; bit7 otherwise.
         rem = len(deliver) - rx_i[0]
         return (0x80 if rem == 0 else 0x81)
     if p == 0x05: return 0x19
@@ -75,7 +76,7 @@ t0 = time.time()
 for _ in range(100000):
     m.ticks_to_stop = 20000
     m.run()
-    if len(resp) > 0:
+    if rx_i[0] >= len(deliver):
         break
     if time.time() - t0 > 20:
         break

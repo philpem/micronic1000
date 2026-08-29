@@ -2,20 +2,20 @@
 
 Everything for reverse-engineering and emulating the Micronic 1000.
 
-## Reusable protocol model — `micronic/`
+## Reusable firmware models — `micronic/`
 
-A self-contained Python package you can import to build an IR link
-adapter or host program:
+A Python package of evidence-scoped models and harness helpers. The link
+scaffold is not sufficient to build an interoperable Commstar adapter:
 
 * `micronic.rtc.RTC146818` — HD146818 model; the **periodic tick
   cadence** follows Register A's RS nibble (1024 Hz default), exactly
   as the firmware programs it.
-* `micronic.proto.Frame` — the wire payload: `[type][cmd_hi][cmd_lo]
-  [data...]`.
-* `micronic.proto.Link` — the 4x transport: `tx()` emits
-  `[link_id&0x1F]` prelude + payload via an `on_tx` callable, gated
-  on `on_st() & 0x80` (TX empty); `rx()` reads from `on_rx` gated on
-  `on_st() & 0x01` (RX full).
+* `micronic.proto.Link` / `micronic.proto.LinkPeer` — raw
+  byte-latch scaffold for the 4x transport: queues `LINK_RXD`,
+  captures `LINK_TXD`, records `LINK_CTRL`/`LINK_CMD`/`LINK_PROBE`
+  writes, and synthesizes `LINK_STATUS` polls. No frame grammar,
+  checksum, or session roles are implemented; numeric types `2,3,4`
+  and reply words are observed numeric triggers only.
 * `micronic.program` — host-side COM/DIP image validator (CONFIRMED grammar
   from `doc/manual/program-formats.md`): classifies by first-chunk rule
   (`<14` bytes or first word != `C9 C8` → COM), validates DIP 14-byte LE
@@ -24,7 +24,8 @@ adapter or host program:
   max `0xCF81`; error identifiers match the loader catalogue
   (`0x232B`/`0x2331`/`0x2334`/`0x232C`) where applicable and clamps image
   size at `0x8000` without rejection.
-* Verified **byte-for-byte** against the firmware (`comms_tx_test.py`).
+* `test_proto.py` covers the raw queue/latch API and the confirmed logical
+  header checks.
 
 ## Emulator harnesses (Python `z80` module)
 
@@ -43,14 +44,14 @@ Requires the `z80` python module in `venv/`.
   seed the link state + FDEA `{count, ptr}` descriptor, call
   `LinkTransferService` (2F86), capture port-4Dh bytes, compare
   against `micronic.proto`. **MATCH** (prelude + payload).
-- **`comms_rx_test.py`** — verify the RX path: feed a frame via the
-  port-4Eh input callback into `LinkBlockRx`/RX dispatcher (2FBD),
-  capture the 4A strobe handshake. Confirms `proto.Link.rx()`
-  mirrors the firmware (4Eh gated on 4Bh bit0).
+- **`comms_rx_test.py`** — exploratory RX strobe trace: queue bytes through
+  the port-4Eh callback into `LinkBlockRx`/RX dispatcher (2FBD) and capture
+  the 4A handshake. It does not verify frame acceptance because the two
+  controller bytes excluded from the returned count remain **OPEN**.
 - **`comms_duplex.py`** — reusable `proto.LinkPeer` regression: bridges the
-  model's queue/latch interface to the actual firmware byte pumps and verifies
-  a complete software-only exchange in both directions. It validates transport
-  mechanics, not a live Commstar session or electrical bit identities.
+  queue/latch interface to the actual firmware byte pumps for two directed
+  raw-byte tests. It does not verify a Commstar exchange, controller framing,
+  or electrical bit identities.
 
 ### `boot_hw.py` — visible harness details
 
@@ -101,6 +102,6 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 
 - `BootTrace.java`, `BootTrace.pending.java` — Ghidra-side boot
   trace experiments.
-- `micronic/README.md` — full reusable-protocol docs.
+- `micronic/README.md` — full reusable-model documentation.
 - `../ghidra_scripts/FillBatteryRam.java` — loads the session modules
   into Ghidra RAM for static analysis.
