@@ -35,10 +35,15 @@ documented value as volatile, and do not turn this list into an ABI guarantee.
 
 * Do not call the dispatcher range `25h-F2h`: it can derive a target from
   unrelated kernel bytes.
-* Do not rely on CP/M disk-management calls 0Dh and 1Bh-1Fh; they are stubs or
-  no-ops in DIPOS-B.
-* Do not modify the active-device selector or FE83/FE93 configuration tables
-  until the complete F6h-FBh contracts and restoration rules are published.
+* Do not rely on CP/M disk-management calls `0Dh`, `1Ch`, `1Eh`, `1Fh`,
+  `30h`, `F4h`; they are **unsafe mutable `RST 28h` diagnostic paths**
+  conditional on the global `Bdos_SelectRst28Mode` (`ram:F55A`), not inert
+  stubs. `1Bh`/`1Dh` get allocation/read-only vector are `HL=0000h` stubs;
+  `1Ah` set-DMA is implemented (stores `DE`) but downstream ABI remains
+  incomplete; `FEh` is an internal timed wait (`Bdos_InternalTimedWait`)
+  requiring resident context.
+* Do not modify the active-device selector or `FE83`/`FE93` configuration tables
+  until the complete `F6h-FBh` contracts and restoration rules are published.
 * Do not install a barcode decode hook from a general application. Its complete
   bank, register-preservation, lifetime, and reentrancy contract is still
   incomplete.

@@ -137,44 +137,28 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Resolve the corrected BDOS table's unsafe/unknown entries.** Raw
-   `ROM00:3738-3751` bytes confirm `1F->1893`, `20->1890`, `21->0C50`,
-   `22->0BF3`, `23->0CF1`, and `24->0CB4`; earlier docs were offset/misidentified.
-   DONE 2026-08-28: the shared `1893` RST-28 path was traced - its `C=FEh`
-   write is overwritten, and normal BDOS dispatch restores the caller's `A`,
-   which selects fatal/recoverable/silent diagnostic behavior (do not treat fn
-   0D/1C/1E/1F/30/F4 as ordinary CP/M stubs).
-2. **Publish per-function BDOS contract cards from existing ROM evidence.**
-   DONE 2026-08-28 (except the flagged device/routed residual paths): every
-   dispatched function 00-24h, special 2D/2E/30/62/68/69, and F3-FF now has a
-   card in `manual/bdos-reference.md` with byte-verified In/Out registers,
-   blocking, effects, and errors.
-   * **Uniform envelope contract (CONFIRMED, supersedes earlier per-card flag
-     claims):** through `CALL 0005h` only `A` and `HL` are the handler's
-     results; `BC/DE/IX/IY` pass through; **flags are never handler-derived**
-     - the return continuation `ram:F3CA AND 7` on the hook gate `FDBD` is the
-     flag state the caller sees (`Z=1,C=0,S=0,P/V=1` when `FDBD&7==0`).
-   * Corrected earlier cards (06h/0Bh/0Ch/0Eh/23h/13h) that had implied Z/carry
-     semantics; added result-`A` contracts for 01h/02h/0Ah/F5/F6/F7/F9/FC/FD.
-   * Residual OPEN items (device/transport-dependent, not resolvable from ROM
-     alone): fn 00 returning restart; fn 03/edit blocking; fn 04 punch falls
-     off into RST 38h; fn 05 routed-wait result; the FCB invalid-drive
-     (09CA) shared error path's final return value.
-3. **Build host-side COM/DIP validation tooling with golden inputs.** DONE
-   2026-08-28: `micronic/program.py` + `validate_program.py` + 35 golden tests
-   in `test_program.py` implement only the CONFIRMED grammar.
-4. **Continue static session-module and UI analysis.** Resolve remaining
-   writers/consumers, runtime error/status fields, and session state-machine
-   payload handling from the loaded RAM modules and ROM call graph.
-5. **Complete the deferred annotation and typing sweep.** Name/plate remaining
-   `FUN_*` functions, repair data/table types, and refresh the coverage tracker
-   after the semantic work stabilises.
-
-**Completed 2026-08-28:** reusable `micronic.proto.LinkPeer` now bridges
-queue/latch callbacks to the actual firmware transport. `comms_duplex.py`
-verified firmware TX (`05 04 44 00 "from-M1000"`) parsed by the adapter and
-all 14 adapter-sent bytes consumed by firmware RX. This is a software-only
-transport regression, not a live Commstar session or electrical-bit finding.
+1. **Review `protocol/commstar.md` end to end.** Reconcile every frame-field,
+   sequence, reply, state-machine, and error-screen claim with fresh ROM/RAM
+   bytes and the current `micronic.proto.LinkPeer` model. Remove stale names
+   and preserve OPEN payload/electrical meanings instead of filling gaps from
+   protocol convention.
+2. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+   C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
+   fields, and remaining runtime result/state writers in the loaded modules.
+3. **Run a complete software-only Commstar session.** Extend the existing
+   byte-level `LinkPeer` duplex regression through the real session state
+   machine under bounded emulation. This may establish software framing and
+   sequencing, but not connector-level electrical meanings.
+4. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+   provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
+   COM/DIP file grammar and host-side validator are already complete.
+5. **Finish guarded structural repairs before semantic naming.** Repair the
+   `ROM01:6E77-6EEE` inline-data body with the required function-list diff
+   guard, then address the pending compiler-runtime page and unresolved
+   `d2dc/d2de` / `EA14/EA1C` writers.
+6. **Final annotation and typing sweep (deferred).** Name/plate remaining
+   `FUN_*` functions, repair data/table types, and refresh the canonical
+   `research/gap-analysis.md` inventory only after semantic work stabilises.
 
 ### Hardware-dependent priorities
 
@@ -185,27 +169,17 @@ transport regression, not a live Commstar session or electrical-bit finding.
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-3. **Side/external port — barcode front end (owner-adjudicated 2026-08-24)**:
-    I/O **2Dh** (`EXTBUS_EDGE`) + **2A/2C** latches are the bit-banged
-    **barcode-reader edge-capture front end** (`Barcode_` prefix for new
-    names; existing `ExtBus*`/`Barcode_*` coexist until a rename pass),
-    dispatched by **active wire-id `fdca`** via LinkCommandLookup
-    `{2B,2A,23,03}` → `0x1221` (2B/2A) / `0x1893` (dead). The default
-    FE83 wire table = `{0xAB,0x2B,0x67,0x67}`; **0x2B = EXT STORAGE
-    ADAPTER** (the only named device + "V24 ADAPTOR"). **Internal A:/B:
-    drives are pure RAM** (never on this bus). **EXT STORAGE data moves
-    over the 4x byte transport** (`LinkTransportCall`/`LinkBlockTx/Rx`);
-    the 2D edge capture is a *separate* front end — adjudicated the
-    **barcode reader** (AGENTS.md §3, Micronic US 4,423,319; side-port
-    5-pin pen + CCD gun). A **user decoder hook** lives at `fbc2`
-    (fbc1=bank, fbc0=RST10 stub), defaulted to discard (1567).
-    **BDOS fn 03 (RDR:) = `BdosReaderInChar` (1080)** is the reader byte-
-    stream path (1B/count/data via ring F95E).
-    See protocol/commstar.md + manual/barcode-reader.md (updated).
-    **Developer tie-in: install decoder at `fbc2`; read via fn 03,
-    or arm directly via RST 10h -> ExtBusArm (1221).**
-4. Emulator: verify a full send under trace (boot/timebase fix is complete;
-   needs a live link peer model).
+3. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
+   selects the top V24 ADAPTOR versus back PLINTH port, and confirm where the
+   EXT STORAGE ADAPTER attaches. ROM evidence proves only the shared 4x byte
+   transport and the bit5 selector.
+4. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
+   modules/state can be compared with the static overlays.
+
+### Detailed and historical backlog
+
+The items below retain evidence and completion history. They are not the
+current priority order; the concise lists above are authoritative.
 5. **Examine the queued work-item system** — **DONE (2026-08-25,
    delegated analysis, applied + saved).** The FD5C queue is a 10-slot
    countdown-timer/callback table serviced from the RTC wake path, not
@@ -216,9 +190,10 @@ transport regression, not a live Commstar session or electrical-bit finding.
    "fix"). ExtBusQueueWorkItem (135C, re-arming poll timer f9ae → 5
    ticks) / ExtBusPoll (12EC; no-edge path has an OPEN weird DI
    fallthrough at 1328). RtcAlarmRegWorkItem → RTC_AlarmSleep (21EC,
-   pure-timer + HALT-poll on FD4D, caller BdosFcSetAlarm 1129).
+    pure-timer + HALT-poll on FD4D, caller Bdos_InternalTimedWait 1129).
    FUN_ROM00__35c9 → Sound_Off (2Bh write; quiet-bus before 2Dh
-   timing, LIKELY). Plus created Link_StatusCompare_FD4B (223E) and
+   timing, LIKELY). Plus created RTC_AlarmDateMatches (223E, formerly
+  `Link_StatusCompare_FD4B`) and
    Update remaining OPEN bits: meaning of fd84/RegB runtime bits;
    fbc9 bit0 → fn03 staging link; whether the alarm handler also
    writes FD4D directly.
@@ -242,12 +217,9 @@ transport regression, not a live Commstar session or electrical-bit finding.
    reader-completion event bit is `fbc9` bit0, posted by
    `ExtBusComplete`(14A3)→`LinkResetSession`(30BD); that wakes the
    fn-03 `EventWaitForLink` HALT (see manual/barcode-reader.md).
-8. **Residual inverted-dispatcher doc claims** (found by the docs
-   agent 2026-08-24): `doc/internals/cp-m-comparison.md:27-28` and
-   `doc/protocol/commstar.md:611` still carry the pre-fix "25h-F2h
-   extended table" framing. Fix them with the corrected model (fn
-   <25h→F1EB; F3-FF→F1D1 wrap via DEC B; unmatched 25h-F2h → wild
-   pointer, nothing rejected).
+8. **Residual inverted-dispatcher doc claims — CLOSED 2026-08-28.** Active
+   documentation now uses the corrected model: fn <25h -> F1EB; F3h-FFh ->
+   F1D1 wrap via DEC B; unmatched 25h-F2h -> wild pointer, nothing rejected.
 8a. **6e77 guarded repair needed**: its function body contains inline
     data (FF FF FF FF at 6EA5-6EA8, 7F at 6ED1) misdisassembled as
     RST 38h / LD A,A — run the diff-guarded clear-flow repair on
@@ -1924,3 +1896,19 @@ transport regression, not a live Commstar session or electrical-bit finding.
    * **Inline dispatch (CONFIRMED numeric cases, local control flow only):** `5A69` abort `44,45,60,61,64`; `53C7` `0..5`; `5410` `0,4,8,9`; `5291` `0,4,9` — do not name as wire commands. Table at `6A4A` is **CONFIRMED** 16 state-display pointers, not a wire map. Link path **no checksum verified**.
    * **Docs updated:** `protocol/commstar.md` (validated-frame table + validation sentence + LinkFramePrefixWrite/TX-0x7F note + LinkBlockRx/Tx prelude/DE-2 + descriptors + sequence slot + 03EE + numeric cases + 6A4A + no-checksum), `internals/io-map.md` (address-filter offset +4 and SUSPECTED/OPEN notes), `analysis/micronic/proto.py` (frame header docstring + `validate_header` offset +4), `analysis/comms_rx_test.py` (comment + RX frame construction to place link id at +4).
    * **Outstanding (OPEN/SUSPECTED, do not guess):** meaning of TX `0x7F` (SUSPECTED); whether offset +5 may be writable by loaded code (OPEN, never read by ROM); identity of the two bytes excluded from `LinkBlockRx` DE count (OPEN); session payload grammar and per-record/per-block byte content still runtime/open (needs live capture or loaded-module trace); connector mapping and electrical bit meanings remain OPEN.
+- 2026-08-29 (documentation maintenance — reviewer-approved BDOS review corrections, Ghidra-applied):
+   * **Applied established findings only (no new inference):** `Bdos_SelectRst28Mode` (`ram:F55A`), `Bdos_UpdateDriveDirectoryMetadata` (`ROM00:0D79`), `Bdos_InternalTimedWait` (`ROM00:1122`), `Kernel_ConditionalEnableInterrupts` (`ram:F54E`), `Device_LookupConfigEntry` (`ROM00:31FF`).
+   * **Overturned false interpretation:** `fn04` (`ROM00:10D2`) was previously described as unsafe / non-returning via `RST 38h` with a stack switch — **superseded**. Correct decode is `CALL ROM00:31FF` `Device_LookupConfigEntry`; `E` preserved, `FBC5` high nibble selects `FE83` entry; descriptor `80h` local output else routed; normal `A=00h`, routed terminal error returns a path-dependent nonzero helper status, and both paths may wait/retry. Summary status **CONFIRMED**.
+   * **Corrections applied to `manual/bdos-reference.md`:** normal path `0005->ram:F180-F1CE` joining `F382`, `F376` alternate, `HL=word[FEFA]`, `Kernel_ConditionalEnableInterrupts` name, unspecified-output rule (`BC`/`DE`/`IX`/`IY` not restored); `02h` four `A` results; `0Ah` `1Bh` counted literal block; `21h`/`22h` use `+21h`/`+22h` only (`+23h` not read; 31-byte copy stops before it); `2Dh` mutable mode selector (`FFh` `F57B` no-op, `FEh` `F57E` default, `FDh` `F59F` + `HL->FDBA`, `FCh` `F5C0`, else unchanged; `A` preserved; global unsafe); conditional behaviour of `0Dh`/`1Ch`/`1Eh`/`1Fh`/`30h`/`F4h` via `RST 28h`; `2Eh` drive-metadata not filename search; `FEh` timed wait (`E<<4`, `IY+23h`/`word[FEFA]`, `FD4D` `HALT`, `A=00h`); `FFh` `UIP` polling before both paths; hex suffixes `+0Ch`/`+10h`/`+20h`/`+21h..+23h`; table statuses aligned. Evidence tags preserved; `F376`/`F382`/`F54E` byte-verified envelope unchanged.
+   * **Cross-document consistency:** `manual/programmer-guide.md` (`19h` `A` not `HL`, `1Ah` implemented, remove inert-stub grouping for diagnostics, `FEh`/`FFh` semantics, `FC`/`FD` 8-byte `+0` OPEN, configurable `A`/`B` vs `C`/`D` mapping, conservative extension safety); `internals/cp-m-comparison.md` (`06h` `E=FFh`, mutable diagnostics, `1Ah` implemented, configurable mapping, `F5` `<04h`→`0Fh`, `FEh`/`FFh`, handler `0C50`, `2Dh`/`2Eh`); `internals/os-diposb.md` (delete `FD->0DE9` etc. and point to correct `F3h-FFh` table, mutable diagnostics, `2Dh`/`2Eh`, `..//manual` link, `0008->F180` and `F5EA`/`F5ED`/`F5F0`/`F5F3` grouping); `internals/memory-map.md`/`internals/interrupts.md` (`0008->F180`); `manual/supported-profile.md` (diagnostic unsafe path); `doc/review.md` (superseded `1Ah`/`19h`/`02h`/`04h`/`FEh` claims marked). Current names are used in active docs; historical log entries retain their original names.
+   * **Build:** `mkdocs build --strict` (see below); no commit; no new coverage numbers added.
+   * **Closed stale BDOS items:** previous "all full cards done" phrasing retired; diagnostic-stub claims and `FD->0DE9` wrapped mappings removed.
+- 2026-08-29 (documentation maintenance — parent-adjudicated RTC record + CP/M links, no new inference, reviewed findings):
+   * **Canonical BDOS eight-byte RTC record published** (`doc/internals/rtc.md#bdos-eight-byte-rtc-record`): `+0` metadata (FC copied/RTC ignored, FD from `g_bRtcRecordMetadata` init `13h` LIKELY century `19` exact OPEN, FF copied unused), `+1` year→`09h`, `+2` month→`08h`, `+3` day-of-month→`07h`, `+4` hour→`04h`, `+5` minute→`02h`, `+6` second→`00h`, `+7` day-of-week→`06h` (convention OPEN, `0=Sunday` LIKELY from `1984-01-01` default); raw binary 24-hour (Reg B `46h`), no firmware conversion/range validation; service identities `FCh=1150`/`FDh=113E`/`FEh=1122`/`FFh=112D`; `FFh` `DE=0` clear and program both poll `UIP`, preamble `RegA|80h` likely ineffective then `2Ah`; evidence addresses as listed in `rtc.md`.
+   * **Register-map correction:** rotated HD146818 labels fixed in `rtc.md` and `io-map.md` to `06`=day-of-week, `07`=day-of-month, `08`=month, `09`=year; alarm regs `01/03/05` marked used (RtcSetAlarm `2158-62`); emulator trace labels corrected (`09`=year `54h`, `08`=month `01h`, `07`=day-of-month `01h`, `06`=day-of-week `00h`); `RtcReadRegisterFile` corrected to `00h..09h` (10 bytes) → `g_abRtcRegisterSnapshot` (FD50), not `00h..0Fh`/16 bytes; stale date-gate text corrected to `RTC_AlarmDateMatches` / `g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth`.
+   * **Stale-name correction:** `BdosFcAlarmControl` → `BdosFfAlarmControl` in `cp-m-comparison.md` (and linked purposes to canonical layout); `Link_StatusCompare_FD4B` → `RTC_AlarmDateMatches` in active TASKS naming (historical logs retain former name where clearly historical).
+   * **BDOS reference alignment:** `manual/bdos-reference.md` FC/FD/FF cards now link to canonical record and summarize exact field use; FE corrected to `E<<4` interval with low→`(IY+23h)` high→`word[FEFA]` (previously mis-described as low nibble from IY).
+   * **Programmer guide links:** `manual/programmer-guide.md` table entries and command bullets link to canonical record, give compact layout once without ambiguous "`byte +0 OPEN`" without metadata/LIKELY-century context; `2Dh` `E=FFh` wording corrected to "installs `F57B` no-op target"; `2Eh` wording corrected to entering `A=2Ch` error path (not guaranteed returned `A`); added `### CP/M reference manuals` with verified Bitsavers/Gaby links and DIPOS-override note; renamed `BdosFcAlarmControl`→`BdosFfAlarmControl`.
+   * **Review update:** `doc/review.md` RTC-incomplete finding marked resolved for byte layout, preserving OPEN `+0`/day-numbering/range-validation.
+   * **fn04 alignment verified:** no doc change; `fn04` already aligned to `Device_LookupConfigEntry` findings in prior pass.
+   * **Build:** `mkdocs build --strict` (see below); no commit; no new inference.

@@ -76,15 +76,14 @@ Both banks carry an identical vector template except two entries
 
 ```
 0000  JP <bank start>   ROM00: JP 0103    ROM01: JP F238 (kernel RAM)
-0005  JP F180           BDOS/syscall gate -> kernel in battery RAM
-0008  RST1 -> F5E1      kernel call
-0010  RST2              banked-call dispatcher (see below)
-0020  RST4 -> F5EA      kernel call
-0028  RST5 -> F5ED      kernel call
+0005  JP F180           BDOS/syscall gate -> kernel in battery RAM (0008 -> F180)
+0010  RST2 -> F5E1      banked-call dispatcher (see below)
+0020  RST4 -> F5EA      kernel call (see interrupts)
+0028  RST5 -> F5ED      kernel call (conditional RST28 target)
 0030  RST6 -> F5F0      kernel call
 0038  RST7 -> F5F3      kernel call; doubles as IRQ entry under IM 1
 0040  banked-call tail: OUT (47),0 ; JP <own bank target>
-                        ROM00: JP 3BAA     ROM01: JP 3ADD
+                         ROM00: JP 3BAA     ROM01: JP 3ADD
 0066  NMI -> F5F6       kernel NMI handler (RAM)
 ```
 
@@ -165,7 +164,10 @@ copied from ROM (see [the operating-system overview](os-diposb.md)). The ROM dum
 | ED1C | deferred_call_queue | 0x364 | Growable list of 4-byte RST10 banked-call stubs {D7h, bank, target}, written by syscall fn=2 (SyscallQueueBankedBlock) via queue_write_cursor (d684). Arena pre-filled with no-op stub "LD HL,1 / RET" (template at d6d7) so executing unfilled slots returns harmlessly. Executed in place as a straight-line program of banked calls; entry point computed dynamically (suspected: chain-loaded module code). |
 | F180 | syscall entry | — | Target of the 0005h BDOS gate in both banks |
 | F2xx-F4xx | kernel routines | — | Targets of the per-bank API jump tables (ROM00:0106-0148) |
-| F5E1/F5EA/F5ED/F5F0/F5F3/F5F6 | kernel stubs | — | RST1/RST4/RST5/RST6/RST7(IRQ)/NMI handlers |
+| F5E1 | `Kernel_BankedCallEnvelope` alternate entry | — | `RST 10h` dispatcher |
+| F5EA/F5ED/F5F0/F5F3 | kernel stubs | — | `RST 20h`/`28h`/`30h`/`38h` (IRQ) handlers |
+| F5F6 | NMI stub | — | `NMI` handler |
+| F54E | `Kernel_ConditionalEnableInterrupts` | — | preserves `AF`, conditional `EI` |
 
 ### System variables
 
@@ -185,7 +187,7 @@ copied from ROM (see [the operating-system overview](os-diposb.md)). The ROM dum
 | FC03/FC04 | — | bytes | IR/comms link state flags (used by lcd_sync_status path) | runtime |
 | FC05 | — | byte | Value written to port 46h by WritePowerLatchPort46 (ROM00:1FD4) | 70 |
 | FC06 | g_abLcdFramebuffer | 160 bytes | LCD framebuffer, 20 chars × 8 lines, sent by LcdRefreshScreen | spaces/text |
-| FD50 | g_abRtcFileBuf | 16 bytes | RTC register-file read buffer filled by RtcReadRegisterFile (ROM00:20F0, ex-"CommsRxBurst16") reading indices 00-0F | — |
+| FD50 | g_abRtcRegisterSnapshot | 10 bytes | RTC register-file read buffer filled by RtcReadRegisterFile (ROM00:20EF) reading indices 00h..09h | — |
 | F9AA | g_bExtBusRoute | byte | External-bus route/wire byte (= active wire-id fdca). 0x2A variant uses CTL_2A trigger; default 0x2B uses CTL_2C/2D front-end. Set by ExtBusArm (1221) | 00 |
 | F9AB | g_bExtBusStatus | byte | Ext-bus result status: 0=error/absent, 1=2A-route retry, 2=ok. Written 12AF, read by ExtBusComplete (14A3) | 00 |
 | F9AC | g_wExtBusRetry | word | Ext-bus arm-window timeout counter (decremented at 1340) | — |

@@ -40,28 +40,59 @@ The manual now includes a conservative [supported application
 profile](manual/supported-profile.md), and the BDOS index uses explicit
 ABI/evidence classifications rather than presenting behaviour-only findings as
 stable contracts. Navigation exposes that profile before the broader guide.
-The remaining recommendations are deliberately open: contract cards require
-per-routine evidence, a first-program tutorial requires executable examples
-and a deployment route, and configuration wrappers must await complete F6h-
-FBh contracts. The no-hardware priority order is maintained in `TASKS.md`.
+All dispatched functions are now classified and described; several routed or
+device-dependent paths deliberately retain limited contracts. A first-program
+tutorial still requires executable examples and a deployment route, and
+configuration wrappers must await safe F6h-FBh application contracts. The
+no-hardware priority order is maintained in `TASKS.md`.
+
+### Superseded historical claims (BDOS review 2026-08-28 — see `manual/bdos-reference.md`)
+
+The following review observations are **superseded** by the current
+`manual/bdos-reference.md` and `internals/cp-m-comparison.md` after the
+reviewer-approved BDOS pass (no new reverse-engineering; applied existing
+findings):
+
+* **fn `1Ah` as stub / "no contracts":** `1Ah` (`BdosSetDmaAddress`,
+  `ROM00:0CEC`) is an **implemented set-DMA** (stores `DE`), not a stub; its
+  downstream record-I/O ABI remains incomplete. Earlier prose that grouped
+  `1Ah` with inert stubs is superseded.
+* **fn `0Dh`/`1Ch`/`1Eh`/`1Fh`/`30h`/`F4h` as inert stubs:** these are **unsafe
+  mutable `RST 28h` paths** via `Bdos_SharedErrorStub` (`ROM00:1893`)
+  conditional on `Bdos_SelectRst28Mode` (`ram:F55A`), not stubs. The
+  diagnostic behaviour only applies when the default target `F57E` is
+  installed (`E=FEh`); `FFh`/`FDh`/`FCh` select no-op/deferred/fatal modes.
+* **fn `19h` in `HL`:** `19h` returns the current drive in `A` (not `HL`).
+* **fn `02h`/`04h`/`0Ah`/`21h`/`22h` detail:** `02h` has four path-dependent
+  `A` results (`00h` no destination, `08h` mode, routed `00h`/`FFh`);
+  `04h` (`ROM00:10D2`) uses `Device_LookupConfigEntry` (`ROM00:31FF`) and
+  `FBC5` high nibble to select an `FE83` descriptor (`80h` local else
+  routed), is **CONFIRMED and returning**, not a non-returning `RST 38h`
+  case; `0Ah` includes the `1Bh` counted literal block; `21h`/`22h`
+  address only via `+21h`/`+22h` (`+23h` not read; 31-byte copy stops
+  before it). The table `CONFIRMED behaviour; ABI incomplete` markings
+  now match the cards.
+* **fn `2Dh`/`2Eh`:** `2Dh` is `Bdos_SelectRst28Mode` (`ram:F55A`) and `2Eh`
+  is `Bdos_UpdateDriveDirectoryMetadata` (`ROM00:0D79`), not a generic
+  banked-call wrapper / filename search helper.
+* **fn `FEh`/`FFh`:** `FEh` is `Bdos_InternalTimedWait` (`ROM00:1122`,
+  `E<<4`, `IY+23h`/`word[FEFA]`, `FD4D` `HALT` wait, `A=00h`), not a general
+  RTC alarm setter; `FFh` polls `UIP` before both clear and program paths
+  (permanent `UIP` blocks both).
+
+Where this review and the current BDOS reference disagree, the **BDOS
+reference is authoritative**.
 
 ## Findings
 
-### P0 -- the BDOS reference is not yet an implementable API reference
+### P0 -- BDOS reference completeness (partially resolved)
 
-`manual/bdos-reference.md` lists services and broad status, but omits the
-per-call ABI required to use them: input registers, output registers and
-flags, buffer structures and lengths, blocking behaviour, state changes,
-and exact error results. Its calling-convention section also says that each
-function's return and error convention must be verified before use. A
-programmer therefore has to repeat reverse-engineering work before safely
-calling a service described as supported.
-
-This applies especially to extensions F5--FF. F5 explicitly lacks its
-parameter contract; F9 is only partly decoded; F6/F7/F8/FA/FB give no
-register or buffer contract. F8/FA/FB change global configuration, so a
-safe save--modify--restore pattern is needed before they can be recommended
-to applications.
+The current reference now publishes the uniform CALL-5 envelope and verified
+contracts for the supported calls, and classifies every dispatched function.
+It intentionally does not turn every mechanically understood service into a
+supported API: routed/device-dependent errors and configuration-mutating
+F6h-FBh calls still require caution. Safe save-modify-restore wrappers for
+F8h/FAh/FBh remain an open documentation task.
 
 ### P0 -- the RTC ABI is incomplete and internally unclear
 
@@ -72,6 +103,19 @@ register-file read, but does not reconcile those facts into the FC/FD caller
 buffers. It is consequently impossible to implement clock support solely
 from the manual.
 
+**Update 2026-08-29 — resolved for byte layout, OPEN items preserved:**
+The canonical 8-byte layout is now published in
+[`internals/rtc.md#bdos-eight-byte-rtc-record`](../internals/rtc.md#bdos-eight-byte-rtc-record):
+`+1..+7` → regs `09/08/07/04/02/00/06` (year/month/day-of-month/hour/
+minute/second/day-of-week), `+0` metadata handling per service, raw
+binary 24-hour (Reg B `46h`), no firmware validation/conversion, service
+identities `FCh=1150`/`FDh=113E`/`FEh=1122`/`FFh=112D`, `FFh` `DE=0` vs
+program both `UIP`-polled, and alarm preamble `RegA|80h` (likely
+ineffective) then `2Ah`. Remaining **OPEN**: `+0` exact meaning (LIKELY
+century `19`, from `g_bRtcRecordMetadata` init `13h`), day-of-week
+numbering (`0=Sunday` LIKELY from `1984-01-01` default), and whether
+out-of-range values are validated (firmware performs none).
+
 ### P0 -- the barcode hook recipe is unsafe as published
 
 The example contains pseudo-assembly (`CALL 5, C=03h`) rather than
@@ -81,24 +125,19 @@ reentrancy rules, hook/result lifetime, error behaviour, and restoration of
 the previous hook. A reader could install a handler that works by accident
 or destabilises the resident system.
 
-### P1 -- storage guidance is contradictory
+### P1 -- storage guidance contradiction (resolved)
 
-The programmer guide correctly says that drive mapping is
-configuration-dependent, but later says only A/B are file storage and tells
-programs never to use C:+. `manual/devices-and-storage.md` instead says that
-the user-visible device names are not a universal drive-to-hardware mapping.
-The manual must distinguish the confirmed default mapping from configurable
-mapping and give a supported rule for detecting or preserving the current
-configuration.
+The programmer guide now distinguishes the confirmed default FE93 mapping
+(internal A/B, external C/D entries) from the configurable runtime table and
+no longer presents C:+ as a universal fixed mapping. A supported preservation
+workflow for configuration changes remains open.
 
-### P1 -- CP/M compatibility is overstated
+### P1 -- CP/M compatibility overstatement (resolved)
 
-The guide concludes that a CP/M program using FCB and console calls will run
-"essentially unchanged", while Set DMA (1Ah) and several normal CP/M disk
-services are stubs. That statement needs a narrow, testable compatibility
-profile: supported functions, default-DMA assumptions, FCB constraints,
-console/device assumptions, program exit/reset behaviour, and explicitly
-unsupported CP/M patterns.
+The guide now describes a CP/M-shaped entry convention rather than blanket
+compatibility, and points first to the narrow supported profile. It also
+correctly records 1Ah as implemented while excluding the unsafe standard-
+numbered diagnostic paths and undefined extension range.
 
 ### P1 -- no end-to-end developer workflow exists
 

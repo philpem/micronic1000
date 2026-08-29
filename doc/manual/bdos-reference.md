@@ -20,15 +20,19 @@ Put the function number in **C**, pass a pointer argument in **DE** when the
 individual function requires one, and `CALL 0005h`. The dispatcher is installed
 in battery-backed RAM, but the entry gate exists in every mapped bank.
 
-The complete call envelope is byte-verified (`Kernel_BankedCallEnvelope`
-`ram:F376-F3C3` plus its return continuation `ram:F3C4-F407`, and
-`KernRestoreBankNotify` `ram:F54E`, which preserves AF):
+The normal `CALL 0005h` path is `0005 -> ram:F180-F1CE` joining the
+common envelope at `F382`; `ram:F376` (`Kernel_BankedCallEnvelope`) is an
+alternate entry. The complete envelope is byte-verified (`ram:F376-F3C3`
+plus its return continuation `ram:F3C4-F407`, and
+`Kernel_ConditionalEnableInterrupts` `ram:F54E`, which preserves AF):
 
 - **Into the handler** the dispatcher passes `A` = the caller's original `A`,
-  `HL` = `ram:FEFA`, `DE` = the caller's `DE`, `B` = 0, and `C` = function
-  number. Handlers normally read only `E`/`DE` (or nothing).
+  `HL` = word at `FEFA` (`HL=word[FEFA]`), `DE` = the caller's `DE`, `B` = 0,
+  and `C` = function number. Handlers normally read only `E`/`DE` (or
+  nothing).
 - **Out of the call**, `A` and `HL` are the handler's own `A`/`HL` results;
-  `BC`, `DE`, `IX`, and `IY` pass through exactly as the handler left them.
+  `BC`, `DE`, `IX`, and `IY` are not restored — the caller sees the
+  handler's final values.
 - **Flags are not handler-derived.** The return continuation executes
   `AND 0x07` on `ram:FDBD` at `ram:F3CA`, and that result is the flag state
   the caller sees. With no hook armed (`FDBD & 7 == 0`, the default) the caller
@@ -36,9 +40,11 @@ The complete call envelope is byte-verified (`Kernel_BankedCallEnvelope`
   **not observable** through `CALL 0005h`.
 
 Consequently only the `A` (and, where documented, `HL`) value is a portable
-return. The cards below state those results and never promise `carry`/`zero`
-semantics; where an earlier card mentioned flags, that has been superseded by
-this uniform rule.
+return. **Unspecified-output rule:** any register or flag not listed as an
+output on a card is unspecified; `BC`/`DE`/`IX`/`IY` are never restored and
+reflect the handler's finals. The cards below state those results and never
+promise `carry`/`zero` semantics; where an earlier card mentioned flags, that
+has been superseded by this uniform rule.
 
 ## Standard CP/M-shaped functions
 
@@ -170,7 +176,7 @@ bank before return.
 **In:** `DE` points to an FCB on a RAM drive.
 
 **Out:** on success, `A=00h` and the three-byte little-endian random-record
-field at FCB offsets `+33..+35` receives the size in 128-byte records. A
+field at FCB offsets `+21h..+23h` receives the size in 128-byte records. A
 missing matching directory entry returns `A=FFh`. A non-RAM drive follows the
 `A=2Bh` error path.
 
@@ -194,18 +200,28 @@ returns the input byte in `A`. It returns `A=1Eh` when a pending input event
 was consumed instead of a character; no-input and transport-error paths enter
 device helper code whose blocking meaning is device-dependent.
 
-**02h -- console output:** `E` is sent through the active console route. On the
-verified local paths it returns `A=00h` after a successful device send and
-`A=FFh` after a device-send failure; the no-destination path returns the device
-descriptor byte in `A`. Flags are not meaningful.
+**02h -- console output (CONFIRMED):** `E` is the console-output byte
+through the active console route. The routed path may wait/retry. Results:
+when the low-7 `FE83` destination is `00h` (no destination) the handler
+returns `A=00h`; when the mode is `08h` it returns `A=08h`; a routed
+completion returns `A=00h`; a final routed failure after retries returns
+`A=FFh`. Flags are not meaningful through `CALL 0005h`.
 
 **03h -- reader input:** enters the staged reader stream. The documented scan
 stream begins with `1Bh`, then a count byte and that many data bytes; wait and
 error behavior remain device-dependent (see [barcode-reader](barcode-reader.md)).
 
-**04h -- punch output:** stores `E` in the output byte, derives a device index
-from the active selector (`fbc5 >> 4 & 1Fh`), then falls off the handler
-suffix. There is no normal return; treat this call as unresolved.
+**04h -- punch output (CONFIRMED):** `E` is the punch-output byte. The handler
+calls `Device_LookupConfigEntry` (`ROM00:31FF`) to resolve the device: `E` is
+preserved as the output byte, `FBC5` high nibble (`FBC5>>4 & 1Fh`) selects the
+`FE83` entry, and the descriptor byte determines the path. Descriptor `80h`
+takes the local output path (direct device helper); any other descriptor takes
+the routed path. Normal local and routed completion return `A=00h`; a routed
+terminal error returns the helper's nonzero status byte, whose value is
+path-dependent.
+The call may wait/retry on the routed path and does return normally. Flags
+are not meaningful through `CALL 0005h`. The earlier unsafe/RST-38 and
+stack-switch claims are superseded.
 
 **05h -- list output:** `E` is the output byte. On the routed path it builds a
 request in shared work storage and waits until a completion cell is nonzero;
@@ -216,33 +232,36 @@ path-dependent.
 routine emits each preceding byte through the output helper and restores `DE`
 before return; output failure behavior is incomplete.
 
-**0Ah -- buffered console input:** `DE[0]` supplies the maximum count;
-`DE[1]` receives the accepted count and accepted bytes are written from
-`DE[2]` upward. `0Dh` terminates, `7Fh` backspaces, and `1Bh`/`FFh` abort. The
-handler returns `A = accepted count`, matching `DE[1]`.
+**0Ah -- buffered console input (CONFIRMED):** `DE[0]` supplies the maximum
+count; `DE[1]` receives the accepted count and accepted bytes are written from
+`DE[2]` upward. `7Fh` backspaces one position, `0Dh` terminates the line,
+`FFh` finishes, and `1Bh` introduces a counted literal block: the next byte is
+a count, and that many following bytes are consumed and copied up to `max`
+(`DE+1`-bounded). The handler returns `A = accepted count`, matching `DE[1]`.
+Flags are not meaningful through `CALL 0005h`.
 
 ### FCB directory calls (ABI-incomplete)
 
 These calls take `DE` as a mutable FCB-like buffer. They normalize bytes
-`DE+1..+11`; invalid-drive paths enter a shared error helper whose final
+`DE+01h..+0Bh`; invalid-drive paths enter a shared error helper whose final
 return value is not established (flags are never meaningful, see Calling
 convention).
 
 **0Fh/10h -- open/close:** local success returns `A=00h`; local failure
-returns `A=FFh`. Open copies directory bytes `+1..+31` to the caller buffer;
-close copies those caller bytes back and writes the entry.
+returns `A=FFh`. Open copies directory bytes `+01h..+1Fh` to the caller
+buffer; close copies those caller bytes back and writes the entry.
 
 **11h/12h -- search first/next:** local success returns a four-slot directory
 result index in `A`; failure returns `A=FFh`. Both temporarily write `3Fh` at
-caller offset `+12`, restore it, and copy a 128-byte result to the DMA buffer.
-Search-next uses global continuation state.
+caller offset `+0Ch`, restore it, and copy a 128-byte result to the DMA
+buffer. Search-next uses global continuation state.
 
 **13h -- delete:** local success returns `A=00h`; no-match returns `A=FFh`.
-It permanently writes `3Fh` at `+12`, marks matched entries
-`E5h`, and processes eight words at offsets `+16..+31`; their meaning is OPEN.
+It permanently writes `3Fh` at `+0Ch`, marks matched entries `E5h`, and
+processes eight words at offsets `+10h..+1Fh`; their meaning is OPEN.
 
 **16h -- make:** local success returns `A=00h`; existing/local-failure paths
-return `A=FFh`. It clears caller `+12`, creates a zeroed 32-byte entry, and
+return `A=FFh`. It clears caller `+0Ch`, creates a zeroed 32-byte entry, and
 copies resulting directory bytes back to the caller buffer.
 
 **17h -- rename:** expects two adjacent FCB-like records, the second at
@@ -253,42 +272,51 @@ record; its completed-path `A` is not a portable success indicator.
 
 **14h/15h -- sequential read/write:** normal paths transfer one 128-byte
 record through the configured DMA buffer and return `A=00h`. Both advance
-caller `+20`; rollover increments `+12` and clears `+20`. Nonzero results are
-path-dependent.
+caller `+20h`; rollover increments `+0Ch` and clears `+20h`. Nonzero results
+are path-dependent.
 
-**21h/22h -- random read/write:** use caller `+21..+23` to select state,
-transfer one 128-byte record on a normal path, and return `A=00h`. Selection
-mutates caller `+20`; observed nonzero results are not public error names.
+**21h/22h -- random read/write (CONFIRMED addressing):** address calculation
+uses `FCB+21h` and `FCB+22h` only; `FCB+23h` is not interpreted or read, and the
+31-byte FCB copy (`+01h..+1Fh` region) stops before `+23h`. On a normal path
+one 128-byte record is transferred and `A=00h` is returned. Selection mutates
+caller `+20h`; observed nonzero results are not public error names.
 
 **24h -- set random record:** derives and writes a three-byte little-endian
-value at caller `+21..+23` from `+12` and `+20`; its high byte is zero. It
+value at caller `+21h..+23h` from `+0Ch` and `+20h`; its high byte is zero. It
 does not transfer data and has no established result ABI.
 
 ## DIPOS-B extensions
 
 | Function | Service | Status |
 |---:|---|---|
-| 2Dh | banked-call wrapper | Advanced / unsafe system service |
-| 2Eh | directory-search helper | Advanced / unsafe system service |
-| 30h | shared diagnostic dispatch | Advanced / unsafe; caller A selects diagnostic behavior |
+| 2Dh | `Bdos_SelectRst28Mode` (`ram:F55A`) mutable RST28 mode selector | Advanced / unsafe (global) |
+| 2Eh | `Bdos_UpdateDriveDirectoryMetadata` (`ROM00:0D79`) | Advanced / unsafe |
+| 30h | shared diagnostic dispatch (via RST28) | Advanced / unsafe; caller `A` selects diagnostic behaviour conditional on current RST28 target |
 | 62h | filesystem/directory check | Advanced / unsafe |
 | 68h, 69h | no-op stubs | compatibility only |
 | F3h | no-op | compatibility only |
-| F4h | shared diagnostic path | Advanced / unsafe; caller A selects diagnostic behavior |
+| F4h | shared diagnostic path (via RST28) | Advanced / unsafe; caller `A` selects diagnostic behaviour conditional on current RST28 target |
 | F5h | event-wait delay | CONFIRMED behaviour; A = previous period byte |
 | F6h/F7h | get/set active device selector | Advanced / unsafe; persistent selector mutation |
 | F8h/FAh | read/write 16-byte device-slot table FE83 | Advanced / unsafe; persistent configuration |
 | F9h | set device-pair preset | CONFIRMED behaviour; result values documented |
 | FBh | write 16-byte drive configuration table FE93 | Advanced / unsafe; persistent configuration |
-| FCh/FDh | set/get RTC | CONFIRMED behaviour; FC returns A=00h |
-| FEh/FFh | set/control RTC alarm | CONFIRMED behaviour; result ABI limited |
+| FCh | set RTC ([`rtc.md#bdos-eight-byte-rtc-record`](../internals/rtc.md#bdos-eight-byte-rtc-record)) | CONFIRMED; `A=00h`; `+0` metadata LIKELY `19`, `+1..+7` → regs `09/08/07/04/02/00/06` |
+| FDh | get RTC ([`rtc.md#bdos-eight-byte-rtc-record`](../internals/rtc.md#bdos-eight-byte-rtc-record)) | CONFIRMED; `+0` from `g_bRtcRecordMetadata` (`13h`), `+1..+7` ← regs `09/08/07/04/02/00/06`; UIP-polled |
+| FEh | `Bdos_InternalTimedWait` (`ROM00:1122`) internal timed wait | CONFIRMED; `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`, `FD4D` HALT; `A=00h` |
+| FFh | program/clear RTC alarm ([`rtc.md#bdos-eight-byte-rtc-record`](../internals/rtc.md#bdos-eight-byte-rtc-record), `BdosFfAlarmControl`) | CONFIRMED; `DE=0` clears `AIE` else `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; UIP blocks both |
 
-### F4h -- shared diagnostic dispatch
+### F4h / 30h / 0Dh / 1Ch / 1Eh / 1Fh -- shared diagnostic dispatch (via RST28)
 
-**Status:** Advanced / unsafe. Do not use as a far-call service.
+**Status:** Advanced / unsafe. Do not use as a far-call service. Behaviour is
+conditional on the current RST28 target selected by `Bdos_SelectRst28Mode`
+(`ram:F55A`). The default diagnostic behaviour (caller `A` selects message)
+only applies when `F57E` is installed; `FFh`/`FDh`/`FCh`/other values select
+no-op, deferred store to `FDBA`, fatal, or unchanged targets.
 
 **In:** the normal BDOS path restores the caller's `A` before entering the
-handler. The handler's `C=FEh` assignment is overwritten before comparison.
+handler via `RST 28h`. The handler's `C=FEh` assignment is overwritten before
+comparison; `A` carries the caller's value into the diagnostic.
 
 **Out:** values in the fatal diagnostic table do not return. Other values
 return, but the caller-visible result is not meaningful: `A` echoes the
@@ -299,21 +327,38 @@ There is no application-stable result.
 
 **Evidence:** wrapped dispatch word at `ROM00:36F0`; shared handler
 `Bdos_SharedErrorStub`, `ROM00:1893-1896`; dispatcher and diagnostic paths
-`ram:F382-F407` and `ROM00:2B55-2BCC`.
+`ram:F382-F407` and `ROM00:2B55-2BCC`; mode selector `ram:F55A` (`F57B`/`F57E`/
+`F59F`/`F5C0`).
 
 ### Special-dispatch extensions
 
-**2Dh -- banked-call wrapper:** switches to bank 0, invokes the fixed
-bank-0 vector, restores the previous bank, and applies the kernel IRQ policy.
-Its argument and return ABI are not application-safe; use it only as an
-internal system mechanism.
+**2Dh -- Bdos_SelectRst28Mode (`ram:F55A`) mutable RST28 mode selector
+(Advanced / unsafe, global state):** `E` selects the RST28 handler target.
+`E=FFh` installs the carry-clear no-op target `F57B`; `E=FEh` installs the
+default diagnostic target `F57E`; `E=FDh`
+installs the deferred mode `F59F` and stores `HL` to `FDBA`; `E=FCh` installs
+the fatal mode `F5C0`; any other `E` value leaves the target unchanged.
+`A` returns the caller's original `A`; flags are envelope-derived.
+**Global unsafe state:** this call mutates the RST28 dispatch target used by
+`0Dh`, `1Ch`, `1Eh`, `1Fh`, `30h`, and `F4h`. Those functions reach the
+shared `Bdos_SharedErrorStub` (`ROM00:1893`) via `RST 28h`, and their observed
+behaviour (diagnostic display, fatal halt, deferred store, no-op) is
+conditional on the current target. The default diagnostic behaviour only
+applies when `F57E` is installed (initial state and after `FEh`).
 
-**2Eh -- directory helper:** runs the FCB/directory search helper. Its mutable
-FCB state and result conventions are internal filesystem mechanics, not a
-portable application API.
+**2Eh -- Bdos_UpdateDriveDirectoryMetadata (`ROM00:0D79`) (Advanced / unsafe;
+higher purpose remains cautious):** `E=00h` selects the current drive
+(`FBC6`); otherwise `E` selects a `FE93` drive-table entry. The handler
+interprets the drive entry's configuration byte: a local entry (`00h`)
+computes, stages, and commits directory/filesystem metadata and returns
+`A=00h`; a nonzero (link/routed) entry loads error selector `A=2Ch` and enters
+the shared error path. Its final caller-visible result is not established.
+This is not a filename search; no FCB filename comparison is performed.
+Flags are not meaningful through `CALL 0005h`.
 
 **30h -- shared diagnostic dispatch:** reaches the same unsafe
-`Bdos_SharedErrorStub` as F4h; caller `A` selects diagnostic behavior.
+`Bdos_SharedErrorStub` as F4h. With the default `F57E` target installed,
+caller `A` selects diagnostic behavior; function 2Dh can redirect the path.
 
 **62h -- integrity check:** invokes the filesystem integrity-check shim.
 Input, result, and repair semantics remain ABI-incomplete.
@@ -360,26 +405,45 @@ returns `A = the pair's second byte`; `E>=05h` writes nothing and returns
 
 ### RTC and alarm extensions
 
-**FCh -- set RTC time:** `DE` points to an eight-byte source buffer. The
-service copies it to RTC scratch state, writes the RTC time registers under
-the SET/divider-stop sequence, and returns `A=00h`. The source byte at `+0`
-is copied but its meaning is OPEN; fields `+1..+7` map to the RTC time file.
+**FCh -- set RTC time (`ROM00:1150`):** `DE` points to an eight-byte source
+buffer — see [BDOS eight-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record).
+`+0` metadata byte is copied to RTC scratch state but not written to RTC;
+`+1` year → reg `09h`, `+2` month → `08h`, `+3` day-of-month → `07h`,
+`+4` hour → `04h`, `+5` minute → `02h`, `+6` second → `00h`,
+`+7` day-of-week → `06h`. Writes use the SET/divider-stop sequence and
+return `A=00h`. Normal ABI is raw binary, 24-hour (Reg B `46h`); firmware
+performs no conversion or range validation. `+0` mechanics CONFIRMED,
+LIKELY century `19`, exact OPEN (`g_bRtcRecordMetadata` init `13h`).
 
-**FDh -- get RTC time:** `DE` points to an eight-byte writable destination.
-The service waits for RTC Reg-A UIP to clear, reads the time file, and writes
-the result to that buffer. A permanently asserted UIP bit prevents return.
-Byte `+0` remains OPEN.
+**FDh -- get RTC time (`ROM00:113E`):** `DE` points to an eight-byte
+writable destination — see
+[BDOS eight-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record).
+Waits for Reg A `UIP` to clear, reads regs `00h..09h` into
+`g_abRtcRegisterSnapshot`, and returns `+0` from `g_bRtcRecordMetadata`
+(init `13h`), `+1..+7` as year/month/day-of-month/hour/minute/second/
+day-of-week. Permanent `UIP` blocks return (no return). `+0` LIKELY
+century `19`, exact OPEN; `+7` convention OPEN, `0=Sunday` LIKELY.
 
-**FEh -- alarm work-item wait:** this is not a general alarm-time setter.
-Its low `E` byte is shifted by four, registers a work item, and blocks in a
-`HALT` loop until the work-item word clears. The full-slot condition is not
-caller-observable through the envelope, and no portable result is defined.
+**FEh -- Bdos_InternalTimedWait (`ROM00:1122`) (CONFIRMED; resident context
+required, not a general alarm setter):** `E<<4` is the interval; low byte is
+stored to `(IY+23h)` and high byte to `word[FEFA]` to build the wait
+interval. The handler registers a `FD4D` countdown / null-callback work item
+and blocks in a `HALT` loop until the `FD4D` word clears. `A=00h` on
+completion; nonzero is implementation-dependent and indicates a full
+work-item queue. Must be called from resident context (uses `IY` and
+`FEFA`).
 
-**FFh -- program or clear RTC alarm:** `DE=0000h` clears RTC Reg-B AIE.
-Otherwise, `DE` points to eight source bytes; the service waits for UIP clear,
-programs alarm registers, and enables AIE. Only the bytes consumed for those
-alarm registers are established; field names and lifecycle semantics remain
-OPEN.
+**FFh -- program or clear RTC alarm (`ROM00:112D`, `BdosFfAlarmControl`)
+(CONFIRMED UIP polling):** `DE=0000h` clears `AIE` (Reg B bit5); otherwise
+`DE` points to eight source bytes — see
+[BDOS eight-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record).
+`+4..+6` program alarm regs `05h/03h/01h` (hours/minutes/seconds) and
+enable `AIE`; `+2/+3` month/day-of-month are software-gated by
+`RTC_AlarmDateMatches` (`g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth`),
+`+0/+1/+7` copied unused. Both paths poll Reg A `UIP` before touching
+Reg B — permanent `UIP` blocks either path. Preamble after `UIP` clears
+attempts `Reg A <- Reg A|80h` (intended effect OPEN/likely ineffective,
+`UIP` read-only) then `Reg A <- 2Ah`.
 
 ## Related documentation
 

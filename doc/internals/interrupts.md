@@ -18,12 +18,13 @@ as functions in Ghidra: `NmiHandlerImage` (ROM00:3B13),
 
 ## Maskable IRQ — fully decoded
 
-Path: INT → 0038 → stub F5F3 (`JP F64D`) → `IrqCommonHandlerImage`.
-
-The same stub row serves software RST1/RST4/RST5/RST6 (F5E1/F5EA/F5ED/
-F5F0 are all just `JP F64D`), so **hardware IRQ and those software RST
-calls share one entry point** — they behave as "check for pending
-events" calls rather than distinct syscalls (see caveat below).
+Path: `INT → 0038 → stub F5F3` (`JP F64D`) → `IrqCommonHandlerImage`.
+`0008 → F180` is the BDOS gate and is separate; only `RST 20h`/`28h`/`30h`/
+`38h` (`F5EA`/`F5ED`/`F5F0`/`F5F3` are `JP F64D`) share the common handler with
+the hardware IRQ, so **those software RSTs and the IRQ share one entry point**
+— they behave as "check for pending events" calls rather than distinct
+syscalls (see caveat below). `0010 → F5E1` is the banked-call dispatcher and
+does not join this row.
 
 Common handler logic:
 

@@ -165,44 +165,43 @@ the periodic-interrupt enable handshake.
 
 | Index | Function | Evidence |
 |-------|----------|----------|
-| 00h | **seconds** | written by RtcWriteTimeBlock ROM00:22AB |
-| 01h | alarm seconds | (not used) |
-| 02h | **minutes** | ROM00:22AB |
-| 03h | alarm minutes | (not used) |
-| 04h | **hours** | ROM00:22AB |
-| 05h | alarm hours | (not used) |
-| 06h | **day-of-month** | ROM00:22AB |
-| 07h | **month** | ROM00:22AB |
-| 08h | **year** | written by RtcWriteTime; also read w/ 07h (month) by FUN_2468 to detect date rollover (NOT a line-status line) |
-| 07h | **month** | read by FUN_2468 along with year to detect date change |
-| 09h | **weekday** | ROM00:22AB |
-| 0Ah | Register A (divider/rate) | `0x26` periodic rate, `0x2A`, `0x7A` during time-set |
+| 00h | **seconds** | written by RtcWriteTime (ROM00:22AB); read by RtcReadRegisterFile (20EF) |
+| 01h | alarm seconds | written by RtcSetAlarm (ROM00:2158-62) |
+| 02h | **minutes** | written by RtcWriteTime; read by RtcReadRegisterFile |
+| 03h | alarm minutes | written by RtcSetAlarm |
+| 04h | **hours** | written by RtcWriteTime; read by RtcReadRegisterFile |
+| 05h | alarm hours | written by RtcSetAlarm |
+| 06h | **day-of-week (weekday)** | written by RtcWriteTime (ROM00:22AB); read by RtcReadRegisterFile |
+| 07h | **day-of-month** | written by RtcWriteTime; read by RtcReadRegisterFile |
+| 08h | **month** | written by RtcWriteTime; read by RtcReadRegisterFile |
+| 09h | **year** | written by RtcWriteTime; read by RtcReadRegisterFile |
+| 0Ah | Register A (divider/rate) | `0x26` periodic rate, `0x2A`, `0x7A` during time-set; UIP bit7 polled |
 | 0Bh | Register B (control) | `0x40`=PIE, `0x46`=PIE+24h+binary |
 | 0Ch | Register C (IRQ flags, read-clears) | the "tick poke" (ClockSelftestTickWindow/288A) |
 | 0Dh | Register D | (unused) |
 | 0x46 | (via B=0x0B reg write of 0x46) | Actually this is **Reg B ← 0x46** |
-| 0x00-0x0F | register file block read by RtcReadRegisterFile (ex-"CommsRxBurst16") into FD50 | whole time+status file (a clock read) |
+| 00h-09h | time register file (10 bytes) | read by RtcReadRegisterFile (ROM00:20EF, ex-"CommsRxBurst16") into g_abRtcRegisterSnapshot (FD50) |
 
 `RtcWriteTime` (ROM00:22AB) writes registers 09,08,07,04,02,00,06
-(weekday/year/month/hours/min/sec/day) from a 7-byte buffer.
-`RtcSetTimeFromBuffer` (ROM00:20AC) wraps it with the standard
-SET-bit freeze → stop → write → restart → clear step. `RtcInit`
-(ROM00:2084) writes Reg B ← 0x46 and loads a default time block
-(source ROM00:20A7).
+(year/month/day-of-month/hours/minutes/seconds/day-of-week) from a
+7-byte buffer. `RtcSetTimeFromBuffer` (ROM00:20AC) wraps it with the
+standard SET-bit freeze → stop → write → restart → clear step.
+`RtcInit` (ROM00:2084) writes Reg B ← 0x46 and loads a default time
+block (source ROM00:20A7).
 
-`CommsRxBurst16` (now `RtcReadRegisterFile`, ROM00:20F0) = reading
-registers 0x00-0x0F (the whole time/alarm/status file) into FD50 — a
-clock REGISTER READ, not a serial Rx burst. The earlier
-"comms/modem peripheral" framing was based on UI strings and function
-*names*; the register numbers are unambiguous. The config-table
-"uploads" and the fd84 event table reflect the RTC periodic interrupt
-+ status bits, not a modem.
+`RtcReadRegisterFile` (ROM00:20EF, ex-"CommsRxBurst16") = reading
+registers 00h..09h (10 bytes, the time file) into
+g_abRtcRegisterSnapshot (FD50) — a clock REGISTER READ, not a serial
+Rx burst. The earlier "comms/modem peripheral" framing was based on UI
+strings and function *names*; the register numbers are unambiguous.
+The config-table "uploads" and the fd84 event table reflect the RTC
+periodic interrupt + status bits, not a modem.
 (see also [interrupts](interrupts.md) and [the RTC reference](rtc.md))
 
-FUN_2468 reads RTC registers 07 (month) and 08 (year) into FD9B/FD9C
-and compares to a stored day in FD9D — a **date-rollover detector**
-(runs once/day to advance day-based state). The port 07 bit1 toggle
-is a side effect of the date-change notification.
+`RTC_AlarmDateMatches` (ROM00:223E, formerly `Link_StatusCompare_FD4B`)
+compares `g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth` against the current
+RTC date as the software gate for the FF alarm path (BDOS FFh bytes
++2/+3); see [the RTC reference](rtc.md#bdos-eight-byte-rtc-record).
 
 ## LCD channel (CONFIRMED)
 

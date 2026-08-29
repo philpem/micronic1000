@@ -93,19 +93,21 @@ Hardware IRQ (IM 1)       : 0038 -> F5F3        NMI: 0066 -> F5F6
 The image begins with 3 NOPs; the dispatcher proper is at F183
 (ROM00:36A0, function `KernelImage_BdosMain`).
 
-Dispatch: function number in C.
-* 00h-24h: handler = word[F1EB + fn×2] — table source at ROM00:3708
-* Special-cased first: 2Dh→F55A, 2Eh→0D79, 30h→1893, 62h→0742,
-  68h/69h→115E
-* F3h-FFh: the VALID wrapped extension table — the dispatcher does
-  `CP 0x25 / JR C` (F1EB table) / `CP 0xF3 / JR NC` (DEC B, B=FF),
-  so index C=F3..FF wraps onto the 13-entry table at F1D1 — correct
-  by design
-* 25h-F2h unmatched: falls through that same DEC B path and
+Dispatch: function number in `C`.
+* `00h-24h`: handler = `word[F1EB + fn*2]` — table source at `ROM00:3708`
+* Special-cased first: `2Dh`→`ram:F55A` (`Bdos_SelectRst28Mode`),
+  `2Eh`→`ROM00:0D79` (`Bdos_UpdateDriveDirectoryMetadata`), `30h`→`ROM00:1893`,
+  `62h`→`ROM00:0742`, `68h`/`69h`→`ROM00:115E`
+* `F3h-FFh`: the VALID wrapped extension table — the dispatcher does
+  `CP 0x25 / JR C` (`F1EB` table) / `CP 0xF3 / JR NC` (`DEC B`, `B=FFh`),
+  so index `C=F3h..FFh` wraps onto the 13-entry table at `F1D1` (source
+  `ROM00:36EE`) — correct by design (see detailed mapping in §Kernel call
+  mechanisms)
+* `25h-F2h` unmatched: falls through that same `DEC B` path and
   dispatches through a wild pointer (its handler word is read from
-  the JP-vector run past the table, e.g. fn 40h → F26B). Nothing is rejected.
-  HAZARD: calling an undefined BDOS function in 25h-F2h jumps through
-  garbage — do not probe for extensions by calling them.
+  the `JP`-vector run past the table, e.g. fn `40h` → `F26B`). Nothing is
+  rejected. HAZARD: calling an undefined BDOS function in `25h-F2h` jumps
+  through garbage — do not probe for extensions by calling them.
 
 Call state saved to kernel vars: `fef9`=DE low, `fefc`=function
 number, `fefd`=FFh (in-BDOS-call flag).
@@ -114,17 +116,17 @@ The table maps 1:1 onto CP/M 2.2 BDOS numbering:
 
 | Fn | CP/M meaning | Handler | Note |
 |----|--------------|---------|------|
-| 00 | System reset | 024D | warm-restart entry |
-| 01/02 | Console in/out | 0DE9 / 0F36 | |
-| 03/04/05 | Reader/Punch/List | 1080 / 10D2 / 1015 | |
-| 06 | Direct console I/O | 0FD6 | |
-| 07/08 | Get/Set IOBYTE | 10FD | shared handler — CP/M fingerprint |
-| 09/0A | Print string / Read buffered | 11FB / 117B | |
-| 0B/0C | Console status / Version | 0FC5 / 15C7 | |
-| 0D/0E | Disk reset / Select disk | 1893 / 15B3 | disk reset is a stub |
-| 0F-17 | File ops (open…rename) | 0877-0910 | real implementations |
-| 18-20 | Login vector…User code | 1888-1890 | mostly stubs/vectors |
-| 21-24 | Random read/write/size/record | 0C50 / 0BF3 / 0CF1 / 0CB4 | |
+| 00 | System reset | `ROM00:024D` | warm-restart entry |
+| 01/02 | Console in/out | `ROM00:0DE9` / `ROM00:0F36` | `02h` returns `A=00h`/`08h`/`FFh` per mode/routed result |
+| 03/04/05 | Reader/Punch/List | `ROM00:1080` / `ROM00:10D2` / `ROM00:1015` | `04h` via `Device_LookupConfigEntry` `ROM00:31FF`, descriptor `80h` local else routed; `A=00h` normal |
+| 06 | Direct console I/O | `ROM00:0FD6` | `E=FFh` poll |
+| 07/08 | Get/Set IOBYTE | `ROM00:10FD` | shared handler — CP/M fingerprint |
+| 09/0A | Print string / Read buffered | `ROM00:11FB` / `ROM00:117B` | `0Ah` `1Bh` counted literal block |
+| 0B/0C | Console status / Version | `ROM00:0FC5` / `ROM00:15C7` | `0Ch` `HL=0023h` |
+| 0D/0E | Disk reset / Select disk | `ROM00:1893` / `ROM00:15B3` | `0Dh` unsafe shared `RST 28h` diagnostic (conditional on `2Dh`); `0Eh` validates `<10h` |
+| 0F-17 | File ops (open…rename) | `ROM00:0877-0910` | real implementations; rename expects second FCB at `DE+10h` |
+| 18-20 | Login vector…User code | `ROM00:1888-1890` | `18h` `HL=FFFFh`, `19h` returns `A`, `1Ah` stores `DE` (implemented), `1Bh`/`1Dh` `HL=0000h`, `20h` `A=00h` |
+| 21-24 | Random read/write/size/record | `ROM00:0C50` / `ROM00:0BF3` / `ROM00:0CF1` / `ROM00:0CB4` | `21h`/`22h` use `+21h`/`+22h` only, `+23h` not read |
 
 Shared and stubbed handlers confirm the numbering: fn 7=8 share,
 fn 1B=1D share (static vector returns), and the disk-oriented stubs
@@ -170,19 +172,25 @@ all now decoded:
 
 ### 1. CP/M BDOS gate (`CALL 0005`)
 
-`0005: JP F180` (both banks). F180-F1CE = the BDOS dispatcher: saves
-the function to `fefc`, sets `fefd=FF`, then dispatches:
-- fn 00-24h: handler = word[F1EB + fn*2] (CP/M-compatible table)
-- fn 2D/2E/30/62/68/69: special-cased to F55A/0D79/1893/0742/115E
-- fn >= F3h (not special): `CP 0xF3 / JR NC` takes the DEC B (B=FF)
-  path, so the wrapped RAM index `F1EB-0x200 + 2*fn` wraps C=F3..FF
-  onto the 13-entry extension table at F1D1 — VALID by design.
-  Verified: fn FD -> 0DE9 (ConsoleInChar), FC -> 024D,
-  F6 -> 1893, F7 -> 2477.
-- fn 25h-F2h unmatched: falls through that same DEC B path and
-  dispatches through a wild pointer (handler word read from arbitrary
-  the JP-vector run past the table, e.g. fn 40h -> F26B). Nothing is rejected.
-  HAZARD: calling an undefined BDOS function in 25h-F2h jumps through
+`0005: JP F180` (both banks). `F180-F1CE` is the normal envelope joining
+the common continuation at `F382`; `F376` (`Kernel_BankedCallEnvelope`) is the
+alternate entry. The dispatcher saves the function to `fefc`, sets
+`fefd=FF`, then dispatches:
+- fn 00h-24h: handler = `word[F1EB + fn*2]` (CP/M-compatible table; source at
+  `ROM00:3708`)
+- fn `2Dh`/`2Eh`/`30h`/`62h`/`68h`/`69h`: special-cased to `ram:F55A`
+  (`Bdos_SelectRst28Mode`)/`ROM00:0D79`
+  (`Bdos_UpdateDriveDirectoryMetadata`)/`ROM00:1893`/`ROM00:0742`/`ROM00:115E`
+- fn `>=F3h` (not special): `CP 0xF3 / JR NC` takes the `DEC B` (`B=FFh`)
+  path, so the wrapped RAM index `F1EB-0x200 + 2*fn` wraps `C=F3h..FFh`
+  onto the 13-entry extension table at `F1D1` (source `ROM00:36EE`; entries
+  `F3h` `1FDF`, `F4h` `1893`, `F5h` `1877`, `F6h` `15A0`, `F7h` `15A4`,
+  `F8h` `3237`, `F9h` `15CB`, `FAh` `3241`, `FBh` `3248`, `FCh` `1150`,
+  `FDh` `113E`, `FEh` `1122`, `FFh` `112D`) — VALID by design.
+- fn `25h-F2h` unmatched: falls through that same `DEC B` path and
+  dispatches through a wild pointer (handler word read from the `JP`-vector
+  run past the table, e.g. fn `40h` → `F26B`). Nothing is rejected.
+  HAZARD: calling an undefined BDOS function in `25h-F2h` jumps through
   garbage — do not probe for extensions by calling them.
 
 ### 2. Fast kernel jump table (fn 1-18)
@@ -210,8 +218,10 @@ calls kernel services 1-18 (IO, state, clock...) via this table.
 
 ### 3. RST trampolines
 
-RST 08/20/28/30 -> F5E1/F5EA/F5ED/F5F0 -> common IRQ/event handler
-(see [interrupts](interrupts.md)).
+`0008 -> F180` (BDOS dispatch) is separate; `RST 20h`/`28h`/`30h`/`38h` →
+`F5EA`/`F5ED`/`F5F0`/`F5F3` share the common IRQ/event handler path
+(see [interrupts](interrupts.md)). `0010 -> F5E1` is the banked-call
+dispatcher; `0066 -> F5F6` is NMI.
 
 ## Kernel installation (CONFIRMED)
 
@@ -365,7 +375,7 @@ TWO roles:
   trampoline expansion, 8→10-byte descriptor with additive checksum at `+8`
   (`0957`/`09C2`, `0x2332` (9010), "Program corrupt." = mismatch). COM fallback when
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
-  run-bank `0`, entry `0x0100`. See [Program formats](..//manual/program-formats.md).
+  run-bank `0`, entry `0x0100`. See [Program formats](../manual/program-formats.md).
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
   services. Source bytes arrive via coroutine/provider around `0C12`/`0CE7`
   and `ram:D370`; the exact physical source-reader is **not** identified

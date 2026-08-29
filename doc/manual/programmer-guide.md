@@ -8,15 +8,32 @@ Guide* or *CP/M Programmer's Guide*). It assumes you already know how
 to write CP/M 2.2 programs and focuses on **what is different** when
 programming for the Micronic's DIPOS-B operating system.
 
-It is self-contained: everything you need about DIPOS-B's BDOS call
-interface is here. It does not re-teach CP/M.
+It describes DIPOS-B's CP/M-shaped entry convention and the supported subset.
+Use it with the [supported profile](supported-profile.md) and
+[BDOS reference](bdos-reference.md); it does not re-teach CP/M.
+
+### CP/M reference manuals
+
+For stock CP/M 2.2 behaviour, use these verified manuals — DIPOS-B's
+documentation overrides them where they differ:
+
+- [CP/M 2.2 Alteration Guide](https://bitsavers.org/pdf/digitalResearch/cpm/2.2/CPM_2.2_Alteration_Guide_1979.pdf)
+- [CP/M Assembly Language Programming](https://bitsavers.org/pdf/digitalResearch/cpm/CPM_Assembly_Language_Programming_1983.pdf)
+- [CP/M Operating System Manual](http://www.gaby.de/cpm/manuals/archive/cpm22htm/)
+
+Where this guide, the [BDOS reference](bdos-reference.md), or
+[CP/M comparison](../internals/cp-m-comparison.md) states a DIPOS-B
+deviation (version `0023h`, 16 drives, device-routed console, RAM
+disks, wrapped `F3h-FFh` table, `F5h`/`FCh-FDh`/`FFh` extensions), that
+DIPOS-B contract is authoritative.
 
 ---
 
 ## 1. What DIPOS-B is
 
-DIPOS-B is a CP/M-2.2-compatible BDOS with a set of proprietary
-extensions, entirely in ROM (there is **no CP/M disk bootstrap** or CP/M
+DIPOS-B exposes a CP/M-2.2-shaped BDOS interface with a verified compatible
+subset and proprietary extensions. It is entirely in ROM (there is **no CP/M
+disk bootstrap** or CP/M
 disk). The whole OS runs from the Micronic 1000's ROM,
 with the kernel copied to battery-backed RAM at boot. The "disks" are
 **RAM**.
@@ -27,8 +44,8 @@ program/data transfer to/from a PC via a Commstar-style session).
 
 ### Calling BDOS
 
-Exactly like CP/M: put the function number in register **C**, any
-data address in **DE**, call **address 0005h**:
+The entry shape follows CP/M: put the function number in register **C**, any
+documented pointer argument in **DE**, and call **address 0005h**:
 
 ```
     LD   C, FNC           ; function number
@@ -86,7 +103,8 @@ letter is a **user-visible selector**, not a hardware-unit number. See
   drives** are accepted (stock CP/M 2.2 allows 8, A-H). Values >= 16
   return 0xFF (error).
 - **Function 19h (get current disk)**: returns the currently selected
-  drive number in the HL register as usual.
+  drive number in `A` (not `HL`) as the BDOS result; flags are not meaningful
+  through `CALL 0005h` (see [BDOS reference](bdos-reference.md)).
 - **Function 18h (get login vector)**: **not really implemented** —
   returns a stub.
 
@@ -101,8 +119,9 @@ byte is interpreted by DIPOS-B as follows:
 - **Drive byte 1..16** ('A'..'P') → selects the named storage/link
   device.
 
-The 8.3 name is validated exactly as CP/M (uppercase, `?` wildcards
-allowed in search).
+The 8.3 name path accepts uppercase characters and `?` wildcards for search.
+See the [BDOS reference](bdos-reference.md) for the verified normalization and
+mutation behavior rather than assuming every stock CP/M edge case.
 
 ### File operations that work
 
@@ -122,28 +141,28 @@ The standard FCB/directory/record functions are implemented:
 | 23h | compute file size |
 | 24h | set random record (table end) |
 
-Records are 128 bytes; a block is 32 records (4096 bytes), matching
-CP/M. The FCB record count / random-record fields behave as in CP/M
-2.2.
+Records are 128 bytes; a block is 32 records (4096 bytes), matching CP/M.
+Use the [BDOS reference](bdos-reference.md) for the verified field behavior:
+in particular, random read/write interpret only offsets `+21h` and `+22h`,
+not the high random-record byte at `+23h`.
 
-### File operations that are stubs (do not work)
-
-These CP/M 2.2 functions are **not implemented** — they return a
-no-op / HL=0:
+### File operations that are stubs or restricted (do not use as general CP/M calls)
 
 | fn | operation | what actually happens |
 |----|-----------|-----------------------|
-| 0Dh | reset disk system | far-call stub |
-| 1Ah | set DMA address | stores the DMA pointer; full ABI incomplete |
-| 1Bh / 1Dh | get allocation / read-only vector | returns HL=0 |
-| 1Ch | write protect disk | far-call stub |
-| 1Eh | set file attributes | far-call stub |
-| 1Fh | get DPB address | unsafe RST-28 path; do not call |
+| 0Dh | reset disk system | unsafe shared diagnostic via `RST 28h` (`Bdos_SharedErrorStub`); behaviour conditional on `Bdos_SelectRst28Mode` — do not call |
+| 1Bh / 1Dh | get allocation / read-only vector | returns `HL=0000h` (stub) |
+| 1Ch | write protect disk | unsafe shared diagnostic via `RST 28h`; do not call |
+| 1Eh | set file attributes | unsafe shared diagnostic via `RST 28h`; do not call |
+| 1Fh | get DPB address | unsafe shared diagnostic via `RST 28h`; do not call |
 
-There is no DPB/allocation-vector scheme to query because the
-"disks" are fixed-size RAM partitions. **Do not rely on functions
-0D, 1A-1F for real behaviour.** The high-level file calls (open,
-read, write, close, search, rename) are what you use.
+**1Ah is not a stub:** `BdosSetDmaAddress` stores `DE` as the DMA pointer for
+record I/O — it is a real state mutation, but downstream record-I/O ABI
+remains incomplete (see [BDOS reference](bdos-reference.md)). There is no
+DPB/allocation-vector scheme to query because the "disks" are fixed-size RAM
+partitions. **Do not rely on functions 0Dh, 1Bh-1Fh for portable behaviour.**
+The high-level file calls (open, read, write, close, search, rename) plus
+`1Ah` for DMA setup are what you use.
 
 ---
 
@@ -221,11 +240,12 @@ Most of the useful non-file services are DIPOS-B **extensions**
 
 ### The wrapped extension table
 
-The kernel dispatches BDOS fn < 25h through the CP/M F1EB table
+The kernel dispatches BDOS fn < 25h through the CP/M-shaped F1EB table
 (`CP 0x25 / JR C`). Functions **0xF3 .. 0xFF** are the VALID wrapped
 extension table: `CP 0xF3 / JR NC` takes the `DEC B` (B=FF) path, so
 index C=F3..FF wraps onto the 13-entry table (ROM00:36EE, RAM copy at
-`F1D1`) — correct by design. The usable ones for a programmer are:
+`F1D1`) — correct by design. These entries are mechanically identified;
+only calls allowed by the supported profile should be used by applications:
 
 | fn | name | action |
 |----|------|--------|
@@ -236,12 +256,12 @@ index C=F3..FF wraps onto the 13-entry table (ROM00:36EE, RAM copy at
 | 0xF9 | **set device pair** | select a device pair for a link slot |
 | 0xFA | **write link config** | write a 16-byte buffer into the FE83 IR/link config |
 | 0xFB | **write storage config** | write a 16-byte buffer into the FE93 storage (drive) config |
-| 0xFC | **set RTC time** | write the real-time clock (HD146818) from an 8-byte time block |
-| 0xFD | **get RTC time** | read the real-time clock into a buffer |
-| 0xFE | **set RTC alarm** | set the HD146818 alarm |
-| 0xFF | **RTC alarm control** | arm/clear the RTC alarm |
+| 0xFC | **set RTC time** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record)) | write RTC regs `09/08/07/04/02/00/06` from `+1..+7`; `+0` metadata copied/RTC ignored (LIKELY century `19`) |
+| 0xFD | **get RTC time** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record)) | read RTC into `+1..+7`; `+0` from `g_bRtcRecordMetadata` (`13h`, LIKELY `19`); polls `UIP` |
+| 0xFE | **`Bdos_InternalTimedWait`** (`ROM00:1122`) internal timed wait | `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`, `FD4D` HALT wait; resident only |
+| 0xFF | **RTC alarm control** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record), `BdosFfAlarmControl`) | `DE=0` clears `AIE` else `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; UIP blocks both |
 
-(0xF3 = no-op; 0xF4 = far-call stub.)
+(0xF3 = no-op; 0xF4 enters the mutable, unsafe RST-28 path.)
 
 An **unmatched** fn in 25h-F2h falls through that same `DEC B` path
 and dispatches through a **wild pointer** (its handler word is read
@@ -253,9 +273,9 @@ jumps through garbage — do not probe for extensions by calling them.**
 
 | fn | action |
 |----|--------|
-| 2Dh | **banked call** — invoke a bank-0 worker from any bank (RST2 helper) |
-| 2Eh | directory-search helper (advanced) |
-| 30h | far-call stub |
+| 2Dh | **`Bdos_SelectRst28Mode`** (`ram:F55A`) — mutable RST28 mode selector (`E=FFh` installs `F57B` no-op target, `FEh` default diagnostic `F57E`, `FDh` deferred `F59F` + `HL->FDBA`, `FCh` fatal `F5C0`); global unsafe state |
+| 2Eh | **`Bdos_UpdateDriveDirectoryMetadata`** (`ROM00:0D79`) — drive metadata compute/stage/commit; `A=00h` local, entering `A=2Ch` error path for routed entries (not guaranteed returned `A`) |
+| 30h | shared diagnostic dispatch via `RST 28h` — behaviour conditional on current `2Dh` target |
 | 62h | filesystem/directory integrity check |
 | 68h/69h | no-op stubs |
 
@@ -263,16 +283,31 @@ jumps through garbage — do not probe for extensions by calling them.**
 
 The clock is an **HD146818** accessed through ports (address latch
 08h, data 28h). You do not need to touch the chip directly — use the
-BDOS extension functions:
+BDOS extension functions. Canonical 8-byte layout is
+[BDOS eight-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record):
+`+0` metadata (FC copied/RTC ignored, FD from `g_bRtcRecordMetadata`
+`13h` LIKELY century `19`, FF copied unused), `+1` year→`09h`,
+`+2` month→`08h`, `+3` day-of-month→`07h`, `+4` hour→`04h`,
+`+5` minute→`02h`, `+6` second→`00h`, `+7` day-of-week→`06h`;
+raw binary, 24-hour (Reg B `46h`), no firmware validation.
 
-- **0xFC set RTC time**: pass a pointer to an 8-byte time block in
-  DE. The block is the standard packed time fields in the order the
-  HD146818 file uses.
-- **0xFD get RTC time**: reads the clock into your buffer.
-- **0xFE / 0xFF**: set / arm the alarm.
+- **0xFC set RTC time** (`ROM00:1150`): pass `DE` → 8-byte block as
+  above; writes `09/08/07/04/02/00/06` under SET/divider-stop; `A=00h`.
+- **0xFD get RTC time** (`ROM00:113E`): reads clock into your 8-byte
+  buffer as above; polls `UIP`, permanent `UIP` blocks return.
+- **0xFE**: **`Bdos_InternalTimedWait`** (`ROM00:1122`) — not a general
+  alarm setter; `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`,
+  `FD4D` countdown/`HALT` wait; resident context required; `A=00h`
+  completion.
+- **0xFF**: **RTC alarm control** (`ROM00:112D`, `BdosFfAlarmControl`) —
+  `DE=0000h` clears `AIE`, otherwise programs `+4..+6`→`05/03/01` and
+  enables `AIE`; `+2/+3` date-gated by `RTC_AlarmDateMatches`
+  (`g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth`); polls `UIP` before
+  both — permanent `UIP` blocks; preamble `RegA|80h` likely ineffective
+  then `RegA=2Ah`.
 
-These are the clean way for a program to set/read the clock and
-alarm, which a stock CP/M program has no equivalent for.
+FC, FD, and FF provide the established clock/alarm operations. FE is an
+internal resident-runtime wait and is not a general application service.
 
 ---
 
@@ -301,7 +336,7 @@ normally only needed by the OS / drivers, but it is part of the
 machine's programming model:
 
 ```
-   RST 2        ; 'banked call'  (opcode DF at 0010h)
+   RST 10h      ; restart vector 2, banked call (opcode D7h)
    DB bank      ; 1-byte bank number
    DW target    ; 2-byte target address in that bank
 ```
@@ -319,9 +354,10 @@ gate.
 | Area | CP/M 2.2 | DIPOS-B |
 |------|----------|---------|
 | Storage | floppy/disk BIOS | RAM "disks": A: MEMORY (32K), B: RAMDISK (224K) |
-| Drives | A-H (8) | A-P (16, only A/B are file storage) |
+| Drives | A-H (8) | A-P selectors; default FE93 uses internal A/B and external C/D, but mapping is configurable |
 | Version (fn 0C) | 22h | **23h** |
-| Allocation/DPB (1B-1F,0D) | real | **stubs (return 0)** |
+| Allocation/DPB (1B/1D) | real | **stubs (`HL=0000h`)**; `1Ah` is implemented set-DMA (stores `DE`) |
+| Diagnostics (0Dh/1Ch/1Eh/1Fh/30h/F4h) | real | **unsafe shared `RST 28h` path; behaviour conditional on `Bdos_SelectRst28Mode` (`ram:F55A`)** |
 | Console device | IOBYTE | **device abstraction** (select via fn 0xF7) |
 | Clock/alarm | n/a | **fns 0xFC-0xFF** (HD146818) |
 | Link/IR config | n/a | **fns 0xF8-0xFB** |
@@ -329,18 +365,26 @@ gate.
 
 ### Things to avoid
 
-- Do **not** depend on allocation vector / DPB / write-protect /
-  set-attributes (they are stubs).
-- Do **not** try to select more than 16 drives, or use drive C:+
-  for file storage (they are IR/link devices).
+- Do **not** depend on allocation vector / DPB ( `1Bh`/`1Dh` stubs,
+  `HL=0000h`) or on write-protect / set-attributes / DPB / disk-reset
+  (`0Dh`/`1Ch`/`1Eh`/`1Fh`/`30h`/`F4h` are unsafe shared `RST 28h`
+  diagnostic paths whose behaviour is conditional on the global
+  `Bdos_SelectRst28Mode` (`ram:F55A`) — do not call).
+- Do **not** try to select more than 16 drives, or assume drive `C:`+
+  is always a file store — by default `A:`/`B:` are the RAM file
+  stores and `C:`/`D`+ are IR/link devices via `FE93`, but this
+  mapping is **configurable** through `FE93`/`FE83` (see
+  [devices and storage](devices-and-storage.md)).
 - Do **not** assume console is always the LCD — it may be redirected
   to the IR link.
 
 ### Things to use
 
 - The standard FCB file calls (0F-17, 21-24) for RAM-disk files.
-- Fns **0xFC-0xFF** for clock and alarm.
-- Fns **0xF5-0xFB** for device and config management.
+- Fns **0xFC**, **0xFD**, and **0xFF** for the documented clock/alarm calls;
+  do not call resident-only **0xFE** from an ordinary application.
+- Read-only/query extensions only where the supported profile permits them;
+  F7h/FAh/FBh and related calls mutate global configuration.
 - fn **06h** (direct console I/O, =0xFF) for poll / session input.
 
 ---
@@ -452,8 +496,18 @@ All `Bdos*` handlers are named and commented in the Ghidra program.
 
 ---
 
-*If a CP/M program uses only the FCB file calls and the standard
-console functions, it will run on DIPOS-B essentially unchanged —
-the interesting differences (clock, alarm, IR-link, device and
-config selection) are all *extra* DIPOS-B extensions that a
-CP/M program simply would not have used.*
+*Conservative compatibility:* a CP/M program that uses only the
+FCB file calls (`0Fh-17h`, `14h`/`15h`, `21h`/`22h` with `+21h`/`+22h`
+addressing), `1Ah` to set DMA, and the standard console functions,
+and that avoids the unsafe dispatch range `25h-F2h` and the `F3h-FFh`
+extensions (especially the unsafe global state in `F6h-FBh` and the
+`Bdos_SelectRst28Mode` / `Bdos_UpdateDriveDirectoryMetadata` specials),
+will run on DIPOS-B with the **caveats** that `19h` returns `A` not
+`HL`, drive `C:`+ is by default a link device but the `FE93` mapping
+is configurable, and `FCh`/`FDh` use the
+[8-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record)
+(`+0` metadata LIKELY century `19`, exact OPEN). The remaining
+differences (`FCh`/`FDh` clock, `FEh` `Bdos_InternalTimedWait`, `FFh`
+`BdosFfAlarmControl` with `UIP` polling, IR-link and device selection)
+are extra DIPOS-B extensions that a stock CP/M program would not have
+used.
