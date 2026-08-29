@@ -36,15 +36,16 @@ Key Ghidra names (CONFIRMED, byte-verified branches):
 | `ROM01:0BAC` | `Program_ConsumeInputChunk` | chunked input consumer |
 | `ROM01:0CE7` | `Program_LoadDipOrCom` | DIP-vs-COM discriminator and block loader |
 | `ROM01:0CCB` | `Program_ReportLoadError` | submit a program-load error ID and clear loader state |
+| `ROM01:1002` | `Program_FinalizeInput` | finalize load on zero completion — generate DIP block checksums when needed and set loader state 3; nonzero status follows the `0x2330` error path |
 | `ROM01:106F` | `Program_RunByName` | post-load run path |
 | `ram:D7F0`  | `RunLoadedProgram` | final transfer to loaded image |
 
 No BDOS execute function was found. BDOS `open` / `read` / `search` remain
 generic FCB services; no direct call from this loader to them was found.
-Source bytes arrive via coroutine/provider machinery around `0C12` / `0CE7`
-and `ram:D370`.
-**Do not claim the exact physical source-reader is identified** — the
-provider path is still open (see below).
+`ram:D370` is `g_pProgramLoaderContinuation`, a coroutine continuation
+exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not an
+input-provider pointer. The upstream physical/session provider remains
+**OPEN** — do not claim the exact source-reader is identified (see below).
 
 ## COM
 
@@ -250,9 +251,35 @@ per-block checksum is computed by `ROM01:0957` and verified by `ROM01:09C2`
   copied from `ROM00:7030` → `ram:D681` (`0x212` bytes, via `ROM00:3BAA`).
   That block is **not** the runtime COM/DIP loader — the two are separate.
 * Module A (`ROM00:73CE` → `ram:D893`, 2145 bytes) is **not** the DIP parser.
-* Source bytes for a named program arrive through the provider around
-  `0C12` / `0CE7` / `ram:D370` (coroutine/provider machinery). The exact
-  physical source-reader remains **open**.
+* `ram:D370` is `g_pProgramLoaderContinuation` (`Coroutine_SwapContinuation`
+  `ram:D9F9`); the upstream physical/session provider remains **OPEN**.
+
+## Emulator evidence: real-loader upload (bounded, below Commstar)
+
+`analysis/boot_hw.py --upload` boots normally, invokes the real
+`Program_LoadByName` (`ROM01:0B82`), feeds chunks according to the request
+word at `D36C` through `Program_ConsumeInputChunk` (`ROM01:0BAC`), calls
+`Program_FinalizeInput` (`ROM01:1002`), checks loader state `3` and resident
+bytes, then invokes `Program_RunByName`/`RunLoadedProgram` (`ROM01:106F` →
+`ram:D7F0`). It injects below the Commstar session and does **not** prove a
+valid Commstar exchange or provider.
+
+**CONFIRMED bounded runs (all byte-verified):**
+
+* 28-byte raw COM: loader requested `14+14`; one-block 50-byte DIP: loader
+  requested `14`-byte header + `8`-byte block header + `28` payload. Both
+  entered `0100h` and printed `Hello World` / set marker `A5h` at `0200h`.
+* Maximum `0xCF81`-byte (53,121) COM: loader requested `14`, then
+  `207` chunks of `256`, then a final `115` — sequence
+  `14 + 207*256 + 115 = 53121` (total `209` calls; calls `2-208` were
+  `256`). Remainder `53107` after the first `14`. Exact bytes through
+  `D080` verified and loader state `3` reached in `--upload-no-run` mode.
+
+Host staging on the emulator uses the established incoming payload object
+at `E5C2`; a regression proved a guessed `D500` workspace is modified
+during `Program_ConsumeInputChunk`, so the emulator was moved to `E5C2`.
+This host-only staging detail is **not** a firmware provider identity —
+do not present it as such.
 
 ## Related
 

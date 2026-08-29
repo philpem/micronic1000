@@ -230,8 +230,45 @@ Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
 remains **OPEN**. This does not prove a multidrop physical topology or
 address allocation policy; treat those as open hardware questions.
 
-UI fields `E701`/`E6FF` are width-3 decimal RCV1/RCV2 status fields;
-runtime meaning is **OPEN** and they are not transport-frame fields.
+`E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
+shown on the session status screen (**CONFIRMED provenance**):
+`E701` is a zero-extended snapshot of the received numeric frame type at
+`E5BE` before local substitutions (transport error may put `EEh` (238)
+there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
+displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
+**OPEN**.
+
+## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
+
+Two bounded synthetic traces were captured by calling the session TX
+builders with synthetic stack arguments and bypassing only a separate
+preflight at `5C1F`/`5D05` (forcing successful `HL=0` at `5C22`/`5D08`).
+`E6E6=0` in both traces. The physical low-five-bit prelude
+(`link_id & 1Fh`) is excluded from the quoted logical frames. Meanings of
+payload constants/fields and complete RECORD/BLOCK/C-COMMAND semantics
+remain **OPEN**.
+
+* `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector,
+  mapped through `FE83 + selector - 1`; it is **not** logical frame type.
+  `g_wSessionTxPayloadLength` at `E530` counts payload bytes starting at
+  `E534`; bytes `E532-E533` are skipped. Logical frame type `1` is written
+  independently by `ROM00:2F6D`.
+
+* **Trace 4 — Session_TxBlock4 path (CONFIRMED):** synthetic stack args
+  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the separate preflight at
+  `5C1F` by forcing successful `HL=0` at `5C22`. Payload length `15`;
+  payload `06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`; complete logical
+  frame `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`.
+
+* **Trace 5 — Session_TxBlock5 path (CONFIRMED):** args
+  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preflight at `5D05` by
+  forcing `HL=0` at `5D08`. Payload length `19`; payload
+  `06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`; logical frame
+  `19 00 01 01 7F 00 06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`.
+
+These traces establish framing mechanics only. The meaning of any payload
+constant or field, and the complete RECORD/BLOCK/C-COMMAND session
+semantics, remain **OPEN**.
 
 ## What is not specified yet
 

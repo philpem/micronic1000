@@ -61,7 +61,7 @@ Requires the `z80` python module in `venv/`.
 
 **Multi-bank RAM:** port `47h` (`BANK_SEL`, shadow `F791`) selects the 32K window `0000–7FFF`: `0=ROM0`, `1=ROM1`, `2..N=RAM pages` (32K each). Fixed RAM `8000–FFFF` is always present (32K). Totals: `128K=32K+3×32K (banks 2..4)`, `256K=32K+7×32K (banks 2..8)`, `512K=32K+15×32K (banks 2..16)`. Save/restore on `47h` write (only for installed banks). **Non-present banks read `0xFF` (open bus) and writes are discarded** — required for correct RAM sizing. The firmware walks banks `0x41..0x01` in `Boot_BankWalkInit` regardless of installed RAM; sizing is done by `contig_ram_map_test` (267A) and `ram_page_test_4banks` (2530), with `DelayCountUp` (271F) computing `FEAB = FEA9 * 0x20` (FEA9 = count of present pages) displayed as `Ram: NN K.B.` on the banner. With `--ram 256` the banner must show 256K (not 2016K = 63*0x20).
 
-**Options:** `--ram` / `--ram-size` (128|256|512), `--drive-serial` / `--serial TEXT`, `--max-slices N`, `--dump-bank N`, `--lcd` / `--no-lcd` / `--lcd-rate N`, `--expect SPEC` (repeatable), `--expect-file FILE`, `--expect-timeout N`, `-h`/`--help`.
+**Options:** `--ram` / `--ram-size` (128|256|512), `--drive-serial` / `--serial TEXT`, `--max-slices N`, `--dump-bank N`, `--lcd` / `--no-lcd` / `--lcd-rate N`, `--expect SPEC` (repeatable), `--expect-file FILE`, `--expect-timeout N`, `--upload PATH` (drive real loader via `Program_LoadByName`/`Program_ConsumeInputChunk`/`Program_FinalizeInput` below Commstar — not a Commstar peer; `--upload-name NAME` defaults to the input basename, `--upload-bank N` defaults to 2, `--upload-max-bytes N` defaults to 65535, optional `--upload-marker ADDR:VAL`, `--upload-no-run` stops after finalize/state 3), `--trace-session-builder 4|5` (bounded synthetic builder trace; bypasses only the separate preflight), `-h`/`--help`.
 
 **Expect DSL:** `match:keys` — wait until `match` substrings appear in LCD text, then inject `keys` via the keyboard ring (paced exactly like the `16C9` HALT wait, `FBC9` bit2, `FFA8==1`). Multiple `--expect` steps run in order.
 
@@ -88,6 +88,7 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
   `micronic.program` (stdlib only, 35 tests). Run with
   `analysis/venv/bin/python3 analysis/test_program.py` or
   `python3 analysis/test_program.py` or `python3 -m unittest analysis.test_program`.
+- **`test_boot_upload.py`** — opt-in emulator integration (bounded, requires `z80`): `MICRONIC_RUN_EMULATOR_TESTS=1 analysis/venv/bin/python3 analysis/test_boot_upload.py` runs 3 tests — COM Hello World, one-block DIP Hello World, and maximum-size `0xCF81` COM load/byte verification (checks bytes through `D080` and loader state 3). One emulator process at a time under `timeout`; uses the real loader callbacks below Commstar.
 
 ## Decode scripts (static)
 

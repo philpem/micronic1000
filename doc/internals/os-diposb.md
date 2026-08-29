@@ -368,7 +368,10 @@ TWO roles:
   (`0AE3`), `Program_GenerateBlockChecksums` (`0957`),
   `Program_VerifyBlockChecksums` (`09C2`), `Program_LoadByName` (`0B82`),
   `Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
-  `Program_ReportLoadError` (`0CCB`), `Program_RunByName` (`106F`),
+  `Program_ReportLoadError` (`0CCB`), `Program_FinalizeInput`
+  (`ROM01:1002`) — zero completion finalizes state, generates DIP block
+  checksums when needed, and sets loader state `3` (nonzero status follows
+  `0x2330` error path), `Program_RunByName` (`106F`),
   final transfer `10C6 → ram:D7F0` (`RunLoadedProgram`).
 * **DIP vs COM**: magic `0xC8C9` (`C9 C8`) at `+0`, system ID `0`/`0x00E5`,
   14-byte header, max 5 blocks, type `0`=direct copy / `1`=RST 10h
@@ -377,9 +380,10 @@ TWO roles:
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
   run-bank `0`, entry `0x0100`. See [Program formats](../manual/program-formats.md).
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
-  services. Source bytes arrive via coroutine/provider around `0C12`/`0CE7`
-  and `ram:D370`; the exact physical source-reader is **not** identified
-  (open item).
+  services. `ram:D370` is `g_pProgramLoaderContinuation`, a coroutine
+  continuation exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not
+  an input-provider pointer; the upstream physical/session provider remains
+  **OPEN** (not identified).
 * `ram:ECDA` as maximum available entry-bank offset from selected-storage
   geometry is **LIKELY** only.
 * Session states (separate transport layer): `NOT-STARTED / DISCONNECTED /

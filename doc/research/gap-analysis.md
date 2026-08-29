@@ -1,6 +1,6 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-29 (9th audit, BDOS/Commstar review), firmware
+Status: 2026-08-29 (10th audit, synthetic builder + loader finalize), firmware
 `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
 This is a **documentation-coverage** audit: which functions have *we* named
 and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
@@ -9,34 +9,33 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 484 | **65** | 419 |
-| ROM01 | 196 | **66** | 130 |
-| ram | 169 | **11** | 158 |
-| **Total** | **849** | **142** | **707 (83.3 %)** |
+| ROM00 | 521 | **81** | 440 |
+| ROM01 | 208 | **67** | 141 |
+| ram | 186 | **11** | 175 |
+| EXTERNAL | 1 | **0** | 1 |
+| **Total** | **916** | **159** | **757 (82.6 %)** |
 
-**Refreshed directly from Ghidra on 2026-08-29.** The 2026-08-28 loader pass
-added/renamed ROM01
-functions in `0A67-10CE` (`Program_PrepareLoadGeometry` 0A67,
-`Program_GenerateBlockChecksums` 0957, `Program_VerifyBlockChecksums` 09C2,
-`Program_LoadByName` 0B82, `Program_ConsumeInputChunk` 0BAC,
-`Program_LoadDipOrCom` 0CE7, `Program_ReportLoadError` 0CCB,
-`Program_RunByName` 106F, `Program_NormalizeLoadRange` 0AE3) plus
-`ram:D7F0` `RunLoadedProgram` and `ram:D081` `g_apScreenHandlerTables` /
-`ram:D0F0` `g_apLoadRunHandlers` labels. The later BDOS pass created direct
-dispatch entries `BdosReadRandom` (0C50), `BdosWriteRandom` (0BF3), and
-`BdosSetRandomRecord` (0CB4). The subsequent BDOS/RTC and Commstar reviews
-retained byte-verified direct-call entries exposed by deferred analysis and
-named documented entries including `Device_LookupConfigEntry` (31FF),
-`LinkReplyEE02`/`LinkReplyE004`/`LinkReplyE005` (3066/306C/3072), and
-`LinkReplyEE03` (31B0). The full inventory now reports **849** functions;
-**142** are auto-named (65 ROM00, 66 ROM01, 11 ram). These are the remaining
-analysis backlog, not completed coverage.
+**Refreshed directly from Ghidra on 2026-08-29 (guarded 916).** Deferred
+analysis re-instantiated previously named/symbolized bodies and the new
+finalizer `Program_FinalizeInput` (`ROM01:1002`) was created. The current
+inventory is strictly additive over the captured prior addresses: 67
+re-instantiated functions were preserved rather than deleting documented
+work, so the `FUN_*` count rose with the recovered bodies. The only
+intentionally new function in this pass is `Program_FinalizeInput`.
+The prior audit reported 849 total / 142 `FUN_*` / 707 named (83.3 %);
+the increase to 916 / 159 / 757 reflects recovered bodies plus the one
+new finalizer. These 159 auto-named functions are the remaining analysis
+backlog, not completed coverage.
+
+The three internal address spaces contain 915 functions. Ghidra's guarded
+total also includes the existing external import `EXT_FUN_ram_0010` at
+`EXTERNAL:00000001`, which accounts for the remaining named function.
 
 Plate completeness was not recomputed in this pass. The loader functions
-named on 2026-08-28 carry plates; the 142 auto-named functions remain
-undocumented by definition.
+and the new `Program_FinalizeInput` carry plates; the 159 auto-named
+functions remain undocumented by definition.
 
-Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0) are history.
+Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142) are history.
 
 ## Notes
 
@@ -48,9 +47,11 @@ Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0) are history.
   over `ram`; MCP cannot read uninit overlay bytes - load a hardware
   RAM dump in the GUI to visualise a RAM bank page.
 - Loader docs are now closed for file format (see
-  `manual/program-formats.md`); the **open item is the physical
-  input-provider path** (coroutine/provider around `0C12`/`0CE7`/
-  `ram:D370`), not the on-disk layout.
+  `manual/program-formats.md`); the **open item is the upstream
+  physical/session provider** — `ram:D370` is
+  `g_pProgramLoaderContinuation` (`Coroutine_SwapContinuation` `ram:D9F9`),
+  not an input-provider pointer, and the complete Commstar provider/session
+  semantics remain **OPEN**.
 
 ## Known ghost: ram:8c0c
 

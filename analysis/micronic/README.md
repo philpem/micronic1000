@@ -178,3 +178,18 @@ z80-module emulator with MAME-correct I/O; it keeps a
 fires the Z80 INT at the programmed period. It proves the HD146818
 write path end-to-end and drops a full I/O trace to
 `/tmp/opencode/micronic_boot_io.txt`.
+
+`--upload PATH` drives the **real** loader (`Program_LoadByName`
+`ROM01:0B82` → `Program_ConsumeInputChunk` `ROM01:0BAC` chunked by
+request word `D36C` → `Program_FinalizeInput` `ROM01:1002` state 3 →
+`Program_RunByName`/`RunLoadedProgram`) below Commstar — it does **not**
+emulate a Commstar peer. Options: `--upload-name NAME` (input basename),
+`--upload-bank N` (default 2), `--upload-max-bytes N` (default 65535),
+optional `--upload-marker ADDR:VAL` (hex), `--upload-no-run` (stop
+after finalize/verify). `--trace-session-builder 4|5` runs the bounded
+synthetic builder traces described in `doc/protocol/commstar.md`.
+
+Opt-in integration: `MICRONIC_RUN_EMULATOR_TESTS=1
+analysis/venv/bin/python3 analysis/test_boot_upload.py` (3 tests: COM
+Hello, DIP Hello, max-size COM byte verification). Run one emulator
+process at a time under `timeout` (memory guidance in `analysis/README.md`).

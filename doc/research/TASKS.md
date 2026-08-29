@@ -1931,12 +1931,14 @@ current priority order; the concise lists above are authoritative.
      exhaustion other state; `02E0/04E0/05E0` numeric
      unexpected-type paths; `01EF` type-4 sequence mismatch;
      `03EE` error/reset path ROM00:2E72.
-   * **Descriptors + probe + UI fields (CONFIRMED/OPEN):**
-     `FE0E {6->FDE4,3->FE38,0}` (structurally mutable), `FE32
-     {9->FE3A,0}`, `FDEA {6->FDDE,0}`; `LinkProbe` ROM00:348A writes
-     `1Fh` to `LINK_PROBE`, physical effect **OPEN**; `E701`/`E6FF`
-     width-3 decimal RCV1/RCV2 status fields, runtime meaning **OPEN**,
-     not transport-frame fields.
+    * **Descriptors + probe + UI fields (CONFIRMED/OPEN):**
+      `FE0E {6->FDE4,3->FE38,0}` (structurally mutable), `FE32
+      {9->FE3A,0}`, `FDEA {6->FDDE,0}`; `LinkProbe` ROM00:348A writes
+      `1Fh` to `LINK_PROBE`, physical effect **OPEN**; `E701` is a
+      zero-extended snapshot of received numeric frame type `E5BE` before
+      local substitutions (transport error may put `EEh` (238) there),
+      `E6FF` is zero-extended received sequence `E5BF`; displayed as
+      width-3 decimal `RCV1`/`RCV2` (broader UI meaning remains **OPEN**).
    * **Link-id bit5 (CONFIRMED selector, OPEN mapping):** selects one
      of two external link configurations; which polarity maps to
      owner-confirmed V24 ADAPTOR (top) vs PLINTH (back), and where
@@ -1965,7 +1967,64 @@ current priority order; the concise lists above are authoritative.
      alone. It now requires the complete seeded descriptor stream
      `05 04 44 00 41 42 43 44`; the duplex harness reports directed raw
      byte-latch tests only. Added three queue/header regressions.
-   * **Verification:** `test_proto.py` 3/3, `test_program.py` 35/35,
-     Python byte-compilation, bounded TX/RX/duplex harnesses,
-     `mkdocs build --strict`, and `git diff --check` all passed.
-     Hardware/runtime questions remain OPEN.
+    * **Verification:** `test_proto.py` 3/3, `test_program.py` 35/35,
+      Python byte-compilation, bounded TX/RX/duplex harnesses,
+      `mkdocs build --strict`, and `git diff --check` all passed.
+      Hardware/runtime questions remain OPEN.
+  - 2026-08-29 (parent-approved synthetic builder + loader finalize + docs maintenance):
+    * **Bounded synthetic session-builder traces (CONFIRMED mechanics only):**
+      `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector
+      mapped through `FE83 + selector - 1`, not logical frame type;
+      `g_wSessionTxPayloadLength` at `E530` counts payload starting at
+      `E534` (`E532-E533` skipped); logical frame type `1` written
+      independently by `ROM00:2F6D`; physical low-five-bit prelude excluded
+      from quoted logical frames. Trace 4: synthetic stack args
+      `(1,6,22h,33h)`, `E6E6=0`, bypassed only separate preflight at `5C1F`
+      by forcing `HL=0` at `5C22`; payload length `15`, payload
+      `06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`, logical frame
+      `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`.
+      Trace 5: args `(1,6,1,44h,55h)`, `E6E6=0`, bypassed preflight at
+      `5D05` via `HL=0` at `5D08`; payload length `19`, payload
+      `06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`, logical
+      frame `19 00 01 01 7F 00 06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00
+      00 00 00 01`. Mechanics only — payload constants/fields and complete
+      RECORD/BLOCK/C-COMMAND semantics remain **OPEN**; no semantic names
+      assigned to cases `4`/`8`/`9` or payload fields.
+    * **RCV1/RCV2 provenance corrected (CONFIRMED):** `E701` is zero-extended
+      snapshot of received numeric frame type `E5BE` before local
+      substitutions (transport error may put `EEh` (238) there); `E6FF` is
+      zero-extended received sequence `E5BF`; displayed as width-3 decimal
+      `RCV1`/`RCV2`. Broader UI meaning remains **OPEN**. Supersedes stale
+      "runtime meaning open and not transport fields" wording in prior
+      Commstar entry; docs now state provenance explicitly.
+    * **Loader finalize + D370 correction (CONFIRMED):** `ram:D370` is
+      `g_pProgramLoaderContinuation`, a coroutine continuation exchanged by
+      `Coroutine_SwapContinuation` (`ram:D9F9`), not an input-provider
+      pointer; upstream physical/session provider remains **OPEN**.
+      `Program_FinalizeInput` (`ROM01:1002`) finalizes on zero completion,
+      generates DIP block checksums when needed, and sets loader state `3`
+      (nonzero status follows `0x2330` error path). Emulator `--upload`
+      uses real loader callbacks (`Program_LoadByName` `ROM01:0B82` →
+      `Program_ConsumeInputChunk` `ROM01:0BAC` chunked by request word
+      `D36C` → `Program_FinalizeInput` → `Program_RunByName`/
+      `RunLoadedProgram`) below Commstar; bounded runs verified: 28-byte
+      COM `14+14`, one-block 50-byte DIP `14+8+28` (both entered `0100h`,
+      `Hello World`/`A5` at `0200h`), max `0xCF81` COM
+      `14 + 207*256 + 115 = 53121` through `D080` with state `3` in
+      load-only mode. Host staging uses established `E5C2` payload object
+      (guessed `D500` regressed as modified during consume).
+    * **Ghidra annotations saved (guarded 916):** `Coroutine_SwapContinuation`
+      (`ram:D9F9`), `Program_FinalizeInput` (`ROM01:1002`), TX/RX payload
+      objects at `E5C2`/`E5BE`, `Session_TxBlock4`/`Session_TxBlock5`
+      mechanics plates, corrected `SessionRxStateMachine` plate; no semantic
+      names assigned to `4`/`8`/`9` or payload fields. Deferred analysis
+      re-instantiated 67 previously named/symbolized bodies; inventory now
+      **916** total (ROM00 521/81/440, ROM01 208/67/141, ram 186/11/175,
+      plus existing external import `EXT_FUN_ram_0010`; `159` `FUN_*`,
+      `757` named = 82.6 %); strictly additive over captured prior addresses,
+      plus the one new finalizer.
+    * **Integration tests 3/3:** `MICRONIC_RUN_EMULATOR_TESTS=1
+      analysis/venv/bin/python3 analysis/test_boot_upload.py` covers COM
+      Hello, DIP Hello, and max-size COM byte verification. `mkdocs build
+      --strict` passed; remaining complete Commstar provider/session
+      semantics stay **OPEN**.

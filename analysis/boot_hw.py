@@ -4,7 +4,8 @@
 Canonical single-harness: paced keyboard injection (--drive-serial/--serial,
 --drive-kbd fixed), LCD render (--lcd/--no-lcd/--lcd-rate), expect-DSL
 (--expect/--expect-file/--expect-timeout), multi-bank RAM (--ram/--ram-size
-FF on absent pages), --dump-bank, snapshot (--dump-mem/--snapshot), --help.
+FF on absent pages), host upload (--upload), --dump-bank, snapshot
+(--dump-mem/--snapshot), --help.
 Drop-in: no args still does basic trace (prints help then boots).
 
 Feature history (all folded into this one file):
@@ -96,6 +97,17 @@ OPTIONS
                           match and at exit: e488,e48d,e48c,e520,d0e0,e681,
                           fbc9,f791 (plus any --dump-mem ranges). Use for
                           chasing "No program in memory" (ROM01:7d07 via d0e0).
+  --upload FILE            At Main Menu, feed FILE through the real Load/Run
+                           chunk callbacks, finalize it, and invoke Run.
+  --upload-name NAME       Logical loader name (default: input basename).
+  --upload-bank N          Writable RAM base bank (default 2).
+  --upload-max-bytes N     Host-side input bound (default 65535).
+  --upload-marker A:V      Require byte V at bank-local address A after entry.
+                           Example: --upload-marker 0200:A5.
+  --upload-no-run          Load and verify only; do not invoke RunLoadedProgram.
+  --trace-session-builder N
+                           At Main Menu, execute session TX builder 4 or 5 up
+                           to its service-33 call and dump the counted span.
 
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
@@ -127,6 +139,10 @@ EXAMPLES
   # Expect from file + 512K RAM + dump bank 2:
   timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-file /tmp/steps.json --dump-bank 2
 
+  # Load and run a COM through the ROM loader; require its success marker:
+  timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
+    --upload hello.com --upload-marker 0200:A5
+
   # JSON steps file example:
   # [{"match": "To Continue Press>>", "keys": "\\r"},
   #  {"match": ["Ram:", "K.B."], "keys": "\\r"},
@@ -149,10 +165,12 @@ import gc
 
 gc.disable()
 import sys, re, json, os
+from pathlib import Path
 
 sys.path.insert(0, "/home/philpem/Micronic-1000/analysis")
 import z80
 from micronic.rtc import RTC146818
+from micronic.program import validate
 
 
 # ---------- CLI args ----------
@@ -238,6 +256,67 @@ if RAM_KB not in (256, 512):
 NUM_BANKED_PAGES = RAM_KB // 32 - 1  # 7 for 256K, 15 for 512K
 BANK_MAX = 1 + NUM_BANKED_PAGES  # inclusive max bank number: 8 for 256K, 16 for 512K
 # Note: banks 2..BANK_MAX inclusive (2..8 for 256K, 2..16 for 512K)
+
+# Host upload. The ROM loader remains authoritative; host validation only
+# rejects malformed or unbounded input before starting the expensive boot.
+UPLOAD_PATH = get_arg("--upload") if has_flag("--upload") else None
+UPLOAD_NAME = get_arg("--upload-name") if has_flag("--upload-name") else None
+UPLOAD_BANK = int(get_arg("--upload-bank", "2"), 0)
+UPLOAD_MAX_BYTES = int(get_arg("--upload-max-bytes", "65535"), 0)
+UPLOAD_NO_RUN = has_flag("--upload-no-run")
+TRACE_SESSION_BUILDER = (
+    int(get_arg("--trace-session-builder"), 0)
+    if has_flag("--trace-session-builder")
+    else None
+)
+if TRACE_SESSION_BUILDER not in (None, 4, 5):
+    print("--trace-session-builder must be 4 or 5", file=sys.stderr)
+    sys.exit(2)
+UPLOAD_MARKER = None
+if has_flag("--upload-marker"):
+    try:
+        marker_addr, marker_value = get_arg("--upload-marker").split(":", 1)
+        UPLOAD_MARKER = (int(marker_addr, 16), int(marker_value, 16))
+    except (AttributeError, TypeError, ValueError):
+        print("[upload] --upload-marker must be ADDR:BYTE in hex", file=sys.stderr)
+        sys.exit(2)
+
+UPLOAD_DATA = None
+UPLOAD_NAME_BYTES = None
+validation = None
+if UPLOAD_PATH:
+    upload_file = Path(UPLOAD_PATH)
+    try:
+        with upload_file.open("rb") as f:
+            UPLOAD_DATA = f.read(UPLOAD_MAX_BYTES + 1)
+    except OSError as exc:
+        print(f"[upload] cannot read {upload_file}: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if len(UPLOAD_DATA) > UPLOAD_MAX_BYTES:
+        print(
+            f"[upload] input exceeds --upload-max-bytes {UPLOAD_MAX_BYTES}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    validation = validate(UPLOAD_DATA)
+    if not validation.valid:
+        for issue in validation.errors:
+            print(f"[upload] invalid input: {issue}", file=sys.stderr)
+        sys.exit(2)
+    if UPLOAD_NAME is None:
+        UPLOAD_NAME = upload_file.name
+    try:
+        UPLOAD_NAME_BYTES = UPLOAD_NAME.encode("ascii") + b"\x00"
+    except UnicodeEncodeError:
+        print("[upload] logical name must be ASCII", file=sys.stderr)
+        sys.exit(2)
+    if not 2 <= UPLOAD_BANK <= BANK_MAX:
+        print(f"[upload] bank {UPLOAD_BANK} is not installed", file=sys.stderr)
+        sys.exit(2)
+    print(
+        f"[upload] prepared {upload_file} ({len(UPLOAD_DATA)} bytes, "
+        f"{validation.kind}) as {UPLOAD_NAME!r} in bank {UPLOAD_BANK}"
+    )
 
 # ---------- memory snapshot ----------
 # --dump-mem ADDR[:LEN] repeatable, e.g. --dump-mem e488:16 --dump-mem d0e0:32
@@ -499,7 +578,9 @@ if has_flag("--expect-file"):
         print(f"[expect-file] not found: {fpath}", file=sys.stderr)
 
 # legacy serial drive vs expect: if expect steps supplied, prefer them; otherwise legacy queue
-use_legacy_queue = DRIVE_SERIAL and len(EXPECT_STEPS) == 0
+use_legacy_queue = (
+    DRIVE_SERIAL or UPLOAD_PATH is not None or TRACE_SESSION_BUILDER is not None
+) and len(EXPECT_STEPS) == 0
 
 print(f"[expect] steps={len(EXPECT_STEPS)} legacy_queue={use_legacy_queue}")
 for idx, st in enumerate(EXPECT_STEPS):
@@ -558,6 +639,24 @@ def wr(a, v):
             return
         return  # discard writes to unmapped RAM area
     mem[a] = v & 0xFF
+
+
+def host_write(addr, data):
+    """Write while the CPU is paused, keeping both memory views in sync."""
+    data = bytes(data)
+    addr &= 0xFFFF
+    if addr + len(data) > 0x10000:
+        raise ValueError("host write wraps address space")
+    mem[addr : addr + len(data)] = data
+    mach.set_memory_block(addr, data)
+
+
+def host_write_word(addr, value):
+    host_write(addr, bytes([value & 0xFF, (value >> 8) & 0xFF]))
+
+
+def read_word(addr):
+    return mem[addr] | (mem[(addr + 1) & 0xFFFF] << 8)
 
 
 rtc = RTC146818()
@@ -641,6 +740,30 @@ def ich(*a):
 out_of_range_warned = set()
 
 
+def select_bank(value, sync_machine=False):
+    """Apply the port-47 bank-window transition."""
+    global cb
+    value &= 0xFF
+    previous = cb
+    if 2 <= previous <= BANK_MAX:
+        if previous not in RAM:
+            RAM[previous] = bytearray(0x8000)
+        RAM[previous][:] = mem[0:0x8000]
+    cb = value
+    mem[0xF791] = value
+    if value == 0:
+        mem[0:0x8000] = B0
+    elif value == 1:
+        mem[0:0x8000] = B1
+    elif 2 <= value <= BANK_MAX:
+        mem[0:0x8000] = RAM.setdefault(value, bytearray(0x8000))
+    else:
+        mem[0x100:0x8000] = FF_PAGE[0x100:0x8000]
+    if sync_machine:
+        mach.set_memory_block(0, bytes(mem[0:0x8000]))
+        mach.set_memory_block(0xF791, bytes([value]))
+
+
 def och(*a):
     global cb, rtc_sel
     p, v = (a[0], a[1]) if len(a) >= 2 else (a[0], 0xFF)
@@ -650,36 +773,7 @@ def och(*a):
     if len(log) < 200000:
         log.append((mach.pc & 0xFFFF, p, v))
     if p == 0x47:
-        # save current window only if it is an installed RAM page
-        prev = cb
-        if 2 <= prev <= BANK_MAX:
-            if prev not in RAM:
-                RAM[prev] = bytearray(0x8000)
-            RAM[prev][:] = mem[0:0x8000]
-        # switch
-        cb = v
-        mem[0xF791] = v & 0xFF
-        if v == 0:
-            mem[0:0x8000] = B0
-        elif v == 1:
-            mem[0:0x8000] = B1
-        elif 2 <= v <= BANK_MAX:
-            img = RAM.setdefault(v, bytearray(0x8000))
-            mem[0:0x8000] = img
-        else:
-            # out-of-range bank (> max) for current RAM size: this is the
-            # Boot_BankWalkInit sweep (41h..1, 64 slots) which touches all
-            # window slots regardless of installed RAM. Not backed: reads return
-            # 0xFF (FF_PAGE) for RAM area, but vector area (0x0000-0x00FF) must
-            # remain valid so RST/IRQ still work when briefly selecting an
-            # unmapped bank with interrupts enabled. Copy FF only to non-vector
-            # part.
-            mem[0x100:0x8000] = FF_PAGE[0x100:0x8000]
-            # Ensure vector area has at least B0's vectors if not already present
-            # (BankWalkInit will have written correct vectors there via wr()
-            # allowed for <0x100, but on first entry the window still holds old
-            # bank's vectors; keep them).
-            # No need to overwrite vectors here.
+        select_bank(v)
     elif p == 0x08:
         rtc_sel = v & 0xFF
     elif p == 0x28:
@@ -703,6 +797,211 @@ SLICE_TICKS = 3400
 rtc_phase = 0
 rtc_phase_rate = None
 
+
+CALL_SENTINEL = 0xFFFF
+# Keep the short logical name above the loader's exclusive D081h program
+# ceiling. Input chunks use the confirmed service-33 receive payload object.
+UPLOAD_NAME_ADDR = 0xD600
+UPLOAD_BUFFER_ADDR = 0xE5C2
+
+
+def run_to_breakpoint(address, max_chunks=200000):
+    mach.set_breakpoint(address)
+    try:
+        for _ in range(max_chunks):
+            mach.ticks_to_stop = SLICE_TICKS
+            event = mach.run()
+            if (mach.pc & 0xFFFF) == address or event & mach._BREAKPOINT_HIT:
+                return True
+    finally:
+        mach.clear_breakpoint(address)
+    return False
+
+
+def call_rom1(entry, args=()):
+    """Call a verified ROM01 coroutine entry with stack-word arguments."""
+    select_bank(1, sync_machine=True)
+    original_sp = mach.sp
+    call_sp = (original_sp - 2 * (1 + len(args))) & 0xFFFF
+    host_write_word(call_sp, CALL_SENTINEL)
+    for index, arg in enumerate(args):
+        host_write_word(call_sp + 2 + 2 * index, arg)
+    mach.sp = call_sp
+    mach.pc = entry
+    if not run_to_breakpoint(CALL_SENTINEL):
+        raise RuntimeError(f"ROM01:{entry:04X} did not return")
+    result = mach.hl
+    mach.sp = original_sp
+    return result
+
+
+def prepare_call(bank, entry, args):
+    """Prepare a coroutine entry without imposing a return condition."""
+    select_bank(bank, sync_machine=True)
+    original_sp = mach.sp
+    call_sp = (original_sp - 2 * (1 + len(args))) & 0xFFFF
+    host_write_word(call_sp, CALL_SENTINEL)
+    for index, arg in enumerate(args):
+        host_write_word(call_sp + 2 + 2 * index, arg)
+    mach.sp = call_sp
+    mach.pc = entry
+    return original_sp
+
+
+def trace_session_builder(form):
+    """Execute a real TX builder to its service-33 dispatch boundary."""
+    host_write_word(0xE6E6, 0)
+    if form == 4:
+        entry = 0x5BF7
+        args = (1, 6, 0x22, 0x33)
+        local_addr, local_len = 0xE650, 8
+        preflight_call, preflight_return = 0x5C1F, 0x5C22
+    else:
+        entry = 0x5CD7
+        args = (1, 6, 1, 0x44, 0x55)
+        local_addr, local_len = 0xE65C, 13
+        preflight_call, preflight_return = 0x5D05, 0x5D08
+    prepare_call(0, entry, args)
+    if not run_to_breakpoint(preflight_call):
+        raise RuntimeError(f"session builder {form} did not reach preflight")
+    # The preflight starts a separate link transaction. Bypass only that call
+    # so the deterministic builder body can be observed without a peer.
+    mach.hl = 0
+    mach.pc = preflight_return
+    if not run_to_breakpoint(0x59CD):
+        raise RuntimeError(f"session builder {form} did not reach service 33")
+    count = read_word(0xE530)
+    payload = bytes(mem[0xE534 : 0xE534 + count])
+    selector = read_word(0xE52E) & 0xFF
+    print(
+        f"[session-builder] form={form} device_selector={selector:02X} "
+        f"payload_count={count} pointer=E534"
+    )
+    print(
+        f"[session-builder] local {local_addr:04X}+{local_len}: "
+        f"{bytes(mem[local_addr:local_addr + local_len]).hex()}"
+    )
+    print(f"[session-builder] session payload: {payload.hex()}")
+    print(f"[session-builder] E530-E549: {bytes(mem[0xE530:0xE54A]).hex()}")
+    log_start = len(log)
+    if not run_to_breakpoint(0x3277):
+        raise RuntimeError(f"session builder {form} did not reach LinkBlockTx")
+    if not run_to_breakpoint(0x3377):
+        raise RuntimeError(f"session builder {form} did not finish LinkBlockTx")
+    wire = bytes(value for _, port, value in log[log_start:] if port == 0x4D)
+    config_addr = 0xFE83 + selector - 1 if selector else None
+    config_text = (
+        f"{config_addr:04X}={mem[config_addr]:02X}" if config_addr else "none"
+    )
+    print(
+        f"[session-builder] config={config_text} FDCA={mem[0xFDCA]:02X} "
+        f"FDD4={mem[0xFDD4]:02X}"
+    )
+    print(f"[session-builder] LINK_TXD bytes: {wire.hex()}")
+    return True
+
+
+def bank_bytes(bank, addr, length):
+    end = addr + length
+    if addr >= 0x8000:
+        return bytes(mem[addr:end])
+    window_end = min(end, 0x8000)
+    if bank == cb:
+        data = bytes(mem[addr:window_end])
+    else:
+        data = bytes(RAM.get(bank, bytearray(0x8000))[addr:window_end])
+    if end > 0x8000:
+        data += bytes(mem[0x8000:end])
+    return data
+
+
+def run_uploaded_program(name_addr, entry_addr):
+    """Invoke Program_RunByName and stop at the loaded entry/marker."""
+    select_bank(1, sync_machine=True)
+    original_sp = mach.sp
+    call_sp = (original_sp - 4) & 0xFFFF
+    host_write_word(call_sp, CALL_SENTINEL)
+    host_write_word(call_sp + 2, name_addr)
+    mach.sp = call_sp
+    mach.pc = 0x106F
+    if not run_to_breakpoint(0xD7F0):
+        raise RuntimeError("Program_RunByName did not reach RunLoadedProgram")
+    if not run_to_breakpoint(entry_addr):
+        raise RuntimeError(f"RunLoadedProgram did not reach {entry_addr:04X}")
+    print(f"[upload] execution entered bank {cb} at {entry_addr:04X}")
+    if UPLOAD_MARKER is None:
+        return True
+    marker_addr, marker_value = UPLOAD_MARKER
+    for _ in range(20000):
+        if bank_bytes(UPLOAD_BANK, marker_addr, 1) == bytes([marker_value]):
+            print(f"[upload] marker {marker_addr:04X}={marker_value:02X} observed")
+            return True
+        mach.ticks_to_stop = SLICE_TICKS
+        mach.run()
+    raise RuntimeError(
+        f"marker {marker_addr:04X}={marker_value:02X} not observed"
+    )
+
+
+def perform_upload():
+    """Feed the host file according to the loader's current request word."""
+    if UPLOAD_DATA is None:
+        return False
+    if len(UPLOAD_NAME_BYTES) > 0x80:
+        raise RuntimeError("upload name exceeds scratch allocation")
+    host_write(UPLOAD_NAME_ADDR, UPLOAD_NAME_BYTES)
+    host_write_word(0xECD8, UPLOAD_BANK)
+    result = call_rom1(0x0B82, (UPLOAD_NAME_ADDR,))
+    if result != 0 or read_word(0xECC9) != 2:
+        raise RuntimeError(
+            f"LoadByName failed: HL={result:04X} state={read_word(0xECC9):04X}"
+        )
+    offset = 0
+    calls = 0
+    while offset < len(UPLOAD_DATA):
+        requested = read_word(0xD36C)
+        if requested == 0:
+            raise RuntimeError(f"loader requested zero bytes at offset {offset}")
+        count = min(requested, len(UPLOAD_DATA) - offset, 0x100)
+        host_write(UPLOAD_BUFFER_ADDR, UPLOAD_DATA[offset : offset + count])
+        accepted = call_rom1(0x0BAC, (0, UPLOAD_BUFFER_ADDR, count))
+        if accepted == 0xFFFF or accepted > count:
+            raise RuntimeError(
+                f"chunk rejected at {offset}: HL={accepted:04X} count={count}"
+            )
+        if accepted == 0:
+            raise RuntimeError(f"loader accepted zero bytes at offset {offset}")
+        offset += accepted
+        calls += 1
+        print(
+            f"[upload] chunk {calls}: accepted {accepted}/{count}, "
+            f"offset {offset}/{len(UPLOAD_DATA)}, next request {read_word(0xD36C)}"
+        )
+    result = call_rom1(0x1002, (0,))
+    state = read_word(0xECC9)
+    if result != 0 or state != 3:
+        raise RuntimeError(f"finalize failed: HL={result:04X} state={state:04X}")
+    if validation.kind == "COM":
+        loaded = bank_bytes(UPLOAD_BANK, 0x0100, len(UPLOAD_DATA))
+        if loaded != UPLOAD_DATA:
+            mismatch = next(
+                index
+                for index, (actual, expected) in enumerate(zip(loaded, UPLOAD_DATA))
+                if actual != expected
+            )
+            raise RuntimeError(
+                f"loaded COM differs at {0x0100 + mismatch:04X}: "
+                f"got {loaded[mismatch]:02X}, expected {UPLOAD_DATA[mismatch]:02X}"
+            )
+    entry_addr = read_word(0xECE6)
+    print(
+        f"[upload] finalized {len(UPLOAD_DATA)} bytes in {calls} chunk(s); "
+        f"entry={entry_addr:04X} state={state}"
+    )
+    if UPLOAD_NO_RUN:
+        return True
+    return run_uploaded_program(UPLOAD_NAME_ADDR, entry_addr)
+
 # The firmware's keyboard wait loops here until an IRQ has set the event bit.
 KBD_WAIT_START = 0x16C9
 KBD_WAIT_END = 0x16D2
@@ -724,6 +1023,8 @@ W = {
 hits = {k: 0 for k in W}
 last_pc = None
 stall = 0
+upload_status = "pending" if UPLOAD_PATH else "disabled"
+builder_trace_status = "pending" if TRACE_SESSION_BUILDER else "disabled"
 
 # expect / queue state
 from collections import deque
@@ -910,6 +1211,33 @@ while i < MAX_SLICES and stall < 8000:
     # check for Main Menu reached
     # For legacy queue, check qidx progress; for expect, check txt contains Main Menu
     fb_txt, _ = get_lcd_text()
+    if (
+        TRACE_SESSION_BUILDER
+        and builder_trace_status == "pending"
+        and "Main Menu" in fb_txt
+        and not pending_keys
+        and (not EXPECT_STEPS or expect_idx >= len(EXPECT_STEPS))
+    ):
+        print(f"[{i}] Main Menu reached; tracing session builder")
+        try:
+            builder_trace_status = (
+                "succeeded"
+                if trace_session_builder(TRACE_SESSION_BUILDER)
+                else "failed"
+            )
+        except Exception as exc:
+            builder_trace_status = "failed"
+            print(f"[session-builder] FAILED: {exc}", file=sys.stderr)
+        break
+    if UPLOAD_PATH and upload_status == "pending" and "Main Menu" in fb_txt:
+        if not pending_keys and (not EXPECT_STEPS or expect_idx >= len(EXPECT_STEPS)):
+            print(f"[{i}] Main Menu reached; starting host upload")
+            try:
+                upload_status = "succeeded" if perform_upload() else "failed"
+            except Exception as exc:
+                upload_status = "failed"
+                print(f"[upload] FAILED: {exc}", file=sys.stderr)
+            break
     if use_legacy_queue:
         if legacy_qidx >= len(legacy_queue) and legacy_qidx > 0:
             if "Main Menu" in fb_txt and i > 170000:
@@ -956,6 +1284,10 @@ print(
     {v: hits[k] for k, v in W.items()},
     f"legacy_qidx={legacy_qidx}/{len(legacy_queue) if use_legacy_queue else 0} expect_idx={expect_idx}/{len(EXPECT_STEPS)} pending={len(pending_keys)}",
 )
+if UPLOAD_PATH:
+    print(f"upload_status={upload_status}")
+if TRACE_SESSION_BUILDER:
+    print(f"builder_trace_status={builder_trace_status}")
 # final snapshot dumps (task-requested cells + any --dump-mem ranges)
 if SNAPSHOT_RANGES:
     print("\n--- final memory snapshot ---")
@@ -990,3 +1322,7 @@ if DUMP_BANK is not None:
     print(
         f"DUMPED bank {DUMP_BANK} -> {path} ({len(img)} bytes actual, RAM_KB={RAM_KB}K)"
     )
+if UPLOAD_PATH and upload_status != "succeeded":
+    sys.exit(1)
+if TRACE_SESSION_BUILDER and builder_trace_status != "succeeded":
+    sys.exit(1)
