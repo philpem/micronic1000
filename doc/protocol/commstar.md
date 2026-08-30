@@ -367,6 +367,39 @@ completion are accepted by the new service, and the UI reaches `Logged on` /
 `Receiving prog`. Do not inject such a frame while `FDDC=FE32`: it is then
 consumed by the preceding state-44 phase-2 operation.
 
+### Loader-stream boundary
+
+The accepted state-44 `OK` scaffold is not a Commstar program-data grammar.
+After the receive-first exchange, its bytes arrive at the Load/Run staging
+buffer and are consumed by `Program_ConsumeInputChunk` (`ROM01:0BAC`).
+
+**CONFIRMED:** the fresh parser requests 14 bytes at `ROM01:0D08-0D0B`.
+Its initial routing is:
+
+* fewer than 14 received bytes -> raw COM at `ROM01:0D3B`;
+* 14 or more with first little-endian word `0xC8C9` (`C9 C8`) -> DIP at
+  `ROM01:0DD7`;
+* 14 or more with any other first word -> raw COM.
+
+Thus `4F 4B A5 5A 3C C3` is a six-byte raw-COM prefix, not a DIP header and
+not a token the loader removes. A later byte cannot repair that stream into a
+DIP: a DIP experiment must restart with `C9 C8` at offset zero. A normal
+zero-status `Program_FinalizeInput` completion resumes this parser, so EOF
+after the six bytes follows the short-COM route; it is not necessary to pad
+the outstanding 14-byte request.
+
+**CONFIRMED:** each DIP block receives an eight-byte serialized prefix into a
+resident descriptor whose stride is 10 bytes (`ROM01:0E2D-0E43`). The first
+eight bytes are type, bank offset, destination address, and payload length;
+the purpose of the two remaining resident bytes is not established here.
+
+The later `0x1F9A (8090), "Line failure"` is likewise not a loader-format
+error. `ROM00:4E4E` dispatches the session result word:
+only values `0`, `4`, `6`, `8`, and `9` have explicit arms. Its default arm
+at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to the line-failure
+message routine. The upstream result value in the stalled harness remains
+**OPEN**.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:

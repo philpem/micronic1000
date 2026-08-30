@@ -2105,3 +2105,18 @@ current priority order; the concise lists above are authoritative.
   * **CONFIRMED:** a zero-payload receive-first exchange injected at `2F78`
     reaches the UI states `Logged on` and `Receiving prog`. Program data
     grammar remains OPEN; do not claim an interoperable upload.
+  * **CONFIRMED, cross-provider reviewed:** the accepted `OK A5 5A 3C C3`
+    scaffold becomes the initial Load/Run byte stream, not a Commstar payload
+    grammar. `Program_LoadDipOrCom` requests 14 bytes; fewer than 14 route to
+    raw COM, while a 14-byte-or-longer stream requires first word `0xC8C9`
+    (`C9 C8`) to select DIP. The observed `OK` prefix irrevocably selects COM;
+    restart at byte zero for a DIP experiment. A normal zero-status finalizer
+    can end the short stream without filling all 14 bytes.
+  * **CONFIRMED:** DIP block input reads an 8-byte serialized prefix into a
+    10-byte resident descriptor stride; do not call the resident descriptor an
+    8-byte object. The final two resident bytes are not assigned a new meaning
+    here.
+  * **CONFIRMED:** `0x1F9A (8090), "Line failure"` is the default arm of the
+    ROM00 session-result dispatcher at `4E4E`, not a loader parser error. It
+    applies when the session result is not one of `0`, `4`, `6`, `8`, or `9`;
+    the source of the stalled-harness result remains **OPEN**.

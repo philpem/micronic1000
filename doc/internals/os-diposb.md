@@ -375,7 +375,8 @@ TWO roles:
   final transfer `10C6 → ram:D7F0` (`RunLoadedProgram`).
 * **DIP vs COM**: magic `0xC8C9` (`C9 C8`) at `+0`, system ID `0`/`0x00E5`,
   14-byte header, max 5 blocks, type `0`=direct copy / `1`=RST 10h
-  trampoline expansion, 8→10-byte descriptor with additive checksum at `+8`
+  trampoline expansion, 8-byte serialized prefix in a 10-byte descriptor
+  slot with additive checksum at `+8`
   (`0957`/`09C2`, `0x2332` (9010), "Program corrupt." = mismatch). COM fallback when
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
   run-bank `0`, entry `0x0100`. See [Program formats](../manual/program-formats.md).
