@@ -2024,7 +2024,84 @@ current priority order; the concise lists above are authoritative.
       `757` named = 82.6 %); strictly additive over captured prior addresses,
       plus the one new finalizer.
     * **Integration tests 3/3:** `MICRONIC_RUN_EMULATOR_TESTS=1
-      analysis/venv/bin/python3 analysis/test_boot_upload.py` covers COM
-      Hello, DIP Hello, and max-size COM byte verification. `mkdocs build
-      --strict` passed; remaining complete Commstar provider/session
-      semantics stay **OPEN**.
+       analysis/venv/bin/python3 analysis/test_boot_upload.py` covers COM
+       Hello, DIP Hello, and max-size COM byte verification. `mkdocs build
+       --strict` passed; remaining complete Commstar provider/session
+       semantics stay **OPEN**.
+  - 2026-08-30 (parent-approved bounded form-4 service-33/link IRQ transaction — documentation maintenance, no new inference, reviewed findings):
+    * **Verified bounded harness:** `--trace-session-transaction 4` runs
+      builder form 4 through the actual service-33/link IRQ path, bypassing
+      only the already documented separate preflight as builder trace 4 does
+      (forcing `HL=0` at `5C22`). Mechanically valid firmware exercise only.
+    * **Service identities (CONFIRMED):** actual service-33 entry is
+      `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+      `Device_Service33Timeout`, not entry; `ROM00:2E85` is
+      `Device_Service33Complete`, callback registered through `ram:FDD2`
+      (`g_pSvc33Callback`). Successful type-4 processing falls through at
+      `30BC` into shared completion `30BD`; callback discards synthetic return
+      address `30DB` and returns to `31C1` in IRQ path. `59D0` is the initial
+      async-launch return before completion.
+    * **Exact successful transaction (CONFIRMED byte-verified):** initial
+      wire bytes `03 15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00
+      00 05` (first `03` is low-five-bit selector prelude); phase-1
+      controller queue `00 06 00 02 01 63 00 02 01` = one uncounted sync `00`,
+      six-byte logical type-2 frame `06 00 02 01 63 00`, then two excluded
+      copies `02 01`; exact response `03 06 00 03 01 7F 00` = prelude `03`
+      plus six-byte logical numeric type-3 frame `06 00 03 01 7F 00`;
+      phase-2 queue `00 06 00 04 01 63 00 04 01` with same
+      sync/logical/excluded shape; service receive object `E5BC-E5C2`
+      becomes `00 00 02 01 00 00 00` (seven bytes).
+    * **Peer scaffold (CONFIRMED):** must expose status bit4 while inbound
+      bytes remain (so IRQ poll `31B6` dispatches), bit0 while bytes remain,
+      and bit1 after drain. No electrical names assigned.
+    * **Zero-payload endpoint (CONFIRMED):** object reaches
+      `SessionRxStateMachine` `5A81` (via `5A63`
+      `Session_RxStateMachineThunk`), retains length `0` and numeric value
+      `2`, then takes `5B07 -> 5A13` to resume internal receive polling. It
+      does **NOT** return a final numeric result and does **NOT** relaunch
+      service 33. Requiring `5B57` would need an invented nonzero
+      object/UI outcome, so the regression correctly stops at one completed
+      zero-payload poll cycle.
+    * **Falsified assumptions corrected:** 12-byte phase-1 expectation
+      (actual is 9-byte queue with sync+logical+excluded shape), payload-
+      echo reply, `59D0` as post-completion value, and final numeric-result
+      via `5B57` — all refuted by bytes.
+    * **Excluded-byte placement clarified (CONFIRMED examined-session, OPEN
+      controller reason):** the two bytes excluded from `LinkBlockRx` `DE`
+      are copies of logical type (`+2`) and sequence (`+3`) in this
+      transaction (trailing `02 01`); controller-level reason remains **OPEN**.
+      Supersedes wholly-OPEN phrasing in prior docs.
+    * **Ghidra (guarded 919, saved):** `Lib_MaxS16` -> `Lib_MinS16` at
+      `ROM00:5944`; `UiDialogCommitPair` -> `Program_StreamChunkCallbacks`
+      at `ROM01:0741` (mechanics-only 128-byte callback-driven copy using
+      `D2E2` state); `UiDialogDrawBlock` -> `Program_BridgeHandlerTables`
+      at `ROM01:07EE` (mechanics-only seven-slot handler-table bridge into
+      `D0F0`); `5A63` thunk -> `Session_RxStateMachineThunk`; corrected
+      `5A81` plate. `Program_StreamChunkCallbacks`/`BridgeHandlerTables`
+      are mechanics-only — do not assert a service-33 provider link.
+      Inventory: ROM00 524/81/443, ROM01 208/67/141, ram 186/11/175,
+      EXTERNAL 1/0/1, total **919** / 159 unnamed / 760 named = **82.7 %**.
+      Increase from 916 is the recovered labelled state-machine body at
+      `5A81` plus the two new confirmed callback functions at `2E72` and
+      `2E85`; the `5A63` thunk already existed.
+    * **Tests (CONFIRMED):** `analysis/test_boot_upload.py` now 4 opt-in
+      emulator integrations (three prior loader tests plus the form-4
+      transport transaction); all 4 passed serially; `test_program.py`
+      35/35 and `test_proto.py` 3/3 passed.
+    * **Remaining OPEN:** complete command/payload meaning, broader meaning
+       of numeric types `2/3/4`, and whether a real peer naturally emits
+       these exact controller queues remain **OPEN** — mechanically valid
+       firmware exercise, not an interoperable Commstar specification.
+
+- 2026-08-30 (Commstar Load/Run receive sequencing):
+  * **CONFIRMED:** state-44 variable reply bytes belong in phase-1 type 2;
+    phase-2 type 4 is constrained by the fixed nine-byte `FE32` descriptor.
+    A too-long type-4 exhausts that descriptor and reports
+    `0x1F76 (8054), "Line failure"`.
+  * **CONFIRMED:** the state-44 `OK` classifier scaffold returns inner
+    `HL=8`, unwinds through `ram:D84C` to `ROM00:624B`, then starts a new
+    receive at `ROM00:2F78` (`FDDC=FE0E`). Injecting before that generation
+    transition is consumed by the prior `FE32` operation.
+  * **CONFIRMED:** a zero-payload receive-first exchange injected at `2F78`
+    reaches the UI states `Logged on` and `Receiving prog`. Program data
+    grammar remains OPEN; do not claim an interoperable upload.

@@ -105,5 +105,32 @@ class BootUploadTest(unittest.TestCase):
         self.assertIn("upload_status=succeeded", proc.stdout)
 
 
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class BootSessionTransactionTest(unittest.TestCase):
+    def test_form4_transport_transaction(self):
+        proc = subprocess.run(
+            [
+                str(PYTHON),
+                str(HARNESS),
+                "--no-lcd",
+                "--max-slices",
+                "100000",
+                "--trace-session-transaction",
+                "4",
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=180,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("numeric type-3 TX", proc.stdout)
+        self.assertIn("receive object E5BC-E5C2", proc.stdout)
+        self.assertIn("zero-payload poll cycle complete", proc.stdout)
+        self.assertIn("transaction_trace_status=succeeded", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

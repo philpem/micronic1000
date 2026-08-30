@@ -384,6 +384,25 @@ TWO roles:
   continuation exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not
   an input-provider pointer; the upstream physical/session provider remains
   **OPEN** (not identified).
+* **Service-33 identities (CONFIRMED):** actual service-33 entry is
+  `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+  `Device_Service33Timeout`, not the entry; `ROM00:2E85` is
+  `Device_Service33Complete`, the completion callback registered through
+  `ram:FDD2` (`g_pSvc33Callback`). Successful type-4 processing falls
+  through at `30BC` into shared completion `30BD`; the callback discards
+  the synthetic return address `30DB` and returns to `31C1` in the IRQ path.
+  `59D0` is the initial async-launch return before completion.
+* **Provider bridge mechanics (CONFIRMED, mechanics-only):**
+  `Program_StreamChunkCallbacks` (`ROM01:0741`, was `UiDialogCommitPair`) is
+  a 128-byte callback-driven copy using `D2E2` state; `Program_BridgeHandlerTables`
+  (`ROM01:07EE`, was `UiDialogDrawBlock`) is a seven-slot handler-table
+  bridge into `D0F0` (`g_apLoadRunHandlers`). Do not assert a service-33
+  provider link. `Lib_MinS16` (`ROM00:5944`, was `Lib_MaxS16`) is
+  mechanics-only. `Session_RxStateMachineThunk` (`ROM00:5A63`) is the thunk
+  into `SessionRxStateMachine` (`ROM00:5A81`, plate corrected); the
+  zero-payload object there retains length `0` and numeric value `2`, then
+  takes `5B07 -> 5A13` to resume internal receive polling — it does not
+  return a final numeric result and does not relaunch service 33.
 * `ram:ECDA` as maximum available entry-bank offset from selected-storage
   geometry is **LIKELY** only.
 * Session states (separate transport layer): `NOT-STARTED / DISCONNECTED /

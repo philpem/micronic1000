@@ -108,6 +108,13 @@ OPTIONS
   --trace-session-builder N
                            At Main Menu, execute session TX builder 4 or 5 up
                            to its service-33 call and dump the counted span.
+  --trace-session-transaction N
+                           Execute builder 4 through a mechanically valid
+                           type-2/type-4 service-33 transaction. Payload
+                           semantics remain open.
+  --trace-loadrun-source NAME
+                           Drive the Load/Run PLINTH or V24 ADAPTOR source
+                           form and capture its first session TX bytes.
 
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
@@ -171,6 +178,7 @@ sys.path.insert(0, "/home/philpem/Micronic-1000/analysis")
 import z80
 from micronic.rtc import RTC146818
 from micronic.program import validate
+from micronic import proto
 
 
 # ---------- CLI args ----------
@@ -271,6 +279,33 @@ TRACE_SESSION_BUILDER = (
 )
 if TRACE_SESSION_BUILDER not in (None, 4, 5):
     print("--trace-session-builder must be 4 or 5", file=sys.stderr)
+    sys.exit(2)
+TRACE_SESSION_TRANSACTION = (
+    int(get_arg("--trace-session-transaction"), 0)
+    if has_flag("--trace-session-transaction")
+    else None
+)
+if TRACE_SESSION_TRANSACTION not in (None, 4):
+    print("--trace-session-transaction currently supports only 4", file=sys.stderr)
+    sys.exit(2)
+TRACE_LOADRUN_SOURCE = (
+    get_arg("--trace-loadrun-source").lower()
+    if has_flag("--trace-loadrun-source")
+    else None
+)
+if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
+    print("--trace-loadrun-source must be plinth or v24", file=sys.stderr)
+    sys.exit(2)
+if sum(
+    option is not None
+    for option in (
+        UPLOAD_PATH,
+        TRACE_SESSION_BUILDER,
+        TRACE_SESSION_TRANSACTION,
+        TRACE_LOADRUN_SOURCE,
+    )
+) > 1:
+    print("select only one upload/session trace mode", file=sys.stderr)
     sys.exit(2)
 UPLOAD_MARKER = None
 if has_flag("--upload-marker"):
@@ -577,9 +612,28 @@ if has_flag("--expect-file"):
     else:
         print(f"[expect-file] not found: {fpath}", file=sys.stderr)
 
+if TRACE_LOADRUN_SOURCE:
+    if EXPECT_STEPS:
+        print("--trace-loadrun-source cannot be combined with --expect", file=sys.stderr)
+        sys.exit(2)
+    source_keys = b"\x06\x06\r" if TRACE_LOADRUN_SOURCE == "v24" else b"\x06\r"
+    EXPECT_STEPS.extend(
+        [
+            parse_expect_arg("To Continue Press>>:\\r"),
+            parse_expect_arg("Enter the,Workstation:\\r12345678\\r"),
+            parse_expect_arg("Main Menu:1"),
+            {"need": ["Name", "From"], "keys": source_keys, "raw": "loadrun source"},
+            parse_expect_arg("Log-on information:\\r"),
+        ]
+    )
+
 # legacy serial drive vs expect: if expect steps supplied, prefer them; otherwise legacy queue
 use_legacy_queue = (
-    DRIVE_SERIAL or UPLOAD_PATH is not None or TRACE_SESSION_BUILDER is not None
+    DRIVE_SERIAL
+    or UPLOAD_PATH is not None
+    or TRACE_SESSION_BUILDER is not None
+    or TRACE_SESSION_TRANSACTION is not None
+    or TRACE_LOADRUN_SOURCE is not None
 ) and len(EXPECT_STEPS) == 0
 
 print(f"[expect] steps={len(EXPECT_STEPS)} legacy_queue={use_legacy_queue}")
@@ -661,6 +715,11 @@ def read_word(addr):
 
 rtc = RTC146818()
 rtc_sel = 0x00
+session_link_peer = (
+    proto.LinkPeer(completion_bits=0x02)
+    if TRACE_SESSION_TRANSACTION or TRACE_LOADRUN_SOURCE
+    else None
+)
 
 # ---------- LCD helpers ----------
 FC06 = 0xFC06
@@ -721,7 +780,18 @@ def ich(*a):
     if p == 0x05:
         return 0x19
     if p == 0x4B:
-        return 0x80
+        if not session_link_peer:
+            return 0x80
+        if (
+            TRACE_LOADRUN_SOURCE
+            and loadrun_source_link_phase in (1, 4, 6, 8, 10, 12)
+            and session_link_peer.pending_rx == 1
+        ):
+            # LinkBlockRx consumes the final byte through its bit-2 extra INI
+            # path when a seven-byte logical frame fills its descriptor.
+            return 0x86
+        status = session_link_peer.firmware_status()
+        return status | (0x10 if session_link_peer.pending_rx else 0)
     if p == 0x28:
         return rtc.reg_read(rtc_sel) & 0xFF
     if p == 0x00:
@@ -729,7 +799,7 @@ def ich(*a):
     if p == 0x49:
         return 0x00
     if p == 0x4E:
-        return 0x00
+        return session_link_peer.read_rx() if session_link_peer else 0x00
     if p == 0x4C:
         return 0x00
     if p == 0x48:
@@ -778,6 +848,14 @@ def och(*a):
         rtc_sel = v & 0xFF
     elif p == 0x28:
         rtc.reg_write(rtc_sel, v)
+    elif session_link_peer and p == proto.PORT_TX:
+        session_link_peer.write_tx(v)
+    elif session_link_peer and p == proto.PORT_CTRL:
+        session_link_peer.write_control(v)
+    elif session_link_peer and p == proto.PORT_CMD:
+        session_link_peer.write_command(v)
+    elif session_link_peer and p == proto.PORT_PROBE:
+        session_link_peer.write_probe(v)
 
 
 mach = z80.Z80Machine()
@@ -805,12 +883,32 @@ UPLOAD_NAME_ADDR = 0xD600
 UPLOAD_BUFFER_ADDR = 0xE5C2
 
 
-def run_to_breakpoint(address, max_chunks=200000):
+def advance_rtc(elapsed_ticks):
+    """Advance the RTC phase by measured CPU ticks and deliver active INTs."""
+    global rtc_phase, rtc_phase_rate
+    rate_hz = round(rtc.periodic_hz)
+    if rate_hz != rtc_phase_rate:
+        rtc_phase = 0
+        rtc_phase_rate = rate_hz
+    rtc_phase += elapsed_ticks * rate_hz
+    while rate_hz and rtc_phase >= CPU_HZ:
+        rtc_phase -= CPU_HZ
+        rtc.push_tick()
+        if mem[0xFFA8] != 0:
+            try:
+                mach.on_handle_active_int()
+            except Exception:
+                pass
+
+
+def run_to_breakpoint(address, max_chunks=200000, drive_rtc=False):
     mach.set_breakpoint(address)
     try:
         for _ in range(max_chunks):
             mach.ticks_to_stop = SLICE_TICKS
             event = mach.run()
+            if drive_rtc:
+                advance_rtc(SLICE_TICKS - mach.ticks_to_stop)
             if (mach.pc & 0xFFFF) == address or event & mach._BREAKPOINT_HIT:
                 return True
     finally:
@@ -898,6 +996,130 @@ def trace_session_builder(form):
         f"FDD4={mem[0xFDD4]:02X}"
     )
     print(f"[session-builder] LINK_TXD bytes: {wire.hex()}")
+    return True
+
+
+def trace_session_transaction(form):
+    """Run one mechanics-only service-33 transaction through the session code."""
+    if form != 4 or session_link_peer is None:
+        raise RuntimeError("only session transaction form 4 is supported")
+
+    host_write_word(0xE6E6, 0)
+    prepare_call(0, 0x5BF7, (1, 6, 0x22, 0x33))
+    if not run_to_breakpoint(0x5C1F):
+        raise RuntimeError("transaction did not reach separate preflight")
+    mach.hl = 0
+    mach.pc = 0x5C22
+
+    if not run_to_breakpoint(0x59CD):
+        raise RuntimeError("transaction did not reach service-33 launch")
+    payload_count = read_word(0xE530)
+    rx_capacity = read_word(0xE5BA)
+    payload = bytes(mem[0xE534 : 0xE534 + payload_count])
+    expected_payload = bytes.fromhex("060000008000004c00002233000005")
+    if payload_count != 15 or payload != expected_payload or rx_capacity != 6:
+        raise RuntimeError(
+            "unexpected service-33 objects: "
+            f"tx_count={payload_count} rx_capacity={rx_capacity} "
+            f"payload={payload.hex()}"
+        )
+    print(
+        "[session-transaction] service33 "
+        f"selector={read_word(0xE52E) & 0xFF:02X} "
+        f"tx_count={payload_count} rx_capacity={rx_capacity}"
+    )
+
+    session_link_peer.drain_tx()
+    if not run_to_breakpoint(0x2E02):
+        raise RuntimeError("transaction did not enter service 33")
+    if not run_to_breakpoint(0x3277) or not run_to_breakpoint(0x3377):
+        raise RuntimeError("initial logical frame did not complete")
+    initial_wire = session_link_peer.drain_tx()
+    expected_initial = bytes.fromhex(
+        "03150001017f00060000008000004c00002233000005"
+    )
+    if initial_wire != expected_initial:
+        raise RuntimeError(f"unexpected initial wire bytes: {initial_wire.hex()}")
+    print(f"[session-transaction] initial TX: {initial_wire.hex()}")
+
+    link_id = mem[0xFDD4]
+    sequence_addr = 0xFE43 + (link_id & 0x3F)
+    sequence = mem[sequence_addr]
+    phase1 = bytes(
+        [
+            0,
+            6,
+            0,
+            2,
+            sequence,
+            link_id,
+            0,
+            2,
+            sequence,
+        ]
+    )
+    session_link_peer.feed_rx(phase1)
+    print(f"[session-transaction] phase1 RX queue: {phase1.hex()}")
+    if not run_to_breakpoint(0x31B6, drive_rtc=True):
+        raise RuntimeError(
+            "RX poll event not reached: "
+            f"pending={session_link_peer.pending_rx} state={mem[0xFDD5]:02X}"
+        )
+    if not run_to_breakpoint(0x302C, drive_rtc=True):
+        raise RuntimeError(
+            "type-2 branch not reached: "
+            f"pending={session_link_peer.pending_rx} state={mem[0xFDD5]:02X}"
+        )
+    if session_link_peer.pending_rx:
+        raise RuntimeError("phase1 queue was not fully consumed")
+
+    if not run_to_breakpoint(0x3277, drive_rtc=True) or not run_to_breakpoint(
+        0x3377, drive_rtc=True
+    ):
+        raise RuntimeError("numeric type-3 reply did not complete")
+    reply_wire = session_link_peer.drain_tx()
+    expected_reply = bytes([link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0])
+    if reply_wire != expected_reply:
+        raise RuntimeError(f"unexpected numeric type-3 reply: {reply_wire.hex()}")
+    print(f"[session-transaction] numeric type-3 TX: {reply_wire.hex()}")
+
+    phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+    session_link_peer.feed_rx(phase2)
+    print(f"[session-transaction] phase2 RX queue: {phase2.hex()}")
+    if not run_to_breakpoint(0x3084, drive_rtc=True):
+        raise RuntimeError("type-4 processing was not reached")
+    if not run_to_breakpoint(0x31AB, drive_rtc=True):
+        raise RuntimeError("type-4 sequence was not accepted")
+    if not run_to_breakpoint(0x2E85, drive_rtc=True):
+        raise RuntimeError("service-33 completion callback was not reached")
+    if not run_to_breakpoint(0x31C1, drive_rtc=True):
+        raise RuntimeError("completion callback did not return to RX poll")
+    if session_link_peer.pending_rx:
+        raise RuntimeError("phase2 queue was not fully consumed")
+
+    received = bytes(mem[0xE5BC:0xE5C3])
+    if received != bytes([0, 0, 2, sequence, 0, 0, 0]):
+        raise RuntimeError(f"unexpected receive object: {received.hex()}")
+    print(f"[session-transaction] receive object E5BC-E5C2: {received.hex()}")
+
+    if not run_to_breakpoint(0x5A81, drive_rtc=True):
+        raise RuntimeError(
+            "session RX state machine was not entered: "
+            f"E644-E64F={bytes(mem[0xE644:0xE650]).hex()}"
+        )
+    if not run_to_breakpoint(0x5B07, drive_rtc=True):
+        raise RuntimeError("zero-payload status poll did not take its loop edge")
+    if read_word(0xE644) != 0 or read_word(0xE646) != 2:
+        raise RuntimeError(
+            "unexpected zero-payload state: "
+            f"length={read_word(0xE644):04X} numeric={read_word(0xE646):04X}"
+        )
+    if not run_to_breakpoint(0x5A13, drive_rtc=True):
+        raise RuntimeError("zero-payload cycle did not resume internal polling")
+    print(
+        "[session-transaction] zero-payload poll cycle complete: "
+        "length=0000 retained_numeric=0002"
+    )
     return True
 
 
@@ -1025,6 +1247,18 @@ last_pc = None
 stall = 0
 upload_status = "pending" if UPLOAD_PATH else "disabled"
 builder_trace_status = "pending" if TRACE_SESSION_BUILDER else "disabled"
+transaction_trace_status = (
+    "pending" if TRACE_SESSION_TRANSACTION else "disabled"
+)
+loadrun_source_trace_status = "pending" if TRACE_LOADRUN_SOURCE else "disabled"
+loadrun_source_link_phase = 0
+loadrun_source_initial_tx_count = 0
+loadrun_source_breakpoint = None
+loadrun_source_transaction = 0
+loadrun_source_next_request_offset = 0
+loadrun_source_second_tx_count = 0
+loadrun_source_finalizer_seen = False
+loadrun_source_state44_complete = False
 
 # expect / queue state
 from collections import deque
@@ -1069,24 +1303,79 @@ while i < MAX_SLICES and stall < 8000:
         print("run err", type(e).__name__, e)
         break
     pc = mach.pc & 0xFFFF
+    if TRACE_LOADRUN_SOURCE and loadrun_source_breakpoint == pc:
+        print(
+            f"[loadrun-source] breakpoint {pc:04X} "
+            f"FDD5={mem[0xFDD5]:02X} FDDC={read_word(0xFDDC):04X} "
+            f"AF={mach.af:04X} DE={mach.de:04X} HL={mach.hl:04X} "
+            f"E5BA={bytes(mem[0xE5BA:0xE5C4]).hex()} "
+            f"FE32={bytes(mem[0xFE32:0xFE3A]).hex()} "
+            f"FE3A={bytes(mem[0xFE3A:0xFE43]).hex()}"
+        )
+        mach.clear_breakpoint(pc)
+        if pc == 0x1002:
+            loadrun_source_finalizer_seen = True
+        loadrun_source_breakpoint = {
+            0x31BE: 0x2FC4,
+            0x2FC4: 0x3002,
+            0x3002: 0x3084,
+            0x3084: 0x2E85,
+            0x5A81: 0x5B57,
+            0x5A04: 0x5A2D,
+            0x5A2D: 0x5A3B,
+            0x5A3B: 0x5A57,
+            0x5A57: 0x5B18,
+            0x5B18: 0x5B57,
+            0x5B57: 0x4D0E,
+            0x4D0E: 0x620B,
+            0x624B: 0x58D9,
+            0x58D9: 0x2F78,
+            0x3D71: 0x3DF5,
+            0x3DF5: 0x3EAD,
+            0x3EAD: 0x4FBC,
+            0x4FBC: 0x5019,
+            0x5019: 0x4FE5,
+            0x4FE5: 0x5030,
+        }.get(pc)
+        if pc == 0x2E85 and loadrun_source_transaction == 0:
+            loadrun_source_transaction = 1
+            loadrun_source_link_phase = 3
+        elif pc == 0x2E85 and loadrun_source_link_phase == 7:
+            loadrun_source_breakpoint = 0x48BE
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x2E85 and loadrun_source_link_phase == 9:
+            loadrun_source_breakpoint = 0x5A81
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x2E85 and loadrun_source_link_phase == 11:
+            loadrun_source_breakpoint = 0x5A04
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x2E85 and loadrun_source_link_phase == 13:
+            loadrun_source_breakpoint = 0x5A81
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x2E85 and loadrun_source_link_phase == 15:
+            loadrun_source_breakpoint = 0x5A81
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x5B57 and loadrun_source_link_phase == 13:
+            if mach.hl == 8:
+                loadrun_source_state44_complete = True
+            loadrun_source_breakpoint = 0x624B
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x5B57 and loadrun_source_link_phase == 15:
+            loadrun_source_breakpoint = 0x624B
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        elif pc == 0x624B and loadrun_source_link_phase == 13:
+            pass
+        elif pc == 0x2F78 and loadrun_source_link_phase == 13:
+            loadrun_source_breakpoint = 0xEE2C
+            mach.set_breakpoint(loadrun_source_breakpoint)
+        if loadrun_source_breakpoint is not None:
+            mach.set_breakpoint(loadrun_source_breakpoint)
 
     # ticks_to_stop is the unconsumed part of the requested execution budget.
     # Use the measured count so a future breakpoint/watchpoint cannot make the
     # RTC run faster than the emulated CPU.
     elapsed_ticks = SLICE_TICKS - mach.ticks_to_stop
-    rate_hz = round(rtc.periodic_hz)
-    if rate_hz != rtc_phase_rate:
-        rtc_phase = 0
-        rtc_phase_rate = rate_hz
-    rtc_phase += elapsed_ticks * rate_hz
-    while rate_hz and rtc_phase >= CPU_HZ:
-        rtc_phase -= CPU_HZ
-        rtc.push_tick()
-        if mem[0xFFA8] != 0:
-            try:
-                mach.on_handle_active_int()
-            except:
-                pass
+    advance_rtc(elapsed_ticks)
 
     # ---------- LCD poll & render ----------
     if LCD_ENABLED:
@@ -1211,6 +1500,375 @@ while i < MAX_SLICES and stall < 8000:
     # check for Main Menu reached
     # For legacy queue, check qidx progress; for expect, check txt contains Main Menu
     fb_txt, _ = get_lcd_text()
+    if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status == "pending":
+        if loadrun_source_link_phase == 0 and session_link_peer.pending_tx >= 13:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            phase1 = bytes(
+                [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+            )
+            loadrun_source_initial_tx_count = session_link_peer.pending_tx
+            session_link_peer.feed_rx(phase1)
+            loadrun_source_link_phase = 1
+            print(f"[loadrun-source] phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 1:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_initial_tx_count:]
+                == expected_reply
+            ):
+                # Type 4 completes the type-2 request; its response carries
+                # no payload in this mechanically scoped trace.
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 2
+                loadrun_source_next_request_offset = session_link_peer.pending_tx
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 3:
+            request = session_link_peer.peek_tx()[loadrun_source_next_request_offset:]
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    if request[3] != 1:
+                        raise RuntimeError(
+                            "unexpected second source request type "
+                            f"{request[3]:02X}"
+                        )
+                    phase1 = bytes(
+                        [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+                    )
+                    loadrun_source_second_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_next_request_offset += request_length
+                    loadrun_source_link_phase = 4
+                    print(
+                        f"[loadrun-source] second TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] second phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 4:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 5
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] second phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 5:
+            request = session_link_peer.peek_tx()[loadrun_source_next_request_offset:]
+            # The prior type-2 result is acknowledged by a controller type-3
+            # frame before the next type-1 request is emitted.
+            if len(request) >= 7 and request[0] == 3 and request[3] == 3:
+                loadrun_source_next_request_offset += 7
+                request = request[7:]
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    if request[3] != 1:
+                        raise RuntimeError(
+                            "unexpected third source request type "
+                            f"{request[3]:02X}"
+                        )
+                    phase1 = bytes(
+                        [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+                    )
+                    loadrun_source_second_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_next_request_offset += request_length
+                    loadrun_source_link_phase = 6
+                    loadrun_source_breakpoint = 0x5DFD
+                    mach.set_breakpoint(loadrun_source_breakpoint)
+                    print(
+                        f"[loadrun-source] third TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] third phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 6:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 7
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] third phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 7:
+            request = session_link_peer.peek_tx()[loadrun_source_next_request_offset:]
+            if len(request) >= 7 and request[0] == 3 and request[3] == 3:
+                loadrun_source_next_request_offset += 7
+                request = request[7:]
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    if request[3] != 1 or request[7] != 0x64:
+                        raise RuntimeError(
+                            "unexpected state-64 source request "
+                            f"{request[:request_length].hex()}"
+                        )
+                    phase1 = bytes(
+                        [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+                    )
+                    loadrun_source_second_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_next_request_offset += request_length
+                    loadrun_source_link_phase = 8
+                    print(
+                        f"[loadrun-source] state64 TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] state64 phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 8:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 9
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] state64 phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 9:
+            request = session_link_peer.peek_tx()[loadrun_source_next_request_offset:]
+            if len(request) >= 7 and request[0] == 3 and request[3] == 3:
+                loadrun_source_next_request_offset += 7
+                request = request[7:]
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    if request[3] != 1 or request[7] != 0x45:
+                        raise RuntimeError(
+                            "unexpected state-45 source request "
+                            f"{request[:request_length].hex()}"
+                        )
+                    phase1 = bytes(
+                        [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+                    )
+                    loadrun_source_second_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_next_request_offset += request_length
+                    loadrun_source_link_phase = 10
+                    print(
+                        f"[loadrun-source] state45 TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] state45 phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 10:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 11
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] state45 phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 11:
+            request = session_link_peer.peek_tx()[loadrun_source_next_request_offset:]
+            if len(request) >= 7 and request[0] == 3 and request[3] == 3:
+                loadrun_source_next_request_offset += 7
+                request = request[7:]
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    if request[3] != 1 or request[7] != 0x44:
+                        raise RuntimeError(
+                            "unexpected state-44 source request "
+                            f"{request[:request_length].hex()}"
+                        )
+                    # Phase 1 has the variable-length receive descriptor.
+                    # The state-44 classifier reads this completed envelope
+                    # after the fixed-size type-4 completion.
+                    phase1 = bytes(
+                        [
+                            0, 20, 0, 2, sequence, link_id, 0,
+                            0, 0, 1, 0, 6, 0,
+                            0x4F, 0x4B, 0xA5, 0x5A, 0x3C, 0xC3,
+                            0, 0,
+                            2, sequence,
+                        ]
+                    )
+                    loadrun_source_second_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_link_phase = 12
+                    print(
+                        f"[loadrun-source] state44 TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] state44 phase1 RX={phase1.hex()}")
+        elif loadrun_source_link_phase == 12:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(phase2)
+                loadrun_source_link_phase = 13
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] state44 phase2 RX={phase2.hex()}")
+        elif loadrun_source_link_phase == 13:
+            if (
+                loadrun_source_state44_complete
+                and pc == 0x2F78
+                and session_link_peer.pending_rx == 0
+                and read_word(0xFDC5) == 0xE530
+                and read_word(0xFDC7) == 0xE5BA
+                and read_word(0xFDD2) == 0x2E85
+                and read_word(0xFDDC) == 0xFE0E
+                and mem[0xFDD5] == 1
+            ):
+                link_id = mem[0xFDD4]
+                sequence = mem[0xFE43 + (link_id & 0x3F)]
+                peer_initiated = bytes(
+                    [
+                        0, 20, 0, 2, sequence, link_id, 0,
+                        0, 0, 1, 0, 6, 0,
+                        0x4F, 0x4B, 0xA5, 0x5A, 0x3C, 0xC3,
+                        0, 0,
+                        2, sequence,
+                    ]
+                )
+                loadrun_source_second_tx_count = session_link_peer.pending_tx
+                session_link_peer.feed_rx(peer_initiated)
+                loadrun_source_link_phase = 14
+                print(f"[loadrun-source] receive-first RX={peer_initiated.hex()}")
+        elif loadrun_source_link_phase == 14:
+            link_id = mem[0xFDD4]
+            sequence = mem[0xFE43 + (link_id & 0x3F)]
+            expected_reply = bytes(
+                [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
+            )
+            if (
+                session_link_peer.pending_rx == 0
+                and mem[0xFDD5] == 3
+                and read_word(0xFDDC) == 0xFE32
+                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
+                == expected_reply
+            ):
+                completion = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
+                session_link_peer.feed_rx(completion)
+                loadrun_source_link_phase = 15
+                loadrun_source_breakpoint = 0x31BE
+                mach.set_breakpoint(loadrun_source_breakpoint)
+                print(f"[loadrun-source] receive-first completion={completion.hex()}")
+    if (
+        TRACE_LOADRUN_SOURCE
+        and loadrun_source_trace_status == "pending"
+        and expect_idx >= len(EXPECT_STEPS)
+        and not pending_keys
+        and "*** ERROR ***" in fb_txt
+        and loadrun_source_finalizer_seen
+    ):
+        source_table = read_word(0xD2CB)
+        wire = session_link_peer.drain_tx()
+        expected_table = 0xD121 if TRACE_LOADRUN_SOURCE == "plinth" else 0xD12F
+        if source_table != expected_table:
+            loadrun_source_trace_status = "failed"
+            print(
+                f"[loadrun-source] wrong table {source_table:04X}, "
+                f"expected {expected_table:04X}",
+                file=sys.stderr,
+            )
+        elif not wire:
+            loadrun_source_trace_status = "failed"
+            print("[loadrun-source] no session TX captured", file=sys.stderr)
+        else:
+            loadrun_source_trace_status = "captured"
+            first_frame = wire[:13]
+            repeats = len(wire) // len(first_frame)
+            repeated = (
+                repeats > 1
+                and len(wire) % len(first_frame) == 0
+                and wire == first_frame * repeats
+            )
+            wire_text = (
+                f"{first_frame.hex()} x{repeats}" if repeated else wire.hex()
+            )
+            print(
+                f"[loadrun-source] {TRACE_LOADRUN_SOURCE} "
+                f"EC7E={mem[0xEC7E]:02X} table={source_table:04X} "
+                f"phase={loadrun_source_link_phase} TX={wire_text}"
+            )
+        break
+    if (
+        TRACE_SESSION_TRANSACTION
+        and transaction_trace_status == "pending"
+        and "Main Menu" in fb_txt
+        and not pending_keys
+        and (not EXPECT_STEPS or expect_idx >= len(EXPECT_STEPS))
+    ):
+        print(f"[{i}] Main Menu reached; tracing session transaction")
+        try:
+            transaction_trace_status = (
+                "succeeded"
+                if trace_session_transaction(TRACE_SESSION_TRANSACTION)
+                else "failed"
+            )
+        except Exception as exc:
+            transaction_trace_status = "failed"
+            print(f"[session-transaction] FAILED: {exc}", file=sys.stderr)
+        break
     if (
         TRACE_SESSION_BUILDER
         and builder_trace_status == "pending"
@@ -1288,6 +1946,10 @@ if UPLOAD_PATH:
     print(f"upload_status={upload_status}")
 if TRACE_SESSION_BUILDER:
     print(f"builder_trace_status={builder_trace_status}")
+if TRACE_SESSION_TRANSACTION:
+    print(f"transaction_trace_status={transaction_trace_status}")
+if TRACE_LOADRUN_SOURCE:
+    print(f"loadrun_source_trace_status={loadrun_source_trace_status}")
 # final snapshot dumps (task-requested cells + any --dump-mem ranges)
 if SNAPSHOT_RANGES:
     print("\n--- final memory snapshot ---")
@@ -1325,4 +1987,8 @@ if DUMP_BANK is not None:
 if UPLOAD_PATH and upload_status != "succeeded":
     sys.exit(1)
 if TRACE_SESSION_BUILDER and builder_trace_status != "succeeded":
+    sys.exit(1)
+if TRACE_SESSION_TRANSACTION and transaction_trace_status != "succeeded":
+    sys.exit(1)
+if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status != "captured":
     sys.exit(1)

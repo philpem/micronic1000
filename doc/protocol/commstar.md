@@ -157,7 +157,12 @@ local device-route lookup.
 `LinkBlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the
 descriptor payload; the prelude is excluded from the descriptor byte
 count. `LinkBlockRx` on success returns `DE = controller bytes consumed
-minus 2`; the identities of those two excluded bytes are **OPEN**.
+minus 2`; in the examined bounded session the two excluded bytes are
+**CONFIRMED** as copies of the logical frame's type (`+2`) and sequence
+(`+3`) — observed as the trailing `02 01` after the six-byte logical
+frame `06 00 02 01 63 00` in the form-4 controller queues
+(`00 06 00 02 01 63 00 02 01` and `00 06 00 04 01 63 00 04 01`);
+the controller-level reason for the exclusion remains **OPEN**.
 
 Descriptor lists (byte-verified, structurally mutable where noted): RX
 `FE0E` = `{6 -> FDE4, 3 -> FE38, 0}` (mutable); RX `FE32` =
@@ -269,6 +274,98 @@ remain **OPEN**.
 These traces establish framing mechanics only. The meaning of any payload
 constant or field, and the complete RECORD/BLOCK/C-COMMAND session
 semantics, remain **OPEN**.
+
+## Bounded real transaction — form 4 through service 33 / link IRQ path (CONFIRMED mechanics only)
+
+A bounded harness option `--trace-session-transaction 4` runs builder
+form 4 through the **actual service-33/link IRQ path**, bypassing only
+the already documented separate preflight as builder trace 4 does
+(forcing `HL=0` at `5C22`). It is a mechanically valid firmware exercise,
+not an interoperable Commstar specification.
+
+**Service identities (CONFIRMED):** actual service-33 entry is
+`ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+`Device_Service33Timeout`, not the entry; `ROM00:2E85` is
+`Device_Service33Complete`, the completion callback registered through
+`ram:FDD2` (`g_pSvc33Callback`). Successful type-4 processing falls
+through at `30BC` into shared completion `30BD`; the callback discards the
+synthetic return address `30DB` and returns to `31C1` in the IRQ path. `59D0` is
+the initial async-launch return before completion.
+
+**Exact successful transaction (CONFIRMED byte-verified):**
+
+* Initial wire bytes captured from `LINK_TXD`: `03 15 00 01 01 7F 00 06 00
+  00 00 80 00 00 4C 00 00 22 33 00 00 05` — first `03` is the low-five-bit
+  selector prelude (`link_id & 1Fh`), the remainder is the logical frame
+  `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05` (type 1).
+
+* Phase-1 controller queue presented to `LinkBlockRx`: `00 06 00 02 01 63
+  00 02 01` = one uncounted sync `00`, six-byte logical numeric type-2
+  frame `06 00 02 01 63 00`, then two excluded copies `02 01` (type and
+  sequence copies; controller-level reason remains **OPEN**).
+
+* Exact response bytes captured: `03 06 00 03 01 7F 00` = prelude `03` plus
+  six-byte logical numeric type-3 frame `06 00 03 01 7F 00`.
+
+* Phase-2 controller queue: `00 06 00 04 01 63 00 04 01` with the same
+  sync/logical/excluded shape (logical frame `06 00 04 01 63 00`).
+
+* Service receive object at `E5BC-E5C2` after phase 2 becomes `00 00 02 01
+  00 00 00` (seven bytes; first bytes retain the zero-payload mapping).
+
+**Peer scaffold requirements (CONFIRMED):** the harness peer must expose
+`LINK_STATUS` bit4 while inbound bytes remain (so IRQ poll `31B6`
+dispatches), bit0 while bytes remain, and bit1 after drain. Do not assign
+electrical names to these bits.
+
+**Zero-payload endpoint (CONFIRMED):** the zero-payload object reaches
+`SessionRxStateMachine` (`ROM00:5A81`, via thunk `5A63`
+`Session_RxStateMachineThunk`), retains length `0` and numeric value `2`,
+then takes `5B07 -> 5A13` to resume internal receive polling. It does
+**NOT** return a final numeric result and does **NOT** relaunch service
+33. Requiring `5B57` would need an invented nonzero object/UI outcome, so
+the regression correctly stops at one completed zero-payload poll cycle.
+
+**Scope warning:** complete command/payload meaning, the broader meaning
+of numeric types `2/3/4`, and whether a real peer naturally emits these
+exact controller queues remain **OPEN**. This section documents exact bytes
+and state transitions only.
+
+## Load/Run receive sequencing (CONFIRMED mechanics only)
+
+The software-only PLINTH Load/Run trace reaches the screen states
+`Logged on` then `Receiving prog` using real service-33/IRQ transport.
+This establishes controller sequencing and coroutine ownership, not an
+interoperable program-transfer grammar.
+
+State `44h` uses a variable phase-1 receive descriptor (`FDDC=FE0E`) and a
+fixed phase-2 descriptor (`FDDC=FE32`). The latter is exactly one
+nine-byte descriptor at `FE3A`, followed by its terminator. Therefore a
+variable payload must be supplied in phase-1 type 2; a six-byte type-4
+completion is the only byte-verified phase-2 shape. A 16-byte type-4 frame
+exhausts `FE32` and returns transport result `EDh`, later displayed as
+`0x1F76 (8054), "Line failure"`.
+
+For the examined state-44 path, this phase-1 payload is received at
+`E5BE`; `Device_Service33Complete` (`ROM00:2E85`) writes only its completed
+payload length to `E5BC-E5BD`. A ten-byte phase-1 payload
+`00 00 01 00 02 00 4F 4B 00 00`, followed by the normal six-byte type-4
+completion, yields `DE=000A` at the completion callback and `HL=0008` from
+`SessionRxStateMachine`. The nested object is then copied intact into a
+packed caller buffer and classified by its first two bytes: `OK` -> 0,
+`NO` -> 1, `DM` -> 2, otherwise 3 -> `0x1F75 (8053), "Invalid reply"`.
+The classifier does not strip `OK`; trailing bytes are not compared but
+remain in the copied object. The peer-level meanings of these tokens remain
+**OPEN**.
+
+The result first unwinds through the RAM coroutine epilogue at `D84C` to
+`ROM00:624B`; it is not a direct return to the outer result dispatcher.
+The next service transaction is stale-owner-safe only after `ROM00:2F78`,
+where `FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`.
+At that point a zero-payload peer-initiated type-2 frame and normal type-4
+completion are accepted by the new service, and the UI reaches `Logged on` /
+`Receiving prog`. Do not inject such a frame while `FDDC=FE32`: it is then
+consumed by the preceding state-44 phase-2 operation.
 
 ## What is not specified yet
 

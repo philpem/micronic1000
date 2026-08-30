@@ -61,7 +61,12 @@ ROM-visible buffer layout (CONFIRMED):
   against the caller-supplied logical count and checks `+4` against
   the active link id; it does not inspect `+5`.
 * Successful `LinkBlockRx` returns `DE=controller bytes consumed
-  minus 2`; the identities of those two bytes are **OPEN**.
+   minus 2`; in the examined bounded session the two excluded bytes are
+   **CONFIRMED** as copies of the logical frame's type (`+2`) and
+   sequence (`+3`) — observed as the trailing `02 01` after the
+   six-byte logical frame `06 00 02 01 63 00` in the form-4 queues
+   (`00 06 00 02 01 63 00 02 01` and `00 06 00 04 01 63 00 04 01`);
+   the controller-level reason for the exclusion remains **OPEN**.
 * The examined ROM transport/header path has no checksum; integrity
   inside unresolved loaded-session payloads remains **OPEN**.
 
@@ -188,8 +193,21 @@ emulate a Commstar peer. Options: `--upload-name NAME` (input basename),
 optional `--upload-marker ADDR:VAL` (hex), `--upload-no-run` (stop
 after finalize/verify). `--trace-session-builder 4|5` runs the bounded
 synthetic builder traces described in `doc/protocol/commstar.md`.
+`--trace-session-transaction 4` runs builder form 4 through the actual
+service-33/link IRQ path (bypassing only the already documented separate
+preflight as builder trace 4 does); it is a mechanically valid firmware
+exercise only — complete command/payload meaning and peer realism remain
+**OPEN**. Its peer scaffold must expose status bit4 while inbound bytes
+remain (so IRQ poll `31B6` dispatches), bit0 while bytes remain, and bit1
+after drain; do not assign electrical names to these bits.
 
 Opt-in integration: `MICRONIC_RUN_EMULATOR_TESTS=1
-analysis/venv/bin/python3 analysis/test_boot_upload.py` (3 tests: COM
-Hello, DIP Hello, max-size COM byte verification). Run one emulator
-process at a time under `timeout` (memory guidance in `analysis/README.md`).
+analysis/venv/bin/python3 analysis/test_boot_upload.py` (4 tests: COM
+Hello, DIP Hello, max-size COM byte verification, and the bounded form-4
+service-33/link IRQ transport transaction — exact wire bytes, controller
+queues, type-3 reply, and zero-payload receive object; mechanically valid
+only, payload/command semantics and peer realism remain OPEN). All 4 passed
+serially; `test_program.py` 35/35 and `test_proto.py` 3/3 also passed. Run one
+emulator process at a time under `timeout` (memory guidance in
+`analysis/README.md`). Bounded transaction example:
+`analysis/venv/bin/python3 analysis/boot_hw.py --trace-session-transaction 4`.
