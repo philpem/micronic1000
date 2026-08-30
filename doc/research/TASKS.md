@@ -2120,3 +2120,11 @@ current priority order; the concise lists above are authoritative.
     ROM00 session-result dispatcher at `4E4E`, not a loader parser error. It
     applies when the session result is not one of `0`, `4`, `6`, `8`, or `9`;
     the source of the stalled-harness result remains **OPEN**.
+  * **CONFIRMED, cross-provider reviewed:** the later program receive is a
+    distinct state-44 caller: `ROM00:4F5A` enters mode `0x000A` and calls
+    `Session_ReadStreamChunk` (`3E6A`) with a 128-byte maximum. Its chain
+    `3E6A -> 3DCB -> 3D59 -> 58B8 -> 620B` validates outer metadata but copies
+    `E5C4` inner payload bytes unchanged; `3E6A` wraps them only as
+    `{u8 count, payload}`. Thus a later raw payload may begin `C9 C8` for DIP
+    without an `OK` prefix. The peer envelope that reaches this caller remains
+    **OPEN**.

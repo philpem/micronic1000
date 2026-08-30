@@ -400,6 +400,27 @@ at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to the line-failure
 message routine. The upstream result value in the stalled harness remains
 **OPEN**.
 
+### Program-data receive path
+
+The control object and program bytes use separate state-44 call paths.
+`OK`/`NO`/`DM` classification applies only to the earlier control caller;
+it does not constrain the inner bytes of a later program-data receive.
+
+**CONFIRMED, cross-provider reviewed:** `ROM00:4F5A` begins program receive
+mode `0x000A` and calls `Session_ReadStreamChunk` (`ROM00:3E6A`) at `4FB9`
+with a maximum of 128 bytes. The path `3E6A -> 3DCB -> 3D59 -> 58B8 -> 620B`
+validates state-44 outer metadata but does not inspect `E5C4`, the inner
+payload start. On success it copies payload bytes from `E5C4` unchanged into
+the stream buffer. `Session_ReadStreamChunk` returns a caller-facing packed
+object `{u8 count, payload[count]}`; it adds the count but does not alter the
+payload.
+
+A program-data object may therefore start its inner payload with `C9 C8`,
+which reaches the loader stream as its first two data bytes. This is the
+correct location for a DIP header experiment; putting `C9 C8` in the earlier
+classified control object is not. The exact peer command/envelope that causes
+this later state-44 receive remains **OPEN**.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:
