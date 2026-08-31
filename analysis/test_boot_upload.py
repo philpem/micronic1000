@@ -235,6 +235,7 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertIn("[synthetic-workflow] scan_records=1", proc.stdout)
         self.assertIn("payload=28 marker=1 offset=28", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
+        self.assertIn("[synthetic-loadrun] execution entered bank 2 at 0100", proc.stdout)
 
 
 if __name__ == "__main__":

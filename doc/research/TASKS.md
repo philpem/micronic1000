@@ -2183,9 +2183,10 @@ current priority order; the concise lists above are authoritative.
     emitted by earlier connection-result dispatchers, not that callback.
   * **Synthetic workflow manifest:** `--synthetic-workflow FILE` resolves a
     `SyntheticWorkflow` PLINTH image relative to its JSON manifest and feeds
-    the existing tested path. It reports opaque application policy but does
-    not serialize scans, execute `run_after_load`, or signal safe removal.
-    V24 manifests are intentionally rejected pending a tested V24 completion.
+    the existing tested path. `run_after_load` verifies the requested/loaded
+    names and invokes ROM `Program_RunByName` after state 3; scan serialization,
+    feedback, and safe removal remain adapter policy. V24 manifests are
+    intentionally rejected pending a tested V24 completion.
   * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
     inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
     refill after the delivered payload. Marker `0` preserves result 0 and

@@ -447,9 +447,12 @@ Commstar EOF command or a user-facing safe-removal acknowledgement.
 `--synthetic-workflow FILE` reads a `SyntheticWorkflow` JSON manifest, resolves
 its image relative to the manifest, and invokes the same tested PLINTH path.
 It reports the manifest's scan-record count, run intent, feedback, and
-safe-removal policy, but does not serialize records, run the image, or emit a
-safe-removal frame. Those actions remain adapter policy. The manifest wrapper
-currently rejects V24 because that source has no tested synthetic completion.
+safe-removal policy, but does not serialize records or emit a safe-removal
+frame. When `run_after_load` is true, it verifies the requested program name
+against the loaded name and invokes the real `Program_RunByName` path after
+the loader reaches state 3. The loaded program's transfer does not return, so
+feedback and safe removal remain adapter policy. The manifest wrapper currently
+rejects V24 because that source has no tested synthetic completion.
 
 ### V24 selection
 

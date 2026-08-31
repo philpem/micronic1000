@@ -314,6 +314,7 @@ SYNTHETIC_LOADRUN_PATH = (
 SYNTHETIC_WORKFLOW_PATH = (
     get_arg("--synthetic-workflow") if has_flag("--synthetic-workflow") else None
 )
+synthetic_workflow = None
 if SYNTHETIC_WORKFLOW_PATH:
     if SYNTHETIC_LOADRUN_PATH:
         print(
@@ -357,6 +358,9 @@ if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
     sys.exit(2)
 SYNTHETIC_LOADRUN_DATA = None
 SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
+SYNTHETIC_RUN_AFTER_LOAD = bool(
+    synthetic_workflow is not None and synthetic_workflow.run_after_load
+)
 TRACE_LOADRUN_DEBUG = has_flag("--trace-loadrun-debug")
 if TRACE_LOADRUN_DEBUG and not TRACE_LOADRUN_SOURCE:
     print("--trace-loadrun-debug requires --trace-loadrun-source", file=sys.stderr)
@@ -1224,7 +1228,7 @@ def bank_bytes(bank, addr, length):
     return data
 
 
-def run_uploaded_program(name_addr, entry_addr):
+def run_loaded_program(name_addr, entry_addr, prefix, marker=None, marker_bank=None):
     """Invoke Program_RunByName and stop at the loaded entry/marker."""
     select_bank(1, sync_machine=True)
     original_sp = mach.sp
@@ -1237,13 +1241,13 @@ def run_uploaded_program(name_addr, entry_addr):
         raise RuntimeError("Program_RunByName did not reach RunLoadedProgram")
     if not run_to_breakpoint(entry_addr):
         raise RuntimeError(f"RunLoadedProgram did not reach {entry_addr:04X}")
-    print(f"[upload] execution entered bank {cb} at {entry_addr:04X}")
-    if UPLOAD_MARKER is None:
+    print(f"[{prefix}] execution entered bank {cb} at {entry_addr:04X}")
+    if marker is None:
         return True
-    marker_addr, marker_value = UPLOAD_MARKER
+    marker_addr, marker_value = marker
     for _ in range(20000):
-        if bank_bytes(UPLOAD_BANK, marker_addr, 1) == bytes([marker_value]):
-            print(f"[upload] marker {marker_addr:04X}={marker_value:02X} observed")
+        if bank_bytes(marker_bank, marker_addr, 1) == bytes([marker_value]):
+            print(f"[{prefix}] marker {marker_addr:04X}={marker_value:02X} observed")
             return True
         mach.ticks_to_stop = SLICE_TICKS
         mach.run()
@@ -1309,7 +1313,17 @@ def perform_upload():
     )
     if UPLOAD_NO_RUN:
         return True
-    return run_uploaded_program(UPLOAD_NAME_ADDR, entry_addr)
+    return run_loaded_program(
+        UPLOAD_NAME_ADDR, entry_addr, "upload", UPLOAD_MARKER, UPLOAD_BANK
+    )
+
+
+def read_program_name(addr):
+    raw = bytes(mem[addr : addr + 13])
+    try:
+        return raw[: raw.index(0)]
+    except ValueError as exc:
+        raise RuntimeError(f"unterminated program name at {addr:04X}") from exc
 
 # The firmware's keyboard wait loops here until an IRQ has set the event bit.
 KBD_WAIT_START = 0x16C9
@@ -1885,6 +1899,19 @@ while i < MAX_SLICES and stall < 8000:
                                     f"HL={result:04X} state={read_word(0xECC9)}"
                                 )
                             print("[synthetic-loadrun] adapter finalizer reached loader state 3")
+                            if SYNTHETIC_RUN_AFTER_LOAD:
+                                requested_name = read_program_name(0xEC71)
+                                loaded_name = read_program_name(0xECCB)
+                                if requested_name != loaded_name:
+                                    raise RuntimeError(
+                                        "synthetic requested/load name mismatch: "
+                                        f"{requested_name!r} != {loaded_name!r}"
+                                    )
+                                run_loaded_program(
+                                    0xEC71,
+                                    read_word(0xECE6),
+                                    "synthetic-loadrun",
+                                )
                             loadrun_source_trace_status = "succeeded"
                             break
                         print(
