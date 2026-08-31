@@ -2175,6 +2175,12 @@ current priority order; the concise lists above are authoritative.
     supplied separately only to mode callbacks 0 and 2. This is software
     dispatch evidence only: physical port polarity and historical field
     semantics remain OPEN.
+  * **CONFIRMED V24 mode-0 link chain:** mode record `D108` selects shared
+    callback `Session_LogonMode0Or2Callback`, session/device selector 4, and
+    default wire ID `g_bDeviceWireId4=0x43`. Bit5 is clear, so `LinkBlockTx`
+    takes the bit5-clear latch path. This is not a physical-port assignment.
+    `0x1F40 (8000)` and `0x1F41 (8001)`, both `"Plinth not connected"`, are
+    emitted by earlier connection-result dispatchers, not that callback.
   * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
     inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
     refill after the delivered payload. Marker `0` preserves result 0 and

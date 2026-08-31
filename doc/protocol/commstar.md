@@ -473,6 +473,18 @@ receives the Telephone number buffer only for modes 0 and 2. This proves
 mode-dependent software dispatch, not V24/PLINTH physical-port polarity or
 the historical meanings of the text fields.
 
+**CONFIRMED:** the blank mode-0 path selects mode record `D108`, whose callback
+stub reaches `Session_LogonMode0Or2Callback` and whose session/device selector
+is 4. Service 33 resolves selector 4 through `g_bDeviceWireId4`; its firmware
+default is `0x43`. The `AND 0x20` at `LinkBlockTx` is therefore zero and takes
+the bit5-clear latch path. This identifies the selected software latch state,
+not the physical V24 or PLINTH connector.
+
+The errors `0x1F40 (8000)` and `0x1F41 (8001)` both display `"Plinth not
+connected"`. **CONFIRMED:** they arise in the two connection-result dispatchers
+before `Session_LogonMode0Or2Callback`, not in that callback. The message text
+therefore cannot identify the selected physical connector.
+
 ## Appendix: synthetic stock-check workflow example
 
 This is an example adapter workflow, not recovered historical Commstar
