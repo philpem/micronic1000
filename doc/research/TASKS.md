@@ -2128,3 +2128,10 @@ current priority order; the concise lists above are authoritative.
     `{u8 count, payload}`. Thus a later raw payload may begin `C9 C8` for DIP
     without an `OK` prefix. The peer envelope that reaches this caller remains
     **OPEN**.
+  * **Synthetic compatibility milestone:** `boot_hw.py --trace-loadrun-source
+    plinth|v24 --synthetic-loadrun FILE` now feeds a validated COM/DIP file as
+    128-byte-or-smaller raw program-data payloads after the confirmed control
+    sequence. The opt-in emulator regression delivers a 50-byte DIP through
+    that path and stops at the explicit EOF-policy boundary. This is a working
+    ROM-facing synthetic peer component, not a claim about historical command
+    order or EOF/safe-removal semantics; those remain **OPEN**.

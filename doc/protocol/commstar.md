@@ -421,6 +421,21 @@ correct location for a DIP header experiment; putting `C9 C8` in the earlier
 classified control object is not. The exact peer command/envelope that causes
 this later state-44 receive remains **OPEN**.
 
+### Synthetic peer policy
+
+`boot_hw.py --trace-loadrun-source plinth|v24 --synthetic-loadrun FILE`
+provides a deliberately scoped compatibility peer. It runs the confirmed
+control exchanges, then supplies the validated COM/DIP file as raw inner
+program-data payloads of at most 128 bytes. The harness has an opt-in
+regression using a 50-byte DIP file which reaches the explicit
+end-of-stream boundary.
+
+This is **not** a claim that the historical Commstar peer used this command
+ordering or envelope. The control-path and raw-payload copies are
+**CONFIRMED**; chunk selection, EOF representation, retries, and a final
+safe-removal acknowledgement are configurable compatibility policy and remain
+**OPEN**.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:

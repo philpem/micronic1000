@@ -115,6 +115,9 @@ OPTIONS
   --trace-loadrun-source NAME
                            Drive the Load/Run PLINTH or V24 ADAPTOR source
                            form and capture its first session TX bytes.
+  --synthetic-loadrun FILE
+                           With --trace-loadrun-source, serve FILE as later
+                           raw program-data state-44 payloads.
 
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
@@ -296,6 +299,29 @@ TRACE_LOADRUN_SOURCE = (
 if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
     print("--trace-loadrun-source must be plinth or v24", file=sys.stderr)
     sys.exit(2)
+SYNTHETIC_LOADRUN_PATH = (
+    get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
+)
+SYNTHETIC_LOADRUN_DATA = None
+if SYNTHETIC_LOADRUN_PATH:
+    if not TRACE_LOADRUN_SOURCE:
+        print("--synthetic-loadrun requires --trace-loadrun-source", file=sys.stderr)
+        sys.exit(2)
+    synthetic_file = Path(SYNTHETIC_LOADRUN_PATH)
+    try:
+        SYNTHETIC_LOADRUN_DATA = synthetic_file.read_bytes()
+    except OSError as exc:
+        print(f"[synthetic-loadrun] cannot read {synthetic_file}: {exc}", file=sys.stderr)
+        sys.exit(2)
+    synthetic_validation = validate(SYNTHETIC_LOADRUN_DATA)
+    if not synthetic_validation.valid:
+        for issue in synthetic_validation.errors:
+            print(f"[synthetic-loadrun] invalid input: {issue}", file=sys.stderr)
+        sys.exit(2)
+    print(
+        f"[synthetic-loadrun] prepared {synthetic_file} "
+        f"({len(SYNTHETIC_LOADRUN_DATA)} bytes, {synthetic_validation.kind})"
+    )
 if sum(
     option is not None
     for option in (
@@ -1259,6 +1285,7 @@ loadrun_source_next_request_offset = 0
 loadrun_source_second_tx_count = 0
 loadrun_source_finalizer_seen = False
 loadrun_source_state44_complete = False
+loadrun_source_data_offset = 0
 
 # expect / queue state
 from collections import deque
@@ -1365,6 +1392,8 @@ while i < MAX_SLICES and stall < 8000:
             mach.set_breakpoint(loadrun_source_breakpoint)
         elif pc == 0x624B and loadrun_source_link_phase == 13:
             pass
+        elif pc == 0x2F78 and loadrun_source_link_phase == 15:
+            loadrun_source_link_phase = 13
         elif pc == 0x2F78 and loadrun_source_link_phase == 13:
             loadrun_source_breakpoint = 0xEE2C
             mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1780,19 +1809,32 @@ while i < MAX_SLICES and stall < 8000:
             ):
                 link_id = mem[0xFDD4]
                 sequence = mem[0xFE43 + (link_id & 0x3F)]
+                payload = bytes.fromhex("4f4ba55a3cc3")
+                if SYNTHETIC_LOADRUN_DATA is not None:
+                    payload = SYNTHETIC_LOADRUN_DATA[
+                        loadrun_source_data_offset : loadrun_source_data_offset + 0x80
+                    ]
+                    if not payload:
+                        print(
+                            "[synthetic-loadrun] stream exhausted; EOF envelope "
+                            "remains an explicit compatibility assumption"
+                        )
+                        loadrun_source_trace_status = "streamed"
+                        break
                 peer_initiated = bytes(
                     [
-                        0, 20, 0, 2, sequence, link_id, 0,
-                        0, 0, 1, 0, 6, 0,
-                        0x4F, 0x4B, 0xA5, 0x5A, 0x3C, 0xC3,
-                        0, 0,
-                        2, sequence,
+                        0, 14 + len(payload), 0, 2, sequence, link_id, 0,
+                        0, 0, 1, 0, len(payload), 0,
                     ]
-                )
+                ) + payload + bytes([0, 0, 2, sequence])
+                loadrun_source_data_offset += len(payload)
                 loadrun_source_second_tx_count = session_link_peer.pending_tx
                 session_link_peer.feed_rx(peer_initiated)
                 loadrun_source_link_phase = 14
-                print(f"[loadrun-source] receive-first RX={peer_initiated.hex()}")
+                print(
+                    f"[loadrun-source] receive-first RX={peer_initiated.hex()} "
+                    f"payload={len(payload)} offset={loadrun_source_data_offset}"
+                )
         elif loadrun_source_link_phase == 14:
             link_id = mem[0xFDD4]
             sequence = mem[0xFE43 + (link_id & 0x3F)]
@@ -1990,5 +2032,5 @@ if TRACE_SESSION_BUILDER and builder_trace_status != "succeeded":
     sys.exit(1)
 if TRACE_SESSION_TRANSACTION and transaction_trace_status != "succeeded":
     sys.exit(1)
-if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status != "captured":
+if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status not in ("captured", "streamed"):
     sys.exit(1)

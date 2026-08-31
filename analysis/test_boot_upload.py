@@ -131,6 +131,42 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertIn("zero-payload poll cycle complete", proc.stdout)
         self.assertIn("transaction_trace_status=succeeded", proc.stdout)
 
+    def test_synthetic_loadrun_streams_dip_payload(self):
+        image_data = build_dip_file(
+            header_kwargs={
+                "system_id": 0x00E5,
+                "entry_bank_offset": 0,
+                "image_size": len(HELLO_COM),
+                "run_bank_offset": 0,
+                "entry_address": 0x0100,
+            },
+            blocks=[(0, 0, 0x0100, HELLO_COM)],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "hello.dip"
+            image.write_bytes(image_data)
+            proc = subprocess.run(
+                [
+                    str(PYTHON),
+                    str(HARNESS),
+                    "--trace-loadrun-source",
+                    "plinth",
+                    "--synthetic-loadrun",
+                    str(image),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("[synthetic-loadrun] prepared", proc.stdout)
+        self.assertIn("payload=50 offset=50", proc.stdout)
+        self.assertIn("stream exhausted", proc.stdout)
+        self.assertIn("loadrun_source_trace_status=streamed", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
