@@ -10,7 +10,7 @@ through configuration tables. A device selector is not a physical-port number.
 | FE83h | 16 one-byte entries | Console, reader, punch, and list device slots. |
 | FE93h | 16 one-byte entries | Drive-letter/device mapping used by file operations. |
 
-**CONFIRMED:** FE83 is not four four-byte records. Its cold-start contents are
+**Stable:** FE83 is not four four-byte records. Its cold-start contents are
 80 AB 63 43 | 80 2B 63 43 | 80 67 63 43 | 80 67 63 43; consumers select
 individual entries through different windows of the active-device field.
 FE93 is separately letter-indexed.
@@ -47,5 +47,5 @@ been established, so applications must not assume that a named RAMDISK is
 volatile or persistent without testing the configured machine.
 
 For filesystem implementation details, see
-[the CP/M comparison](../internals/cp-m-comparison.md) and
-[the memory map](../internals/memory-map.md).
+[the CP/M comparison](../re-notes/cp-m-comparison.md) and
+[the memory map](../reference/memory-io.md).

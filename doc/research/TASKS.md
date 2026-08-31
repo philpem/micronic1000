@@ -134,38 +134,53 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+1. **Characterise the Commstar builder preflight at `5C1F`/`5D05`.** Every
+   current Load/Run builder trace forces its return to success; establish the
+   condition a real peer would have to satisfy, if any.
+2. **Cycle-account link timeout loops and retry scheduling.** Convert the
+   `02DA`/`026C`/`06F9` polls to bounded CPU time and establish the units of
+   `fdd6`/`fdd8`; do not infer connector deadlines without this.
+3. **Determine whether the fresh program-receive arm is externally visible.**
+   Current synthetic Load/Run waits for RAM/PC state (`FDDC=FE0E` etc.); find a
+   controller/wire event that replaces it, or record that real peers retry.
+4. **Bisect the state-44 payload maximum at 127 bytes.** A 126-byte synthetic
+   payload succeeds and 128 bytes reaches `0x1FAE` (8110), "Line failure";
+   establish whether 127 succeeds and preserve the result as a regression.
+5. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
-2. **Run a complete software-only Commstar session.** Extend the existing
+6. **Run a complete software-only Commstar session.** Extend the existing
    byte-level `LinkPeer` duplex regression through the real session state
    machine under bounded emulation. This may establish software framing and
    sequencing, but not connector-level electrical meanings.
-3. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+7. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
-4. **Finish guarded structural repairs before semantic naming.** Repair the
+8. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
    `d2dc/d2de` / `EA14/EA1C` writers.
-5. **Final annotation and typing sweep (deferred).** Name/plate remaining
+9. **Final annotation and typing sweep (deferred).** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the canonical
    `research/gap-analysis.md` inventory only after semantic work stabilises.
 
 ### Hardware-dependent priorities
 
-1. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
+1. **Capture a physical IR byte exchange.** Establish modulation, bitrate,
+   byte framing, timing, and whether the controller-queue sync/trailer bytes
+   exist at the connector boundary.
+2. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-2. **Capture the electrical timing and meanings of the link status/control
+3. **Capture the electrical timing and meanings of the link status/control
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-3. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
+4. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
    selects the top V24 ADAPTOR versus back PLINTH port, and confirm where the
    EXT STORAGE ADAPTER attaches. ROM evidence proves only the shared 4x byte
    transport and the bit5 selector.
-4. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
+5. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
 ### Detailed and historical backlog
@@ -2158,15 +2173,15 @@ current priority order; the concise lists above are authoritative.
     defines source, opaque scan upload events, optional validated COM/DIP
     image/run intent, feedback, and safe-removal as explicit adapter policy.
     It is not a recovered historical command grammar.
-  * **V24 synthetic path remains OPEN:** the existing V24 UI-selection input
-    does not reach a bounded synthetic Load/Run completion within 180 s. Keep
-    PLINTH as the only regression-covered source until the V24 form sequence
-    is traced; do not claim the two source selections are equivalent.
-    **SUSPECTED emulator observation:** selecting V24 with `YES, YES, ENTER`
-    reaches the `Log-on information` form, then a state-44 control exchange
-    and a fresh receive arm, but not the known program-receive basic block.
-    The run enters the 0x1FAE (8110), "Line failure" path; the role of blank
-    form fields remains OPEN.
+  * **V24 mode-1 synthetic trace (CONFIRMED bounded emulator behavior):**
+     selecting V24, editing Mode from 0 to 1 (`MODEM A/ANS`) with raw `DBh`,
+     and accepting the form reaches the same observed program-receive sequence
+     as the synthetic PLINTH route in the emulator. A validated DIP file plus
+     the adapter finalizer reaches loader state 3. Independent byte review
+     confirms the mode-1 table and runtime-stub dispatch path. This does not
+     establish equivalence of the historical peers, modem authentication,
+     field meanings, or physical connector polarity. Blank mode-0 form
+     behavior remains OPEN.
   * **CONFIRMED V24 form layout:** the descriptor at `ROM01:793A` maps Mode,
     Linespeed, User id, Password, Group id, and Telephone number to the
     30-byte `ram:EC97-ECC6` backing object. `EC98=FF` selects the current mode
@@ -2213,3 +2228,57 @@ current priority order; the concise lists above are authoritative.
     object reaches the 0x1FAE (8110), "Line failure" path; its exact
     descriptor and envelope-overhead cause remain OPEN. Do not yet assert a
     raw-payload maximum from the capacity value alone.
+  * **Documentation update (2026-08-31):** `doc/protocol/commstar.md` now
+    presents the regression-covered synthetic peer as a bounded programmer
+    profile: exact accepted controller queues, observed state
+    `61 -> 64 -> 45 -> 44` progression after mode setup, program-receive arm,
+    and marker/finalizer boundary. This is explicitly not historical Commstar
+    grammar. A new V24 mode-1 trace reaches loader state 3 using the same
+    synthetic type-2/type-4 responder and is regression covered. Independent
+    byte review confirms its mode-table/runtime-stub mechanics. Historical
+    modem semantics and physical-port polarity remain OPEN.
+  * **Commstar historical-server readiness (2026-08-31):** cross-provider
+    review confirms that controller transport and the bounded type-2/type-3/
+    type-4 exchange are implementable, but a real historical server remains
+    blocked on application/session grammar. The known values `61h`, `64h`,
+    `45h`, and `44h` are internal session-state identifiers, not frame types
+    or a recovered command dictionary. P0 missing evidence is authentication
+    payload/response formatting, record/block object layout, final-block/EOF
+    signaling, and session-level retry/abort behavior. Highest-value next
+    experiment: a synchronized genuine-server login plus small COM/DIP file
+    transfer capture, with link bytes and `FDD4-FDDF`, `FDE4-FE42`, `FE43...`,
+    and `E530-E5C8` snapshots at send/receive/completion boundaries.
+  * **Documentation review follow-up (2026-08-31):** revised the published
+    Commstar page for a physical-server implementer. The synthetic Load/Run
+    profile is now explicitly emulator-only; controller queues, logical
+    frames, and unknown wire bytes are distinguished; the controller
+    turn-taking and TX/RX id asymmetry are explicit; and diagnostics/timing
+    limitations are consolidated. Added no-hardware priorities for the
+    bypassed builder preflight, timeout accounting, and a wire-visible receive
+    arm, plus a physical IR capture before any server claim. No new protocol
+    semantics were inferred.
+  * **Implementer review v2 follow-up (2026-08-31):** corrected the observable
+    subset: only link-id bits 0-4 are visible in the controller prelude, while
+    a peer must still supply all eight received-frame id bits. Pinned V24
+    state-61 and state-45 controller-boundary TX captures in the emulator
+    regression and recorded the state values as externally visible payload
+    observations, not a command dictionary. Added the missing seven-byte
+    type-2 control form, RX bit-1 stability limit, framing rule, timing-method
+    cross-link, and 126/128-byte capacity bracket. State-44 payload size 127
+    remains the next bounded probe.
+  * **Implementer review v4 follow-up (2026-09-01):** applied the restructure
+    review. Corrected the state-45 capture to the full 66-byte frame read off
+    the harness (was 2 bytes short and, before that, 2 long with the ASCII at
+    the wrong offset); the V24 regression now asserts whole captures instead
+    of prefixes, which is what let the transcription drift. Removed the
+    contract sections the split had duplicated into the evidence page.
+    Documented the request/response object grammar and reclassified the
+    session and block formats from "Not implementable" to **Provisional**:
+    the three-`u16` request header, the status/marker/length response object,
+    and the marker-delimited program stream are consistent across every
+    captured exchange. What remains blocked is the IR wire layer, the
+    handheld-to-host direction, and several object field meanings.
+  * **Next bounded probes:** bisect the state-44 payload maximum at 127 bytes;
+    parameterise the banner workstation number (hardcoded at
+    `analysis/boot_hw.py:734`) from `SERIAL_TEXT` to confirm the state-45
+    object field offsets by measurement.

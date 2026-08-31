@@ -115,6 +115,10 @@ OPTIONS
   --trace-loadrun-source NAME
                            Drive the Load/Run PLINTH or V24 ADAPTOR source
                            form and capture its first session TX bytes.
+  --trace-loadrun-v24-mode N
+                           Select V24 form mode N (0..3) with the raw
+                           counter-edit byte before accepting the form.
+                           Experimental trace control; not a V24 peer.
    --synthetic-loadrun FILE
                            With --trace-loadrun-source, serve FILE as later
                            raw program-data state-44 payloads.
@@ -308,6 +312,11 @@ TRACE_LOADRUN_SOURCE = (
     if has_flag("--trace-loadrun-source")
     else None
 )
+TRACE_LOADRUN_V24_MODE = (
+    int(get_arg("--trace-loadrun-v24-mode"), 0)
+    if has_flag("--trace-loadrun-v24-mode")
+    else 0
+)
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
@@ -355,6 +364,12 @@ if SYNTHETIC_WORKFLOW_PATH:
     )
 if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
     print("--trace-loadrun-source must be plinth or v24", file=sys.stderr)
+    sys.exit(2)
+if TRACE_LOADRUN_V24_MODE not in range(4):
+    print("--trace-loadrun-v24-mode must be 0 through 3", file=sys.stderr)
+    sys.exit(2)
+if TRACE_LOADRUN_V24_MODE and TRACE_LOADRUN_SOURCE != "v24":
+    print("--trace-loadrun-v24-mode requires --trace-loadrun-source v24", file=sys.stderr)
     sys.exit(2)
 SYNTHETIC_LOADRUN_DATA = None
 SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
@@ -708,13 +723,18 @@ if TRACE_LOADRUN_SOURCE:
         print("--trace-loadrun-source cannot be combined with --expect", file=sys.stderr)
         sys.exit(2)
     source_keys = b"\x06\x06\r" if TRACE_LOADRUN_SOURCE == "v24" else b"\x06\r"
+    logon_keys = (
+        b"\xDB" * TRACE_LOADRUN_V24_MODE + b"\r"
+        if TRACE_LOADRUN_SOURCE == "v24"
+        else b"\r"
+    )
     EXPECT_STEPS.extend(
         [
             parse_expect_arg("To Continue Press>>:\\r"),
             parse_expect_arg("Enter the,Workstation:\\r12345678\\r"),
             parse_expect_arg("Main Menu:1"),
             {"need": ["Name", "From"], "keys": source_keys, "raw": "loadrun source"},
-            parse_expect_arg("Log-on information:\\r"),
+            {"need": ["Log-on information"], "keys": logon_keys, "raw": "loadrun logon"},
         ]
     )
 
@@ -1603,16 +1623,23 @@ while i < MAX_SLICES and stall < 8000:
     # For legacy queue, check qidx progress; for expect, check txt contains Main Menu
     fb_txt, _ = get_lcd_text()
     if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status == "pending":
-        if loadrun_source_link_phase == 0 and session_link_peer.pending_tx >= 13:
-            link_id = mem[0xFDD4]
-            sequence = mem[0xFE43 + (link_id & 0x3F)]
-            phase1 = bytes(
-                [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
-            )
-            loadrun_source_initial_tx_count = session_link_peer.pending_tx
-            session_link_peer.feed_rx(phase1)
-            loadrun_source_link_phase = 1
-            print(f"[loadrun-source] phase1 RX={phase1.hex()}")
+        if loadrun_source_link_phase == 0:
+            request = session_link_peer.peek_tx()
+            if len(request) >= 3:
+                request_length = 1 + int.from_bytes(request[1:3], "little")
+                if len(request) >= request_length:
+                    link_id = mem[0xFDD4]
+                    sequence = mem[0xFE43 + (link_id & 0x3F)]
+                    phase1 = bytes(
+                        [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
+                    )
+                    loadrun_source_initial_tx_count = session_link_peer.pending_tx
+                    session_link_peer.feed_rx(phase1)
+                    loadrun_source_link_phase = 1
+                    print(
+                        f"[loadrun-source] initial TX={request[:request_length].hex()}"
+                    )
+                    print(f"[loadrun-source] phase1 RX={phase1.hex()}")
         elif loadrun_source_link_phase == 1:
             link_id = mem[0xFDD4]
             sequence = mem[0xFE43 + (link_id & 0x3F)]
@@ -1703,10 +1730,12 @@ while i < MAX_SLICES and stall < 8000:
                     loadrun_source_link_phase = 6
                     loadrun_source_breakpoint = 0x5DFD
                     mach.set_breakpoint(loadrun_source_breakpoint)
+                    request_name = "state61" if request[7] == 0x61 else "third"
                     print(
-                        f"[loadrun-source] third TX={request[:request_length].hex()}"
+                        f"[loadrun-source] {request_name} TX="
+                        f"{request[:request_length].hex()}"
                     )
-                    print(f"[loadrun-source] third phase1 RX={phase1.hex()}")
+                    print(f"[loadrun-source] {request_name} phase1 RX={phase1.hex()}")
         elif loadrun_source_link_phase == 6:
             link_id = mem[0xFDD4]
             sequence = mem[0xFE43 + (link_id & 0x3F)]

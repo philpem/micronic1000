@@ -2,595 +2,273 @@
 
 ## Scope and implementation status
 
-This is the normative record of what the firmware establishes about the
-Commstar external link. It deliberately separates the controller-facing
-transport from the higher-level session protocol: the former is sufficiently
-known to model, while the latter is not yet sufficient to reimplement a file
-transfer peer.
+The Micronic 1000 external link is a byte-latch transport to an off-board
+controller associated with two IR ports. This page states what a host-side
+program **may rely on** at the M1000-facing latch boundary and what remains
+blocked for a physical server.
 
-| Layer | Status | Implementation guidance |
+**A historically interoperable Commstar server cannot yet be built from
+this document, but the frame and object formats are largely recovered.**
+The logical frame envelope, the request/response object grammar, and the
+program-data block format are established from traces against real
+firmware and are described below. What is missing is the IR wire framing,
+a wire-visible session-arming signal, the meaning of several object
+fields, and any handheld-to-host transfer. A peer built to this page
+drives real firmware through a complete program download in the emulator;
+it is not proven against historical hardware.
+
+| Layer | Stability | Guidance |
 |---|---|---|
-| Z80-to-link-controller register protocol | **CONFIRMED** | Safe to emulate against the firmware. |
-| Link-controller byte transaction | **CONFIRMED** in the M1000 direction | Use the strobe, status, and timeout rules below. |
-| Validated frame envelope | **CONFIRMED** in part | Preserve the length and target-id fields; do not invent missing fields. |
-| Session commands and replies | **PARTIAL** | Do not claim command names or payload formats from display strings. |
-| RECORD/BLOCK file transfer | **OPEN** | Requires a live Commstar or hardware capture. |
+| Z80-to-controller register protocol | **Stable** | Safe to emulate against the latch contract below |
+| Controller byte transaction | **Provisional** | Ordering is stable; electrical bit meanings are not |
+| Validated frame envelope | **Provisional** | Length, type, sequence, and target-id fields are stable; other bytes are not |
+| Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
+| Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
+| Handheld-to-host record transfer | **Not implementable** | No exchange in this direction has been captured |
+| IR wire framing | **Not implementable** | Requires a hardware capture |
 
-The owner confirms that the two IR connectors are **V24 ADAPTOR (top)**
-and **PLINTH (back)**. Firmware selects one of two line states using bit 5
-of the active link id, but does not identify which bit value maps to which
-physical connector. The 5-pin side port is the barcode-reader front end;
-it is not part of this transport. See
-[the barcode-reader guide](../manual/barcode-reader.md).
+The synthetic peer in the repository is regression infrastructure, not a
+server profile. Its RAM and program-counter observations are unavailable
+to a physical peer.
+
+For the firmware evidence behind each claim, see
+[RE notes: Commstar evidence](../re-notes/commstar-evidence.md).
+
+### Server implementer summary
+
+| Goal | Stability | Boundary |
+|---|---|---|
+| Model the M1000-facing `4Ah-4Fh` latches | **Provisional** | Emulator or controller model, not a physical adapter |
+| Run the synthetic Load/Run peer | **Provisional** | Requires emulator access to M1000 RAM/execution state |
+| Drive a COM/DIP download against real firmware | **Provisional** | Works in the emulator; needs RAM visibility for the receive arm |
+| Download a COM/DIP image from a physical server | **Not implementable** | Blocked on the wire layer and a wire-visible arm |
+| Receive records/files from a handheld | **Not implementable** | No handheld-to-host exchange is captured |
+| Build the IR adapter hardware | **Not implementable** | Connector-facing modulation and timing are open |
+
+## Roles and byte-level terminology
+
+* **Handheld** — the M1000 firmware and its external-link controller.
+* **Server** — an external system that would exchange data with a
+  handheld through an IR adapter. No interoperable server exists yet.
+* **Synthetic peer** — the emulator component that feeds the controller
+  receive latch and observes firmware internals.
+* **Wire bytes** — bytes on the physical IR interface. Framing and even
+  correspondence to controller bytes are open.
+* **Controller-queue bytes** — bytes supplied to the `LINK_RXD` latch by
+  the synthetic peer. They can include an uncounted sync byte and two
+  trailing excluded bytes.
+* **Logical-frame bytes** — the counted buffer validated by the frame
+  header check. They begin with the six-byte header below.
+
+Byte strings are labelled by level where established. A
+controller-boundary capture is not a claim about IR serialisation.
+
+`u16` denotes a little-endian 16-bit field; bare hex pairs are literal
+bytes in transmission order.
+
+The two IR connectors are **V24 ADAPTOR (top)** and **PLINTH (back)**
+(owner-confirmed). Firmware selects one of two line states using bit 5 of
+the active link id; which bit value maps to which connector is open. The
+5-pin side port is the barcode-reader front end and is not part of this
+transport — see [Barcode reader](../reference/barcode.md).
 
 ## Layer model
 
 ```text
-Commstar application/session          OPEN: command and payload grammar
+Commstar application/session          Provisional: object grammar; field meanings open
         │
-Validated link frame                  partial: length, type, sequence, id
+Logical frame                         Provisional: length, type, sequence, id
         │
-Byte transaction / controller strobes CONFIRMED
+Controller queue / byte transaction   Provisional at M1000 boundary
         │
-4Ah-4Fh controller interface          CONFIRMED
+4Ah-4Fh controller interface          Stable as latch addresses
         │
-IR connector selected by link-id bit5 owner-labelled, polarity OPEN
+IR wire layer and connector selection  Not implementable: framing/polarity open
 ```
 
-The controller interface is a byte-latch transport, not an SCC, SIO, or
-ADLC. The firmware writes outgoing data at `LINK_TXD` (4Dh), reads incoming
-data at `LINK_RXD` (4Eh), polls `LINK_STATUS` (4Bh), and drives
-`LINK_CTRL` (4Ah). `LINK_CMD` receives `81h` during the present/ready
-handshake. The exact register catalogue is in
-[the I/O map](../internals/io-map.md).
+The controller interface is a byte-latch transport, not an SCC/SIO/ADLC.
+Firmware writes outgoing data at `LINK_TXD` (`4Dh`), reads incoming data
+at `LINK_RXD` (`4Eh`), polls `LINK_STATUS` (`4Bh`), and drives
+`LINK_CTRL` (`4Ah`). `LINK_CMD` receives `81h` during the ready
+handshake. The exact port catalogue is in
+[Memory and I/O map](../reference/memory-io.md).
 
 ## Controller transaction
 
-LinkBlockTx (ROM00:3277-3377) and LinkBlockRx (ROM00:3378-3453) mechanically
-drive `LINK_CTRL` (4Ah) and poll `LINK_STATUS` (4Bh). **No electrical names
-for status or control bits are proven** — the descriptions below list only the
-bit numbers polled/driven and the timeout constants observed in the bytes.
+The M1000 drives `LINK_CTRL` and polls `LINK_STATUS` through a fixed
+ordering. No electrical names for status or control bits are proven.
 
-### Transmit
+**Transmit ordering (stable as latch sequence):**
 
-**CONFIRMED:** `LinkBlockTx` (ROM00:3277-3377) ordered controller-facing
-sequence (byte-verified):
+1. The port-select latch follows active-link-id bit 5 (one of two IR
+   line states; which state is V24 ADAPTOR vs PLINTH is open).
+2. Toggle `LINK_CTRL` bits around a short delay.
+3. Poll `LINK_STATUS` bit 7 and write `0x81` to `LINK_CMD` when ready.
+4. Write the low five bits of the link id (`link_id & 1Fh`) to `LINK_TXD`
+   as a controller prelude — excluded from the frame length.
+5. Handshake on `LINK_STATUS` bits 4 and 6 via `LINK_CTRL` bits 5/4.
+6. Stream payload bytes: each byte to `LINK_TXD` gated by `LINK_STATUS`
+   bit 7.
+7. Clear `LINK_CTRL` bits to idle.
 
-1. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
-   `B=0x80` DJNZ delay.
-2. `LinkPresent` then `LinkWaitReady`: each polls `LINK_STATUS` bit 7 with
-   timeout `DE=0x02DA`; the first successful wait writes `0x81` to
-   `LINK_CMD` (4Ch).
-3. Write low five bits of input `A` (held in `C`, `link_id & 1Fh`) to
-   `LINK_TXD` (4Dh) as a controller prelude. This byte is not part of the
-   in-memory frame descriptor payload.
-4. Wait for `LINK_STATUS` bit 4 to clear (`DE=0x026C` timeout → `EBh`);
-   then set
-   `LINK_CTRL` bit 5, set `LINK_CTRL` bit 4; `B=0x20` DJNZ delay; clear
-   `LINK_CTRL` bit 5; wait for `LINK_STATUS` bit 6 to clear
-   (`DE=0x026C` timeout → `EEh`).
-5. Stream descriptor payload bytes: each `OUTI` to `LINK_TXD` is gated by
-   `LINK_STATUS` bit 7 with per-byte timeout `DE=0x06F9` (timeout → `EEh`).
-6. Cleanup: clear `LINK_CTRL` bit 4, clear `LINK_CTRL` bit 0 before returning.
+**Turn-taking rule (provisional):** the synthetic peer asserts
+`LINK_STATUS` bit 4 while inbound bytes remain; a controller model must
+drain and deassert before accepting the next M1000 transmission or the
+transmission fails. This is a latch-level constraint, not a proven
+half-duplex wire rule.
 
-The payload source is a **descriptor list** in RAM. Each four-byte entry is
-`{ count_lo, count_hi, ptr_lo, ptr_hi }`; `LinkReadBufferDescriptor`
-(ROM00:3508) advances to the next entry until a zero count terminates the
-list. These descriptors are not transmitted.
+Mechanically the payload source is a descriptor list of
+`{count, pointer}` entries terminated by a zero count; descriptors are
+not transmitted.
 
-The diagram below is the confirmed controller-facing transmit ordering. It is
-not a Commstar session exchange and makes no claim about the external
-controller's electrical timing or the meaning of any status/control bit beyond
-the mechanical poll/drive listed above.
+**Receive ordering (provisional):** clear bit 0, set bit 5, single read
+from `LINK_RXD`, set bit 4 with delay, clear bit 5, then continue reading
+while status bit 0 is set. Bits 1-3 participate in the decode. The
+cleanup toggles bit 1, sets then clears bit 0, and clears bit 4.
 
-```mermaid
-sequenceDiagram
-    participant F as M1000 firmware
-    participant C as Link controller
-    F->>C: Drive LINK_CTRL bits 0/4 and delay
-    F->>C: Poll LINK_STATUS bit 7 then LINK_CMD = 81h
-    F->>C: LINK_TXD = link_id & 1Fh prelude
-    Note over F,C: Wait for status bit 4 clear, drive control bits 5/4, then wait for status bit 6 clear
-    loop Each descriptor payload byte
-        F->>C: Poll LINK_STATUS bit 7 then OUTI LINK_TXD = payload byte
-    end
-    F->>C: Clear LINK_CTRL bits 4 and 0
-```
-
-### Receive
-
-**CONFIRMED:** `LinkBlockRx` (ROM00:3378-3453) mechanically drives
-`LINK_CTRL` and polls `LINK_STATUS`; no electrical names for status or control
-bits are proven. Byte-verified sequence: clear `LINK_CTRL` bit 0, set
-`LINK_CTRL` bit 5, single `IN` from `LINK_RXD` (4Eh), set `LINK_CTRL` bit 4,
-`B=0x20` DJNZ delay, clear `LINK_CTRL` bit 5; then `INI` from `LINK_RXD`
-only while `LINK_STATUS` bit 0 is set. If bit 0 is clear, bit 1 set continues
-to bits 2/3 decode while bit 1 clear waits/retries with `DE=0x06F9`; bit 2 set
-performs an extra `INI`; bit 3 set returns `EC`. Cleanup toggles
-`LINK_CTRL` bit 1, sets then clears `LINK_CTRL` bit 0, clears `LINK_CTRL`
-bit 4, toggles `LINK_CTRL` bit 1.
-
-An adapter emulator must model the stateful handshake, not merely present a
-flat byte stream. The current experimental Python model is not a conformance
-implementation.
-
-### Probe
-
-**CONFIRMED:** `LinkProbe` starts at ROM00:348A and writes `0x1F` to
-`LINK_PROBE` (4Fh) then executes a `LINK_CTRL` latch sequence. The
-physical or reset effect remains **OPEN**.
+An adapter emulator must model the stateful handshake, not merely present
+a flat byte stream.
 
 ## Validated frame envelope
 
-The following is established by `LinkValidateFrameHeader` (ROM00:30DC) and
-the receive dispatcher (ROM00:2FBD). It describes the buffer after the
-controller has received the prelude and payload; it is not a complete
-session-message specification.
+The buffer after the controller has delivered the prelude and payload
+carries this header:
 
-| Offset | Size | Field | Status |
+| Offset | Size | Field | Stability |
 |---:|---:|---|---|
-| 0 | 2 | Total received length, little-endian | **CONFIRMED**: must equal the received byte count. |
-| 2 | 1 | Frame type | **CONFIRMED**: dispatcher tests 2, 3, and 4. |
-| 3 | 1 | Per-link sequence | **CONFIRMED**: `LinkProcessCommandFrame` compares it with `FE43h + (fdd4 & 3Fh)` (init 1); mismatch path yields `01EF`. |
-| 4 | 1 | Active link id | **CONFIRMED**: `LinkValidateFrameHeader` (ROM00:30DC) XOR-compares byte 4 to `fdd4`. |
-| 5 | 1 | Unread by ROM link code | **OPEN**: never read by ROM link code; may be writable by loaded code — do not assume unused. |
-| 6 | n | Session payload | **OPEN**: format depends on the runtime session module; the examined ROM transport/header path performs no checksum. |
+| 0 | 2 | total received length (`u16le`) — must equal byte count | **Stable** |
+| 2 | 1 | frame type — values 2, 3, 4 are dispatched | **Provisional** |
+| 3 | 1 | per-link sequence — compared with per-link slot | **Provisional** |
+| 4 | 1 | active link id — equality-checked on receive | **Stable** |
+| 5 | 1 | unread by examined ROM link code | **Not implementable** |
+| 6 | n | session payload — request/response object, see below | **Provisional** |
 
 Validation rejects frames shorter than six bytes, frames whose embedded
-length differs from the caller-supplied logical count, and frames whose
-byte 4 differs from the active link id (`fdd4`). The comparison is an
-equality test implemented with XOR; it is an address filter, not a
-checksum. `LinkValidateFrameHeader` does not inspect byte +5.
-
-`LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as
-`{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. The
-TX offset-4 constant `0x7F` is **SUSPECTED**; do not call it an id or
-broadcast. `+5` is untouched by that path.
-
-`LinkProcessCommandFrame` reads byte 3, compares it with the per-link
-byte at `FE43h + (fdd4 & 3Fh)` (initialised to 1), and accepts either
-the expected value or one behind it in a specific retry state. It does
-**not** establish a generic 16-bit command word. Do not encode the
-values `{2B,2A,23,03}` as session commands: they belong to a separate
-local device-route lookup.
-
-`LinkBlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the
-descriptor payload; the prelude is excluded from the descriptor byte
-count. `LinkBlockRx` on success returns `DE = controller bytes consumed
-minus 2`; in the examined bounded session the two excluded bytes are
-**CONFIRMED** as copies of the logical frame's type (`+2`) and sequence
-(`+3`) — observed as the trailing `02 01` after the six-byte logical
-frame `06 00 02 01 63 00` in the form-4 controller queues
-(`00 06 00 02 01 63 00 02 01` and `00 06 00 04 01 63 00 04 01`);
-the controller-level reason for the exclusion remains **OPEN**.
-
-Descriptor lists (byte-verified, structurally mutable where noted): RX
-`FE0E` = `{6 -> FDE4, 3 -> FE38, 0}` (mutable); RX `FE32` =
-`{9 -> FE3A, 0}`; TX `FDEA` = `{6 -> FDDE, 0}`. The sequence table is
-`FE43h + (fdd4 & 3Fh)`.
-
-`LinkBlockTx` outcomes (CONFIRMED, `A` and carry on return):
-
-* `EBh` — either pre-payload bit-7 wait or the bit-4-clear wait timed out.
-* `EEh` — bit-6-clear, per-byte bit-7, or post-payload bit-7
-  failure.
-* `ECh` — final status bit5 set.
-* success `A=00h` carry clear.
-
-Retry scheduler (CONFIRMED): initial `fdd6=32h` / `fdd8=6`, later
-`fdd6=14h` / `fdd8=3`; the caller reschedules after `LinkBlockTx`
-without testing returned `A`/carry.
-
-## Types, replies, and session state
-
-The receiver dispatches type 2, 3, and 4 differently. The state labels
-`CONNECTED`, `READY-RX-DATA`, `RECORD-RX`, `BLOCK-TX`, and related C-*
-texts are firmware UI/state vocabulary. They are useful research anchors,
-but they are not a wire-command dictionary.
-
-The loaded session module also uses `InlineTableDispatch` (ram:E0B2) for
-local control flow. **CONFIRMED:** a CALL is followed by an inline table
-with `{count: u16le} {case: u16le, handler: u16le} x count
-{default_handler: u16le}`. The dispatcher probes the declared number of
-cases, then tail-jumps to the trailing default when none matches. This
-mechanism is local module control flow, not evidence that the case values
-are wire-command identifiers. Numeric case values observed at `5A69` (abort `44,45,60,61,64`), `53C7` (`0..5`), `5410` (`0,4,8,9`), and `5291` (`0,4,9`) are **CONFIRMED** inline cases — do not name them as wire commands. The table at `6A4A` is **CONFIRMED** as 16 state-display pointers, not a wire map.
-
-The firmware writes these numeric little-endian words into a reply
-buffer on seven static paths (treat as numeric words/types, not named
-semantic commands unless the bytes prove a meaning):
-
-* `01EE` — attempt exhaustion with `fdd5=1`.
-* `02EE` — attempt exhaustion with other state.
-* `02E0`, `04E0`, `05E0` — numeric unexpected-type paths.
-* `01EF` — type-4 sequence mismatch (per-link sequence at
-  `FE43h + (fdd4 & 3Fh)`).
-* `03EE` — error/reset path from ROM00:2E72.
-
-The complete reply envelope, payload, and any session meaning remain
-**OPEN**. The examined ROM transport/header path has no checksum.
-Integrity inside unresolved loaded-session payloads remains **OPEN**.
-
-Consequently, no state diagram or host/peer session sequence is normative
-yet. A capture must establish each transition as:
-
-| Current state | Received bytes | Guard | Transmitted bytes | Next state |
-|---|---|---|---|---|
-| _pending capture_ | | | | |
-
-## Addressing and connector selection
-
-The active link id is retained in `fdd4`.
-
-* Its low five bits are transmitted first as the controller prelude
-  (excluded from descriptor counts).
-* Its bit 5 selects one of two external link configurations through
-  `LinkPortSelect` (ROM00:3454).
-* The complete id appears at validated-frame byte 4 (RX offset +4,
-  XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence
-  slot `FE43h + (fdd4 & 3Fh)` (init 1).
-
-Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
-(back) remains **OPEN**. Where the EXT STORAGE ADAPTER attaches also
-remains **OPEN**. This does not prove a multidrop physical topology or
-address allocation policy; treat those as open hardware questions.
-
-`E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
-shown on the session status screen (**CONFIRMED provenance**):
-`E701` is a zero-extended snapshot of the received numeric frame type at
-`E5BE` before local substitutions (transport error may put `EEh` (238)
-there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
-displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
-**OPEN**.
-
-## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
-
-Two bounded synthetic traces were captured by calling the session TX
-builders with synthetic stack arguments and bypassing only a separate
-preflight at `5C1F`/`5D05` (forcing successful `HL=0` at `5C22`/`5D08`).
-`E6E6=0` in both traces. The physical low-five-bit prelude
-(`link_id & 1Fh`) is excluded from the quoted logical frames. Meanings of
-payload constants/fields and complete RECORD/BLOCK/C-COMMAND semantics
-remain **OPEN**.
-
-* `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector,
-  mapped through `FE83 + selector - 1`; it is **not** logical frame type.
-  `g_wSessionTxPayloadLength` at `E530` counts payload bytes starting at
-  `E534`; bytes `E532-E533` are skipped. Logical frame type `1` is written
-  independently by `ROM00:2F6D`.
-
-* **Trace 4 — Session_TxBlock4 path (CONFIRMED):** synthetic stack args
-  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the separate preflight at
-  `5C1F` by forcing successful `HL=0` at `5C22`. Payload length `15`;
-  payload `06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`; complete logical
-  frame `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`.
-
-* **Trace 5 — Session_TxBlock5 path (CONFIRMED):** args
-  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preflight at `5D05` by
-  forcing `HL=0` at `5D08`. Payload length `19`; payload
-  `06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`; logical frame
-  `19 00 01 01 7F 00 06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`.
-
-These traces establish framing mechanics only. The meaning of any payload
-constant or field, and the complete RECORD/BLOCK/C-COMMAND session
-semantics, remain **OPEN**.
-
-## Bounded real transaction — form 4 through service 33 / link IRQ path (CONFIRMED mechanics only)
-
-A bounded harness option `--trace-session-transaction 4` runs builder
-form 4 through the **actual service-33/link IRQ path**, bypassing only
-the already documented separate preflight as builder trace 4 does
-(forcing `HL=0` at `5C22`). It is a mechanically valid firmware exercise,
-not an interoperable Commstar specification.
-
-**Service identities (CONFIRMED):** actual service-33 entry is
-`ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
-`Device_Service33Timeout`, not the entry; `ROM00:2E85` is
-`Device_Service33Complete`, the completion callback registered through
-`ram:FDD2` (`g_pSvc33Callback`). Successful type-4 processing falls
-through at `30BC` into shared completion `30BD`; the callback discards the
-synthetic return address `30DB` and returns to `31C1` in the IRQ path. `59D0` is
-the initial async-launch return before completion.
-
-**Exact successful transaction (CONFIRMED byte-verified):**
-
-* Initial wire bytes captured from `LINK_TXD`: `03 15 00 01 01 7F 00 06 00
-  00 00 80 00 00 4C 00 00 22 33 00 00 05` — first `03` is the low-five-bit
-  selector prelude (`link_id & 1Fh`), the remainder is the logical frame
-  `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05` (type 1).
-
-* Phase-1 controller queue presented to `LinkBlockRx`: `00 06 00 02 01 63
-  00 02 01` = one uncounted sync `00`, six-byte logical numeric type-2
-  frame `06 00 02 01 63 00`, then two excluded copies `02 01` (type and
-  sequence copies; controller-level reason remains **OPEN**).
-
-* Exact response bytes captured: `03 06 00 03 01 7F 00` = prelude `03` plus
-  six-byte logical numeric type-3 frame `06 00 03 01 7F 00`.
-
-* Phase-2 controller queue: `00 06 00 04 01 63 00 04 01` with the same
-  sync/logical/excluded shape (logical frame `06 00 04 01 63 00`).
-
-* Service receive object at `E5BC-E5C2` after phase 2 becomes `00 00 02 01
-  00 00 00` (seven bytes; first bytes retain the zero-payload mapping).
-
-**Peer scaffold requirements (CONFIRMED):** the harness peer must expose
-`LINK_STATUS` bit4 while inbound bytes remain (so IRQ poll `31B6`
-dispatches), bit0 while bytes remain, and bit1 after drain. Do not assign
-electrical names to these bits.
-
-**Zero-payload endpoint (CONFIRMED):** the zero-payload object reaches
-`SessionRxStateMachine` (`ROM00:5A81`, via thunk `5A63`
-`Session_RxStateMachineThunk`), retains length `0` and numeric value `2`,
-then takes `5B07 -> 5A13` to resume internal receive polling. It does
-**NOT** return a final numeric result and does **NOT** relaunch service
-33. Requiring `5B57` would need an invented nonzero object/UI outcome, so
-the regression correctly stops at one completed zero-payload poll cycle.
-
-**Scope warning:** complete command/payload meaning, the broader meaning
-of numeric types `2/3/4`, and whether a real peer naturally emits these
-exact controller queues remain **OPEN**. This section documents exact bytes
-and state transitions only.
-
-## Load/Run receive sequencing (CONFIRMED mechanics only)
-
-The software-only PLINTH Load/Run trace reaches the screen states
-`Logged on` then `Receiving prog` using real service-33/IRQ transport.
-This establishes controller sequencing and coroutine ownership, not an
-interoperable program-transfer grammar.
-
-State `44h` uses a variable phase-1 receive descriptor (`FDDC=FE0E`) and a
-fixed phase-2 descriptor (`FDDC=FE32`). The latter is exactly one
-nine-byte descriptor at `FE3A`, followed by its terminator. Therefore a
-variable payload must be supplied in phase-1 type 2; a six-byte type-4
-completion is the only byte-verified phase-2 shape. A 16-byte type-4 frame
-exhausts `FE32` and returns transport result `EDh`, later displayed as
-`0x1F76 (8054), "Line failure"`.
-
-For the examined state-44 path, this phase-1 payload is received at
-`E5BE`; `Device_Service33Complete` (`ROM00:2E85`) writes only its completed
-payload length to `E5BC-E5BD`. A ten-byte phase-1 payload
-`00 00 01 00 02 00 4F 4B 00 00`, followed by the normal six-byte type-4
-completion, yields `DE=000A` at the completion callback and `HL=0008` from
-`SessionRxStateMachine`. The nested object is then copied intact into a
-packed caller buffer and classified by its first two bytes: `OK` -> 0,
-`NO` -> 1, `DM` -> 2, otherwise 3 -> `0x1F75 (8053), "Invalid reply"`.
-The classifier does not strip `OK`; trailing bytes are not compared but
-remain in the copied object. The peer-level meanings of these tokens remain
-**OPEN**.
-
-The result first unwinds through the RAM coroutine epilogue at `D84C` to
-`ROM00:624B`; it is not a direct return to the outer result dispatcher.
-The next service transaction is stale-owner-safe only after `ROM00:2F78`,
-where `FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`.
-At that point a zero-payload peer-initiated type-2 frame and normal type-4
-completion are accepted by the new service, and the UI reaches `Logged on` /
-`Receiving prog`. Do not inject such a frame while `FDDC=FE32`: it is then
-consumed by the preceding state-44 phase-2 operation.
-
-### Loader-stream boundary
-
-The accepted state-44 `OK` scaffold is not a Commstar program-data grammar.
-After the receive-first exchange, its bytes arrive at the Load/Run staging
-buffer and are consumed by `Program_ConsumeInputChunk` (`ROM01:0BAC`).
-
-**CONFIRMED:** the fresh parser requests 14 bytes at `ROM01:0D08-0D0B`.
-Its initial routing is:
-
-* fewer than 14 received bytes -> raw COM at `ROM01:0D3B`;
-* 14 or more with first little-endian word `0xC8C9` (`C9 C8`) -> DIP at
-  `ROM01:0DD7`;
-* 14 or more with any other first word -> raw COM.
-
-Thus `4F 4B A5 5A 3C C3` is a six-byte raw-COM prefix, not a DIP header and
-not a token the loader removes. A later byte cannot repair that stream into a
-DIP: a DIP experiment must restart with `C9 C8` at offset zero. A normal
-zero-status `Program_FinalizeInput` completion resumes this parser, so EOF
-after the six bytes follows the short-COM route; it is not necessary to pad
-the outstanding 14-byte request.
-
-**CONFIRMED:** each DIP block receives an eight-byte serialized prefix into a
-resident descriptor whose stride is 10 bytes (`ROM01:0E2D-0E43`). The first
-eight bytes are type, bank offset, destination address, and payload length;
-the purpose of the two remaining resident bytes is not established here.
-
-The later `0x1F9A (8090), "Line failure"` is likewise not a loader-format
-error. `ROM00:4E4E` dispatches the session result word:
-only values `0`, `4`, `6`, `8`, and `9` have explicit arms. Its default arm
-at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to
-`SessionMsgLineFailure`. The upstream stalled-harness result remains **OPEN**.
-
-### Program-data receive path
-
-The control object and program bytes use separate state-44 call paths.
-`OK`/`NO`/`DM` classification applies only to the earlier control caller;
-it does not constrain the inner bytes of a later program-data receive.
-
-**CONFIRMED, cross-provider reviewed:** the internal basic block
-`ROM00:4F5A` (`Session_ProgramReceiveMode`) enters program receive mode
-`0x000A` and calls `Session_ReadStreamChunk` (`ROM00:3E6A`) at `4FB9` with a
-maximum aggregate read of 128 bytes. It is reached from its parent state
-machine, not as a callable function entry. The receive path validates
-state-44 outer metadata but does not inspect `E5C4`, the inner payload start.
-On success it copies payload bytes from `E5C4` unchanged into the stream
-buffer. `Session_ReadStreamChunk` returns a caller-facing packed object
-`{u8 count, payload[count]}`; it adds the count but does not alter the payload.
-
-A program-data object may therefore start its inner payload with `C9 C8`,
-which reaches the loader stream as its first two data bytes. This is the
-correct location for a DIP header experiment; putting `C9 C8` in the earlier
-classified control object is not. The exact peer command/envelope that causes
-this later state-44 receive remains **OPEN**.
-
-### Synthetic peer policy
-
-`boot_hw.py --trace-loadrun-source plinth|v24 --synthetic-loadrun FILE`
-provides a deliberately scoped compatibility peer. It runs the confirmed
-control exchanges, then supplies the validated COM/DIP file as raw inner
-program-data payloads. The harness has an opt-in
-regression using a 50-byte DIP file and a 200-byte COM file which reaches the
-explicit end-of-stream boundary in two chunks (126 bytes with marker 0, then
-74 bytes with marker 1). The 126-byte size is a tested harness choice, not a
-ROM-proven maximum; state-44 capacity overhead remains **OPEN**.
-
-This is **not** a claim that the historical Commstar peer used this command
-ordering or envelope. The control-path and raw-payload copies are
-**CONFIRMED**; chunk selection, EOF representation, retries, and a final
-safe-removal acknowledgement are configurable compatibility policy and remain
-**OPEN**.
-
-`--synthetic-loadrun-finalize` supplies one useful adapter policy: after the
-last synthetic payload it calls the real `Program_FinalizeInput` callback with
-zero status, reaching loader state 3 in the emulator. This completes the
-software-facing transfer but is deliberately not represented as a received
-Commstar EOF command or a user-facing safe-removal acknowledgement.
-
-`--synthetic-workflow FILE` reads a `SyntheticWorkflow` JSON manifest, resolves
-its image relative to the manifest, and invokes the same tested PLINTH path.
-It reports the manifest's scan-record count, run intent, feedback, and
-safe-removal policy, but does not serialize records or emit a safe-removal
-frame. When `run_after_load` is true, it verifies the requested program name
-against the loaded name and invokes the real `Program_RunByName` path after
-the loader reaches state 3. The loaded program's transfer does not return, so
-feedback and safe removal remain adapter policy. The manifest wrapper currently
-rejects V24 because that source has no tested synthetic completion.
-
-### V24 selection
-
-**CONFIRMED:** the Load/Run choice list includes `V24 ADAPTOR` and its form
-contains Mode, Linespeed, User id, Password, Group id, and Telephone number
-labels (`ROM01:7A0F`, `7B7E-7BCB`). `YES, YES, ENTER` selects this form in the
-emulator. **SUSPECTED:** leaving its fields blank reaches an early state-44
-control exchange but then takes the 0x1FAE (8110), "Line failure" path before
-the known program-receive basic block. This is emulator behavior, not evidence
-about historical authentication or the form fields' persistence.
-
-**CONFIRMED:** the form descriptor maps its six fields to a contiguous
-30-byte backing object:
-
-| Field | Backing storage | Initial value |
-| --- | --- | --- |
-| Mode | `g_bLogonModeIndex` | 0 (`LOCAL LINK`) |
-| Linespeed | `g_bLogonLineSpeedIndex` | `0xFF` sentinel |
-| User id | `g_acLogonUserId`, 9 bytes | empty |
-| Password | `g_acLogonPassword`, 9 bytes | empty |
-| Group id | `g_acLogonGroupId`, 9 bytes | empty |
-| Telephone number | `g_acLogonTelephoneNumber`, 19 bytes | empty |
-
-The `0xFF` linespeed sentinel resolves through the selected mode record; mode
-0 supplies encoded value `0x0E`, the `9600` table entry. The post-form session
-call stages Group id, User id, and Password, while the selected mode callback
-receives the Telephone number buffer only for modes 0 and 2. This proves
-mode-dependent software dispatch, not V24/PLINTH physical-port polarity or
-the historical meanings of the text fields.
-
-**CONFIRMED:** the blank mode-0 path selects mode record `D108`, whose callback
-stub reaches `Session_LogonMode0Or2Callback` and whose session/device selector
-is 4. Service 33 resolves selector 4 through `g_bDeviceWireId4`; its firmware
-default is `0x43`. The `AND 0x20` at `LinkBlockTx` is therefore zero and takes
-the bit5-clear latch path. This identifies the selected software latch state,
-not the physical V24 or PLINTH connector.
-
-The errors `0x1F40 (8000)` and `0x1F41 (8001)` both display `"Plinth not
-connected"`. **CONFIRMED:** they arise in the two connection-result dispatchers
-before `Session_LogonMode0Or2Callback`, not in that callback. The message text
-therefore cannot identify the selected physical connector.
-
-**CONFIRMED:** while the Mode field is active, raw keyboard-ring byte `0xDB`
-invokes `FieldCounterEdit` and advances to the next mode enabled by
-`g_wLogonModeEnableMask`; physical key identity is not assigned. A bounded
-emulator run with `g_wLogonModeEnableMask=0xFFFF` changed mode 0 to mode 1
-(`MODEM A/ANS`) and, on accept, reached `0x1F40 (8000), "Plinth not
-connected"`. This exercises a mode-dependent software branch only; it does
-not establish an adapter transport or physical-port selection.
-
-## Appendix: synthetic stock-check workflow example
-
-This is an example adapter workflow, not recovered historical Commstar
-behavior. It illustrates how a stock-check deployment could sequence its own
-application policy around the ROM-confirmed Load/Run path. The order of the
-application steps is adapter-defined.
-
-```mermaid
-sequenceDiagram
-    participant H as M1000 handheld
-    participant A as Synthetic adapter
-    participant S as Stock system
-
-    H->>A: establish selected source session
-    Note over H,A: CONFIRMED transport/control path in boot_hw.py
-    H->>A: upload collected scan records
-    Note over A,S: Adapter-defined record format and reconciliation
-    A->>S: submit scans / obtain current item list
-    S-->>A: updated list, optional COM or DIP image
-    A->>H: raw program-data payloads
-    Note over A,H: CONFIRMED: later state-44 payload bytes reach the loader unchanged
-    A->>H: adapter completion policy
-    Note over A,H: --synthetic-loadrun-finalize calls Program_FinalizeInput(0)
-    A-->>H: adapter-defined success / safe-removal indication
+length differs from the received count, and frames whose byte 4 differs
+from the active link id. The TX path writes `0x7F` at offset 4; the RX
+path requires offset 4 to equal the link id. The meaning of `0x7F` on the
+wire is open. The examined ROM path has no checksum.
+
+The sequence-number lifecycle — who advances it, when, and whether
+directions share a counter — is open.
+
+For the comparison and the descriptor shapes that carry this envelope,
+see [RE notes: Commstar evidence](../re-notes/commstar-evidence.md#validated-frame-envelope).
+
+## Externally observable subset
+
+From M1000 traffic alone an observer can obtain the controller prelude
+`id & 1Fh` (five bits), the length at offset +0, type at +2, and sequence
+at +3. It cannot obtain the full eight-bit link id, which a server must
+reproduce at offset +4.
+
+Captured length is `1 + u16le(tx[1:3])` including the prelude — the only
+confirmed rule for delimiting a captured M1000 transmission.
+
+| Link id bits | Observable from wire? | Source |
+|---|---|---|
+| 0-4 | Yes | Controller prelude |
+| 5 | No | Port select; polarity is open |
+| 6-7 | No | Never transmitted; two samples are not a rule |
+
+The remaining three bits, the per-link sequence slot, and the
+fresh program-receive arm are not wire-visible.
+
+## Captured M1000 session requests (controller-boundary TX)
+
+V24 Mode 1 captures of pre-stream requests. First byte is the
+controller prelude; remaining bytes are the logical frame. These bytes
+are **stable as observed traces for this harness**; their field
+semantics beyond the envelope are provisional.
+
+| Request | Prelude | Logical frame |
+|---|---|---|
+| Initial | `03` | `0C 00 01 00 7F 00 00 00 00 00 00 00` |
+| State 61 | `03` | `0C 00 01 01 7F 00 61 00 00 00 00 00` |
+| State 64 | `03` | `0C 00 01 01 7F 00 64 00 00 00 00 00` |
+| State 45 | `03` | `42 00 01 01 7F 00 45 00 01 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4C 4F 41 44 31 32 33 34 35 36 37 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00` |
+| State 44 | `03` | `0C 00 01 01 7F 00 44 00 00 00 FF 00` |
+
+### Request and response object format
+
+Every captured exchange fits one grammar. **Provisional**: the shapes below
+hold across all captured exchanges, but they rest on a handful of samples and
+the meaning of individual fields is stated separately.
+
+A type-1 request payload is three `u16` fields, optionally followed by an
+object:
+
+```text
+frame:   [u16 length][u8 type=1][u8 seq][u8 7F][u8 00] payload
+payload: [u16 state][u16 arg][u16 count] object[count]
 ```
 
-The executable upload portion of this example is:
+| Request | length | state | arg | count | object |
+|---|---:|---:|---:|---:|---|
+| Initial | 12 | `0000` | 0 | 0 | none |
+| State 61 | 12 | `0061` | 0 | 0 | none |
+| State 64 | 12 | `0064` | 0 | 0 | none |
+| State 45 | 66 | `0045` | 1 | 54 | 54 bytes |
+| State 44 | 12 | `0044` | 0 | 255 | none |
 
-```sh
-analysis/venv/bin/python3 analysis/boot_hw.py \
-  --trace-loadrun-source plinth \
-  --synthetic-loadrun item-list.dip \
-  --synthetic-loadrun-finalize
+`count` is the object length wherever an object follows, and the state-45
+frame confirms it exactly: 54 = 66 − 12. On the state-44 receive request the
+third field is `0x00FF` with no object; its role there is open, though a
+requested-maximum reading is consistent with the observed capacity limit.
+
+A type-2 response payload takes one of two shapes:
+
+```text
+control ack:  [u8 00]
+data object:  [u16 status][u16 marker][u16 N] data[N] [u16 00]
 ```
 
-`item-list.dip` may instead be a COM image. The harness validates the file,
-serves the current single-payload regression, and uses the real loader
-finalizer. It also has a two-payload regression using the tested 126-byte
-chunk size; the maximum permitted payload remains OPEN. Scan-record encoding, the
-database/list schema, software-update decision, final user feedback, and
-safe-removal signal are adapter policy, not claims about a historical deployed
-system.
+| Response | length | status | marker | N |
+|---|---:|---:|---:|---:|
+| Control (states 61/64/45) | 7 | — | — | single `00` byte |
+| State-44 control object | 20 | 0 | 1 | 6 |
+| Program data chunk | variable | 0 | 0 or 1 | payload bytes |
 
-The equivalent manifest invocation is:
+`marker` 0 permits another refill; `marker` 1 ends the stream. `N` matched the
+data length exactly in every captured object.
 
-```sh
-analysis/venv/bin/python3 analysis/boot_hw.py \
-  --synthetic-workflow stock-check.json \
-  --synthetic-loadrun-finalize
-```
+Within the state-45 object, offsets +14 and +18 (frame +26 and +30) carry
+operator-entered ASCII — `LOAD` and the workstation number typed at the
+banner. The remaining object bytes are zero in every capture, so their
+layout is not established.
 
-The reusable policy object is `micronic.commstar.SyntheticWorkflow`. Its JSON
-fields are `source` (`plinth` or `v24`), `scan_records` (opaque objects), an
-optional `image`, `run_after_load`, `feedback`, and `safe_to_remove`. It
-produces ordered application events; an adapter chooses how to serialize them
-for its own service.
+For harness provenance see
+[RE notes: Commstar evidence](../re-notes/commstar-evidence.md#captured-session-requests).
+For the experiment that would settle the object field offsets by measurement,
+see [RE notes: Open questions](../re-notes/open-questions.md#state-45-payload-structure).
 
-## What is not specified yet
+## Historical server readiness
 
-An interoperable Commstar peer still needs captured evidence for:
+| Responsibility | Stability | Known | Still blocked |
+|---|---|---|---|
+| Controller transport | **Provisional** | Latch handshake and validation | Connector timing if hardware is required |
+| Type-2/3/4 exchange | **Provisional** | Request/reply/completion ordering | Why the queue repeats type/sequence |
+| Session states 61,64,45,44 | **Provisional** | Progression to program receive, and the state value is carried in request payload +0 | Historical operation meanings |
+| Request/response objects | **Provisional** | Three-`u16` request header, status/marker/length response object | Meaning of `arg`, the state-44 `00FF`, and the state-45 object layout |
+| V24 form staging | **Provisional** | Buffers reach mode-dependent dispatch | Authentication encoding |
+| Program stream | **Provisional** | Inner bytes reach loader unchanged; marker 0/1 delimits the stream | Chunk maximum and whether a historical EOF frame exists |
+| Errors, aborts, retries | **Provisional** | Timeouts and a few result codes | Application-visible grammar |
+| Physical port | **Not implementable** | Bit 5 selects a line state | Which state is V24 ADAPTOR vs PLINTH |
 
-* the complete session-command table and any command-name mapping;
-* every command payload and RECORD/BLOCK format;
-* reply-frame envelope and reply payloads (beyond the seven numeric
-  words above);
-* startup, abort, retry, and completion transitions;
-* maximum lengths, framing boundaries, and controller timing on the
-  connector-facing side; and
-* the physical connector/electrical interface required outside the M1000.
+## Diagnostic reference
 
-Do not claim a grammar such as `[type][16-bit big-endian command]
-[payload]`, symmetric protocol roles, payload checksums, filenames, or
-a verified bidirectional Commstar exchange — none are proven for the
-examined ROM transport/header path. Until captures exist, an
-implementation may emulate the M1000-side register and validator
-behaviour, but must not claim Commstar file-transfer compatibility.
+Firmware-observed results, not a server error protocol:
 
-## Evidence and next captures
+| Result | Context | Implication |
+|---|---|---|
+| `EBh` | Pre-payload ready wait expires | Queue/turn-taking prevented TX |
+| `ECh` | Final status bit 5 set | Status-bit meaning is open |
+| `EDh` then `0x1F76` Line failure | 16-byte type-4 queue exhausts fixed descriptor | Use only the six-byte type-4 shape in the synthetic path |
+| `EEh` | Per-byte wait fails | Timing/status condition failed |
+| `01EF` | Type-4 sequence mismatch | Sequence lifecycle is open |
+| `0x1F75` Invalid reply | Control object not `OK`/`NO`/`DM` | Applies to the control caller, not program bytes |
+| `0x1FAE` Line failure | Blank V24 form and oversized synthetic object | Separate paths; not a server precondition |
 
-The implementation evidence is in `LinkBlockTx` (ROM00:3277),
-`LinkBlockRx` (ROM00:3378), `LinkValidateFrameHeader` (ROM00:30DC),
-`LinkProcessCommandFrame` (ROM00:3084), `LinkFramePrefixWrite`
-(ROM00:316B), `LinkProbe` (ROM00:348A), and the descriptor helper
-(ROM00:3508). The research worklist records the capture tasks in
-`research/TASKS.md` in the source tree; research files are excluded from
-the published site.
-
-The next useful golden trace is one complete valid session exchange, including
-the prelude, received-count boundary, every transmitted reply byte, and the
-RAM frame buffer before and after dispatch. That trace should become both a
-table in this document and an assertion-based regression test.
+For the evidence and next captures that would unblock a server, see
+[RE notes: Commstar evidence](../re-notes/commstar-evidence.md#blocking-evidence)
+and [RE notes: Open questions](../re-notes/open-questions.md).

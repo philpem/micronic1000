@@ -12,26 +12,43 @@ reverse-engineering questions.
   boundary for portable COM applications.
 * [Programmer's guide](manual/programmer-guide.md) — write CP/M-style
   applications for DIPOS-B.
-* [BDOS reference](manual/bdos-reference.md) — supported CALL 0005h
-  functions and DIPOS-B extensions.
-* [Barcode reader](manual/barcode-reader.md) — scanner hook and RDR:
-  byte-stream API.
-* [Commstar protocol](protocol/commstar.md) — verified transport contract,
-  implementation readiness, and the remaining session-layer gaps.
+* [BDOS calls](reference/bdos.md) — standard CALL 0005h services.
+* [DIPOS-B extensions](reference/extensions.md) — device, storage, RTC, and timing.
+* [Barcode reader](reference/barcode.md) — scanner hook and RDR: byte-stream API.
+* [Program file formats](reference/program-formats.md) — COM and DIP grammars.
+* [Memory and I/O map](reference/memory-io.md) — banks, RAM, vectors, and ports.
+* [Commstar transport](protocol/commstar.md) — controller mechanics and the
+  explicit blockers for a physical server implementation.
 
-The Commstar session and file-transfer format is not yet sufficiently
-decoded for an interoperable host implementation. The protocol document
-states exactly which layers are safe to implement and which require a trace
-or hardware capture.
+The Commstar session and file-transfer format is not yet sufficiently decoded
+for an interoperable host implementation. In particular, no documented exchange
+transfers data from a handheld to a host, and the physical IR wire layer remains
+uncaptured. The protocol document distinguishes the emulator-only synthetic
+peer from the requirements of a physical server.
 
-## Reference and internals
+## Reference
 
-* [System architecture](internals/os-diposb.md)
-* [CP/M compatibility comparison](internals/cp-m-comparison.md)
-* [Memory map and RAM extension points](internals/memory-map.md)
-* [I/O map](internals/io-map.md)
-* [Interrupts and banked calls](internals/interrupts.md)
-* [RTC interface](internals/rtc.md)
+* [API and ABI reference](reference/README.md) — contracts with stability
+  terms (`Stable` / `Provisional` / `Not implementable`)
+* [Protocol reference](protocol/README.md) — Commstar transport
+* [Programmer manual](manual/README.md) — task-oriented guides
+
+## Reverse-engineering notes
+
+Implementation evidence lives in `re-notes/` — the full RE record with ROM
+addresses, trace bytes, and confidence tags:
+
+* [Method and evidence rules](re-notes/method.md)
+* [Commstar evidence and traces](re-notes/commstar-evidence.md)
+* [OS internals](re-notes/os-diposb.md)
+* [Forms and UI](re-notes/forms-ui.md)
+* [CP/M comparison](re-notes/cp-m-comparison.md)
+* [Interrupts](re-notes/interrupts.md)
+* [RTC](re-notes/rtc.md)
+* [Open questions](re-notes/open-questions.md) — single address for every `OPEN`
+
+Legacy paths under `internals/` and `manual/bdos-reference.md` etc. remain
+on disk and redirect to the new locations.
 
 ## Evidence labels
 
@@ -40,6 +57,9 @@ or hardware capture.
 | **CONFIRMED** | Directly established by firmware bytes, a trace, or an xref. |
 | **LIKELY** | Firmware evidence combined with a documented hardware fact. |
 | **SUSPECTED** | Plausible but unverified; the required confirming observation is stated. |
+
+Reference pages use **stability** terms (`Stable` / `Provisional` /
+`Not implementable`) and link to the RE notes for evidence.
 
 ## Research records
 
@@ -50,5 +70,5 @@ not reader-facing API specifications.
 ## Building the HTML site
 
 See `BUILD.md` in the source repository. The builder publishes this landing
-page plus the `manual/`, `protocol/`, and `internals/` trees; it intentionally
-excludes the research archive from site navigation.
+page plus the `manual/`, `protocol/`, `reference/`, and `re-notes/` trees;
+it intentionally excludes the research archive from site navigation.

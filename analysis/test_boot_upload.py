@@ -31,6 +31,20 @@ HELLO_COM = (
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+def capture_tx(stdout: str, label: str) -> str:
+    """Return the whole hex capture printed as ``<label> TX=...``.
+
+    Asserting the full value keeps the tail of every capture pinned; the
+    frames documented in doc/protocol/commstar.md are transcribed from these.
+    """
+    prefix = f"{label} TX="
+    for line in stdout.splitlines():
+        index = line.find(prefix)
+        if index != -1:
+            return line[index + len(prefix):].strip()
+    raise AssertionError(f"no {prefix!r} line in harness output:\n{stdout}")
+
+
 class BootUploadTest(unittest.TestCase):
     def run_upload(self, suffix, data):
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,6 +164,7 @@ class BootSessionTransactionTest(unittest.TestCase):
                 [
                     str(PYTHON),
                     str(HARNESS),
+                    "--no-lcd",
                     "--trace-loadrun-source",
                     "plinth",
                     "--synthetic-loadrun",
@@ -166,6 +181,69 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("[synthetic-loadrun] prepared", proc.stdout)
         self.assertIn("payload=50 marker=1 offset=50", proc.stdout)
+        self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
+        self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
+
+    def test_v24_mode1_reaches_loader(self):
+        image_data = build_dip_file(
+            header_kwargs={
+                "system_id": 0x00E5,
+                "entry_bank_offset": 0,
+                "image_size": len(HELLO_COM),
+                "run_bank_offset": 0,
+                "entry_address": 0x0100,
+            },
+            blocks=[(0, 0, 0x0100, HELLO_COM)],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "hello.dip"
+            image.write_bytes(image_data)
+            proc = subprocess.run(
+                [
+                    str(PYTHON),
+                    str(HARNESS),
+                    "--no-lcd",
+                    "--trace-loadrun-source",
+                    "v24",
+                    "--trace-loadrun-v24-mode",
+                    "1",
+                    "--synthetic-loadrun",
+                    str(image),
+                    "--synthetic-loadrun-finalize",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        # Compare whole captures, not prefixes: a substring match leaves the
+        # tail of a capture unpinned, and the documented frame is transcribed
+        # from these values.
+        self.assertEqual(
+            capture_tx(proc.stdout, "initial"), "030c0001007f00000000000000"
+        )
+        self.assertEqual(
+            capture_tx(proc.stdout, "second"),
+            "03150001017f00060000008000004c0000073c000005",
+        )
+        self.assertEqual(
+            capture_tx(proc.stdout, "state61"), "030c0001017f00610000000000"
+        )
+        self.assertEqual(
+            capture_tx(proc.stdout, "state64"), "030c0001017f00640000000000"
+        )
+        self.assertEqual(
+            capture_tx(proc.stdout, "state45"),
+            "03420001017f0045000100360000000000000000000000000000004c4f41"
+            "443132333435363738000000000000000000000000000000000000000000"
+            "00000000000000"
+        )
+        self.assertEqual(
+            capture_tx(proc.stdout, "state44"), "030c0001017f0044000000ff00"
+        )
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 

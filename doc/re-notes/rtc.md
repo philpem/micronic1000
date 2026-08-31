@@ -114,8 +114,10 @@ Register A (0x0A) rate-select bits drive the periodic interrupt:
   | 0x2A (divider restart after set-time) | 010 | 1010 | 64 Hz |
   | 0x7A (write-time freeze) | 111 (reset) | - | none |
 
-ClockSelftestTickWindow verifies the rate: it arms 130 ticks (fda8),
-counts inner-loop iterations (24 T-state each at 3.579545 MHz =
+The owner supplies the 3.579545 MHz Z80 clock rate. ClockSelftestTickWindow
+verifies the periodic interrupt rate: it arms 130 ticks (fda8), counts
+inner-loop iterations
+(24 T-state each at 3.579545 MHz =
 6.703 us), and requires the elapsed count to land in 0x4502..0x4C46
 (17666..19526). At **1024 Hz** 130 ticks = 126.95 ms = **18935
 iterations** - inside the window. At 64 Hz it would be 302956

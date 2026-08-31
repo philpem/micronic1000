@@ -140,7 +140,7 @@ and require ROM bank 0 mapped during service — which is exactly what
 
 UI objects are built from chained descriptor blocks in ROM01
 (first at 75EB, `ui_object_descriptor_1`; see also the descriptor
-tables section in [the memory map](memory-map.md)):
+tables section in [Memory and I/O map](../reference/memory-io.md)):
 
 * header: two name-string pointers + word
 * 4-word **vtable of kernel-side methods** (e.g. EFEC/F0F8/EF98/EFD8)
@@ -271,7 +271,7 @@ the handlers are the three loader syscalls in `ram:D681-D7C8`. Each
 record handler tail-jumps (`JP d6de`) to run the next record, and a
 hidden table terminator (`d6f2 → d6ee`) ends the walk. **This grammar
 is the ROM boot-load chain only — it is NOT the runtime DIP file
-format** (see [Program formats: COM and DIP](../manual/program-formats.md)).
+format** (see [Program file formats](../reference/program-formats.md)).
 The runtime Load/Run loader (`ROM01:0A67-10CE` via `ram:D081 → ram:D0F0`)
 has its own 14-byte header + 8-byte block grammar with type 0/1 and
 8→10-byte checksum expansion.
@@ -379,7 +379,7 @@ TWO roles:
   slot with additive checksum at `+8`
   (`0957`/`09C2`, `0x2332` (9010), "Program corrupt." = mismatch). COM fallback when
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
-  run-bank `0`, entry `0x0100`. See [Program formats](../manual/program-formats.md).
+  run-bank `0`, entry `0x0100`. See [Program file formats](../reference/program-formats.md).
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
   services. `ram:D370` is `g_pProgramLoaderContinuation`, a coroutine
   continuation exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not
