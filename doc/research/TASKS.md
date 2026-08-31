@@ -2135,3 +2135,9 @@ current priority order; the concise lists above are authoritative.
     that path and stops at the explicit EOF-policy boundary. This is a working
     ROM-facing synthetic peer component, not a claim about historical command
     order or EOF/safe-removal semantics; those remain **OPEN**.
+  * **Falsified synthetic EOF candidate:** one final zero-length state-44
+    program-data payload followed by the ordinary type-4 completion did not
+    reach a bounded post-EOF state in the emulator (timed out after 180 s).
+    Do not use an empty payload as the synthetic EOF convention. Next ROM-only
+    target is the finalizer callback/control path rather than another guessed
+    terminal frame.
