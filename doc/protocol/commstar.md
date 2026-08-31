@@ -442,6 +442,47 @@ zero status, reaching loader state 3 in the emulator. This completes the
 software-facing transfer but is deliberately not represented as a received
 Commstar EOF command or a user-facing safe-removal acknowledgement.
 
+## Appendix: synthetic stock-check workflow example
+
+This is an example adapter workflow, not recovered historical Commstar
+behavior. It illustrates how a stock-check deployment could sequence its own
+application policy around the ROM-confirmed Load/Run path. The order of the
+application steps is adapter-defined.
+
+```mermaid
+sequenceDiagram
+    participant H as M1000 handheld
+    participant A as Synthetic adapter
+    participant S as Stock system
+
+    H->>A: establish selected source session
+    Note over H,A: CONFIRMED transport/control path in boot_hw.py
+    H->>A: upload collected scan records
+    Note over A,S: Adapter-defined record format and reconciliation
+    A->>S: submit scans / obtain current item list
+    S-->>A: updated list, optional COM or DIP image
+    A->>H: raw program-data payloads, max 128 bytes each
+    Note over A,H: CONFIRMED: later state-44 payload bytes reach the loader unchanged
+    A->>H: adapter completion policy
+    Note over A,H: --synthetic-loadrun-finalize calls Program_FinalizeInput(0)
+    A-->>H: adapter-defined success / safe-removal indication
+```
+
+The executable upload portion of this example is:
+
+```sh
+analysis/venv/bin/python3 analysis/boot_hw.py \
+  --trace-loadrun-source plinth \
+  --synthetic-loadrun item-list.dip \
+  --synthetic-loadrun-finalize
+```
+
+`item-list.dip` may instead be a COM image. The harness validates the file,
+serves it in 128-byte-or-smaller raw program-data payloads, and uses the
+real loader finalizer. Scan-record encoding, the database/list schema,
+software-update decision, final user feedback, and safe-removal signal are
+adapter policy, not claims about a historical deployed system.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:
