@@ -2147,3 +2147,9 @@ current priority order; the concise lists above are authoritative.
     producer breakpoint within 180 s. The callback path is not active at that
     pause; do not expose this internal write as a peer policy. It remains a
     conditional static mechanism, not a tested synthetic EOF implementation.
+  * **Working adapter-completion policy:** optional
+    `--synthetic-loadrun-finalize` invokes the real ROM01
+    `Program_FinalizeInput` callback with zero status after the synthetic
+    peer's last payload. The 50-byte DIP integration reaches loader state 3.
+    This completes a software-facing transfer, but is not documented as a
+    Commstar EOF frame or safe-removal command.

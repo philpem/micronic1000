@@ -118,6 +118,10 @@ OPTIONS
   --synthetic-loadrun FILE
                            With --trace-loadrun-source, serve FILE as later
                            raw program-data state-44 payloads.
+  --synthetic-loadrun-finalize
+                           Complete a synthetic stream through the ROM loader
+                           finalizer after its final payload. This is an
+                           adapter-completion policy, not a wire-frame claim.
 
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
@@ -303,6 +307,7 @@ SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
 SYNTHETIC_LOADRUN_DATA = None
+SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
 if SYNTHETIC_LOADRUN_PATH:
     if not TRACE_LOADRUN_SOURCE:
         print("--synthetic-loadrun requires --trace-loadrun-source", file=sys.stderr)
@@ -322,6 +327,9 @@ if SYNTHETIC_LOADRUN_PATH:
         f"[synthetic-loadrun] prepared {synthetic_file} "
         f"({len(SYNTHETIC_LOADRUN_DATA)} bytes, {synthetic_validation.kind})"
     )
+elif SYNTHETIC_LOADRUN_FINALIZE:
+    print("--synthetic-loadrun-finalize requires --synthetic-loadrun", file=sys.stderr)
+    sys.exit(2)
 if sum(
     option is not None
     for option in (
@@ -1815,6 +1823,16 @@ while i < MAX_SLICES and stall < 8000:
                         loadrun_source_data_offset : loadrun_source_data_offset + 0x80
                     ]
                     if not payload:
+                        if SYNTHETIC_LOADRUN_FINALIZE:
+                            result = call_rom1(0x1002, (0,))
+                            if result != 0 or read_word(0xECC9) != 3:
+                                raise RuntimeError(
+                                    "synthetic finalizer failed: "
+                                    f"HL={result:04X} state={read_word(0xECC9)}"
+                                )
+                            print("[synthetic-loadrun] adapter finalizer reached loader state 3")
+                            loadrun_source_trace_status = "succeeded"
+                            break
                         print(
                             "[synthetic-loadrun] stream exhausted; EOF envelope "
                             "remains an explicit compatibility assumption"
@@ -2032,5 +2050,5 @@ if TRACE_SESSION_BUILDER and builder_trace_status != "succeeded":
     sys.exit(1)
 if TRACE_SESSION_TRANSACTION and transaction_trace_status != "succeeded":
     sys.exit(1)
-if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status not in ("captured", "streamed"):
+if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status not in ("captured", "streamed", "succeeded"):
     sys.exit(1)

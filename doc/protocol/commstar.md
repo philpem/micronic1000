@@ -436,6 +436,12 @@ ordering or envelope. The control-path and raw-payload copies are
 safe-removal acknowledgement are configurable compatibility policy and remain
 **OPEN**.
 
+`--synthetic-loadrun-finalize` supplies one useful adapter policy: after the
+last synthetic payload it calls the real `Program_FinalizeInput` callback with
+zero status, reaching loader state 3 in the emulator. This completes the
+software-facing transfer but is deliberately not represented as a received
+Commstar EOF command or a user-facing safe-removal acknowledgement.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:

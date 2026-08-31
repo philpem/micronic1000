@@ -153,6 +153,7 @@ class BootSessionTransactionTest(unittest.TestCase):
                     "plinth",
                     "--synthetic-loadrun",
                     str(image),
+                    "--synthetic-loadrun-finalize",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -164,8 +165,8 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("[synthetic-loadrun] prepared", proc.stdout)
         self.assertIn("payload=50 offset=50", proc.stdout)
-        self.assertIn("stream exhausted", proc.stdout)
-        self.assertIn("loadrun_source_trace_status=streamed", proc.stdout)
+        self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
+        self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 
 
 if __name__ == "__main__":
