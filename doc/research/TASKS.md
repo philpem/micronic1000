@@ -2174,11 +2174,15 @@ current priority order; the concise lists above are authoritative.
     equal returns HL=1 with Z clear. The mechanism is byte-verified at
     `ROM00:5AD2-5AEA` and `ROM00:3D7D-3DEF`, and marker 0 was dynamically
     observed to reach a fresh receive generation.
-  * **Multi-chunk synthetic path remains OPEN:** despite the confirmed marker
-    rule, changing the first 128-byte payload to marker 0 did not make the
-    current harness reach its next peer injection within 180 s. Keep the
-    tested synthetic implementation scoped to one program-data payload until
-    the harness's inter-chunk control sequencing is traced.
+  * **CONFIRMED synthetic multi-chunk regression:** a 200-byte COM uses a
+    tested 126-byte first payload with marker 0, followed by 74 bytes with
+    marker 1; the adapter finalizer reaches loader state 3. Phase-14 reply
+    accounting accepts the verified type-3 reply as a TX suffix because an
+    observed preceding `03` byte is captured separately. This is harness
+    mechanics, not a historical Commstar framing claim.
+    **OPEN:** 126 is a tested chunk size, not a ROM-proven maximum; do not
+    derive a payload limit from state-44's `0x86` capacity until its exact
+    descriptor and envelope overhead are byte-verified.
   * **CONFIRMED state-44 receive bound:** `ROM00:6230` passes `0x86` as the
     state-44 application receive capacity. The observed 128-byte synthetic
     object reaches the 0x1FAE (8110), "Line failure" path; its exact

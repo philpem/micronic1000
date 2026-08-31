@@ -427,8 +427,10 @@ this later state-44 receive remains **OPEN**.
 provides a deliberately scoped compatibility peer. It runs the confirmed
 control exchanges, then supplies the validated COM/DIP file as raw inner
 program-data payloads. The harness has an opt-in
-regression using a 50-byte DIP file which reaches the explicit
-end-of-stream boundary.
+regression using a 50-byte DIP file and a 200-byte COM file which reaches the
+explicit end-of-stream boundary in two chunks (126 bytes with marker 0, then
+74 bytes with marker 1). The 126-byte size is a tested harness choice, not a
+ROM-proven maximum; state-44 capacity overhead remains **OPEN**.
 
 This is **not** a claim that the historical Commstar peer used this command
 ordering or envelope. The control-path and raw-payload copies are
@@ -489,7 +491,8 @@ analysis/venv/bin/python3 analysis/boot_hw.py \
 
 `item-list.dip` may instead be a COM image. The harness validates the file,
 serves the current single-payload regression, and uses the real loader
-finalizer. Multi-payload bounds remain OPEN. Scan-record encoding, the
+finalizer. It also has a two-payload regression using the tested 126-byte
+chunk size; the maximum permitted payload remains OPEN. Scan-record encoding, the
 database/list schema, software-update decision, final user feedback, and
 safe-removal signal are adapter policy, not claims about a historical deployed
 system.

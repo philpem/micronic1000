@@ -122,6 +122,9 @@ OPTIONS
                            Complete a synthetic stream through the ROM loader
                            finalizer after its final payload. This is an
                            adapter-completion policy, not a wire-frame claim.
+  --trace-loadrun-debug
+                           Bound a stalled synthetic state-44 reply phase and
+                           print the link state and captured TX suffix.
 
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
@@ -308,6 +311,10 @@ SYNTHETIC_LOADRUN_PATH = (
 )
 SYNTHETIC_LOADRUN_DATA = None
 SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
+TRACE_LOADRUN_DEBUG = has_flag("--trace-loadrun-debug")
+if TRACE_LOADRUN_DEBUG and not TRACE_LOADRUN_SOURCE:
+    print("--trace-loadrun-debug requires --trace-loadrun-source", file=sys.stderr)
+    sys.exit(2)
 if SYNTHETIC_LOADRUN_PATH:
     if not TRACE_LOADRUN_SOURCE:
         print("--synthetic-loadrun requires --trace-loadrun-source", file=sys.stderr)
@@ -1294,6 +1301,7 @@ loadrun_source_second_tx_count = 0
 loadrun_source_finalizer_seen = False
 loadrun_source_state44_complete = False
 loadrun_source_data_offset = 0
+loadrun_source_phase14_start = None
 
 # expect / queue state
 from collections import deque
@@ -1402,9 +1410,6 @@ while i < MAX_SLICES and stall < 8000:
             pass
         elif pc == 0x2F78 and loadrun_source_link_phase == 15:
             loadrun_source_link_phase = 13
-        elif pc == 0x2F78 and loadrun_source_link_phase == 13:
-            loadrun_source_breakpoint = 0xEE2C
-            mach.set_breakpoint(loadrun_source_breakpoint)
         if loadrun_source_breakpoint is not None:
             mach.set_breakpoint(loadrun_source_breakpoint)
 
@@ -1818,9 +1823,12 @@ while i < MAX_SLICES and stall < 8000:
                 link_id = mem[0xFDD4]
                 sequence = mem[0xFE43 + (link_id & 0x3F)]
                 payload = bytes.fromhex("4f4ba55a3cc3")
+                payload_marker = 1
                 if SYNTHETIC_LOADRUN_DATA is not None:
+                    # 0x7e is the largest tested chunk. ROM00:6230 passes
+                    # 0x86 for state 44, but its exact payload overhead is open.
                     payload = SYNTHETIC_LOADRUN_DATA[
-                        loadrun_source_data_offset : loadrun_source_data_offset + 0x80
+                        loadrun_source_data_offset : loadrun_source_data_offset + 0x7E
                     ]
                     if not payload:
                         if SYNTHETIC_LOADRUN_FINALIZE:
@@ -1839,19 +1847,25 @@ while i < MAX_SLICES and stall < 8000:
                         )
                         loadrun_source_trace_status = "streamed"
                         break
+                    payload_marker = int(
+                        loadrun_source_data_offset + len(payload)
+                        == len(SYNTHETIC_LOADRUN_DATA)
+                    )
                 peer_initiated = bytes(
                     [
                         0, 14 + len(payload), 0, 2, sequence, link_id, 0,
-                        0, 0, 1, 0, len(payload), 0,
+                        0, 0, payload_marker, 0, len(payload), 0,
                     ]
                 ) + payload + bytes([0, 0, 2, sequence])
                 loadrun_source_data_offset += len(payload)
                 loadrun_source_second_tx_count = session_link_peer.pending_tx
                 session_link_peer.feed_rx(peer_initiated)
                 loadrun_source_link_phase = 14
+                loadrun_source_phase14_start = i
                 print(
                     f"[loadrun-source] receive-first RX={peer_initiated.hex()} "
-                    f"payload={len(payload)} offset={loadrun_source_data_offset}"
+                    f"payload={len(payload)} marker={payload_marker} "
+                    f"offset={loadrun_source_data_offset}"
                 )
         elif loadrun_source_link_phase == 14:
             link_id = mem[0xFDD4]
@@ -1859,12 +1873,12 @@ while i < MAX_SLICES and stall < 8000:
             expected_reply = bytes(
                 [link_id & 0x1F, 6, 0, 3, sequence, 0x7F, 0]
             )
+            reply_tail = session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
             if (
                 session_link_peer.pending_rx == 0
                 and mem[0xFDD5] == 3
                 and read_word(0xFDDC) == 0xFE32
-                and session_link_peer.peek_tx()[loadrun_source_second_tx_count:]
-                == expected_reply
+                and reply_tail.endswith(expected_reply)
             ):
                 completion = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
                 session_link_peer.feed_rx(completion)
@@ -1872,6 +1886,20 @@ while i < MAX_SLICES and stall < 8000:
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
                 print(f"[loadrun-source] receive-first completion={completion.hex()}")
+            elif (
+                TRACE_LOADRUN_DEBUG
+                and loadrun_source_phase14_start is not None
+                and i - loadrun_source_phase14_start >= 3000
+            ):
+                loadrun_source_trace_status = "failed"
+                print(
+                    "[loadrun-source] state44 reply timeout "
+                    f"FDD5={mem[0xFDD5]:02X} FDDC={read_word(0xFDDC):04X} "
+                    f"pending_rx={session_link_peer.pending_rx} "
+                    f"expected={expected_reply.hex()} tail={reply_tail.hex()}",
+                    file=sys.stderr,
+                )
+                break
     if (
         TRACE_LOADRUN_SOURCE
         and loadrun_source_trace_status == "pending"

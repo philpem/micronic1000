@@ -164,7 +164,35 @@ class BootSessionTransactionTest(unittest.TestCase):
             )
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("[synthetic-loadrun] prepared", proc.stdout)
-        self.assertIn("payload=50 offset=50", proc.stdout)
+        self.assertIn("payload=50 marker=1 offset=50", proc.stdout)
+        self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
+        self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
+
+    def test_synthetic_loadrun_streams_multichunk_com(self):
+        data = bytes(index & 0xFF for index in range(200))
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "two-chunk.com"
+            image.write_bytes(data)
+            proc = subprocess.run(
+                [
+                    str(PYTHON),
+                    str(HARNESS),
+                    "--trace-loadrun-source",
+                    "plinth",
+                    "--synthetic-loadrun",
+                    str(image),
+                    "--synthetic-loadrun-finalize",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("payload=126 marker=0 offset=126", proc.stdout)
+        self.assertIn("payload=74 marker=1 offset=200", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 
