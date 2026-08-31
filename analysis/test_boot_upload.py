@@ -10,6 +10,7 @@ Run with:
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import tempfile
 import unittest
@@ -195,6 +196,45 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertIn("payload=74 marker=1 offset=200", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
+
+    def test_synthetic_workflow_serves_relative_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = root / "hello.com"
+            image.write_bytes(HELLO_COM)
+            manifest = root / "workflow.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "source": "plinth",
+                        "scan_records": [{"barcode": "0123456789012"}],
+                        "image": image.name,
+                        "run_after_load": True,
+                        "feedback": "list_updated",
+                        "safe_to_remove": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [
+                    str(PYTHON),
+                    str(HARNESS),
+                    "--synthetic-workflow",
+                    str(manifest),
+                    "--synthetic-loadrun-finalize",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=180,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("[synthetic-workflow] scan_records=1", proc.stdout)
+        self.assertIn("payload=28 marker=1 offset=28", proc.stdout)
+        self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
 
 
 if __name__ == "__main__":

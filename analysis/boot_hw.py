@@ -115,9 +115,13 @@ OPTIONS
   --trace-loadrun-source NAME
                            Drive the Load/Run PLINTH or V24 ADAPTOR source
                            form and capture its first session TX bytes.
-  --synthetic-loadrun FILE
+   --synthetic-loadrun FILE
                            With --trace-loadrun-source, serve FILE as later
                            raw program-data state-44 payloads.
+   --synthetic-workflow FILE
+                           Load a JSON SyntheticWorkflow manifest for the
+                           tested PLINTH image path. Scan records, run intent,
+                           feedback, and safe removal remain adapter policy.
   --synthetic-loadrun-finalize
                            Complete a synthetic stream through the ROM loader
                            finalizer after its final payload. This is an
@@ -187,6 +191,7 @@ from pathlib import Path
 sys.path.insert(0, "/home/philpem/Micronic-1000/analysis")
 import z80
 from micronic.rtc import RTC146818
+from micronic.commstar import SyntheticWorkflow
 from micronic.program import validate
 from micronic import proto
 
@@ -303,12 +308,53 @@ TRACE_LOADRUN_SOURCE = (
     if has_flag("--trace-loadrun-source")
     else None
 )
-if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
-    print("--trace-loadrun-source must be plinth or v24", file=sys.stderr)
-    sys.exit(2)
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
+SYNTHETIC_WORKFLOW_PATH = (
+    get_arg("--synthetic-workflow") if has_flag("--synthetic-workflow") else None
+)
+if SYNTHETIC_WORKFLOW_PATH:
+    if SYNTHETIC_LOADRUN_PATH:
+        print(
+            "--synthetic-workflow cannot be combined with --synthetic-loadrun",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        synthetic_workflow = SyntheticWorkflow.from_file(SYNTHETIC_WORKFLOW_PATH)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"[synthetic-workflow] invalid manifest: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if synthetic_workflow.source != "plinth":
+        print(
+            "[synthetic-workflow] only source 'plinth' has a tested harness path",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if TRACE_LOADRUN_SOURCE and TRACE_LOADRUN_SOURCE != synthetic_workflow.source:
+        print(
+            "--trace-loadrun-source disagrees with synthetic workflow source",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if synthetic_workflow.image is None:
+        print("[synthetic-workflow] manifest requires image for this harness", file=sys.stderr)
+        sys.exit(2)
+    TRACE_LOADRUN_SOURCE = synthetic_workflow.source
+    SYNTHETIC_LOADRUN_PATH = str(
+        Path(SYNTHETIC_WORKFLOW_PATH).parent / synthetic_workflow.image
+    )
+    print(
+        "[synthetic-workflow] "
+        f"scan_records={len(synthetic_workflow.scan_records)} "
+        f"run_after_load={synthetic_workflow.run_after_load} "
+        f"feedback={synthetic_workflow.feedback} "
+        f"safe_to_remove={synthetic_workflow.safe_to_remove}"
+    )
+if TRACE_LOADRUN_SOURCE not in (None, "plinth", "v24"):
+    print("--trace-loadrun-source must be plinth or v24", file=sys.stderr)
+    sys.exit(2)
 SYNTHETIC_LOADRUN_DATA = None
 SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
 TRACE_LOADRUN_DEBUG = has_flag("--trace-loadrun-debug")

@@ -444,6 +444,13 @@ zero status, reaching loader state 3 in the emulator. This completes the
 software-facing transfer but is deliberately not represented as a received
 Commstar EOF command or a user-facing safe-removal acknowledgement.
 
+`--synthetic-workflow FILE` reads a `SyntheticWorkflow` JSON manifest, resolves
+its image relative to the manifest, and invokes the same tested PLINTH path.
+It reports the manifest's scan-record count, run intent, feedback, and
+safe-removal policy, but does not serialize records, run the image, or emit a
+safe-removal frame. Those actions remain adapter policy. The manifest wrapper
+currently rejects V24 because that source has no tested synthetic completion.
+
 ### V24 selection
 
 **CONFIRMED:** the Load/Run choice list includes `V24 ADAPTOR` and its form
@@ -527,6 +534,14 @@ chunk size; the maximum permitted payload remains OPEN. Scan-record encoding, th
 database/list schema, software-update decision, final user feedback, and
 safe-removal signal are adapter policy, not claims about a historical deployed
 system.
+
+The equivalent manifest invocation is:
+
+```sh
+analysis/venv/bin/python3 analysis/boot_hw.py \
+  --synthetic-workflow stock-check.json \
+  --synthetic-loadrun-finalize
+```
 
 The reusable policy object is `micronic.commstar.SyntheticWorkflow`. Its JSON
 fields are `source` (`plinth` or `v24`), `scan_records` (opaque objects), an
