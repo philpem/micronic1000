@@ -393,11 +393,11 @@ resident descriptor whose stride is 10 bytes (`ROM01:0E2D-0E43`). The first
 eight bytes are type, bank offset, destination address, and payload length;
 the purpose of the two remaining resident bytes is not established here.
 
-The later `0x1F9A (8090), "Line failure"` is likewise not a loader-format
-error. `ROM00:4E4E` dispatches the session result word:
+The later `0x1F9A (8090)` is likewise not a loader-format error.
+`ROM00:4E4E` dispatches the session result word:
 only values `0`, `4`, `6`, `8`, and `9` have explicit arms. Its default arm
-at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to the line-failure
-message routine. The upstream result value in the stalled harness remains
+at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to the error-display
+path. The resolved message and upstream stalled-harness result remain
 **OPEN**.
 
 ### Program-data receive path
@@ -406,14 +406,15 @@ The control object and program bytes use separate state-44 call paths.
 `OK`/`NO`/`DM` classification applies only to the earlier control caller;
 it does not constrain the inner bytes of a later program-data receive.
 
-**CONFIRMED, cross-provider reviewed:** `ROM00:4F5A` begins program receive
-mode `0x000A` and calls `Session_ReadStreamChunk` (`ROM00:3E6A`) at `4FB9`
-with a maximum of 128 bytes. The path `3E6A -> 3DCB -> 3D59 -> 58B8 -> 620B`
-validates state-44 outer metadata but does not inspect `E5C4`, the inner
-payload start. On success it copies payload bytes from `E5C4` unchanged into
-the stream buffer. `Session_ReadStreamChunk` returns a caller-facing packed
-object `{u8 count, payload[count]}`; it adds the count but does not alter the
-payload.
+**CONFIRMED, cross-provider reviewed:** the internal basic block
+`ROM00:4F5A` (`Session_ProgramReceiveMode`) enters program receive mode
+`0x000A` and calls `Session_ReadStreamChunk` (`ROM00:3E6A`) at `4FB9` with a
+maximum aggregate read of 128 bytes. It is reached from its parent state
+machine, not as a callable function entry. The receive path validates
+state-44 outer metadata but does not inspect `E5C4`, the inner payload start.
+On success it copies payload bytes from `E5C4` unchanged into the stream
+buffer. `Session_ReadStreamChunk` returns a caller-facing packed object
+`{u8 count, payload[count]}`; it adds the count but does not alter the payload.
 
 A program-data object may therefore start its inner payload with `C9 C8`,
 which reaches the loader stream as its first two data bytes. This is the
@@ -426,7 +427,7 @@ this later state-44 receive remains **OPEN**.
 `boot_hw.py --trace-loadrun-source plinth|v24 --synthetic-loadrun FILE`
 provides a deliberately scoped compatibility peer. It runs the confirmed
 control exchanges, then supplies the validated COM/DIP file as raw inner
-program-data payloads of at most 128 bytes. The harness has an opt-in
+program-data payloads. The harness has an opt-in
 regression using a 50-byte DIP file which reaches the explicit
 end-of-stream boundary.
 
@@ -441,6 +442,16 @@ last synthetic payload it calls the real `Program_FinalizeInput` callback with
 zero status, reaching loader state 3 in the emulator. This completes the
 software-facing transfer but is deliberately not represented as a received
 Commstar EOF command or a user-facing safe-removal acknowledgement.
+
+### V24 selection
+
+**CONFIRMED:** the Load/Run choice list includes `V24 ADAPTOR` and its form
+contains Mode, Linespeed, User id, Password, Group id, and Telephone number
+labels (`ROM01:7A0F`, `7B7E-7BCB`). `YES, YES, ENTER` selects this form in the
+emulator. **SUSPECTED:** leaving its fields blank reaches an early state-44
+control exchange but then takes the 0x1FAE (8110) error-display path before
+the known program-receive basic block. This is emulator behavior, not evidence
+about historical authentication or the form fields' persistence.
 
 ## Appendix: synthetic stock-check workflow example
 
@@ -461,7 +472,7 @@ sequenceDiagram
     Note over A,S: Adapter-defined record format and reconciliation
     A->>S: submit scans / obtain current item list
     S-->>A: updated list, optional COM or DIP image
-    A->>H: raw program-data payloads, max 128 bytes each
+    A->>H: raw program-data payloads
     Note over A,H: CONFIRMED: later state-44 payload bytes reach the loader unchanged
     A->>H: adapter completion policy
     Note over A,H: --synthetic-loadrun-finalize calls Program_FinalizeInput(0)
@@ -478,10 +489,11 @@ analysis/venv/bin/python3 analysis/boot_hw.py \
 ```
 
 `item-list.dip` may instead be a COM image. The harness validates the file,
-serves it in 128-byte-or-smaller raw program-data payloads, and uses the
-real loader finalizer. Scan-record encoding, the database/list schema,
-software-update decision, final user feedback, and safe-removal signal are
-adapter policy, not claims about a historical deployed system.
+serves the current single-payload regression, and uses the real loader
+finalizer. Multi-payload bounds remain OPEN. Scan-record encoding, the
+database/list schema, software-update decision, final user feedback, and
+safe-removal signal are adapter policy, not claims about a historical deployed
+system.
 
 The reusable policy object is `micronic.commstar.SyntheticWorkflow`. Its JSON
 fields are `source` (`plinth` or `v24`), `scan_records` (opaque objects), an

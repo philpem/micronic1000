@@ -2116,22 +2116,24 @@ current priority order; the concise lists above are authoritative.
     10-byte resident descriptor stride; do not call the resident descriptor an
     8-byte object. The final two resident bytes are not assigned a new meaning
     here.
-  * **CONFIRMED:** `0x1F9A (8090), "Line failure"` is the default arm of the
-    ROM00 session-result dispatcher at `4E4E`, not a loader parser error. It
-    applies when the session result is not one of `0`, `4`, `6`, `8`, or `9`;
-    the source of the stalled-harness result remains **OPEN**.
+  * **CONFIRMED:** `0x1F9A (8090)` is the default arm of the ROM00
+    session-result dispatcher at `4E4E`, not a loader parser error. It applies
+    when the session result is not one of `0`, `4`, `6`, `8`, or `9`; its
+    resolved message and the source of the stalled-harness result remain
+    **OPEN**.
   * **CONFIRMED, cross-provider reviewed:** the later program receive is a
-    distinct state-44 caller: `ROM00:4F5A` enters mode `0x000A` and calls
-    `Session_ReadStreamChunk` (`3E6A`) with a 128-byte maximum. Its chain
-    `3E6A -> 3DCB -> 3D59 -> 58B8 -> 620B` validates outer metadata but copies
-    `E5C4` inner payload bytes unchanged; `3E6A` wraps them only as
+    distinct state-44 caller: the internal basic block `ROM00:4F5A` enters
+    mode `0x000A` and calls `Session_ReadStreamChunk` (`3E6A`) with a
+    128-byte aggregate maximum. It is not a callable function entry. The
+    receive path validates outer metadata but copies `E5C4` inner payload
+    bytes unchanged; `3E6A` wraps them only as
     `{u8 count, payload}`. Thus a later raw payload may begin `C9 C8` for DIP
     without an `OK` prefix. The peer envelope that reaches this caller remains
     **OPEN**.
   * **Synthetic compatibility milestone:** `boot_hw.py --trace-loadrun-source
     plinth|v24 --synthetic-loadrun FILE` now feeds a validated COM/DIP file as
-    128-byte-or-smaller raw program-data payloads after the confirmed control
-    sequence. The opt-in emulator regression delivers a 50-byte DIP through
+    raw program-data payloads after the confirmed control sequence. The
+    opt-in emulator regression delivers a 50-byte DIP through
     that path and stops at the explicit EOF-policy boundary. This is a working
     ROM-facing synthetic peer component, not a claim about historical command
     order or EOF/safe-removal semantics; those remain **OPEN**.
@@ -2161,6 +2163,11 @@ current priority order; the concise lists above are authoritative.
     does not reach a bounded synthetic Load/Run completion within 180 s. Keep
     PLINTH as the only regression-covered source until the V24 form sequence
     is traced; do not claim the two source selections are equivalent.
+    **SUSPECTED emulator observation:** selecting V24 with `YES, YES, ENTER`
+    reaches the `Log-on information` form, then a state-44 control exchange
+    and a fresh receive arm, but not the known program-receive basic block.
+    The run enters the 0x1FAE (8110) error-display path; its resolved text and
+    the role of blank form fields remain OPEN.
   * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
     inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
     refill after the delivered payload. Marker `0` preserves result 0 and
@@ -2173,3 +2180,8 @@ current priority order; the concise lists above are authoritative.
     current harness reach its next peer injection within 180 s. Keep the
     tested synthetic implementation scoped to one program-data payload until
     the harness's inter-chunk control sequencing is traced.
+  * **CONFIRMED state-44 receive bound:** `ROM00:6230` passes `0x86` as the
+    state-44 application receive capacity. The observed 128-byte synthetic
+    object reaches the 0x1FAE (8110) error-display path; its exact descriptor,
+    resolved message, and envelope-overhead cause remain OPEN. Do not yet
+    assert a raw-payload maximum from the capacity value alone.
