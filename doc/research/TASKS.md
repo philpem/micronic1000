@@ -2157,3 +2157,19 @@ current priority order; the concise lists above are authoritative.
     defines source, opaque scan upload events, optional validated COM/DIP
     image/run intent, feedback, and safe-removal as explicit adapter policy.
     It is not a recovered historical command grammar.
+  * **V24 synthetic path remains OPEN:** the existing V24 UI-selection input
+    does not reach a bounded synthetic Load/Run completion within 180 s. Keep
+    PLINTH as the only regression-covered source until the V24 form sequence
+    is traced; do not claim the two source selections are equivalent.
+  * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
+    inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
+    refill after the delivered payload. Marker `0` preserves result 0 and
+    leaves refill enabled. This relies on `Lib_Eq16`'s inverted Z contract:
+    equal returns HL=1 with Z clear. The mechanism is byte-verified at
+    `ROM00:5AD2-5AEA` and `ROM00:3D7D-3DEF`, and marker 0 was dynamically
+    observed to reach a fresh receive generation.
+  * **Multi-chunk synthetic path remains OPEN:** despite the confirmed marker
+    rule, changing the first 128-byte payload to marker 0 did not make the
+    current harness reach its next peer injection within 180 s. Keep the
+    tested synthetic implementation scoped to one program-data payload until
+    the harness's inter-chunk control sequencing is traced.
