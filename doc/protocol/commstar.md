@@ -393,12 +393,11 @@ resident descriptor whose stride is 10 bytes (`ROM01:0E2D-0E43`). The first
 eight bytes are type, bank offset, destination address, and payload length;
 the purpose of the two remaining resident bytes is not established here.
 
-The later `0x1F9A (8090)` is likewise not a loader-format error.
-`ROM00:4E4E` dispatches the session result word:
+The later `0x1F9A (8090), "Line failure"` is likewise not a loader-format
+error. `ROM00:4E4E` dispatches the session result word:
 only values `0`, `4`, `6`, `8`, and `9` have explicit arms. Its default arm
-at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to the error-display
-path. The resolved message and upstream stalled-harness result remain
-**OPEN**.
+at `ROM00:4E3D` stores result `6` and passes `0x1F9A` to
+`SessionMsgLineFailure`. The upstream stalled-harness result remains **OPEN**.
 
 ### Program-data receive path
 
@@ -449,7 +448,7 @@ Commstar EOF command or a user-facing safe-removal acknowledgement.
 contains Mode, Linespeed, User id, Password, Group id, and Telephone number
 labels (`ROM01:7A0F`, `7B7E-7BCB`). `YES, YES, ENTER` selects this form in the
 emulator. **SUSPECTED:** leaving its fields blank reaches an early state-44
-control exchange but then takes the 0x1FAE (8110) error-display path before
+control exchange but then takes the 0x1FAE (8110), "Line failure" path before
 the known program-receive basic block. This is emulator behavior, not evidence
 about historical authentication or the form fields' persistence.
 

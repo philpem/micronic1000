@@ -130,7 +130,7 @@ Session/commstar errors (byte-verified error-code → message map):
 | 8010, 8012–8015 | Failed to connect |
 | 8011, 8055, 8056, 8102, 8151, 8165, 8166 | Not available |
 | 8016 | Modem fault |
-| 8050, 8054, 8150, 8160, 8164 | Line failure |
+| 8050, 8054, 8090, 8110, 8150, 8160, 8164 | Line failure |
 | 8053, 8163 | Invalid reply |
 | 8101 | Invalid data stream |
 

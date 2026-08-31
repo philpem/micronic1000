@@ -2116,11 +2116,10 @@ current priority order; the concise lists above are authoritative.
     10-byte resident descriptor stride; do not call the resident descriptor an
     8-byte object. The final two resident bytes are not assigned a new meaning
     here.
-  * **CONFIRMED:** `0x1F9A (8090)` is the default arm of the ROM00
-    session-result dispatcher at `4E4E`, not a loader parser error. It applies
-    when the session result is not one of `0`, `4`, `6`, `8`, or `9`; its
-    resolved message and the source of the stalled-harness result remain
-    **OPEN**.
+  * **CONFIRMED:** `0x1F9A (8090), "Line failure"` is the default arm of the
+    ROM00 session-result dispatcher at `4E4E`, not a loader parser error. It
+    applies when the session result is not one of `0`, `4`, `6`, `8`, or `9`;
+    the source of the stalled-harness result remains **OPEN**.
   * **CONFIRMED, cross-provider reviewed:** the later program receive is a
     distinct state-44 caller: the internal basic block `ROM00:4F5A` enters
     mode `0x000A` and calls `Session_ReadStreamChunk` (`3E6A`) with a
@@ -2166,8 +2165,8 @@ current priority order; the concise lists above are authoritative.
     **SUSPECTED emulator observation:** selecting V24 with `YES, YES, ENTER`
     reaches the `Log-on information` form, then a state-44 control exchange
     and a fresh receive arm, but not the known program-receive basic block.
-    The run enters the 0x1FAE (8110) error-display path; its resolved text and
-    the role of blank form fields remain OPEN.
+    The run enters the 0x1FAE (8110), "Line failure" path; the role of blank
+    form fields remains OPEN.
   * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
     inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
     refill after the delivered payload. Marker `0` preserves result 0 and
@@ -2182,6 +2181,6 @@ current priority order; the concise lists above are authoritative.
     the harness's inter-chunk control sequencing is traced.
   * **CONFIRMED state-44 receive bound:** `ROM00:6230` passes `0x86` as the
     state-44 application receive capacity. The observed 128-byte synthetic
-    object reaches the 0x1FAE (8110) error-display path; its exact descriptor,
-    resolved message, and envelope-overhead cause remain OPEN. Do not yet
-    assert a raw-payload maximum from the capacity value alone.
+    object reaches the 0x1FAE (8110), "Line failure" path; its exact
+    descriptor and envelope-overhead cause remain OPEN. Do not yet assert a
+    raw-payload maximum from the capacity value alone.
