@@ -2141,3 +2141,9 @@ current priority order; the concise lists above are authoritative.
     Do not use an empty payload as the synthetic EOF convention. Next ROM-only
     target is the finalizer callback/control path rather than another guessed
     terminal frame.
+  * **Deferred internal EOF injection:** static callback-table tracing shows
+    that a drained ROM01 producer can return zero when `D0FE=8`, but arming
+    that write at the harness's post-stream pause did not reach the expected
+    producer breakpoint within 180 s. The callback path is not active at that
+    pause; do not expose this internal write as a peer policy. It remains a
+    conditional static mechanism, not a tested synthetic EOF implementation.
