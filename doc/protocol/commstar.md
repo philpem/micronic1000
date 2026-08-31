@@ -454,6 +454,25 @@ control exchange but then takes the 0x1FAE (8110), "Line failure" path before
 the known program-receive basic block. This is emulator behavior, not evidence
 about historical authentication or the form fields' persistence.
 
+**CONFIRMED:** the form descriptor maps its six fields to a contiguous
+30-byte backing object:
+
+| Field | Backing storage | Initial value |
+| --- | --- | --- |
+| Mode | `g_bLogonModeIndex` | 0 (`LOCAL LINK`) |
+| Linespeed | `g_bLogonLineSpeedIndex` | `0xFF` sentinel |
+| User id | `g_acLogonUserId`, 9 bytes | empty |
+| Password | `g_acLogonPassword`, 9 bytes | empty |
+| Group id | `g_acLogonGroupId`, 9 bytes | empty |
+| Telephone number | `g_acLogonTelephoneNumber`, 19 bytes | empty |
+
+The `0xFF` linespeed sentinel resolves through the selected mode record; mode
+0 supplies encoded value `0x0E`, the `9600` table entry. The post-form session
+call stages Group id, User id, and Password, while the selected mode callback
+receives the Telephone number buffer only for modes 0 and 2. This proves
+mode-dependent software dispatch, not V24/PLINTH physical-port polarity or
+the historical meanings of the text fields.
+
 ## Appendix: synthetic stock-check workflow example
 
 This is an example adapter workflow, not recovered historical Commstar

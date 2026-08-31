@@ -2167,6 +2167,14 @@ current priority order; the concise lists above are authoritative.
     and a fresh receive arm, but not the known program-receive basic block.
     The run enters the 0x1FAE (8110), "Line failure" path; the role of blank
     form fields remains OPEN.
+  * **CONFIRMED V24 form layout:** the descriptor at `ROM01:793A` maps Mode,
+    Linespeed, User id, Password, Group id, and Telephone number to the
+    30-byte `ram:EC97-ECC6` backing object. `EC98=FF` selects the current mode
+    record's default speed; mode 0 resolves to encoded `0x0E` (`9600`). The
+    post-form call stages Group id, User id, and Password; Telephone number is
+    supplied separately only to mode callbacks 0 and 2. This is software
+    dispatch evidence only: physical port polarity and historical field
+    semantics remain OPEN.
   * **CONFIRMED terminal-marker mechanics:** in a state-44 receive object,
     inner marker `E5C0=1` produces result 8 and latches `E44A`, preventing
     refill after the delivered payload. Marker `0` preserves result 0 and
