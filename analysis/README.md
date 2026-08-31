@@ -22,8 +22,12 @@ scaffold is not sufficient to build an interoperable Commstar adapter:
   header (magic `C9 C8`, system ID `0`/`E5 00`, block count ≤5), parses
   blocks, checks payload lengths and type-1 `len % 4 == 0`, enforces COM
   max `0xCF81`; error identifiers match the loader catalogue
-  (`0x232B`/`0x2331`/`0x2334`/`0x232C`) where applicable and clamps image
-  size at `0x8000` without rejection.
+   (`0x232B`/`0x2331`/`0x2334`/`0x232C`) where applicable and clamps image
+   size at `0x8000` without rejection.
+* `micronic.commstar.SyntheticWorkflow` — application-owned adapter policy
+  for a selected source, opaque scan uploads, optional validated COM/DIP
+  download/run, feedback, and safe-removal. It is not a recovered command
+  grammar.
 * `test_proto.py` covers the raw queue/latch API and the confirmed logical
   header checks.
 

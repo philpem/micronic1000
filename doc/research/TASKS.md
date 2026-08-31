@@ -2153,3 +2153,7 @@ current priority order; the concise lists above are authoritative.
     peer's last payload. The 50-byte DIP integration reaches loader state 3.
     This completes a software-facing transfer, but is not documented as a
     Commstar EOF frame or safe-removal command.
+  * **Application policy model:** `micronic.commstar.SyntheticWorkflow`
+    defines source, opaque scan upload events, optional validated COM/DIP
+    image/run intent, feedback, and safe-removal as explicit adapter policy.
+    It is not a recovered historical command grammar.

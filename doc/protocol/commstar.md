@@ -483,6 +483,12 @@ real loader finalizer. Scan-record encoding, the database/list schema,
 software-update decision, final user feedback, and safe-removal signal are
 adapter policy, not claims about a historical deployed system.
 
+The reusable policy object is `micronic.commstar.SyntheticWorkflow`. Its JSON
+fields are `source` (`plinth` or `v24`), `scan_records` (opaque objects), an
+optional `image`, `run_after_load`, `feedback`, and `safe_to_remove`. It
+produces ordered application events; an adapter chooses how to serialize them
+for its own service.
+
 ## What is not specified yet
 
 An interoperable Commstar peer still needs captured evidence for:
