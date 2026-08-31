@@ -247,6 +247,74 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 
+    def test_state45_field_offsets(self):
+        """Pin the state-45 object field offsets by input variation.
+
+        Varying one input at a time must move exactly one field and leave the
+        frame length unchanged. This is the measurement behind the object
+        layout table in doc/protocol/commstar.md.
+        """
+        image_data = build_dip_file(
+            header_kwargs={
+                "system_id": 0x00E5,
+                "entry_bank_offset": 0,
+                "image_size": len(HELLO_COM),
+                "run_bank_offset": 0,
+                "entry_address": 0x0100,
+            },
+            blocks=[(0, 0, 0x0100, HELLO_COM)],
+        )
+
+        def capture(serial, name):
+            with tempfile.TemporaryDirectory() as tmp:
+                image = Path(tmp) / "hello.dip"
+                image.write_bytes(image_data)
+                proc = subprocess.run(
+                    [
+                        str(PYTHON), str(HARNESS),
+                        "--trace-loadrun-source", "v24",
+                        "--trace-loadrun-v24-mode", "1",
+                        "--serial", serial,
+                        "--trace-loadrun-name", name,
+                        "--synthetic-loadrun", str(image),
+                        "--synthetic-loadrun-finalize",
+                    ],
+                    cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, timeout=180, check=False,
+                )
+            self.assertEqual(proc.returncode, 0, proc.stdout)
+            raw = bytes.fromhex(capture_tx(proc.stdout, "state45"))
+            return raw[1:]  # drop the controller prelude
+
+        base = capture("12345678", "")
+        self.assertEqual(len(base), 66)
+        self.assertEqual(base[0] | base[1] << 8, 66)
+        self.assertEqual(base[26:30], b"LOAD")
+        self.assertEqual(base[30:38], b"12345678")
+
+        # Workstation number: 8 bytes at +30, right-justified space-padded.
+        moved = capture("ABC", "")
+        self.assertEqual(len(moved), 66)
+        self.assertEqual(moved[30:38], b"     ABC")
+        self.assertEqual(
+            [i for i in range(66) if moved[i] != base[i]], list(range(30, 38))
+        )
+
+        # Program name: 8 bytes at +54, left-justified NUL-padded.
+        named = capture("12345678", "PROG1234")
+        self.assertEqual(len(named), 66)
+        self.assertEqual(named[54:62], b"PROG1234")
+        self.assertEqual(
+            [i for i in range(66) if named[i] != base[i]], list(range(54, 62))
+        )
+
+        short = capture("12345678", "XY")
+        self.assertEqual(short[54:62], b"XY\x00\x00\x00\x00\x00\x00")
+
+        # LOAD is a runtime constant, not user data.
+        for frame in (moved, named, short):
+            self.assertEqual(frame[26:30], b"LOAD")
+
     def test_synthetic_loadrun_streams_multichunk_com(self):
         data = bytes(index & 0xFF for index in range(200))
         with tempfile.TemporaryDirectory() as tmp:

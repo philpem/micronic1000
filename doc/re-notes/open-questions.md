@@ -88,17 +88,33 @@ source tree (not published here).
   COM/DIP transfer, with `fdd4` and `E530-E5C8` / `FDE4-FE42` snapshots
   at each send/dispatch/completion.
 
-* <a id="state-45-payload-structure"></a>**State-45 object layout** — The envelope is
-  established: a three-`u16` request header whose `count` field (54) exactly
-  matches the trailing object, carrying operator ASCII at object offsets +14
-  (`LOAD`) and +18 (the workstation number). What the remaining 42 object
-  bytes hold, and what `arg`=1 selects, are open.
-  *Resolve:* the workstation number is typed at the banner and hardcoded in
-  the expect step at `analysis/boot_hw.py:734` — parameterise it from
-  `SERIAL_TEXT` (line 233, currently used only by the legacy queue at line
-  1392), re-run, and confirm the field moves. Then vary the Load/Run name
-  field to test `LOAD` at +14. The V24 form fields are blank in this trace,
-  so varying them is only informative after those two are pinned.
+* <a id="state-45-payload-structure"></a>**State-45 object interior** — The
+  object layout is now measured: `LOAD` at object +14, the workstation number
+  at +18 (right-justified, space-padded), and the program name at +42
+  (left-justified, NUL-padded). See the layout table in
+  [Protocol reference](../protocol/commstar.md#state-45-object-layout).
+  What remains open is the 34 bytes that are zero in every capture, what
+  `arg`=1 selects, and whether `LOAD` is an operation name that other
+  Commstar operations replace.
+  *Resolve:* the remaining zero runs are sized like the V24 logon fields
+  (User id, Password, Group id are 9 bytes each); populate those form fields
+  and re-capture to see whether they land in the object. `LOAD` needs a
+  second reachable Commstar operation to vary.
+
+* **Wire state values versus the 16 named states** — `ROM00:6A4A` names 16
+  session states (`NOT-STARTED` … `REPLY-END`), but the wire carries `00`,
+  `06`, `44`, `45`, `61`, `64`, and the table has no static xref: the index
+  is supplied by the RAM-resident session module.
+  *Resolve:* breakpoint the writer of the display index during a traced
+  session and correlate it with the wire state value in the same exchange.
+
+* **Third `u16` of the request header** — It equals the trailing object
+  length for states `00`, `45`, `61`, `64`, but is `0x0080` for state `06`
+  (which carries a nine-byte object) and `0x00FF` for state `44` (which
+  carries none). A requested-maximum reading fits the latter two but is
+  unproven, and the state-`06` object is unexplained under it.
+  *Resolve:* vary the solicited object size and see whether either value
+  tracks it.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.

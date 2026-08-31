@@ -119,6 +119,10 @@ OPTIONS
                            Select V24 form mode N (0..3) with the raw
                            counter-edit byte before accepting the form.
                            Experimental trace control; not a V24 peer.
+  --trace-loadrun-name TEXT
+                           Type TEXT into the Load/Run Name field before
+                           choosing the source. Used with --serial to measure
+                           which captured frame bytes carry each field.
    --synthetic-loadrun FILE
                            With --trace-loadrun-source, serve FILE as later
                            raw program-data state-44 payloads.
@@ -316,6 +320,11 @@ TRACE_LOADRUN_V24_MODE = (
     int(get_arg("--trace-loadrun-v24-mode"), 0)
     if has_flag("--trace-loadrun-v24-mode")
     else 0
+)
+# Typed into the Load/Run form's Name field before the source is chosen.
+# Used to measure which captured frame bytes carry the program name.
+TRACE_LOADRUN_NAME = (
+    get_arg("--trace-loadrun-name") if has_flag("--trace-loadrun-name") else ""
 )
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
@@ -731,9 +740,15 @@ if TRACE_LOADRUN_SOURCE:
     EXPECT_STEPS.extend(
         [
             parse_expect_arg("To Continue Press>>:\\r"),
-            parse_expect_arg("Enter the,Workstation:\\r12345678\\r"),
+            parse_expect_arg(
+                f"Enter the,Workstation:\\r{SERIAL_TEXT}\\r"
+            ),
             parse_expect_arg("Main Menu:1"),
-            {"need": ["Name", "From"], "keys": source_keys, "raw": "loadrun source"},
+            {
+                "need": ["Name", "From"],
+                "keys": TRACE_LOADRUN_NAME.encode() + source_keys,
+                "raw": "loadrun source",
+            },
             {"need": ["Log-on information"], "keys": logon_keys, "raw": "loadrun logon"},
         ]
     )

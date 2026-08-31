@@ -2282,3 +2282,32 @@ current priority order; the concise lists above are authoritative.
     parameterise the banner workstation number (hardcoded at
     `analysis/boot_hw.py:734`) from `SERIAL_TEXT` to confirm the state-45
     object field offsets by measurement.
+  * **State-45 field measurement (2026-09-01):** the input-variation probe is
+    done. `analysis/boot_hw.py` now takes the banner workstation number from
+    `SERIAL_TEXT` (was hardcoded in the expect step) and gains
+    `--trace-loadrun-name` for the Load/Run Name field. Varying each input
+    alone moves exactly one field and leaves the frame at 66 bytes, giving a
+    measured object layout: `LOAD` at object +14 (runtime constant, not a ROM
+    literal), workstation number at +18 (8 bytes, right-justified,
+    space-padded), program name at +42 (8 bytes, left-justified, NUL-padded).
+    Pinned by `test_state45_field_offsets`. The remaining 34 object bytes are
+    zero in every capture; their sizes resemble the 9-byte V24 logon fields,
+    which is the next thing to vary.
+  * **CORRECTION to the object grammar (2026-09-01):** the third `u16` of the
+    request header is **not** a general object length. It equals the trailing
+    object length for states `00`/`45`/`61`/`64`, but is `0x0080` for state
+    `06`, which carries a nine-byte object, and `0x00FF` for state `44`,
+    which carries none. The earlier "count is the object length wherever an
+    object follows" wording overstated a five-sample pattern and has been
+    replaced with a state-dependent size field plus the two exceptions.
+  * **Session state names recovered (2026-09-01):** `ROM00:6A4A` is 16
+    little-endian pointers to display strings — `NOT-STARTED`,
+    `DISCONNECTED`, `CONNECTED`, `READY-RX-DATA`, `READY-RX-PROG`,
+    `READY-TX-DATA`, `READY-TX-PROG`, `RECORD-RX`, `BLOCK-RX`, `RECORD-TX`,
+    `DATA-SET-TX`, `BLOCK-TX`, `TERMINATED`, `CRASHED`, `REPLY-START`,
+    `REPLY-END`. These are the firmware's own state vocabulary and confirm the
+    protocol's shape (connect lifecycle, per-direction data/program readiness,
+    distinct RECORD and BLOCK modes). They are **not** the wire state values:
+    the table is indexed 0-15 while the wire carries `00`/`06`/`44`/`45`/
+    `61`/`64`, and `6A4A` has no static xref because the RAM-resident session
+    module supplies the index. Mapping the two numberings is a new OPEN item.

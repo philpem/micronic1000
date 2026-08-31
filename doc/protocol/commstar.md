@@ -203,18 +203,22 @@ frame:   [u16 length][u8 type=1][u8 seq][u8 7F][u8 00] payload
 payload: [u16 state][u16 arg][u16 count] object[count]
 ```
 
-| Request | length | state | arg | count | object |
-|---|---:|---:|---:|---:|---|
-| Initial | 12 | `0000` | 0 | 0 | none |
-| State 61 | 12 | `0061` | 0 | 0 | none |
-| State 64 | 12 | `0064` | 0 | 0 | none |
-| State 45 | 66 | `0045` | 1 | 54 | 54 bytes |
-| State 44 | 12 | `0044` | 0 | 255 | none |
+| Request | length | state | arg | size | object | size = object length? |
+|---|---:|---:|---:|---:|---:|---|
+| Initial | 12 | `0000` | 0 | `0000` | 0 | yes |
+| Second | 21 | `0006` | 0 | `0080` | 9 | **no** |
+| State 61 | 12 | `0061` | 0 | `0000` | 0 | yes |
+| State 64 | 12 | `0064` | 0 | `0000` | 0 | yes |
+| State 45 | 66 | `0045` | 1 | `0036` | 54 | yes |
+| State 44 | 12 | `0044` | 0 | `00FF` | 0 | **no** |
 
-`count` is the object length wherever an object follows, and the state-45
-frame confirms it exactly: 54 = 66 − 12. On the state-44 receive request the
-third field is `0x00FF` with no object; its role there is open, though a
-requested-maximum reading is consistent with the observed capacity limit.
+The third `u16` is a size field whose role is state-dependent, and it must not
+be read as a general length. It equals the trailing object length for states
+`00`, `45`, `61`, and `64` — the state-45 frame confirms it exactly, 54 =
+66 − 12. It does not for state `06` (`0x0080` with a nine-byte object) or
+state `44` (`0x00FF` with none). Those two are the requests that solicit data
+from the peer, so a requested-maximum reading fits both values, but it is not
+proven and the state-`06` object is unexplained under either reading.
 
 A type-2 response payload takes one of two shapes:
 
@@ -232,15 +236,100 @@ data object:  [u16 status][u16 marker][u16 N] data[N] [u16 00]
 `marker` 0 permits another refill; `marker` 1 ends the stream. `N` matched the
 data length exactly in every captured object.
 
-Within the state-45 object, offsets +14 and +18 (frame +26 and +30) carry
-operator-entered ASCII — `LOAD` and the workstation number typed at the
-banner. The remaining object bytes are zero in every capture, so their
-layout is not established.
+#### State-45 object layout
+
+Measured by varying one input at a time and comparing captures
+(`--serial` and `--trace-loadrun-name`); each field was confirmed by
+observing that it, and nothing else in the frame, changed. **Stable as
+measured**; the frame length stayed 66 throughout.
+
+| Object | Frame | Size | Field | Encoding |
+|---:|---:|---:|---|---|
+| +0 | +12 | 14 | zero in every capture | — |
+| +14 | +26 | 4 | `LOAD` | fixed; unchanged by every input varied |
+| +18 | +30 | 8 | workstation number | **right-justified, space-padded** |
+| +26 | +38 | 16 | zero in every capture | — |
+| +42 | +54 | 8 | program name | **left-justified, NUL-padded** |
+| +50 | +62 | 4 | zero in every capture | — |
+
+The two padding conventions differ and are each confirmed by a short value:
+workstation `ABC` serialises as `20 20 20 20 20 41 42 43`, program name `XY`
+as `58 59 00 00 00 00 00 00`.
+
+`LOAD` did not change when either text input was varied and is not a ROM
+string literal, so it is a runtime constant for this operation rather than
+user data. Whether it is an operation name that other Commstar operations
+replace is open — no second operation is reachable on the tested path.
 
 For harness provenance see
 [RE notes: Commstar evidence](../re-notes/commstar-evidence.md#captured-session-requests).
 For the experiment that would settle the object field offsets by measurement,
 see [RE notes: Open questions](../re-notes/open-questions.md#state-45-payload-structure).
+
+## Session states
+
+### The firmware's own state names
+
+`ROM00:6A4A` is a table of 16 little-endian pointers to display strings —
+the firmware's own vocabulary for its session states. **Stable** (byte-read
+from ROM); this is what the device calls its states, not necessarily what
+travels on the wire.
+
+| Index | Name | Index | Name |
+|---:|---|---:|---|
+| 0 | `NOT-STARTED` | 8 | `BLOCK-RX` |
+| 1 | `DISCONNECTED` | 9 | `RECORD-TX` |
+| 2 | `CONNECTED` | 10 | `DATA-SET-TX` |
+| 3 | `READY-RX-DATA` | 11 | `BLOCK-TX` |
+| 4 | `READY-RX-PROG` | 12 | `TERMINATED` |
+| 5 | `READY-TX-DATA` | 13 | `CRASHED` |
+| 6 | `READY-TX-PROG` | 14 | `REPLY-START` |
+| 7 | `RECORD-RX` | 15 | `REPLY-END` |
+
+The names confirm the shape of the protocol the firmware implements: a
+connect/disconnect lifecycle, separate readiness states for data versus
+program in each direction, and distinct `RECORD` and `BLOCK` transfer modes
+each with an RX and a TX form. `DATA-SET-TX` has no RX counterpart.
+
+**These indices are not the wire state values.** The table is indexed 0-15;
+the values carried in request payload +0 are `00`, `06`, `44`, `45`, `61`,
+and `64`. No mapping between the two numbering systems is established, and
+`ROM00:6A4A` has no static xref — the index is supplied by the RAM-resident
+session module. Do not assume, for example, that wire `44` is
+`READY-RX-PROG` because of its high nibble.
+
+### Observed transitions
+
+The V24 mode-1 and PLINTH Load/Run traces both walk this sequence. Each step
+is one type-1 request from the handheld, answered by a type-2 object, a
+type-3 acknowledgement from the handheld, and a type-4 completion.
+**Provisional**: this is one traced path through the machine, not the whole
+state graph — no abort, retry, or handheld-to-host branch has been captured.
+
+```mermaid
+stateDiagram-v2
+    [*] --> S00: link opened
+    S00: state 0000
+    S06: state 0006
+    S61: state 0061
+    S64: state 0064
+    S45: state 0045 — carries workstation + program name
+    S44: state 0044 — solicits data, size 00FF
+    Stream: program data chunks
+    S00 --> S06: T2/T3/T4
+    S06 --> S61: T2/T3/T4
+    S61 --> S64: T2/T3/T4
+    S64 --> S45: T2/T3/T4
+    S45 --> S44: T2/T3/T4
+    S44 --> Stream: control object OK
+    Stream --> Stream: marker 0, refill
+    Stream --> [*]: marker 1, end of stream
+```
+
+A sixth value, `60`, appears in the loaded module's abort case list
+alongside `44`, `45`, `61`, and `64` but has not been observed on the wire.
+The `RECORD`/`BLOCK` states named above have no observed wire value at all,
+because no trace has yet exercised a record or block transfer.
 
 ## Historical server readiness
 
