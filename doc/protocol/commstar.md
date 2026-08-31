@@ -495,6 +495,14 @@ connected"`. **CONFIRMED:** they arise in the two connection-result dispatchers
 before `Session_LogonMode0Or2Callback`, not in that callback. The message text
 therefore cannot identify the selected physical connector.
 
+**CONFIRMED:** while the Mode field is active, raw keyboard-ring byte `0xDB`
+invokes `FieldCounterEdit` and advances to the next mode enabled by
+`g_wLogonModeEnableMask`; physical key identity is not assigned. A bounded
+emulator run with `g_wLogonModeEnableMask=0xFFFF` changed mode 0 to mode 1
+(`MODEM A/ANS`) and, on accept, reached `0x1F40 (8000), "Plinth not
+connected"`. This exercises a mode-dependent software branch only; it does
+not establish an adapter transport or physical-port selection.
+
 ## Appendix: synthetic stock-check workflow example
 
 This is an example adapter workflow, not recovered historical Commstar

@@ -237,6 +237,44 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("[synthetic-loadrun] execution entered bank 2 at 0100", proc.stdout)
 
+    def test_v24_mode_counter_edit(self):
+        proc = subprocess.run(
+            [
+                str(PYTHON),
+                str(HARNESS),
+                "--no-lcd",
+                "--max-slices",
+                "50000",
+                "--expect-timeout",
+                "45000",
+                "--expect",
+                "To Continue Press>>:\r",
+                "--expect",
+                "Enter the,Workstation:\r12345678\r",
+                "--expect",
+                "Main Menu:1",
+                "--expect",
+                "Name,From:\x06\x06\r",
+                "--expect",
+                r"Log-on information:\xDB",
+                "--expect",
+                "MODEM_A/ANS:\r",
+                "--dump-mem",
+                "ec97:2",
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=180,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("expect step 5 matched ['MODEM_A/ANS']", proc.stdout)
+        self.assertIn("[mem] final EC97:02 01 FF", proc.stdout)
+        self.assertIn("8000", proc.stdout)
+        self.assertIn("Plinth not connected", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

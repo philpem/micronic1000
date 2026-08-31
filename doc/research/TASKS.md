@@ -2181,6 +2181,11 @@ current priority order; the concise lists above are authoritative.
     takes the bit5-clear latch path. This is not a physical-port assignment.
     `0x1F40 (8000)` and `0x1F41 (8001)`, both `"Plinth not connected"`, are
     emitted by earlier connection-result dispatchers, not that callback.
+  * **CONFIRMED V24 mode edit:** raw keyboard-ring byte `DBh` invokes
+    `FieldCounterEdit`; with `g_wLogonModeEnableMask=FFFFh`, it advanced
+    g_bLogonModeIndex from 0 to 1 (`MODEM A/ANS`). Accepting mode 1 reached
+    `0x1F40 (8000), "Plinth not connected"`. The byte has no assigned physical
+    key identity, and this does not establish a V24 transport path.
   * **Synthetic workflow manifest:** `--synthetic-workflow FILE` resolves a
     `SyntheticWorkflow` PLINTH image relative to its JSON manifest and feeds
     the existing tested path. `run_after_load` verifies the requested/loaded
