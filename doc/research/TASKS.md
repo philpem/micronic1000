@@ -3370,3 +3370,64 @@ at 1087 functions.
   factory default screen reads `PLINTH / LOCAL LINK / 9600` and every
   default-configuration trace carries link id `43h`. Confirming needs a
   capture with `V24 ADAPTOR` selected.
+
+## Commstar: both directions demonstrated, and the session ends cleanly (2026-09-01)
+
+* **Program download driven end to end through the peer.** A loaded COM runs
+  `C-INIT-COMMS` -> `C-DIAL` -> `C-COMMAND(3 "LOAD")` -> `C-RX-BLK` until
+  status 8, against `micronic.peer.ProgramDownloadPolicy`. Wire states
+  `0000 0006 0062 0064 0045 0044`x4. A 300-byte image arrives in three blocks,
+  reassembles by plain concatenation byte for byte, and the screen ends on
+  `Program received`. Note the final `C-RX-BLK` carries data **and** status 8
+  in the same call. Regression `CommstarProgramDownloadTest`.
+* **`C-COMMAND`'s third argument (`SP+4`) is the reply buffer** — this closes
+  an open question. `ROM00:4C32` pushes it into `ROM00:3F20`, which solicits
+  `0044` with `size = 00FFh`; `ROM00:3F65` matches the first two bytes of the
+  answer against the table at `ram:E22F`. Byte-verified at `micron1.bin`
+  `0x7303`: `4F 4B 00 00 | 4E 4F 00 01 | 44 4D 00 02` — `OK`->0, `NO`->1,
+  `DM`->2, anything else -> error `0x1F75` (8053) `Invalid reply`. **A host
+  that never answers a command cannot advance the session.**
+  * This also explains the previously-unexplained `0044` with `size = 00FFh`
+    in the Load/Run trace: it is the command's **reply read**
+    (`ROM00:3F39` pushes `00FFh`), not a block request, which pushes `0080h`
+    at `ROM00:3D59`.
+* **A host must never send more than 126 bytes of object data. CONFIRMED by
+  measurement.** 126 completes a download; **127 is silently dropped** — no
+  type-3 ack, the handheld re-requests, and after retries the session ends
+  `Session aborted` with `C-RX-BLK` returning 4. `MAX_OBJECT_DATA` enforces
+  it. **The mechanism is NOT derived**: `ROM00:620B` sets the `0044` frame
+  length to `86h` = 134 and 134 - 8 = 126 is consistent with an eight-byte
+  preamble, but the RX frame struct at `ram:E5BA` is 138 bytes with its data
+  area at `+0Ah`, which suggests a different budget. The two readings are
+  unreconciled — treat 126 as measured, not derived.
+* **Clean teardown demonstrated, confirming the reachability finding
+  empirically.** `C-COMMAND` index 2 `SEND` puts the session in
+  `READY-TX-DATA`; a full upload then ends through `C-END-TX`'s completion
+  path. States read back from `g_bSessionState`: `1 2 5 9 9 10 2`
+  (`DISCONNECTED` -> `CONNECTED` -> `READY-TX-DATA` -> `RECORD-TX` ->
+  `RECORD-TX` -> `DATA-SET-TX` -> `CONNECTED`), every result 0, screen
+  `Data transmitted`. Regression `CommstarCleanTeardownTest`.
+* **Two earlier claims overturned.**
+  * **`C-END-TX`'s argument path is not an abort path.** `ROM00:534D`, its
+    `OK` case, displays `ram:E516` and commits `ram:E48C` exactly as `531C`
+    does. Mode 0 ends as cleanly as mode 1. What produced `Abort pending` in
+    the earlier demonstration was the session sitting at `CONNECTED` with
+    `E48D = 2`, not the disposition argument.
+  * **`E48D = 1` stops `C-COMMAND` transmitting at all.** Byte-verified:
+    `ROM00:4B4C JP Z,4B5D` takes the record-building path only when
+    `E48D != 1`; when it is 1, `4B4F` sets the state from `ram:E491` and
+    `4B5A JP 4D25` returns, never reaching the record build at `4B84` or the
+    transmit at `4C19`. So mode 1 advances the handheld's state while telling
+    the host nothing. **A real session wants mode 0**, which both sends the
+    command record and still ends cleanly.
+  * Also corrected: the `ram:D0FE` guard at `ROM01:140E` reads the opposite
+    way to what the API page said. `ram:E04B` returns NZ on *equal*, so
+    `JP NZ` means equal — the loop **stops** at 8 rather than starting there.
+* **OPEN, and reproducible:** a driver image of exactly **561 bytes** fails at
+  its first `0064` exchange with result 4. 556-560 and 562 all pass, two
+  different 561-byte images both fail, and neither a reply delay nor a
+  different slice size fixes it — only moves which `0064` fails. No ROM
+  mechanism explains a length dependency, so this is presumed a harness
+  artifact. Discriminating experiment: instrument `ROM00:60D6` / `59FB` reply
+  classification on a failing run. Recorded in the test file so an innocuous
+  edit that changes a driver's length does not cost someone an afternoon.

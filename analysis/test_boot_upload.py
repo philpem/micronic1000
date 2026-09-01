@@ -276,6 +276,463 @@ class CommstarRecordUploadTest(unittest.TestCase):
         self.assertEqual(obj[7:-1], b"SCAN:0042:WIDGET", obj.hex())
 
 
+# ---------------------------------------------------------------------------
+# Application-driven Commstar sessions: a tiny assembler and two drivers.
+#
+# A loaded program's own page (0000-7FFF) is banked out while a firmware entry
+# point runs, so every pointer handed to the session has to live in the fixed
+# half above 8000h; private scratch can stay in the program's page, where
+# nothing else can touch it.
+# ---------------------------------------------------------------------------
+
+# Fixed-RAM scratch. The loaded program's own page (0000-7FFF) is banked out
+# while a firmware entry point runs, so every pointer handed to the session
+# must live in the fixed half above 8000h. The stack is at D681 on entry and
+# the transfer-vector table starts at ED1C, so E800-EBFF is clear of both.
+NAMEPARM = 0xE800   # 12-byte C-COMMAND parameter: the program name
+WSBUF    = 0xE810   # workstation id for C-INIT-COMMS
+NULSTR   = 0xE820   # one NUL: the unused identity strings and C-DIAL's number
+REPLY    = 0xE830   # C-COMMAND reply buffer, [u8 count][data], 256 bytes
+BLKBUF   = 0xE930   # C-RX-BLK destination, [u8 count][<=128 data], 129 bytes
+# The LCD's 20x20 text buffer starts at EA53 (read back out of a live run), so
+# E800-EA4F is clear of it as well as of the stack and the vector table.
+
+# Private scratch: nothing the firmware ever sees, so it can live in the
+# loaded program's own page.
+STATUS   = 0x0600
+NBLK     = 0x0602
+TOTAL    = 0x0604
+DSTPTR   = 0x0606
+PROGRESS = 0x0608
+ACC      = 0x0800   # where the received program accumulates
+
+EE_INIT_COMMS = 0xEE20
+EE_DIAL       = 0xEE10
+EE_COMMAND    = 0xEE0C
+EE_RX_BLK     = 0xEE2C
+EE_BEGIN_FILE = 0xEE08
+EE_TX_REC     = 0xEE44
+EE_END_FILE   = 0xEE18
+EE_END_TX     = 0xEE1C
+
+OP_SEND, OP_LOAD, OP_PROG = 2, 3, 4
+
+
+class Asm:
+    """Just enough Z80 to write these drivers with labels instead of offsets."""
+
+    def __init__(self, org=0x0100):
+        self.org = org
+        self.buf = bytearray()
+        self.labels = {}
+        self.patches = []       # (offset, label)
+
+    # -------------------------------------------------------------- primitives
+    def db(self, *b):
+        self.buf.extend(bytes(b) if not isinstance(b[0], (bytes, bytearray)) else b[0])
+        return self
+
+    def here(self):
+        return self.org + len(self.buf)
+
+    def label(self, name):
+        self.labels[name] = self.here()
+        return self
+
+    def _word(self, value):
+        if isinstance(value, str):
+            self.patches.append((len(self.buf), value))
+            self.buf.extend(b"\0\0")
+        else:
+            self.buf.extend(bytes([value & 0xFF, (value >> 8) & 0xFF]))
+
+    def link(self) -> bytes:
+        out = bytearray(self.buf)
+        for offset, name in self.patches:
+            addr = self.labels[name]
+            out[offset] = addr & 0xFF
+            out[offset + 1] = (addr >> 8) & 0xFF
+        return bytes(out)
+
+    # ------------------------------------------------------------ instructions
+    def ld_hl(self, v):     self.db(0x21); self._word(v); return self
+    def ld_de(self, v):     self.db(0x11); self._word(v); return self
+    def ld_bc(self, v):     self.db(0x01); self._word(v); return self
+    def ld_a(self, v):      return self.db(0x3E, v & 0xFF)
+    def ld_a_mem(self, a):  self.db(0x3A); self._word(a); return self
+    def ld_mem_a(self, a):  self.db(0x32); self._word(a); return self
+    def ld_hl_mem(self, a): self.db(0x2A); self._word(a); return self
+    def ld_mem_hl(self, a): self.db(0x22); self._word(a); return self
+    def ld_de_mem(self, a): self.db(0xED, 0x5B); self._word(a); return self
+    def ld_mem_de(self, a): self.db(0xED, 0x53); self._word(a); return self
+    def push_hl(self):      return self.db(0xE5)
+    def ldir(self):         return self.db(0xED, 0xB0)
+    def ex_de_hl(self):     return self.db(0xEB)
+    def add_hl_de(self):    return self.db(0x19)
+    def add_hl_sp(self):    return self.db(0x39)
+    def ld_sp_hl(self):     return self.db(0xF9)
+    def inc_hl(self):       return self.db(0x23)
+    def or_a(self):         return self.db(0xB7)
+    def or_l(self):         return self.db(0xB5)
+    def ld_a_h(self):       return self.db(0x7C)
+    def ld_a_l(self):       return self.db(0x7D)
+    def ld_l_a(self):       return self.db(0x6F)
+    def ld_h(self, v):      return self.db(0x26, v & 0xFF)
+    def ld_c_a(self):       return self.db(0x4F)
+    def ld_b(self, v):      return self.db(0x06, v & 0xFF)
+    def cp(self, v):        return self.db(0xFE, v & 0xFF)
+    def jp(self, t):        self.db(0xC3); self._word(t); return self
+    def jp_z(self, t):      self.db(0xCA); self._word(t); return self
+    def jp_nz(self, t):     self.db(0xC2); self._word(t); return self
+    def jp_nc(self, t):     self.db(0xD2); self._word(t); return self
+    def call(self, t):      self.db(0xCD); self._word(t); return self
+    def ret(self):          return self.db(0xC9)
+
+    # --------------------------------------------------------------- idioms
+    def entry(self, slot, args=()):
+        """Call a transfer-vector entry point; ``args[0]`` lands at caller SP+0.
+
+        Arguments go on the stack and the caller removes them; the result
+        comes back in HL, so the cleanup parks it in DE and puts it back.
+        """
+        for value in reversed(args):
+            self.ld_hl(value).push_hl()
+        self.call(slot)
+        self.ex_de_hl().ld_hl(2 * len(args)).add_hl_sp().ld_sp_hl().ex_de_hl()
+        return self
+
+    def store_progress(self, value):
+        return self.ld_a(value).ld_mem_a(PROGRESS)
+
+
+def build_program_download_com(name: bytes = b"HELLO", workstation: bytes = b"12345678",
+                               operation: int = OP_LOAD):
+    """A COM that drives a Commstar **program download** to completion.
+
+    C-INIT-COMMS -> C-DIAL -> C-COMMAND(LOAD, name) -> C-RX-BLK until the
+    status is 8, appending every block to ``ACC``. Returns (image, marker
+    address); the marker is the last byte of the image so it can never collide
+    with the code.
+    """
+    a = Asm()
+    a.ld_hl("name_data").ld_de(NAMEPARM).ld_bc(16).ldir()
+    a.ld_hl("ws_data").ld_de(WSBUF).ld_bc(16).ldir()
+    a.ld_a(0).ld_mem_a(NULSTR)
+    a.ld_hl(0).ld_mem_hl(STATUS)
+    a.ld_hl(0).ld_mem_hl(NBLK)
+    a.ld_hl(0).ld_mem_hl(TOTAL)
+    a.ld_hl(ACC).ld_mem_hl(DSTPTR)
+
+    a.store_progress(0x10)
+    # Ten arguments, in the firmware's own order (ROM01:12AD-1304): the third
+    # slot is the session mode -> ram:E48D, and the second is the link type
+    # -> ram:E520, 4 = LOCAL LINK, the IR path.
+    a.entry(EE_INIT_COMMS, [0, 4, 0, 0x0E, 0x3C,
+                            NULSTR, NULSTR, WSBUF, NULSTR, NULSTR])
+    a.ld_mem_hl(STATUS).ld_a_h().or_l().jp_nz("fail_init")
+
+    a.store_progress(0x20)
+    a.entry(EE_DIAL, [NULSTR])
+    a.ld_mem_hl(STATUS).ld_a_h().or_l().jp_nz("fail_dial")
+
+    a.store_progress(0x30)
+    # SP+0 operation index, SP+2 the 12-byte parameter (the program name),
+    # SP+4 the reply buffer the host's OK/NO/DM answer is read into.
+    a.entry(EE_COMMAND, [operation, NAMEPARM, REPLY])
+    a.ld_mem_hl(STATUS).ld_a_h().or_l().jp_nz("fail_cmd")
+
+    a.store_progress(0x40)
+    a.label("loop")
+    a.entry(EE_RX_BLK, [BLKBUF])
+    a.ld_mem_hl(STATUS)
+    a.ld_a_h().or_a().jp_nz("fail_blk")
+    a.ld_a_l().cp(8).jp_z("last")
+    a.or_a().jp_nz("fail_blk")
+    a.call("take_block")
+    a.ld_a_mem(NBLK).cp(64).jp_nc("fail_runaway")
+    a.jp("loop")
+
+    a.label("last").call("take_block").store_progress(0x55).jp("done")
+    for label, code in (("fail_init", 0xE1), ("fail_dial", 0xE2),
+                        ("fail_cmd", 0xE3), ("fail_blk", 0xE4),
+                        ("fail_runaway", 0xE5)):
+        a.label(label).store_progress(code).jp("done")
+
+    a.label("done").ld_a(0x5A).ld_mem_a("marker")
+    a.label("spin").jp("spin")
+
+    # Append BLKBUF's payload to ACC and count the block.
+    a.label("take_block")
+    a.ld_a_mem(BLKBUF).or_a().jp_z("tb_count")
+    a.ld_c_a().ld_b(0)
+    a.ld_hl(BLKBUF + 1).ld_de_mem(DSTPTR).ldir().ld_mem_de(DSTPTR)
+    a.ld_a_mem(BLKBUF).ld_l_a().ld_h(0)
+    a.ld_de_mem(TOTAL).add_hl_de().ld_mem_hl(TOTAL)
+    a.label("tb_count")
+    a.ld_hl_mem(NBLK).inc_hl().ld_mem_hl(NBLK).ret()
+
+    a.label("name_data").db(name[:12].ljust(16, b"\0"))
+    a.label("ws_data").db(workstation[:15].ljust(16, b"\0"))
+    a.label("marker").db(0x00)
+    return a.link(), a.labels["marker"]
+
+
+# ---------------------------------------------------------------- Task B ----
+NAMEREC = 0xE830    # [u8 len][file name]  for C-BEGIN-FILE
+RECBUF  = 0xE860    # [u8 count][record]   for C-TX-REC
+DISPBUF = 0xE8C0    # C-END-TX's disposition argument
+BIGREPLY = 0xE900   # C-COMMAND reply buffer for the teardown driver
+TRACE   = 0x0620    # {u8 state, u8 mode, u16 result} per step, in our own page
+
+G_SESSION_STATE = 0xE22D    # Session_SetState's only cell (ROM00:3BF5)
+G_SESSION_MODE = 0xE48D     # the mode gate C-END-TX's completion path tests
+
+
+def build_clean_teardown_com(name: bytes = b"STOCK", record: bytes = b"REC-ONE",
+                             workstation: bytes = b"12345678",
+                             parameter: bytes = b"DATA1",
+                             mode: int = 1, operation: int = OP_SEND,
+                             mode_before_end_tx: int | None = None,
+                             pad: int = 0):
+    """A COM that drives a data upload and ends it through ``C-END-TX``'s
+    *clean completion* path rather than the abort path.
+
+    The two things that path needs (``ROM00:530D``-``5337``) are
+    ``ram:E48D == 1`` and a session state from which ``C-END-TX`` is legal.
+    ``C-INIT-COMMS``'s third argument sets the first; ``C-COMMAND`` with the
+    ``SEND`` operation index sets the second, writing ``READY-TX-DATA``
+    straight out of ``tbl_sess_operations`` (``ROM00:4B3D`` stages it in
+    ``ram:E491``, ``ROM00:4C69`` -- or ``4B56`` when the mode is 1 -- commits
+    it) without consulting the transition table.
+
+    After every step it records the session state, the mode byte and the
+    result, so a run that diverges says exactly where.
+
+    ``pad`` prepends that many NOPs. It exists because of an artifact worth
+    knowing about: an image of **exactly 561 bytes** fails reproducibly, with
+    the first state-0064 exchange after C-DIAL returning 4 and the session
+    ending "Session aborted". 556, 557, 558, 559, 560 and 562 all succeed, two
+    different 561-byte images both fail, and --slice-ticks only moves *which*
+    0064 fails. Nothing in the ROM explains it and it is almost certainly a
+    harness artifact; the discriminating experiment is to instrument
+    ROM00:60D6's reply classification on a failing run. Until then, if a
+    driver here starts failing after an innocuous edit, check its length.
+    """
+    namerec = bytes([len(name)]) + name
+    recbuf = bytes([len(record)]) + record
+
+    a = Asm()
+    for _ in range(pad):
+        a.db(0x00)          # NOP padding, to vary code length without meaning
+    a.ld_hl("name_data").ld_de(NAMEPARM).ld_bc(16).ldir()
+    a.ld_hl("ws_data").ld_de(WSBUF).ld_bc(16).ldir()
+    a.ld_hl("name_rec").ld_de(NAMEREC).ld_bc(len(namerec)).ldir()
+    a.ld_hl("rec_data").ld_de(RECBUF).ld_bc(len(recbuf)).ldir()
+    a.ld_a(0).ld_mem_a(NULSTR)
+    a.ld_hl(0).ld_mem_hl(DISPBUF)
+    a.ld_hl(0).ld_mem_hl(STATUS)
+
+    def step(index, slot, args, failcode):
+        a.store_progress(0x10 * (index + 1))
+        a.entry(slot, args)
+        a.ld_mem_hl(STATUS)
+        # {state, mode, result} for this step
+        a.ld_a_mem(G_SESSION_STATE).ld_mem_a(TRACE + 4 * index)
+        a.ld_a_mem(G_SESSION_MODE).ld_mem_a(TRACE + 4 * index + 1)
+        a.ld_hl_mem(STATUS).ld_mem_hl(TRACE + 4 * index + 2)
+        a.ld_hl_mem(STATUS).ld_a_h().or_l().jp_nz(failcode)
+
+    step(0, EE_INIT_COMMS,
+         [0, 4, mode, 0x0E, 0x3C, NULSTR, NULSTR, WSBUF, NULSTR, NULSTR], "fail0")
+    step(1, EE_DIAL, [NULSTR], "fail1")
+    step(2, EE_COMMAND, [operation, NAMEPARM, BIGREPLY], "fail2")
+    step(3, EE_BEGIN_FILE, [NAMEREC], "fail3")
+    step(4, EE_TX_REC, [RECBUF], "fail4")
+    step(5, EE_END_FILE, [], "fail5")
+    if mode_before_end_tx is not None:
+        # Switch the mode gate to 1 for the teardown only, so C-COMMAND still
+        # transmits its command record but C-END-TX still finishes cleanly.
+        a.ld_a(mode_before_end_tx).ld_mem_a(G_SESSION_MODE)
+    step(6, EE_END_TX, [DISPBUF], "fail6")
+
+    a.store_progress(0x55).jp("done")
+    for index in range(7):
+        a.label(f"fail{index}").store_progress(0xE0 + index).jp("done")
+    a.label("done").ld_a(0x5A).ld_mem_a("marker")
+    a.label("spin").jp("spin")
+
+    a.label("name_data").db(parameter[:12].ljust(16, b"\0"))
+    a.label("ws_data").db(workstation[:15].ljust(16, b"\0"))
+    a.label("name_rec").db(namerec)
+    a.label("rec_data").db(recbuf)
+    a.label("marker").db(0x00)
+    return a.link(), a.labels["marker"]
+
+
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class CommstarProgramDownloadTest(unittest.TestCase):
+    """The host-to-handheld direction, driven from a loaded application.
+
+    C-INIT-COMMS -> C-DIAL -> C-COMMAND "LOAD" -> C-RX-BLK until the status is
+    8, with micronic.peer.ProgramDownloadPolicy supplying the image. This is
+    the path a Commstar server has to serve first, and the assertion is that
+    what arrived is what was sent, byte for byte.
+    """
+
+    IMAGE = bytes(0x41 + (index % 26) for index in range(300))
+
+    def _download(self, image: bytes, name: bytes = b"HELLO", chunk: int = 126):
+        com, marker = build_program_download_com(name=name)
+        with tempfile.TemporaryDirectory() as tmp:
+            com_path = Path(tmp) / "dl.com"
+            com_path.write_bytes(com)
+            img_path = Path(tmp) / "image.bin"
+            img_path.write_bytes(image)
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), "--commstar-peer",
+                 "--commstar-serve-program", str(img_path),
+                 "--commstar-program-name", name.decode(),
+                 "--commstar-chunk", str(chunk),
+                 "--upload", str(com_path),
+                 "--upload-marker", f"{marker:04x}:5A",
+                 "--dump-mem", f"{STATUS:04x}:10",
+                 "--dump-mem", f"{ACC:04x}:{len(image)}"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=900, check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        return proc.stdout
+
+    @staticmethod
+    def _dump(stdout: str, addr: int, length: int) -> bytes:
+        prefix = f"[mem] final {addr:04X}:{length}"
+        for line in stdout.splitlines():
+            if line.startswith(prefix):
+                return bytes(int(x, 16)
+                             for x in line[len(prefix):].split(" |")[0].split())
+        raise AssertionError(f"no dump of {addr:04X}:\n{stdout}")
+
+    def test_a_download_spanning_several_blocks_arrives_intact(self):
+        out = self._download(self.IMAGE)
+        # {result, blocks, total, write pointer, progress} the driver kept.
+        state = self._dump(out, STATUS, 10)
+        self.assertEqual(state[8], 0x55, f"driver stopped early: {state.hex()}")
+        result = state[0] | state[1] << 8
+        blocks = state[2] | state[3] << 8
+        total = state[4] | state[5] << 8
+        self.assertEqual(result, 8, "the last C-RX-BLK did not return end-of-data")
+        self.assertEqual(total, len(self.IMAGE))
+        self.assertGreater(blocks, 1, "the image did not span more than one block")
+        self.assertEqual(self._dump(out, ACC, len(self.IMAGE)), self.IMAGE)
+
+    def test_the_firmware_says_program_received(self):
+        out = self._download(self.IMAGE)
+        self.assertIn("Program received", out)
+        self.assertNotIn("Abort pending", out)
+
+    def test_the_peer_sees_the_load_command_and_the_program_name(self):
+        out = self._download(self.IMAGE, name=b"PROG1")
+        self.assertIn("[commstar-peer] command 'LOAD' workstation='12345678' "
+                      "parameter='PROG1'", out)
+
+    def test_the_wire_states_are_the_documented_download_sequence(self):
+        """0044 appears once for the command reply and once per block."""
+        out = self._download(self.IMAGE)
+        line = next(l for l in out.splitlines() if "request states seen:" in l)
+        states = line.split("seen: ")[1].split()
+        self.assertEqual(states[:5], ["0000", "0006", "0062", "0064", "0045"])
+        self.assertEqual(set(states[5:]), {"0044"})
+        # one reply to C-COMMAND plus three blocks for 300 bytes at 126.
+        self.assertEqual(len(states[5:]), 4, states)
+
+    def test_the_served_blocks_are_the_image(self):
+        out = self._download(self.IMAGE)
+        served = next(l for l in out.splitlines()
+                      if "[commstar-peer] program served: " in l)
+        self.assertEqual(bytes.fromhex(served.split(": ")[1]), self.IMAGE)
+
+
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class CommstarCleanTeardownTest(unittest.TestCase):
+    """A session that ends on ``Data transmitted``, not ``Abort pending``.
+
+    C-END-TX's completion path needs a session state from which it is legal.
+    C-COMMAND reaches one by writing the operation table's target state
+    directly -- index 2 ``SEND`` gives READY-TX-DATA, which no transition in
+    the matrix produces. Both dispositions of the completion are exercised:
+    mode 1 takes the branch at ROM00:531C, mode 0 takes the argument branch at
+    533E, and both end by committing ram:E48C and showing ram:E516.
+    """
+
+    def _run(self, **kwargs):
+        com, marker = build_clean_teardown_com(**kwargs)
+        with tempfile.TemporaryDirectory() as tmp:
+            com_path = Path(tmp) / "tx.com"
+            com_path.write_bytes(com)
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), "--commstar-peer",
+                 "--upload", str(com_path),
+                 "--upload-marker", f"{marker:04x}:5A",
+                 "--dump-mem", f"{PROGRESS:04x}:1",
+                 "--dump-mem", f"{TRACE:04x}:28",
+                 "--dump-mem", "e48d:1"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=900, check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        return proc.stdout
+
+    @staticmethod
+    def _trace(stdout: str):
+        """The {state, mode, result} the driver recorded after each command."""
+        prefix = f"[mem] final {TRACE:04X}:28"
+        line = next(l for l in stdout.splitlines() if l.startswith(prefix))
+        raw = bytes(int(x, 16)
+                    for x in line[len(prefix):].split(" |")[0].split())
+        return [(raw[i], raw[i + 1], raw[i + 2] | raw[i + 3] << 8)
+                for i in range(0, 28, 4)]
+
+    def test_mode_one_reaches_the_completion_at_531c(self):
+        out = self._run(mode=1)
+        self.assertIn("Data transmitted", out)
+        self.assertNotIn("Abort pending", out)
+        self.assertNotIn("Session aborted", out)
+        states = [entry[0] for entry in self._trace(out)]
+        # DISCONNECTED, CONNECTED, READY-TX-DATA, RECORD-TX, RECORD-TX,
+        # DATA-SET-TX, back to CONNECTED.
+        self.assertEqual(states, [1, 2, 5, 9, 9, 10, 2])
+        self.assertTrue(all(entry[1] == 1 for entry in self._trace(out)),
+                        "the mode gate did not stay at 1")
+        self.assertTrue(all(entry[2] == 0 for entry in self._trace(out)),
+                        "a command reported an error")
+
+    def test_mode_one_keeps_c_command_off_the_wire(self):
+        """With the gate at 1, C-COMMAND returns at ROM00:4B4F without sending.
+
+        This is the cost of the clean teardown: the host never sees the SEND
+        command record, only the file it produces.
+        """
+        out = self._run(mode=1)
+        line = next(l for l in out.splitlines() if "request states seen:" in l)
+        self.assertEqual(line.split("seen: ")[1].split(),
+                         ["0000", "0006", "0062", "0064", "0045"])
+
+    def test_mode_zero_sends_the_command_record_and_still_finishes_cleanly(self):
+        out = self._run(mode=0)
+        self.assertIn("Data transmitted", out)
+        self.assertNotIn("Abort pending", out)
+        states = [entry[0] for entry in self._trace(out)]
+        self.assertEqual(states, [1, 2, 5, 9, 9, 10, 2])
+        # Two command records: C-COMMAND's 54-byte one and the file itself.
+        self.assertIn("[commstar-peer] record from 0x0045 arg=1: "
+                      "0553544f434b1e5245432d4f4e451c", out)
+
+    def test_the_uploaded_file_is_the_documented_record_stream(self):
+        out = self._run(mode=1)
+        self.assertIn("[commstar-peer] record from 0x0045 arg=1: "
+                      "0553544f434b1e5245432d4f4e451c", out)
+
+
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
 class CommstarShadowPeerTest(unittest.TestCase):
     """The protocol-aware peer must agree with the hand-written phase script.

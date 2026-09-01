@@ -49,6 +49,49 @@ HEADER_LEN = 6          # length, type, seq, id, spare
 TX_ID_CONSTANT = 0x7F   # what the handheld writes at offset +4
 
 
+# Wire states a peer has to recognise (doc/protocol/commstar.md).
+STATE_LINK_INIT = 0x0000
+STATE_LINK_CONFIG = 0x0006
+STATE_BLOCK_QUERY = 0x0043   # short query preceding an 0044
+STATE_BLOCK_IN = 0x0044      # handheld solicits a block from the peer
+STATE_BLOCK_OUT = 0x0045     # handheld sends a block to the peer
+STATE_BEGIN_TX = 0x0064
+STATE_END_TRANSACTION = 0x0065
+
+# A type-2 data object's marker: 0 means "more follows", 1 means "this is the
+# last one". CONFIRMED from the ROM: marker 1 surfaces as read status 8, the
+# value ROM00:3D59 turns into the end-of-stream flag ram:E44A and ROM00:3FEC
+# routes to the OK/NO/DM comparison.
+MARKER_MORE = 0
+MARKER_LAST = 1
+
+# The most object data one type-2 reply may carry. The handheld advertises 128
+# in the size field of its 0044 request (ROM00:4FAD pushes 0080h), but its
+# receive descriptor is smaller: ROM00:620B passes 86h = 134 as the descriptor
+# size and the object body lands 8 bytes into it at ram:E5C4, leaving 126.
+# CONFIRMED by experiment -- 126 completes a download, 127 is dropped without
+# an acknowledgement, the handheld retries and the session ends "Session
+# aborted". Never send more than this.
+MAX_OBJECT_DATA = 126
+
+# The 54-byte command record C-COMMAND transmits at state 0045.
+COMMAND_RECORD_LEN = 0x36
+_CMD_FIELDS = {           # name -> (offset, length), from ROM00:4B84-4C05
+    "identity1": (0, 8),
+    "identity2": (8, 6),
+    "operation": (14, 4),
+    "workstation": (18, 8),
+    "identity4": (26, 8),
+    "identity5": (34, 8),
+    "parameter": (42, 12),
+}
+
+# The three replies C-COMMAND accepts, from the table copied to ram:E22F.
+REPLY_OK = b"OK"
+REPLY_NO = b"NO"
+REPLY_DM = b"DM"
+
+
 def link_id_from_prelude(prelude: int, port_bit5: bool = False) -> int:
     """Best-effort reconstruction of the full link id from a prelude byte.
 
@@ -219,3 +262,133 @@ def iter_captures(stream: bytes) -> Iterator[bytes]:
             return
         yield stream[offset:offset + total]
         offset += total
+
+
+@dataclass(frozen=True)
+class CommandRecord:
+    """The 54-byte record ``C-COMMAND`` transmits at wire state ``0045``.
+
+    Field offsets are the ROM's own, from the ``ram:DB89`` bounded copies at
+    ``ROM00:4B84``-``4C05``; the padding conventions are measured (workstation
+    right-justified space-padded, parameter left-justified NUL-padded).
+    """
+
+    raw: bytes
+
+    @classmethod
+    def parse(cls, obj: bytes) -> "CommandRecord":
+        if len(obj) != COMMAND_RECORD_LEN:
+            raise ProtocolError(
+                f"command record is {len(obj)} bytes, expected {COMMAND_RECORD_LEN}"
+            )
+        return cls(bytes(obj))
+
+    def field(self, name: str) -> bytes:
+        offset, length = _CMD_FIELDS[name]
+        return self.raw[offset:offset + length]
+
+    def text(self, name: str) -> str:
+        return self.field(name).rstrip(b"\x00").strip().decode("latin-1")
+
+    @property
+    def operation(self) -> str:
+        """``LOAD``, ``PROG``, ``SEND``, ``RCV1``, ``RCV2``, ``TIME``, ``ENDC``."""
+        return self.text("operation")
+
+    @property
+    def workstation(self) -> str:
+        return self.text("workstation")
+
+    @property
+    def parameter(self) -> str:
+        """The per-command parameter -- the program name on ``LOAD``/``PROG``."""
+        return self.text("parameter")
+
+
+class ProgramDownloadPolicy:
+    """Serve a program image to a handheld that asked for one.
+
+    This is the host half of the download the firmware's Load/Run screen runs
+    and that an application drives with ``C-COMMAND`` + a ``C-RX-BLK`` loop.
+    Install it as a :class:`CommstarPeer` ``on_request`` policy::
+
+        policy = ProgramDownloadPolicy({"HELLO": image_bytes})
+        peer = CommstarPeer(on_request=policy)
+
+    The exchange it implements, in the order the handheld produces it:
+
+    * ``0045`` carrying a 54-byte record -- the command. The policy remembers
+      it and, when the operation is ``LOAD``, selects the named image.
+    * the **first** ``0044`` after a command is that command's *reply*, and it
+      must carry ``OK`` with marker 1: ``ROM00:3F20`` reads it as a counted
+      buffer and ``ROM00:3F65`` compares the first two bytes against the
+      ``OK``/``NO``/``DM`` table at ``ram:E22F``. Marker 1 is what makes the
+      read return status 8, the only status that reaches that comparison.
+    * every later ``0044`` is a block request from ``C-RX-BLK``: answer with
+      up to ``chunk`` bytes of the image, marker 0 while more follows and
+      marker 1 on the last one. ``ROM00:3D59`` turns marker 1 into the
+      end-of-stream flag ``ram:E44A``, which is what finally makes ``C-RX-BLK``
+      return 8.
+
+    Anything else gets a plain control acknowledgement.
+
+    :param images: program name -> bytes. A name of ``""`` is the fallback for
+        a request that names an image this peer does not have; without one, an
+        unknown name is refused with ``NO``.
+    :param chunk: bytes per block, capped at :data:`MAX_OBJECT_DATA` because
+        the handheld silently drops anything larger -- see that constant. The
+        policy also never exceeds the maximum the request itself names.
+    """
+
+    def __init__(self, images: dict[str, bytes] | bytes,
+                 chunk: int = MAX_OBJECT_DATA):
+        if isinstance(images, (bytes, bytearray)):
+            images = {"": bytes(images)}
+        self.images = {name: bytes(data) for name, data in images.items()}
+        self.chunk = min(chunk, MAX_OBJECT_DATA)
+        self.commands: list[CommandRecord] = []
+        self.served: list[bytes] = []       # every block payload, in order
+        self._reply_due = False             # next 0044 is a command reply
+        self._reply = REPLY_OK
+        self._stream: bytes | None = None
+        self._offset = 0
+        self.finished = False
+
+    # ------------------------------------------------------------------ policy
+    def __call__(self, request: Request):
+        if request.state == STATE_BLOCK_OUT and len(request.obj) == COMMAND_RECORD_LEN:
+            return self._on_command(CommandRecord.parse(request.obj))
+        if request.state == STATE_BLOCK_IN:
+            if self._reply_due:
+                self._reply_due = False
+                return (MARKER_LAST, self._reply)
+            return self._next_block(request.size)
+        return None
+
+    def _on_command(self, record: CommandRecord):
+        self.commands.append(record)
+        self._reply_due = True
+        if record.operation in ("LOAD", "PROG"):
+            image = self.images.get(record.parameter)
+            if image is None:
+                image = self.images.get("")
+            if image is None:
+                self._reply, self._stream = REPLY_NO, None
+            else:
+                self._reply, self._stream, self._offset = REPLY_OK, image, 0
+                self.finished = False
+        else:
+            self._reply = REPLY_OK
+        return None      # the command record itself gets a control ack
+
+    def _next_block(self, requested: int):
+        if self._stream is None:
+            raise ProtocolError("handheld asked for a block before any LOAD command")
+        limit = min(self.chunk, requested) if requested else self.chunk
+        payload = self._stream[self._offset:self._offset + limit]
+        self._offset += len(payload)
+        last = self._offset >= len(self._stream)
+        if last:
+            self.finished = True
+        self.served.append(payload)
+        return (MARKER_LAST if last else MARKER_MORE, payload)

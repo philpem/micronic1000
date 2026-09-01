@@ -125,6 +125,20 @@ OPTIONS
   --commstar-peer          Attach the protocol peer to a plain --upload run so
                            a loaded application can hold a Commstar session.
                            Replies come from micronic.peer.CommstarPeer.
+  --commstar-serve-program FILE
+                           With --commstar-peer, serve FILE to a handheld that
+                           drives a program download: the peer answers the
+                           C-COMMAND record with OK, then hands the image over
+                           in blocks, marking the last.
+  --commstar-program-name NAME
+                           The program name the handheld must ask for. Default
+                           is the empty name, which answers to anything.
+  --commstar-chunk N       Bytes per served block (default 126, the largest
+                           object the handheld's receive descriptor holds).
+  --commstar-reply-delay N Hold each reply back N pump passes. Use to test
+                           whether a result depends on answering instantly.
+  --slice-ticks N          Emulator ticks per slice (default 3400). The peer is
+                           pumped once per slice.
   --trace-loadrun-name TEXT
                            Type TEXT into the Load/Run Name field before
                            choosing the source. Used with --serial to measure
@@ -336,6 +350,23 @@ TRACE_LOADRUN_NAME = (
 # can hold a Commstar session with something on the other end. Independent of
 # the Load/Run phase script, which keeps its own responder.
 COMMSTAR_PEER_MODE = has_flag("--commstar-peer")
+
+# --commstar-serve-program FILE  Serve FILE to a handheld that runs a program
+# download (C-COMMAND "LOAD" then a C-RX-BLK loop). The peer answers the
+# command with OK and then hands the image over in 128-byte blocks, marking
+# the last. --commstar-program-name is the name the handheld must ask for;
+# omit it and the image answers to any name.
+COMMSTAR_SERVE_PROGRAM = (
+    get_arg("--commstar-serve-program") if has_flag("--commstar-serve-program") else None
+)
+COMMSTAR_PROGRAM_NAME = (
+    get_arg("--commstar-program-name") if has_flag("--commstar-program-name") else ""
+)
+COMMSTAR_CHUNK = int(get_arg("--commstar-chunk", "126"), 0)
+# --commstar-reply-delay N  Hold each peer reply back N pump passes before
+# handing it to the link. A real IR adapter cannot answer instantly, and this
+# is how to find out whether a result depends on answering too fast.
+COMMSTAR_REPLY_DELAY = int(get_arg("--commstar-reply-delay", "0"), 0)
 
 # --watch-pc ADDR[,ADDR...]  Report every time execution reaches an address.
 # Uses real breakpoints, unlike the W counters, which sample the PC between
@@ -865,13 +896,27 @@ def read_word(addr):
 
 rtc = RTC146818()
 rtc_sel = 0x00
-from micronic.peer import CommstarPeer
+from micronic.peer import CommstarPeer, ProgramDownloadPolicy
 
 # Shadow responder: the protocol-aware peer runs alongside the phase script
 # and is asked what it would have replied at each point. It changes nothing;
 # it exists to prove the two agree before the script is retired.
 # Records the handheld sends us during an application-driven upload.
 uploaded_records = []
+
+
+# Host-to-handheld direction: when --commstar-serve-program names a file, the
+# peer runs a real program download instead of the fixed OK object.
+program_policy = None
+if COMMSTAR_SERVE_PROGRAM:
+    _image = open(COMMSTAR_SERVE_PROGRAM, "rb").read()
+    program_policy = ProgramDownloadPolicy(
+        {COMMSTAR_PROGRAM_NAME: _image}, chunk=COMMSTAR_CHUNK
+    )
+    print(
+        f"[commstar-peer] serving {len(_image)} bytes as "
+        f"{COMMSTAR_PROGRAM_NAME or '<any name>'} in {COMMSTAR_CHUNK}-byte blocks"
+    )
 
 
 def _shadow_policy(request):
@@ -884,12 +929,43 @@ def _shadow_policy(request):
             f"[commstar-peer] received {len(request.obj)} bytes from state "
             f"{request.state:#06x}: {request.obj[:24].hex()}"
         )
+    if program_policy is not None:
+        answer = program_policy(request)
+        if answer is not None:
+            marker, data = answer
+            print(
+                f"[commstar-peer] served marker={marker} {len(data)} bytes "
+                f"for state {request.state:#06x} size={request.size:#06x}"
+            )
+        return answer
     if request.state == 0x0044:
         return (1, bytes.fromhex("4f4ba55a3cc3"))   # the OK control object
     return None                                      # plain control ack
 
 
 shadow_peer = CommstarPeer(on_request=_shadow_policy)
+# Replies waiting out --commstar-reply-delay pump passes before they are fed.
+_reply_queue = []
+
+
+def pump_peer(counter):
+    """One pump pass: take what the handheld sent, hand back what is due."""
+    captured = session_link_peer.peek_tx()
+    if len(captured) > counter["tx_seen"]:
+        shadow_peer.feed_tx(bytes(captured[counter["tx_seen"]:]))
+        counter["tx_seen"] = len(captured)
+        for reply in shadow_peer.take_rx():
+            _reply_queue.append([COMMSTAR_REPLY_DELAY, reply])
+    still = []
+    for entry in _reply_queue:
+        if entry[0] > 0:
+            entry[0] -= 1
+            still.append(entry)
+            continue
+        session_link_peer.feed_rx(entry[1])
+        counter["replies"] = counter.get("replies", 0) + 1
+        print(f"[commstar-peer] replied {entry[1].hex()}")
+    _reply_queue[:] = still
 _peer_state = {"tx_seen": 0, "replies": 0}
 shadow_tx_seen = 0
 shadow_agree = 0
@@ -1076,7 +1152,10 @@ mem[0x289E] = 0xC9
 mem[0xFDB7] = 0xFF
 mem[0xFDB6] = 0x00
 CPU_HZ = 3_579_545
-SLICE_TICKS = 3400
+# Emulator time per slice. The peer is pumped once per slice, so this also
+# sets how promptly a reply reaches the handheld; --slice-ticks exists to test
+# whether a result depends on that (it should not).
+SLICE_TICKS = int(get_arg("--slice-ticks", "3400"), 0)
 rtc_phase = 0
 rtc_phase_rate = None
 
@@ -1382,14 +1461,7 @@ def run_loaded_program(name_addr, entry_addr, prefix, marker=None, marker_bank=N
                     f"HL={mach.hl:04X} SP={mach.sp:04X} F794={mem[0xF794]:02X}"
                 )
         if COMMSTAR_PEER_MODE and session_link_peer is not None:
-            captured = session_link_peer.peek_tx()
-            if len(captured) > _peer_state["tx_seen"]:
-                shadow_peer.feed_tx(bytes(captured[_peer_state["tx_seen"]:]))
-                _peer_state["tx_seen"] = len(captured)
-                for reply in shadow_peer.take_rx():
-                    session_link_peer.feed_rx(reply)
-                    _peer_state["replies"] += 1
-                    print(f"[commstar-peer] replied {reply.hex()}")
+            pump_peer(_peer_state)
     raise RuntimeError(
         f"marker {marker_addr:04X}={marker_value:02X} not observed"
     )
@@ -2290,6 +2362,18 @@ if COMMSTAR_PEER_MODE:
         f"[commstar-peer] replies={shadow_agree + _peer_state['replies']} "
         f"records-received={len(uploaded_records)}"
     )
+    if program_policy is not None:
+        served = b"".join(program_policy.served)
+        print(
+            f"[commstar-peer] program blocks served={len(program_policy.served)} "
+            f"bytes={len(served)} finished={program_policy.finished}"
+        )
+        print(f"[commstar-peer] program served: {served.hex()}")
+        for record in program_policy.commands:
+            print(
+                f"[commstar-peer] command {record.operation!r} "
+                f"workstation={record.workstation!r} parameter={record.parameter!r}"
+            )
     for state, arg, obj in uploaded_records:
         # arg is the request's second u16 -- LIKELY a last-block marker on
         # state 0045, which a transfer spanning more than one frame settles.
