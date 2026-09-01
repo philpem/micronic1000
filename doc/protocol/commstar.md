@@ -341,6 +341,38 @@ independently of any capture: which operations exist, that record and block
 transfer are distinct modes with separate directions, and that file framing
 is a wrapper around them rather than a property of individual blocks.
 
+### The four operations
+
+Load/Run **is** the Commstar session screen (owner-confirmed), so the traced
+program download is a Commstar session. `ROM00:6C8E` holds the user-facing
+strings that screen actually renders, and they form a 2x2 matrix — data
+versus program, transmit versus receive:
+
+| Operation | Title | In progress | Completion |
+|---|---|---|---|
+| Data TX | `Data Transmission` | `Sending data` | `Data transmitted` |
+| Program TX | `Program Transmission` | `Sending prog` | `Program transmitted` |
+| Data RX | `Data Reception` | `Receiving data` | `Data received` |
+| Program RX | `Program Reception` | `Receiving prog` | `Program received` |
+
+**Stable** (byte-read from ROM). The traced session exercises the fourth row
+only: it displays `Receiving prog`.
+
+This matrix lines up exactly with four of the internal state names —
+`READY-TX-DATA`, `READY-TX-PROG`, `READY-RX-DATA`, `READY-RX-PROG` — and the
+command table supplies a matching pair of transfer verbs in each direction.
+A consistent reading is that `RECORD` operations carry data and `BLOCK`
+operations carry program images, which would make `C-TX-REC` the
+handheld-to-host data upload and `C-RX-BLK` the program download the traces
+already exercise. **This reading is not proven**: no capture has exercised a
+`RECORD` operation, and the pairing rests on the vocabulary lining up rather
+than on observed bytes.
+
+The practical consequence is that the uncaptured handheld-to-host direction
+is not behind a different screen or a different mode — it is the top row of
+the same screen the traces already reach. What selects the row is the open
+question.
+
 ### Observed transitions
 
 The V24 mode-1 and PLINTH Load/Run traces both walk this sequence. Each step

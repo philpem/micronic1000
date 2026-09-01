@@ -2328,6 +2328,25 @@ current priority order; the concise lists above are authoritative.
     session module supplies both indices. Scanning the LCD through a
     complete V24 mode-1 Load/Run session shows that none of the 16 state
     names or 17 command names is ever displayed on that path, so the
-    existing traces cannot correlate index with wire value. Reaching the
-    Commstar session screen itself, rather than Load/Run, is the route.
-    Do not infer a mapping from the high nibble of the wire values.
+    existing traces cannot correlate index with wire value.
+    **CORRECTION (owner, 2026-09-01):** Load/Run *is* the Commstar session
+    screen, so the traced session is a Commstar session; it renders the
+    user-facing operation strings at `ROM00:6C8E`, not the internal state or
+    command names. The route is therefore a breakpoint on the display-index
+    writer, or the `Diagnostics` menu entry. Do not infer a mapping from the
+    high nibble of the wire values.
+  * **Commstar operation matrix (2026-09-01):** `ROM00:6C8E` holds the
+    user-facing strings the session screen renders, in a 2x2 of
+    data/program x transmit/receive: titles (`Data Transmission`,
+    `Program Transmission`, `Data Reception`, `Program Reception`),
+    in-progress (`Sending data`/`Sending prog`/`Receiving data`/
+    `Receiving prog`) and completion (`Data transmitted`/
+    `Program transmitted`/`Data received`/`Program received`), followed by
+    the error strings. All captures exercise `Program Reception` only.
+    The matrix matches four of the internal state names
+    (`READY-TX-DATA`/`READY-TX-PROG`/`READY-RX-DATA`/`READY-RX-PROG`).
+    A consistent but **unproven** reading is RECORD=data, BLOCK=program,
+    making `C-TX-REC` the handheld-to-host upload. Since Load/Run is the
+    Commstar screen, the uncaptured upload direction is the top row of a
+    screen the harness already reaches; what selects the row is the new
+    priority question.

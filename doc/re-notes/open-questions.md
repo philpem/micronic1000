@@ -105,13 +105,15 @@ source tree (not published here).
   16 session states (`NOT-STARTED` … `REPLY-END`) and `ROM00:6B67` names 17
   commands (`C-INIT-COMMS` … `C_ABORT`), but the wire carries `00`, `06`,
   `44`, `45`, `61`, `64`. Neither table has a static xref — the RAM-resident
-  session module supplies both indices — and the Load/Run path displays no
-  name from either table, confirmed by scanning the LCD through a full
-  traced session, so the existing traces cannot correlate them.
-  *Resolve:* reach the Commstar session screen itself rather than Load/Run,
-  since that is the screen these tables feed; then read the displayed name
-  and the wire state from the same exchange. Failing that, breakpoint the
-  writer of either display index during a traced session.
+  session module supplies both indices. Load/Run **is** the Commstar session
+  screen (owner-confirmed), so the traced session is a Commstar session — but
+  it displays the user-facing operation strings at `ROM00:6C8E`
+  (`Receiving prog`, `Program received`) rather than the internal state or
+  command names, confirmed by scanning the LCD through a full traced session.
+  *Resolve:* breakpoint the writer of either display index during a traced
+  session and correlate it with the wire state in the same exchange. The
+  internal names are most likely diagnostic vocabulary; `Diagnostics` on the
+  Main Menu is the other place to look for a screen that renders them.
 
 * **Third `u16` of the request header** — It equals the trailing object
   length for states `00`, `45`, `61`, `64`, but is `0x0080` for state `06`
@@ -120,6 +122,16 @@ source tree (not published here).
   unproven, and the state-`06` object is unexplained under it.
   *Resolve:* vary the solicited object size and see whether either value
   tracks it.
+
+* **What selects the Commstar operation** — The session screen supports four
+  operations (data/program x transmit/receive, `ROM00:6C8E`), but every
+  capture exercises only `Program Reception`. The handheld-to-host direction
+  is the same screen, not a different mode, so it should be reachable without
+  hardware.
+  *Resolve:* determine what chooses the row — the peer's reply to an early
+  state, the `LOAD` token at state-45 object +14, or a form field. Driving a
+  `Data Transmission` session would capture the upload direction and, with
+  it, the `RECORD` object format that no trace has yet touched.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.
