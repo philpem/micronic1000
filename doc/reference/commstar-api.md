@@ -159,103 +159,38 @@ resident code — as its name length.
 
 ### Why the session cannot end cleanly
 
-`C-END-TX` does not complete, and the reason is structural rather than a bug.
-It reads the session state (`ROM00:52AB`) to choose between "Program
-Transmission" and "Data Transmission", then issues command 15 — but that
-command is legal only from `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX`
-or `BLOCK-TX`. **Those are exactly the states the transition table can never
-reach.**
-
-Because the upload only works with validation suppressed, the session never
-legitimately enters a transmit state: it is still `CONNECTED` when `C-END-TX`
-runs. The firmware notices and the screen goes to `Comms in progress` /
-`Abort pending`.
-
-So the upload is a *forced* one. The records reach the host intact, but the
-session ends in an abort rather than a clean teardown, and that follows
-directly from the reachability result on the protocol page. A validated
-upload does not appear to be possible in this firmware.
-
-### Suppressing validation
-
-Set `ram:E48D = 2` before issuing commands:
+`C-END-TX` **does take a 16-bit argument**, at the same last-pushed slot as
+`C-BEGIN-FILE` and `C-TX-REC`, and which of two dispositions it takes is
+decided by the mode gate:
 
 ```text
-3E 02        LD   A,2
-32 8D E4     LD   (0E48Dh),A
+530D  LD A,(0E48Dh)          ; the mode gate again
+5316  CALL E04B              ; E48D == 1 ?
+5319  JP Z,533Eh             ; not 1 -> the ARGUMENT path
+
+531C  LD HL,(0E516h)         ; E48D == 1: the clean completion --
+5324  CALL 41D9h             ;   display "Data transmitted"
+5330  LD A,(0E48Ch) / CALL 3BF5h   ;   and commit the session state
+
+533E  LD HL,000Ch / ADD HL,SP      ; otherwise: read the caller's argument
+5346  CALL 3F20h                   ;   and send it, 58B8(arg+1, 00FFh, arg)
 ```
 
-`SessionStartDataMode` then returns without consulting the transition table,
-so an operation runs whatever the current state. **CONFIRMED:** with this in
-place, `C_ABORT` from `NOT-STARTED` raises no message box and leaves
-`ram:E512 = 0`, the early-return marker; the identical call without it raises
-the illegal-transition box.
+So there are two ways to finish, and with the session at `CONNECTED` neither
+is available:
 
-This is not a trick — it is how the firmware itself reaches operations the
-table cannot: only the `RECORD-RX` path is legally reachable, so Program
-Reception and everything on the transmit side must run with validation off.
+* `E48D = 2` — dispatch is suppressed, so `C-END-TX` takes the argument path
+  and transmits. This is what the demonstration does, with an argument it
+  never meant to supply, and it is why the screen ends at `Abort pending`.
+* `E48D = 1` — dispatch runs, but `table[CONNECTED][C-END-TX]` is `8Dh`:
+  illegal, next state `CRASHED`. `452D` returns non-zero and `52F8` exits
+  before the completion path.
 
-**A call still does not return, and now the reason is visible.** With
-validation suppressed, `SessionStartDataMode` returns 0, and the operation
-wrapper reads 0 as *proceed*:
+The clean finish at `531C` needs **both** `E48D = 1` **and** a state from
+which `C-END-TX` is legal — `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX`
+or `BLOCK-TX`. Those are the states the transition table cannot reach, so a
+clean teardown and the reachability question are the same question.
 
-```text
-ROM00:5473  CALL 452Dh       ; SessionStartDataMode(C_ABORT)
-ROM00:547A  LD   A,H / OR L
-ROM00:547C  JP   NZ,54E1h    ; non-zero -> exit
-ROM00:547F  CALL 593Ah       ; zero -> do the work
-```
-
-`593A` reaches `SessionTxRunState65`, which prepares a frame header, sets the
-session parameters with wire state `0x65`, sends the frame through service 33
-and then waits in `SessionRxByteLoop`.
-
-So these are not local calls that happen to block — **they are link
-transactions**. The routine transmits and waits for the host to answer. A
-call made with no peer attached cannot return, and that is the protocol
-working, not a fault.
-
-The practical consequence: exercising the API needs a responding peer, which
-is exactly what a Commstar server is. The emulator's synthetic peer already
-does this for the Load/Run path; pointing it at an application-driven session
-is the next step.
-
-In the bare-COM test the link transmit counter never fired, so it blocks
-somewhere between entering `SessionTxRunState65` and reaching the link
-driver — plausibly because no session was ever opened. `C-INIT-COMMS` is the
-legal first command from `NOT-STARTED`, and driving that first is the
-obvious next experiment.
-
-## Worked example
-
-This 16-byte COM initialises the session and proves the call took effect:
-
-```text
-0100  3E AA        LD   A,0AAh
-0102  32 00 02     LD   (0200h),A   ; marker: reached the call
-0105  CD 24 EE     CALL 0EE24h      ; initialise the session
-0108  3E 55        LD   A,055h
-010A  32 00 02     LD   (0200h),A   ; would mark a normal return
-010D  C3 0D 01     JP   $
-```
-
-Running it in the emulator leaves the mode gate at 2 and its companion cell
-at `0x37`, where a control program that does not make the call leaves both
-at 0 — so the call reached the firmware and did its work. The marker holds
-`AA`, never `55`, for the reason described above.
-
-Regression: `CommstarApplicationApiTest` in `analysis/test_boot_upload.py`.
-
-## What this does not tell you
-
-* The per-operation argument and result contract.
-* How an application receives data back, or hands over a buffer.
-* Whether a real Commstar application used these entry points, or reached the
-  same routines another way. Nothing in the firmware calls fifteen of the
-  twenty, which is the evidence for an application-facing API, but no
-  historical application has been examined.
-
-For the firmware evidence behind this page — the ROM source table, the
-per-slot derivation, and the measurements — see
-[RE notes: Commstar evidence](../re-notes/commstar-evidence.md) and
-[Protocol reference: Commstar](../protocol/commstar.md#what-selects-the-operation).
+Also note `C-END-FILE` takes an argument (`ROM00:523F`, same slot) and
+`C-INIT-COMMS` reads **three** (`4569`, `45D1`, `45EE`). Neither is
+characterised; the demonstration supplies zeros.

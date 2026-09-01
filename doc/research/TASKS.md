@@ -2980,3 +2980,27 @@ current priority order; the concise lists above are authoritative.
     `SessionSetParams(0x65, 6, 6, ...)` in `SessionTxRunState65`. So `0062` is
     a session TX parameter emitted by the "state-62 builder" the earlier notes
     mention. What the exchange means is still open.
+  * **`C-END-TX` DOES take an argument (2026-09-01, CONFIRMED):** a 16-bit
+    value at the last-pushed slot (callee `SP+0Ch`), same as `C-BEGIN-FILE`
+    and `C-TX-REC`. Which disposition it takes is decided by the mode gate at
+    `ROM00:530D`: if `ram:E48D == 1` it takes the **clean completion** —
+    display the `E516` string ("Data transmitted" / "Program transmitted") and
+    commit the state from `E48C`; otherwise it reads the caller's argument at
+    `533E` and sends it via `ROM00:3F20` -> `58B8(arg+1, 00FFh, arg)`. Note
+    the `00FFh` constant is the same value seen in the state-44 request's
+    size field.
+  * **Why the demonstration aborts (2026-09-01):** with the session at
+    `CONNECTED` neither disposition is available. `E48D = 2` suppresses
+    dispatch so `C-END-TX` takes the argument path with an argument the test
+    never meant to supply — hence `Abort pending`. `E48D = 1` lets the
+    dispatch run, but `table[CONNECTED][C-END-TX] = 8Dh` is illegal (next
+    state `CRASHED`), so `452D` returns non-zero and `ROM00:52F8` exits
+    before the completion path. **A clean finish needs both `E48D = 1` and a
+    state from which `C-END-TX` is legal**, i.e. `READY-TX-DATA`,
+    `READY-TX-PROG`, `DATA-SET-TX` or `BLOCK-TX` — so clean teardown and the
+    reachability question are the same question.
+  * **More unexamined arguments:** `C-END-FILE` also reads a 16-bit argument
+    (`ROM00:523F`, same slot) and `C-INIT-COMMS` reads **three**
+    (`4569` at `SP+10h`, `45D1` at `SP+18h`, `45EE` at `SP+1Ah`). None is
+    characterised; the demonstration supplies zeros and works, so they are
+    not mandatory for the paths exercised.
