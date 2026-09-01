@@ -111,10 +111,34 @@ obstacles: the emulator has to keep the RTC running while a loaded program
 executes, or no periodic interrupt fires and the receive path never runs; and
 the peer has to be pumped from the same loop.
 
-**The payload content is not meaningful yet.** `C-TX-REC` was called with a
-zero argument, so what the handheld sent is whatever buffer that selects —
-the bytes look like resident code. The *exchange* is established; the record
-format and how to nominate a record are not.
+### Uploading a record
+
+`C-TX-REC` takes a **pointer** to a counted buffer, and unlike the other
+entry points it reads the **last** word pushed (caller `SP+0`), not the third
+down. `ROM00:3E14` walks that buffer:
+
+```text
+record:  [u8 count][payload ... count bytes]
+```
+
+sending one byte at a time — the same `{count, payload}` shape the receive
+side uses. `C-END-TX` flushes it.
+
+What reaches the host, for a record of `"HELLO-FROM-M1000"`:
+
+```text
+c3 03 01  1e  48 45 4c 4c 4f 2d 46 52 4f 4d 2d 4d 31 30 30 30  1c
+prefix    ^   the payload, verbatim                            suffix
+          the byte C-TX-REC itself sends first, via 3D9B(1Eh)
+```
+
+Confirmed with two different payloads; `"SCAN:0042:WIDGET"` arrives the same
+way. Regression: `CommstarRecordUploadTest`.
+
+The `c3 03 01` prefix and the `1c` suffix are not explained. Nor is the state
+`0062` the session passes through on the way. And `C-END-TX` does not return —
+the record flushes during it, but the session does not cleanly terminate, so
+a repeated multi-record upload has not been demonstrated.
 
 ### Suppressing validation
 

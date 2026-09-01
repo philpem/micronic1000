@@ -132,6 +132,89 @@ COMMSTAR_API_COM = bytes.fromhex(
 )
 
 
+def build_record_upload_com(payload: bytes, buf: int = 0xE850) -> bytes:
+    """A COM that drives a Commstar record upload and sends ``payload``.
+
+    C-INIT-COMMS -> C-DIAL -> suppress validation -> C-BEGIN-FILE ->
+    C-TX-REC(record) -> C-END-FILE -> C-END-TX.
+
+    Argument slots differ per entry point: C-INIT-COMMS and friends read the
+    third word down (caller SP+4), C-TX-REC reads the last word pushed.
+    """
+    record = bytes([len(payload)]) + payload      # [u8 count][payload]
+
+    def mark(v):
+        return bytes([0x3E, v]) + bytes.fromhex("3240e8")
+
+    def call4(slot, arg=0):                        # arg at caller SP+4
+        push = bytes.fromhex("210000e5")
+        argp = bytes([0x21, arg & 0xFF, arg >> 8, 0xE5])
+        return (push + argp + push + push + bytes([0xCD, slot & 0xFF, slot >> 8])
+                + bytes.fromhex("eb" "210800" "39" "f9" "eb"))
+
+    def call_last(slot, arg):                      # arg pushed last
+        push = bytes.fromhex("210000e5")
+        argp = bytes([0x21, arg & 0xFF, arg >> 8, 0xE5])
+        return (push + push + push + argp + bytes([0xCD, slot & 0xFF, slot >> 8])
+                + bytes.fromhex("eb" "210800" "39" "f9" "eb"))
+
+    com = mark(0xAA)
+    ldir = len(com)
+    com += (b"\x21\x00\x00" + bytes([0x11, buf & 0xFF, buf >> 8])
+            + bytes([0x01, len(record), 0x00]) + bytes.fromhex("edb0"))
+    com += call4(0xEE20) + call4(0xEE10)           # C-INIT-COMMS, C-DIAL
+    com += bytes.fromhex("3e02" "328de4")          # E48D = 2
+    com += call4(0xEE08)                           # C-BEGIN-FILE
+    com += call_last(0xEE44, buf)                  # C-TX-REC
+    com += call4(0xEE18) + call4(0xEE1C)           # C-END-FILE, C-END-TX
+    # Final marker in bank 2 as well, so --upload-marker sees the run finish
+    # and the harness exits cleanly.
+    com += mark(0x55) + bytes.fromhex("3e55") + bytes.fromhex("320002")
+    spin = 0x100 + len(com)
+    com += bytes([0xC3, spin & 0xFF, spin >> 8])
+    src = 0x100 + len(com)
+    com += record
+    return com[:ldir + 1] + bytes([src & 0xFF, src >> 8]) + com[ldir + 3:]
+
+
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class CommstarRecordUploadTest(unittest.TestCase):
+    """A loaded application uploads a record to the host.
+
+    This is the handheld-to-host direction: the application nominates a
+    counted buffer, the firmware transmits it, and the peer receives it.
+    """
+
+    def _upload(self, payload: bytes) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            com = Path(tmp) / "rec.com"
+            com.write_bytes(build_record_upload_com(payload))
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), "--commstar-peer",
+                 "--upload", str(com), "--upload-marker", "0200:55"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=300, check=False,
+            )
+        # The harness exits non-zero because C-END-TX does not return, so the
+        # program never reaches its final marker. The record is flushed during
+        # C-END-TX regardless, which is what this test is about; a clean
+        # session teardown is still open.
+        line = next((l for l in proc.stdout.splitlines()
+                     if "record from 0x0045" in l), None)
+        self.assertIsNotNone(line, f"no record reached the host:\n{proc.stdout}")
+        return bytes.fromhex(line.split(": ")[1])
+
+    def test_record_reaches_the_host_intact(self):
+        obj = self._upload(b"HELLO-FROM-M1000")
+        # c3 03 01 | 1e | payload | 1c
+        self.assertEqual(obj[3], 0x1E, obj.hex())       # marker C-TX-REC sends
+        self.assertEqual(obj[4:-1], b"HELLO-FROM-M1000", obj.hex())
+
+    def test_payload_is_carried_verbatim(self):
+        obj = self._upload(b"SCAN:0042:WIDGET")
+        self.assertEqual(obj[4:-1], b"SCAN:0042:WIDGET", obj.hex())
+
+
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
 class CommstarShadowPeerTest(unittest.TestCase):
     """The protocol-aware peer must agree with the hand-written phase script.

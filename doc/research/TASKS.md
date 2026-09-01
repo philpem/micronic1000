@@ -2904,3 +2904,26 @@ current priority order; the concise lists above are authoritative.
     demonstration passed a zero argument to `C-TX-REC`, so the handheld sent
     whatever buffer that selects — the bytes look like resident code, not
     application data. `C-END-TX` also did not complete (marker stopped at B5).
+  * **RECORD FORMAT ESTABLISHED — a real upload with controlled content
+    (2026-09-01):** `C-TX-REC` takes a **pointer** to a counted buffer, and
+    unlike the other entry points it reads the **last** word pushed (caller
+    `SP+0`), not the third down (`SP+4`). `ROM00:50ED` reads a 16-bit value
+    at callee `SP+0Ch` and passes it to `ROM00:3E14`, which walks
+    `[u8 count][payload]` sending one byte at a time — the same
+    `{count, payload}` shape `Session_ReadStreamChunk` uses on the receive
+    side. Before that it sends a single byte `1Eh` via `ROM00:3D9B`.
+    `C-END-TX` flushes.
+    What reaches the host for `"HELLO-FROM-M1000"`:
+    `c3 03 01 · 1e · 48454c4c4f2d46524f4d2d4d31303030 · 1c` — the payload
+    verbatim, between a three-byte prefix and a `1c` suffix. Confirmed with a
+    second payload (`"SCAN:0042:WIDGET"`). Pinned by
+    `CommstarRecordUploadTest`.
+    A zero argument sends whatever `mem[0]` happens to select, which is why
+    the first attempt uploaded 128 and 72 bytes of resident code.
+  * **New wire state `0062`:** the session passes through it between `0006`
+    and the `0045` upload. Unexplained.
+  * **Still OPEN after the upload works:** the `c3 03 01` prefix and `1c`
+    suffix; state `0062`; and clean teardown — `C-END-TX` does not return, so
+    although the record flushes during it, a repeated multi-record upload has
+    not been demonstrated. The regression tolerates the non-zero harness exit
+    for that reason, and says so.

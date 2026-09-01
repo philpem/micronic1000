@@ -2292,6 +2292,8 @@ if COMMSTAR_PEER_MODE:
     )
     for state, obj in uploaded_records:
         print(f"[commstar-peer] record from {state:#06x}: {obj.hex()}")
+    seq = " ".join(f"{r.state:04x}" for r in shadow_peer.requests)
+    print(f"[commstar-peer] request states seen: {seq}")
 if TRACE_LOADRUN_SOURCE:
     print(f"loadrun_source_trace_status={loadrun_source_trace_status}")
 if TRACE_LOADRUN_SOURCE:
