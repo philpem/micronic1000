@@ -24,7 +24,8 @@ it is not proven against historical hardware.
 | Validated frame envelope | **Provisional** | Length, type, sequence, and target-id fields are stable; other bytes are not |
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
 | Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
-| Handheld-to-host record transfer | **Provisional** | The command sequence is known from the state machine (`C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`); no exchange in this direction has been captured, so the object formats are not |
+| Handheld-to-host data in requests | **Provisional** | Captured and decoded: the handheld sends objects to the host in its type-1 requests — 9 bytes at state `0006`, 54 bytes at state `0045` carrying operator text. `CommstarPeer` receives them |
+| Handheld-to-host RECORD transfer | **Not implementable** | The command sequence is known (`C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`) but no RECORD exchange has been captured, so its object format is not |
 | IR wire framing | **Not implementable** | Requires a hardware capture |
 
 The synthetic peer in the repository is regression infrastructure, not a
@@ -42,7 +43,8 @@ For the firmware evidence behind each claim, see
 | Run the synthetic Load/Run peer | **Provisional** | Requires emulator access to M1000 RAM/execution state |
 | Drive a COM/DIP download against real firmware | **Provisional** | Works in the emulator; needs RAM visibility for the receive arm |
 | Download a COM/DIP image from a physical server | **Not implementable** | Blocked on the wire layer and a wire-visible arm |
-| Receive records/files from a handheld | **Not implementable** | No handheld-to-host exchange is captured |
+| Receive data a handheld sends in a request | **Provisional** | Works: `CommstarPeer` receives and decodes the objects the handheld sends at states `0006` and `0045` |
+| Receive a RECORD-mode file from a handheld | **Not implementable** | No RECORD exchange has been captured |
 | Build the IR adapter hardware | **Not implementable** | Connector-facing modulation and timing are open |
 
 ## Roles and byte-level terminology
@@ -128,6 +130,31 @@ The practical consequence for anyone building a controller — emulated or
 real — is that this is a half-duplex, credit-based byte pump. The handheld
 will not transmit while the controller says it has inbound data, and it will
 not send a byte until the controller says it can take one.
+
+### The command and probe latches
+
+`LINK_CMD` (`4Ch`) has exactly one writer and exactly one value. `LinkPresent`
+(`ROM00:34EC`) waits for `TXRDY`, then writes **`81h`** and shadows it at
+`ram:F796`. There is no second value anywhere in ROM00, ROM01 or the battery
+RAM, so nothing can be inferred from variation — it is a fixed "begin"
+token in the present/ready handshake rather than a command byte with fields.
+
+`LINK_PROBE` (`4Fh`) is more interesting. `LinkProbe` (`ROM00:348A`) computes
+its value rather than loading it:
+
+```text
+348A  3E 7F     LD A,7Fh
+348C  E6 1F     AND 1Fh        ; -> 1Fh
+348E  32 99 F7  LD (0F799h),A  ; shadowed
+3491  D3 4F     OUT (4Fh),A
+```
+
+`7Fh AND 1Fh` is exactly the masking that forms a **prelude** from a link id.
+So the probe addresses id `7Fh` — the same constant the handheld writes at
+frame offset +4. That is new evidence about `7Fh`: it is used *as an id* in at
+least one place, rather than being an arbitrary filler. Whether it means
+"broadcast" or "unassigned" is still open, but "not an id" is no longer
+tenable.
 
 ### What the status and control bits do
 

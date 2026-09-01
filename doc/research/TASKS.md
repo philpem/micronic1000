@@ -2802,3 +2802,43 @@ current priority order; the concise lists above are authoritative.
     *Hypothesis for next time:* the session needs the service-33 / link-IRQ
     plumbing that the Load/Run trace arms and a bare `--upload` run does not.
     Compare what `--trace-loadrun-source` sets up before its first exchange.
+  * **CORRECTION — handheld-to-host data IS captured (2026-09-01):** the
+    readiness tables carried "Receive records/files from a handheld — Not
+    implementable — no handheld-to-host exchange is captured" for many
+    commits. False since the state-45 decode. The handheld sends objects to
+    the host in its type-1 requests, and `CommstarPeer` receives and decodes
+    them in every trace: **9 bytes at state `0x0006`** and **54 bytes at state
+    `0x0045`** (the operator text). Split into two rows: receiving data a
+    handheld sends in a request is Provisional and works; a RECORD-mode file
+    transfer is still uncaptured. The blanket claim was wrong.
+  * **`LINK_CMD` (`4Ch`) has one value (2026-09-01, CONFIRMED):** `81h`,
+    written by `LinkPresent` (`ROM00:34EC`) after `TXRDY`, shadowed at
+    `ram:F796`. No other value exists in ROM00, ROM01 or the battery RAM, so
+    there is nothing to decode from variation — it is a fixed "begin" token,
+    not a command byte with fields.
+  * **`LINK_PROBE` (`4Fh`) addresses id `7Fh` (2026-09-01):** `LinkProbe`
+    computes `7Fh AND 1Fh` — exactly the masking that forms a prelude from a
+    link id — and writes the result. So `7Fh` is used **as an id** in at least
+    one place, not as arbitrary filler. The earlier "do not call it an id or
+    broadcast" caution should soften: "not an id" is no longer tenable,
+    though "broadcast" remains unproven.
+  * **HYPOTHESIS DISPROVEN — the stall is not missing IRQ plumbing
+    (2026-09-01):** the previous entry guessed the application route lacked
+    the service-33 / link-IRQ setup the Load/Run trace arms. It does not.
+    Every cell in the documented arming condition is **identical** on both
+    routes: `FDD4=43`, `FDD5=01`, `FDDC=FE0E`, `FDC5=E530`, `FDC7=E5BA`,
+    `FDD2=2E85`. The only difference is `g_bSessionState` — `02` CONNECTED on
+    Load/Run versus `00` NOT-STARTED for the application.
+  * **The stall is INSIDE the transfer, not before it (2026-09-01):** the link
+    port shadows show the application route got further than reported. Both
+    routes end with `F796=81h` (the present handshake completed) and
+    `F797=03h` (the prelude was written to `LINK_TXD`). They differ only in
+    the control shadow: Load/Run ends at `F794=02h` (transfer closed, port
+    select still set) while the application ends at `F794=C2h` — **bits 6 and
+    7 set, which `LinkBlockTx` never drives**. The peer sees no reply-worthy
+    traffic because no complete frame was ever streamed.
+    *Next:* find what drives `LINK_CTRL` bits 6 and 7 — nothing in the decoded
+    transmit path does — and localise the stall between the prelude write and
+    the payload stream. The harness's `W` PC-hit counters are useless for this
+    (they sample `pc` between emulator slices and miss almost everything); a
+    real `--watch-pc` using `mach.set_breakpoint` is the tool to add first.
