@@ -106,12 +106,14 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 ## Ghidra scripts (`ghidra/`)
 
 - `AnalyseMicronicRom.java` — **the one to run.** Consolidated,
-  self-contained, idempotent listing repair: clears the wrong no-return
-  flag on the `ram:D837` frame helper, types both banks' boot-load chains
-  and links their deferred-call targets, types `RST 10h` inline operands,
-  defines the `InlineTableDispatch` tables, and creates functions at every
-  compiler frame prologue. No arguments. Documented in
-  `doc/re-notes/ghidra-repair-script.md`.
+  self-contained, idempotent listing repair, in seven ordered passes:
+  reconstructs the battery-RAM image (pass 0, absorbed from
+  `FillBatteryRam.java`), clears the wrong no-return flag on the `ram:D837`
+  frame helper, types both banks' boot-load chains and links their
+  deferred-call targets, types `RST 10h` inline operands, defines the
+  `InlineTableDispatch` tables, creates functions at every compiler frame
+  prologue, and links all 281 runtime stub slots to the routines they stand
+  for. No arguments. Documented in `doc/re-notes/ghidra-repair-script.md`.
 - `DefineInlineTables.java` — the standalone version of just the
   `InlineTableDispatch` pass (see `doc/re-notes/inline-dispatch.md`).
 
@@ -120,5 +122,11 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 - `BootTrace.java`, `BootTrace.pending.java` — Ghidra-side boot
   trace experiments.
 - `micronic/README.md` — full reusable-model documentation.
-- `../ghidra_scripts/FillBatteryRam.java` — loads the session modules
-  into Ghidra RAM for static analysis.
+- `~/ghidra_scripts/FillBatteryRam.java` — the standalone battery-RAM
+  loader. **Folded into `ghidra/AnalyseMicronicRom.java` as pass 0**, with
+  two corrections: the `ram:E104` copy length (`0129h` from the chain
+  record, not the hardcoded `0130h`, which over-ran into `ram:E22D`), and a
+  much tighter phantom-function predicate — the original deleted every
+  `ram` function at or above `F100`, which on the current database would
+  destroy the whole resident kernel. Prefer the consolidated script; the
+  standalone copy is kept for reference.

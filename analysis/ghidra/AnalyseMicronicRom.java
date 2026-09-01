@@ -1,10 +1,20 @@
 // Micronic 1000 / PARCON 1000 (DIPOS-B) -- consolidated listing-repair pass.
 //
-// Ghidra's auto-analysis gets five things structurally wrong on this
+// Ghidra's auto-analysis gets seven things structurally wrong on this
 // firmware, and each one was previously patched up with its own throwaway
 // script. This is the one script that does all of them, finds every site
 // itself, takes no arguments, and can be re-run at any time.
 //
+//   Pass 0  Battery-RAM bootstrap.  micron1.bin holds only the two 32K ROM
+//           banks. Everything the rest of the firmware calls into lives in
+//           unpaged battery RAM -- the frame helper (D837), the switch
+//           dispatcher (E0B2), the string and arithmetic library, the
+//           session modules, the resident kernel, the runtime stub farm.
+//           None of it exists until the ROM->RAM boot copies are replayed,
+//           and until then most of this script has nothing to work on:
+//           pass 1's byte check reads D837, which is empty on a freshly
+//           imported program. So this runs first, and everything after it
+//           depends on it.
 //   Pass 1  Frame-helper flow.  ram:D837 had been flagged "no return", so
 //           Ghidra threw away everything after every `CALL D837` -- that is,
 //           every C function body in the image. This has to be corrected
@@ -24,6 +34,11 @@
 //           at 144 of the 348 such sites -- including the whole of
 //           ROM00:4D25-5307, a gap that has already caused one documentation
 //           error in this project.
+//   Pass 6  Runtime stub farm.  281 four-byte slots at ram:ED1C + 4*i, each
+//           an inter-bank thunk to one firmware routine. In the cold image
+//           every slot is the `LD HL,1 / RET` template, so a `CALL 0EExxh`
+//           anywhere in ROM01 or in a loaded program is a dead end with no
+//           reference to its target. This pass restores those 281 edges.
 //
 // WHY PASS 5 IS SAFE.  ram:D837 is the compiler's frame-setup helper. Its
 // bytes (battery RAM, byte-verified) are:
@@ -91,6 +106,67 @@ import ghidra.app.script.GhidraScript;
 
 public class AnalyseMicronicRom extends GhidraScript {
 
+    // ---- pass 0: battery RAM bootstrap ---------------------------------
+    private static final String RAM_BLOCK_NAME = "battery_ram";
+    private static final long RAM_BLOCK_SIZE = 0x8000L;
+
+    /**
+     * Copies performed by ROM code at boot, which no boot-load chain record
+     * describes and which therefore cannot be derived from the chain walk.
+     * Each row is {bank, src, length, dst}. The routine that performs each
+     * one is named in the comment; that is the evidence for the row.
+     */
+    private static final int[][] ROM_CODE_COPIES = {
+        { 0, 0x2352, 0x0013, 0xFD84 },  // comms config table   (ROM00:22E9/2306)
+        { 0, 0x3257, 0x0010, 0xFE93 },  // device config copy B (ROM00:3220)
+        { 0, 0x3267, 0x0010, 0xFE83 },  // device config copy A (ROM00:3220)
+        { 0, 0x7030, 0x0212, 0xD681 },  // kernel dispatch block (ROM00:3BAA)
+        { 0, 0x369D, 0x050D, 0xF180 },  // resident kernel (InstallKernelToRam ROM00:02FE)
+    };
+
+    /**
+     * The boot-chain copies as FillBatteryRam.java hardcoded them. Kept only
+     * so the script can diff them against what the chain walk actually says
+     * and report any drift; the walk is what gets executed. One row is known
+     * wrong -- see checkCopyListAgainstChains().
+     */
+    private static final int[][] LEGACY_CHAIN_COPIES = {
+        { 0, 0x7242, 0x0010, 0xE0F4 },
+        { 0, 0x7301, 0x00CD, 0xE22D },
+        { 0, 0x73CE, 0x0861, 0xD893 },
+        { 0, 0x7C2F, 0x0130, 0xE104 },
+        { 1, 0x0080, 0x0075, 0xE2FA },
+        { 1, 0x7BCB, 0x024A, 0xD081 },
+    };
+
+    /**
+     * System variables the reset flow writes on a healthy cold boot. These
+     * are observed values that cannot be derived from the ROM image, so they
+     * are seeded rather than computed. Each row is {address, value}.
+     */
+    private static final int[][] SYSTEM_VAR_SEEDS = {
+        { 0xF791, 0x00 },   // bank shadow cleared at ROM00:0165
+        { 0xF81C, 0x00 },   // warm-boot signature cleared on cold start ROM00:01AD
+        { 0xF81D, 0x00 },   // normal boot mode ROM00:015F/0161
+        { 0xFC05, 0x70 },   // power latch value ROM00:01DC-01DE
+        { 0xFEA4, 0x00 },   // ROM00:01D7-01D9
+        { 0xFEAF, 0xFF },   // RAM test bitmap, all pages good
+        { 0xFDB0, 0x00 },   // no RAM failure flag
+        { 0xFBD5, 0x00 },   // in-restart flag cleared
+        { 0xF78B, 0x20 },   // port 2Ah shadow: init value OUT at ROM00:0154
+        { 0xF784, 0xFF },   // port 04h shadow: FF written at ROM00:01B5
+    };
+
+    /** Entry points worth disassembling once the RAM image is in place. */
+    private static final int[] BOOTSTRAP_ENTRIES = {
+        0xD681,   // dispatcher startup / chain walker
+        0xD081,   // module B
+        0xD893,   // module A
+        0xE104,   // module A tail blob
+        0xF180,   // BDOS entry
+        0xF64D,   // common IRQ / banked-call entry
+    };
+
     // ---- pass 1: frame-helper flow ------------------------------------
     /** The compiler's frame-setup helper, resident in battery RAM. */
     private static final int FRAME_SETUP = 0xD837;
@@ -131,6 +207,19 @@ public class AnalyseMicronicRom extends GhidraScript {
     /** Fixed point is reached in two rounds in practice; three is slack. */
     private static final int MAX_PROLOGUE_ROUNDS = 4;
 
+    // ---- pass 6: runtime stub farm -------------------------------------
+    /** Slot i of the runtime stub farm is the 4 bytes at ram:ED1C + 4*i. */
+    private static final int STUB_FARM_BASE = 0xED1C;
+    /** One past the last slot byte; F180 is the resident kernel's base. */
+    private static final int STUB_FARM_END = 0xF180;
+    private static final int STUB_SLOT_SIZE = 4;
+    /** Queue cursor the fn=2 handler reads and advances (ram:D72F/D744). */
+    private static final int STUB_CURSOR_CELL = 0xD684;
+    /** Source of the 4-byte cold template replicated across the farm. */
+    private static final int STUB_TEMPLATE_SRC = 0xD6D7;
+    /** RST 10h opcode, the first byte the fn=2 handler stores per slot. */
+    private static final int OP_RST10 = 0xD7;
+
     // ---- shared -------------------------------------------------------
     /** Addresses at or above this are fixed upper RAM, which is a different
      *  address space from the banked window the ROM overlays occupy. */
@@ -139,6 +228,9 @@ public class AnalyseMicronicRom extends GhidraScript {
      *  on, so they stay visible in the GUI instead of only in this log. */
     private static final String BOOKMARK_CAT = "Micronic frame prologue";
 
+    // Pass 0 (battery RAM bootstrap) counters.
+    private int p0BlockCreated, p0Seeded, p0Copied, p0CopiesOk, p0Filled,
+                p0Phantoms, p0Disassembled, p0Drift;
     /** Pass 1: 1 when the bogus no-return flag was cleared this run. */
     private int p1Fixed;
     // Pass 2 (boot chains) counters.
@@ -151,10 +243,24 @@ public class AnalyseMicronicRom extends GhidraScript {
                 p4Disassembled, p4Realigned;
     // Pass 5 (frame prologues) counters.
     private int p5Sites, p5Created, p5Present, p5Deferred, p5Conflict, p5Overrun;
+    // Pass 6 (runtime stub farm) counters.
+    private int p6Slots, p6Refs, p6Comments, p6Skipped;
+
+    /** The boot-load chain records, read once and shared by passes 0, 2, 6. */
+    private java.util.List<ChainRecord> chain = java.util.List.of();
 
     @Override
     public void run() throws Exception {
         println("=== AnalyseMicronicRom: " + currentProgram.getName() + " ===");
+
+        // Read both banks' boot-load chains once. Passes 0, 2 and 6 all need
+        // them, and reading them in one place is what stops the replayed copy
+        // list and the annotated records from drifting apart.
+        chain = readChains();
+
+        println("");
+        println("--- pass 0: battery-RAM bootstrap ---");
+        bootstrapBatteryRam();
 
         println("");
         println("--- pass 1: frame-helper flow (ram:D837 no-return) ---");
@@ -176,7 +282,340 @@ public class AnalyseMicronicRom extends GhidraScript {
         println("--- pass 5: compiler frame-prologue functions ---");
         createFrameFunctions();
 
+        println("");
+        println("--- pass 6: runtime stub farm (ram:ED1C + 4*i) ---");
+        linkRuntimeStubSlots();
+
         summarise();
+    }
+
+    // ==================================================================
+    // Pass 0 -- battery-RAM bootstrap
+    //
+    // micron1.bin is two 32K ROM banks and nothing else, but almost every
+    // routine worth reading calls into unpaged battery RAM: the frame helper
+    // (D837), the switch dispatcher (E0B2), the string and arithmetic
+    // library (DB89, E04B, DFCC), the indirect-call thunk (D828), the
+    // session modules (D081, D893, E104), the resident kernel (F180) and the
+    // runtime stub farm (ED1C). On a freshly imported program none of that
+    // exists, nothing there disassembles, and the later passes have nothing
+    // to work on -- pass 1's byte check reads D837 and finds zeroes.
+    //
+    // This pass reconstructs the observable result of a clean cold boot:
+    // create the RAM block, seed the system variables the reset flow writes,
+    // replay the ROM->RAM copies, lay down the stub-farm template, drop
+    // analysis artifacts, and disassemble the entry points.
+    //
+    // WHERE THE COPY LIST COMES FROM. Six of the eleven copies are boot-load
+    // chain records, so they are taken from the chain walk rather than
+    // hardcoded -- one source of truth, no drift. The other five are
+    // performed by ROM code (the config tables, the kernel dispatch block,
+    // the resident kernel) and appear in no chain, so they stay in
+    // ROM_CODE_COPIES with the performing routine named against each.
+    // checkCopyListAgainstChains() prints both and reports any disagreement.
+    //
+    // That diff already earned its keep: FillBatteryRam.java hardcoded the
+    // E104 copy as 0130h bytes where the chain record at ROM00:7D7C says
+    // 0129h. 7C2F + 0129h = 7D58, exactly where the chain script starts, so
+    // the blob ends where the chain begins and 0130h over-reads seven bytes
+    // of the chain itself into ram:E22D -- on top of the misc-config block
+    // copied there a moment earlier. Measured against the current database,
+    // length 0130h mismatches in 6 bytes and 0129h matches exactly.
+    // ==================================================================
+    private void bootstrapBatteryRam() throws Exception {
+        AddressSpace ram = space("ram");
+        if (ram == null) {
+            println("no `ram` space -- nothing to do");
+            return;
+        }
+        boolean fresh = ensureRamBlock(ram);
+        seedSystemVariables(ram, fresh);
+
+        java.util.List<int[]> copies = buildCopyList();
+        checkCopyListAgainstChains(copies);
+        for (int[] c : copies) {
+            replayCopy(ram, c);
+        }
+
+        fillStubFarmTemplate(ram);
+        removePhantomFunctions(ram);
+
+        for (int off : BOOTSTRAP_ENTRIES) {
+            Address at = ram.getAddress(off);
+            if (currentProgram.getMemory().getBlock(at) == null) {
+                continue;
+            }
+            if (currentProgram.getListing().getInstructionAt(at) == null
+                    && disassemble(at)) {
+                p0Disassembled++;
+                println("  disassembled ram:" + hex4(off));
+            }
+        }
+    }
+
+    /** @return true if this run created the block (so it is a cold image). */
+    private boolean ensureRamBlock(AddressSpace ram) throws Exception {
+        Memory mem = currentProgram.getMemory();
+        Address start = ram.getAddress(RAM_BASE);
+        MemoryBlock blk = mem.getBlock(start);
+        if (blk != null && blk.isInitialized()) {
+            println("battery RAM block already present (" + blk.getName() + ")");
+            return false;
+        }
+        if (blk != null) {
+            println("replacing UNINITIALIZED block " + blk.getName() + " ("
+                    + blk.getStart() + "-" + blk.getEnd() + ")");
+            mem.removeBlock(blk, monitor);
+        }
+        mem.createInitializedBlock(RAM_BLOCK_NAME, start, RAM_BLOCK_SIZE,
+                                   (byte) 0, monitor, false);
+        p0BlockCreated = 1;
+        println("created initialised block " + RAM_BLOCK_NAME + " ram:8000-ram:FFFF");
+        return true;
+    }
+
+    /**
+     * Seed the cold-boot system variables.
+     *
+     * On a block this run created, all of them are written. On a block that
+     * was already there, only cells that are still zero are filled in: the
+     * database may hold a real post-boot dump, and these synthetic values
+     * must never overwrite observed ones. Either way a second run writes
+     * nothing, because every seeded cell is then already at its value.
+     */
+    private void seedSystemVariables(AddressSpace ram, boolean fresh) throws Exception {
+        Memory mem = currentProgram.getMemory();
+        for (int[] seed : SYSTEM_VAR_SEEDS) {
+            Address at = ram.getAddress(seed[0]);
+            int want = seed[1] & 0xFF;
+            int have = mem.getByte(at) & 0xFF;
+            if (have == want) {
+                continue;
+            }
+            if (!fresh && have != 0x00) {
+                println("  KEEP observed ram:" + hex4(seed[0]) + " = "
+                        + String.format("%02X", have) + " (cold-boot value is "
+                        + String.format("%02X", want) + ")");
+                continue;
+            }
+            mem.setBytes(at, new byte[] { (byte) want });
+            p0Seeded++;
+        }
+        if (p0Seeded > 0) {
+            println("seeded " + p0Seeded + " system variables");
+        }
+    }
+
+    /** {bank, src, len, dst} for every copy, chain-derived plus ROM-code. */
+    private java.util.List<int[]> buildCopyList() {
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        for (int[] c : ROM_CODE_COPIES) {
+            out.add(c);
+        }
+        for (ChainRecord r : chain) {
+            if (r.fn != 0x0001) {
+                continue;               // memset and enqueue records do no copying
+            }
+            out.add(new int[] { "ROM01".equals(r.space.getName()) ? 1 : 0,
+                                r.src, r.len, r.dst });
+        }
+        return out;
+    }
+
+    /**
+     * Diff the chain-derived copies against the list FillBatteryRam.java
+     * hardcoded, and say what disagrees. The chain is authoritative -- it is
+     * what the firmware executes -- so a disagreement is a bug in the old
+     * table, not a reason to distrust the walk.
+     */
+    private void checkCopyListAgainstChains(java.util.List<int[]> copies) {
+        java.util.List<int[]> derived = new java.util.ArrayList<>();
+        for (int[] c : copies) {
+            boolean romCode = false;
+            for (int[] rc : ROM_CODE_COPIES) {
+                if (rc[1] == c[1] && rc[3] == c[3]) {
+                    romCode = true;
+                }
+            }
+            if (!romCode) {
+                derived.add(c);
+            }
+        }
+        println("copy list: " + ROM_CODE_COPIES.length + " from ROM code, "
+                + derived.size() + " from the boot-load chains");
+        for (int[] legacy : LEGACY_CHAIN_COPIES) {
+            int[] match = null;
+            for (int[] d : derived) {
+                if (d[0] == legacy[0] && d[1] == legacy[1] && d[3] == legacy[3]) {
+                    match = d;
+                }
+            }
+            if (match == null) {
+                p0Drift++;
+                println("  DRIFT hardcoded copy bank" + legacy[0] + ":" + hex4(legacy[1])
+                        + " -> ram:" + hex4(legacy[3]) + " has no chain record");
+            } else if (match[2] != legacy[2]) {
+                p0Drift++;
+                println("  DRIFT bank" + legacy[0] + ":" + hex4(legacy[1]) + " -> ram:"
+                        + hex4(legacy[3]) + " : hardcoded len " + hex4(legacy[2])
+                        + "h, chain says " + hex4(match[2]) + "h -- using the chain");
+            }
+        }
+        for (int[] d : derived) {
+            boolean known = false;
+            for (int[] legacy : LEGACY_CHAIN_COPIES) {
+                if (d[0] == legacy[0] && d[1] == legacy[1] && d[3] == legacy[3]) {
+                    known = true;
+                }
+            }
+            if (!known) {
+                p0Drift++;
+                println("  DRIFT chain copy bank" + d[0] + ":" + hex4(d[1]) + " -> ram:"
+                        + hex4(d[3]) + " len " + hex4(d[2]) + "h is not in the old table");
+            }
+        }
+    }
+
+    /**
+     * Replay one ROM->RAM copy, skipping it when the bytes already match.
+     *
+     * The skip is what makes this pass idempotent, and it matters for more
+     * than speed: writing would clear the code units over the destination,
+     * discarding the disassembly of a module that is already analysed.
+     */
+    private void replayCopy(AddressSpace ram, int[] c) throws Exception {
+        AddressSpace srcSpace = space(c[0] == 1 ? "ROM01" : "ROM00");
+        if (srcSpace == null) {
+            return;
+        }
+        Address src = srcSpace.getAddress(c[1]);
+        Address dst = ram.getAddress(c[3]);
+        Memory mem = currentProgram.getMemory();
+        if (mem.getBlock(src) == null || mem.getBlock(dst) == null) {
+            println("  SKIP copy " + src + " -> " + dst + " : unmapped");
+            return;
+        }
+        byte[] want = new byte[c[2]];
+        byte[] have = new byte[c[2]];
+        if (mem.getBytes(src, want) != c[2] || mem.getBytes(dst, have) != c[2]) {
+            println("  SKIP copy " + src + " -> " + dst + " : short read");
+            return;
+        }
+        if (java.util.Arrays.equals(want, have)) {
+            p0CopiesOk++;
+            return;
+        }
+        currentProgram.getListing().clearCodeUnits(dst, dst.add(c[2] - 1), false);
+        mem.setBytes(dst, want);
+        p0Copied++;
+        println("  copied " + hex4(c[2]) + "h bytes " + src + " -> " + dst);
+    }
+
+    /**
+     * Lay down the runtime stub farm's cold template.
+     *
+     * KernelInitCopyData (ram:D6C0) copies the 4 bytes at ram:D6D7 to ED1C
+     * and replicates them to F17F -- 1124 bytes, exactly 281 four-byte slots.
+     * In this image the template is `21 01 00 C9` = `LD HL,1 / RET`.
+     *
+     * The guard matters. If any slot already begins with D7 the farm holds
+     * live inter-bank thunks -- a real post-boot dump -- and overwriting it
+     * with the template would destroy observed state and the analysis hung
+     * off it. In that case the pass reports and does nothing.
+     */
+    private void fillStubFarmTemplate(AddressSpace ram) throws Exception {
+        Memory mem = currentProgram.getMemory();
+        Address base = ram.getAddress(STUB_FARM_BASE);
+        if (mem.getBlock(base) == null) {
+            return;
+        }
+        byte[] pat = new byte[STUB_SLOT_SIZE];
+        mem.getBytes(ram.getAddress(STUB_TEMPLATE_SRC), pat);
+        boolean blank = true;
+        for (byte x : pat) {
+            blank &= (x == 0);
+        }
+        if (blank) {
+            println("  SKIP stub-farm template : ram:" + hex4(STUB_TEMPLATE_SRC)
+                    + " is empty (dispatch block not installed?)");
+            return;
+        }
+
+        int len = STUB_FARM_END - STUB_FARM_BASE;
+        byte[] have = new byte[len];
+        mem.getBytes(base, have);
+        boolean matches = true;
+        for (int i = 0; i < len; i++) {
+            matches &= (have[i] == pat[i % STUB_SLOT_SIZE]);
+        }
+        if (matches) {
+            return;                     // already the cold template: nothing to do
+        }
+        int live = 0;
+        for (int i = 0; i < len; i += STUB_SLOT_SIZE) {
+            if ((have[i] & 0xFF) == OP_RST10) {
+                live++;
+            }
+        }
+        if (live > 0) {
+            println("  KEEP stub farm : " + live + " slot(s) hold live RST 10h thunks,"
+                    + " so this is a post-boot image -- template NOT written");
+            return;
+        }
+        byte[] fill = new byte[len];
+        for (int i = 0; i < len; i++) {
+            fill[i] = pat[i % STUB_SLOT_SIZE];
+        }
+        currentProgram.getListing().clearCodeUnits(base,
+                ram.getAddress(STUB_FARM_END - 1), false);
+        mem.setBytes(base, fill);
+        p0Filled = 1;
+        println("  stub farm ED1C..F17F set to the cold template");
+    }
+
+    /**
+     * Drop functions that are analysis artifacts rather than code.
+     *
+     * FillBatteryRam.java deleted every `ram` function at or above F100, on
+     * the reasoning that they were invented over unmapped memory. That was
+     * true of the database it was written for and is catastrophic now: the
+     * resident kernel lives at F180, so on the current database the original
+     * predicate would delete 61 functions -- BdosDispatchFn, every
+     * Syscall_InvokeService*, Kernel_BankedCallEnvelope, KernSetBank,
+     * BankedCallCommonEntry, the whole SessionOpStub_* farm -- 58 of them
+     * hand-named.
+     *
+     * The predicate here needs both halves: the function must still carry
+     * Ghidra's generated FUN_ name (so nothing a human named can ever
+     * match), and its entry must not be an instruction (so it is genuinely
+     * not code). Functions pass 5 creates always have an instruction at the
+     * entry, so this can never remove them either.
+     */
+    private void removePhantomFunctions(AddressSpace ram) {
+        FunctionManager fm = currentProgram.getFunctionManager();
+        Listing lst = currentProgram.getListing();
+        java.util.List<Function> doomed = new java.util.ArrayList<>();
+        FunctionIterator it = fm.getFunctions(true);
+        while (it.hasNext()) {
+            Function f = it.next();
+            Address entry = f.getEntryPoint();
+            if (!entry.getAddressSpace().equals(ram)) {
+                continue;
+            }
+            if (!f.getName().startsWith("FUN_")) {
+                continue;               // a human named it; never touch it
+            }
+            if (lst.getInstructionAt(entry) != null) {
+                continue;               // real code; not an artifact
+            }
+            doomed.add(f);
+        }
+        for (Function f : doomed) {
+            println("  removed phantom " + f.getName() + " at " + f.getEntryPoint()
+                    + " (no instruction at entry)");
+            fm.removeFunction(f.getEntryPoint());
+            p0Phantoms++;
+        }
     }
 
     // ==================================================================
@@ -269,7 +708,44 @@ public class AnalyseMicronicRom extends GhidraScript {
     // one array, because the per-word "deferred far-call" comments must stay
     // visible -- an array would swallow them into a single code unit.
     // ==================================================================
-    private void annotateBootLoadChains() throws Exception {
+    /**
+     * One decoded boot-load chain record.
+     *
+     * `space` is the bank the record was read from, which is also the bank
+     * its addresses resolve in: the chain runs with that bank paged in, and
+     * the fn=2 handler stamps each stub with the live bank shadow (F791).
+     */
+    private static final class ChainRecord {
+        final AddressSpace space;
+        final Address at;
+        final int fn, src, dst, len, n;
+        ChainRecord(AddressSpace space, Address at, int fn, int src, int dst,
+                    int len, int n) {
+            this.space = space; this.at = at; this.fn = fn;
+            this.src = src; this.dst = dst; this.len = len; this.n = n;
+        }
+    }
+
+    /**
+     * Decode both banks' chains without writing anything.
+     *
+     * Bank 0 first, then bank 1 -- that order is not a guess. Three
+     * slot-to-target pairs recorded from a live RAM dump (slot 58 -> 48BF,
+     * 60 -> 4AE0, 68 -> 4F5A, in doc/research/TASKS.md) only reproduce with
+     * bank 0's 134 words occupying slots 0..133, and the two banks' word
+     * counts (134 + 147 = 281 slots x 4 bytes) exactly fill ED1C..F17F,
+     * which is precisely the range the cold template covers.
+     *
+     * The fn=2 record is consumed by its declared word count, never by
+     * stepping fixed-size records through it. That matters: the 134 words at
+     * ROM00:7D88 also parse as plausible 6-byte records (the first would read
+     * src=3BAA dst=62C7), so a naive walk would silently mistake the stub
+     * source table for chain records and run off into the padding. Reading N
+     * from 7D86 and skipping 4+2N bytes lands exactly on the FFFF terminator
+     * at 7E94, which is the check that the grammar is being applied right.
+     */
+    private java.util.List<ChainRecord> readChains() {
+        java.util.List<ChainRecord> out = new java.util.ArrayList<>();
         for (String name : new String[] { "ROM00", "ROM01" }) {
             AddressSpace sp = space(name);
             if (sp == null) {
@@ -277,41 +753,37 @@ public class AnalyseMicronicRom extends GhidraScript {
                 continue;
             }
             try {
-                walkChain(sp);
+                readOneChain(sp, out);
             } catch (Exception ex) {
                 println("SKIP chain " + name + " : " + ex.getMessage());
             }
         }
+        return out;
     }
 
-    private void walkChain(AddressSpace sp) throws Exception {
+    private void readOneChain(AddressSpace sp, java.util.List<ChainRecord> out)
+            throws Exception {
         int start = readU16(sp.getAddress(CHAIN_PTR));
         if (start < 0x0100 || start >= CHAIN_PTR) {
             println("SKIP chain " + sp.getName() + " : implausible (7FFC) = " + hex4(start));
             return;
         }
-        println("chain " + sp.getName() + " starts at " + hex4(start));
-
         int off = start;
         for (int guard = 0; guard < MAX_CHAIN_RECORDS; guard++) {
             Address rec = sp.getAddress(off);
             int fn = readU16(rec);
-            p2Records++;
             if (fn == 0xFFFF) {
-                typeWords(rec, 1);
-                commentIfAbsent(rec, "boot chain: terminate");
+                out.add(new ChainRecord(sp, rec, fn, 0, 0, 0, 0));
+                println("chain " + sp.getName() + " " + hex4(start) + ".." + hex4(off)
+                        + " terminates cleanly");
                 return;
             } else if (fn == 0x0000) {
-                typeWords(rec, 3);
-                commentIfAbsent(rec, String.format("boot chain: zero %s..%s",
-                        hex4(readU16(rec.add(2))),
-                        hex4(readU16(rec.add(2)) + readU16(rec.add(4)) - 1)));
+                out.add(new ChainRecord(sp, rec, fn, 0, readU16(rec.add(2)), 0,
+                                        readU16(rec.add(4))));
                 off += 6;
             } else if (fn == 0x0001) {
-                typeWords(rec, 4);
-                commentIfAbsent(rec, String.format("boot chain: copy %sh bytes %s -> ram:%s",
-                        hex4(readU16(rec.add(6))), hex4(readU16(rec.add(2))),
-                        hex4(readU16(rec.add(4)))));
+                out.add(new ChainRecord(sp, rec, fn, readU16(rec.add(2)),
+                                        readU16(rec.add(4)), readU16(rec.add(6)), 0));
                 off += 8;
             } else if (fn == 0x0002) {
                 int n = readU16(rec.add(2));
@@ -320,9 +792,7 @@ public class AnalyseMicronicRom extends GhidraScript {
                             + " runs past the bank");
                     return;
                 }
-                typeWords(rec, 2);
-                commentIfAbsent(rec, "boot chain: enqueue " + n + " deferred banked calls");
-                linkChainTargets(sp, rec.add(4), n);
+                out.add(new ChainRecord(sp, rec, fn, 0, 0, 0, n));
                 off += 4 + 2 * n;
             } else {
                 println("SKIP chain " + sp.getName() + " at " + rec
@@ -331,6 +801,30 @@ public class AnalyseMicronicRom extends GhidraScript {
             }
         }
         println("SKIP chain " + sp.getName() + " : record limit reached");
+    }
+
+    private void annotateBootLoadChains() throws Exception {
+        for (ChainRecord r : chain) {
+            p2Records++;
+            if (r.fn == 0xFFFF) {
+                typeWords(r.at, 1);
+                commentIfAbsent(r.at, "boot chain: terminate");
+            } else if (r.fn == 0x0000) {
+                typeWords(r.at, 3);
+                commentIfAbsent(r.at, String.format("boot chain: zero %s..%s",
+                        hex4(r.dst), hex4(r.dst + r.n - 1)));
+            } else if (r.fn == 0x0001) {
+                typeWords(r.at, 4);
+                commentIfAbsent(r.at, String.format(
+                        "boot chain: copy %sh bytes %s -> ram:%s",
+                        hex4(r.len), hex4(r.src), hex4(r.dst)));
+            } else if (r.fn == 0x0002) {
+                typeWords(r.at, 2);
+                commentIfAbsent(r.at,
+                        "boot chain: enqueue " + r.n + " deferred banked calls");
+                linkChainTargets(r.space, r.at.add(4), r.n);
+            }
+        }
     }
 
     /** Type, reference and comment the N target words of one fn=2 record. */
@@ -933,6 +1427,125 @@ public class AnalyseMicronicRom extends GhidraScript {
     }
 
     // ==================================================================
+    // Pass 6 -- runtime stub farm
+    //
+    // The firmware's own indirection layer. 281 four-byte slots run from
+    // ram:ED1C to F17F, one per routine that loaded software or the other
+    // bank may call, and a `CALL 0EExxh` is how you reach a ROM routine
+    // without knowing which bank it is in.
+    //
+    // HOW A SLOT IS BUILT -- the fn=2 chain handler at ram:D727 is the whole
+    // mechanism, byte-verified:
+    //
+    //     d72b  EX DE,HL / ADD HL,HL      ; BC = 2N bytes of source words
+    //     d72f  LD HL,(d684)              ; the queue cursor
+    //     d733  LD A,D7h / LD (DE),A      ; RST 10h opcode
+    //     d737  LD A,(f791) / LD (DE),A   ; the live bank shadow
+    //     d73c  LDI / LDI                 ; the 2-byte target
+    //     d740  JP PE,d733                ; next slot
+    //     d744  LD (d684),HL              ; write the advanced cursor back
+    //
+    // So slot i is `D7 bank lo hi` -- an inter-bank thunk in the same four
+    // bytes as the `LD HL,1 / RET` template it replaces -- and the bank byte
+    // comes from F791, i.e. from whichever bank's chain enqueued it. This is
+    // why searching for a pointer to the ROM00:7D88 table finds nothing:
+    // there is no separate installer. The handler reads the words inline out
+    // of the record stream as it walks the chain, and 7D88 is simply where
+    // bank 0's fn=2 record happens to keep them.
+    //
+    // WHY THE SLOT NUMBERING IS RIGHT. The cursor cell (d684) reads ED1C in
+    // the cold image, and bank 0's 134 words followed by bank 1's 147 come
+    // to 281 slots x 4 = 1124 bytes, landing exactly on F180 -- the resident
+    // kernel's base, and exactly the range KernelInitCopyData pre-fills.
+    // Three slot-to-target pairs recorded independently from a live RAM dump
+    // (slot 58 -> 48BF, 60 -> 4AE0, 68 -> 4F5A) all reproduce.
+    // CONFIRMED for bank 0's slots 0..133; bank 1's 134..280 follow from the
+    // same shared cursor and the exact fit.
+    //
+    // Without this pass every one of those 281 call sites is a dead end: the
+    // slot holds `LD HL,1 / RET` and carries no reference to the routine it
+    // stands for, so the listing cannot be followed across the boundary.
+    // ==================================================================
+    private void linkRuntimeStubSlots() throws Exception {
+        AddressSpace ram = space("ram");
+        if (ram == null || currentProgram.getMemory()
+                .getBlock(ram.getAddress(STUB_FARM_BASE)) == null) {
+            println("stub farm not mapped -- nothing to do");
+            return;
+        }
+
+        int declared = readU16(ram.getAddress(STUB_CURSOR_CELL));
+        if (declared != STUB_FARM_BASE) {
+            println("NOTE queue cursor (d684) = " + hex4(declared) + ", not the cold "
+                    + hex4(STUB_FARM_BASE) + " -- slots are numbered from "
+                    + hex4(STUB_FARM_BASE) + " regardless");
+        }
+
+        describeStubFarm(ram);
+
+        int cursor = STUB_FARM_BASE;
+        int slot = 0;
+        for (ChainRecord r : chain) {
+            if (r.fn != 0x0002) {
+                continue;
+            }
+            for (int i = 0; i < r.n; i++) {
+                if (cursor + STUB_SLOT_SIZE > STUB_FARM_END) {
+                    println("STOP slot " + slot + " would run past " + hex4(STUB_FARM_END)
+                            + " -- chain enqueues more than the farm holds");
+                    return;
+                }
+                int target = readU16(r.at.add(4 + 2 * i));
+                Address at = ram.getAddress(cursor);
+                p6Slots++;
+                if (target == 0 || target >= RAM_BASE) {
+                    p6Skipped++;        // unused slot, or not a banked-window address
+                } else {
+                    Address to = r.space.getAddress(target);
+                    if (addReferenceIfAbsent(at, to, RefType.COMPUTED_CALL)) {
+                        p6Refs++;
+                    }
+                    if (setCommentIfAbsentOrEqual(at, CommentType.EOL,
+                            "runtime stub slot " + slot + " -> "
+                            + r.space.getName() + ":" + hex4(target))) {
+                        p6Comments++;
+                    }
+                }
+                cursor += STUB_SLOT_SIZE;
+                slot++;
+            }
+        }
+        println("mapped " + p6Slots + " slots, ram:" + hex4(STUB_FARM_BASE) + ".."
+                + hex4(cursor - 1) + " (" + p6Skipped + " with no usable target)");
+    }
+
+    /** Plate the head of the farm once, so the geometry is in the database. */
+    private void describeStubFarm(AddressSpace ram) {
+        Address base = ram.getAddress(STUB_FARM_BASE);
+        if (currentProgram.getListing().getComment(CommentType.PLATE, base) != null) {
+            return;                     // already described; never overwrite
+        }
+        currentProgram.getListing().setComment(base, CommentType.PLATE,
+            "RUNTIME STUB FARM -- 281 four-byte slots, ED1C..F17F.\n"
+            + "Slot i is the 4 bytes at ED1C + 4*i, and is an inter-bank thunk\n"
+            + "`RST 10h ; db bank ; dw target`. It is how loaded software and the\n"
+            + "other ROM bank call a firmware routine without knowing its bank.\n"
+            + "\n"
+            + "Built by the fn=2 boot-chain handler at ram:D727, which walks the\n"
+            + "record's word list and stores D7h, the live bank shadow (f791) and\n"
+            + "the 2-byte target into the queue cursor (d684), advancing 4 per\n"
+            + "word. Bank 0's chain supplies slots 0..133 and bank 1's 134..280:\n"
+            + "281 * 4 = 1124 bytes, landing exactly on F180.\n"
+            + "\n"
+            + "In this cold image every slot is still the KernelInitCopyData\n"
+            + "template `21 01 00 C9` = LD HL,1 / RET, so a slot returns 1 and\n"
+            + "does nothing. The EOL comment on each slot names the routine it\n"
+            + "stands for once installed; those come from the chain records.\n"
+            + "CONFIRMED: handler D727-D748; slots 58/60/68 -> 48BF/4AE0/4F5A\n"
+            + "reproduce three pairs recorded from a live RAM dump.");
+    }
+
+    // ==================================================================
     // Shared helpers
     // ==================================================================
 
@@ -1024,6 +1637,15 @@ public class AnalyseMicronicRom extends GhidraScript {
     private void summarise() {
         println("");
         println("=== summary =======================================");
+        println("pass 0  battery RAM  : " + (p0BlockCreated == 1
+                ? "block CREATED" : "block already present") + ", " + p0Seeded
+                + " vars seeded, " + p0Copied + " copies replayed, " + p0CopiesOk
+                + " already correct");
+        println("        "            + "             " + p0Phantoms
+                + " phantom functions removed, " + p0Disassembled
+                + " entry points disassembled, " + p0Drift
+                + " copy-list disagreements, stub template "
+                + (p0Filled == 1 ? "written" : "unchanged"));
         println("pass 1  frame helper : " + (p1Fixed == 1
                 ? "no-return flag CLEARED on ram:D837"
                 : "no change needed"));
@@ -1043,6 +1665,9 @@ public class AnalyseMicronicRom extends GhidraScript {
                 + " functions created, " + p5Present + " already present, "
                 + p5Deferred + " deferred, " + p5Conflict + " conflicts, "
                 + p5Overrun + " bodies overrunning the next prologue");
+        println("pass 6  stub farm    : " + p6Slots + " slots, " + p6Refs
+                + " references added, " + p6Comments + " comments added, "
+                + p6Skipped + " with no usable target");
         println("total functions now  : "
                 + currentProgram.getFunctionManager().getFunctionCount());
         println("===================================================");

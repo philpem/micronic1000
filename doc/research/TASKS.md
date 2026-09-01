@@ -3251,3 +3251,72 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   (`ROM00:3B13`) wakes/aborts the machine and the physical NMI source is
   unrecorded. If the Plinth drives it, a host could at least wake a unit —
   though still not start a session.
+
+## Pass 0 and the stub farm: correcting an earlier rejection (2026-09-01)
+
+**The earlier rejection of `FillBatteryRam.java` as "out of scope memory
+mutation" was wrong** (owner correction). It is a *prerequisite*, not a
+mutation: `micron1.bin` holds only the two ROM banks, and everything the ROM
+calls into lives in unpaged battery RAM — `ram:D837` (frame prologue helper),
+`E0B2` (InlineTableDispatch), `DB89`/`E04B`/`DFCC` (string, compare,
+multiply), `D828` (indirect call), `D893` (module A), `F180` (resident
+kernel), and the `ED1C` stub farm. Without it none of that disassembles, and
+the consolidated script's own pass 1 would silently no-op because its byte
+check reads `D837`, which is empty on a freshly imported program. It is now
+**pass 0**, running before everything else, and the ordering dependency is
+stated in the script's plate.
+
+Folding it in turned up two defects in the original, both byte-verified:
+
+* **The `ram:E104` copy length was wrong.** `FillBatteryRam.java` hardcoded
+  `0130h`; the chain record at `ROM00:7D7C` says `0129h`. `7C2F + 0129h =
+  7D58`, exactly where the boot-load chain script starts — the blob ends where
+  the chain begins — so `0130h` over-reads **seven bytes of the chain script
+  itself** into `ram:E22D`, on top of the misc-config block copied there a
+  moment earlier. Measured: at `0130h` the destination mismatches in 6 bytes,
+  at `0129h` it matches exactly. The six chain-backed copies are now derived
+  from the chain walk (one source of truth); the five copies performed by ROM
+  code, which appear in no chain, stay hardcoded with the performing routine
+  named against each. The script diffs the two lists and reports drift.
+* **`removePhantomFunctions` would have destroyed the resident kernel.** It
+  deleted every `ram` function at or above `F100` — true of the database it
+  was written for, catastrophic now that `F180` holds the kernel. On the
+  current database that predicate matches **61 functions**, 58 hand-named,
+  including `BdosDispatchFn`, every `Syscall_InvokeService*`,
+  `Kernel_BankedCallEnvelope`, `KernSetBank`, `BankedCallCommonEntry` and the
+  `SessionOpStub_*` farm. It now requires both a still-generated `FUN_` name
+  and a non-instruction entry. The stub-farm template fill is likewise
+  refused if any slot begins with `D7`, i.e. if the image is a post-boot dump
+  with live thunks.
+
+**CONFIRMED: the runtime stub farm is 281 slots, and the fn=2 chain handler is
+its installer.** New pass 6 links them all.
+
+* Slot *i* is the 4 bytes at `ram:ED1C + 4*i`. `ram:D727` (byte-verified)
+  reads the queue cursor `(d684)`, then per source word stores `D7h`, the live
+  bank shadow `(f791)`, and the 2-byte target, advancing 4 — so a slot is an
+  inter-bank thunk `RST 10h ; db bank ; dw target`, in the same four bytes as
+  the `LD HL,1 / RET` template it replaces.
+* **There is no separate installer**, which is why a scan for a pointer to
+  `ROM00:7D88` finds nothing: the handler reads the words inline out of the
+  record stream as it walks the chain. `7D88` is just where bank 0's fn=2
+  record keeps them. The stub source table and the deferred-call enqueue list
+  are the same 134 words, not two tables.
+* Bank 0 supplies slots 0..133 (ROM00 targets), bank 1 slots 134..280 (ROM01).
+  281 × 4 = 1124 bytes = exactly `ED1C..F17F`, which is exactly the range
+  `KernelInitCopyData` pre-fills, ending exactly on `F180`. The three
+  slot→target pairs recorded here earlier from a live RAM dump (58 → `48BF`,
+  60 → `4AE0`, 68 → `4F5A`) all reproduce, which is what fixes bank-0-first.
+* The whole farm currently reads `21 01 00 C9` — all 1124 bytes match the
+  template at `ram:D6D7`, so this is the genuine cold state, not damage. Every
+  `CALL 0EExxh` in ROM01 and in loaded programs was therefore a dead end with
+  no reference to its target; pass 6 adds all 281 edges plus a per-slot EOL.
+* **Chain-walk trap, recorded so nobody re-introduces it:** the 134 words at
+  `ROM00:7D88` also parse as plausible 6-byte records (the first reads
+  `src=3BAA dst=62C7`). The walker must consume the fn=2 record by its
+  declared word count, which lands exactly on the `FFFF` terminator at
+  `7E94`. The script prints the chain span every run so this is visible.
+
+Verified: two consecutive runs, second reports zero changes in every pass;
+`list_functions_enhanced` diff before/after shows **zero lost, zero renamed**
+at 1087 functions.
