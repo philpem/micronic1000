@@ -123,15 +123,19 @@ source tree (not published here).
   *Resolve:* vary the solicited object size and see whether either value
   tracks it.
 
-* **What selects the Commstar operation** — The session screen supports four
-  operations (data/program x transmit/receive, `ROM00:6C8E`), but every
-  capture exercises only `Program Reception`. The handheld-to-host direction
-  is the same screen, not a different mode, so it should be reachable without
-  hardware.
-  *Resolve:* determine what chooses the row — the peer's reply to an early
-  state, the `LOAD` token at state-45 object +14, or a form field. Driving a
-  `Data Transmission` session would capture the upload direction and, with
-  it, the `RECORD` object format that no trace has yet touched.
+* **What selects the Commstar operation** — Narrowed. The state machine at
+  `ROM00:692A` shows that `READY-RX-PROG`, `READY-TX-DATA` and
+  `READY-TX-PROG` have no incoming legal transition: the only exit from
+  `CONNECTED` is `C-COMMAND`, which leads to `READY-RX-DATA`. So the
+  operation is chosen by whatever moves the session into one of those three
+  states, not by the handheld walking the table.
+  *Resolve:* find the second writer of `g_bSessionState` (`ram:E22D`).
+  `Session_SetState` (`ROM00:3BF5`) is the only writer in ROM00 and is
+  called from the transition path alone, so another must exist in the
+  RAM-resident session module. The `C-COMMAND` / `C-RX-CMD` / `C-TX-REPLY`
+  trio and the display-only `REPLY-START` / `REPLY-END` states point at the
+  command-reply exchange; confirm by breakpointing `E22D` writes through a
+  traced session.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.

@@ -24,7 +24,7 @@ it is not proven against historical hardware.
 | Validated frame envelope | **Provisional** | Length, type, sequence, and target-id fields are stable; other bytes are not |
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
 | Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
-| Handheld-to-host record transfer | **Not implementable** | The operations are named (`C-TX-REC`, `C-TX-BLK`) but no exchange in this direction has been captured |
+| Handheld-to-host record transfer | **Provisional** | The command sequence is known from the state machine (`C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`); no exchange in this direction has been captured, so the object formats are not |
 | IR wire framing | **Not implementable** | Requires a hardware capture |
 
 The synthetic peer in the repository is regression infrastructure, not a
@@ -360,51 +360,104 @@ only: it displays `Receiving prog`.
 
 This matrix lines up exactly with four of the internal state names —
 `READY-TX-DATA`, `READY-TX-PROG`, `READY-RX-DATA`, `READY-RX-PROG` — and the
-command table supplies a matching pair of transfer verbs in each direction.
-A consistent reading is that `RECORD` operations carry data and `BLOCK`
-operations carry program images, which would make `C-TX-REC` the
-handheld-to-host data upload and `C-RX-BLK` the program download the traces
-already exercise. **This reading is not proven**: no capture has exercised a
-`RECORD` operation, and the pairing rests on the vocabulary lining up rather
-than on observed bytes.
+state machine below confirms that `RECORD` operations carry data and `BLOCK`
+operations carry program images.
 
 The practical consequence is that the uncaptured handheld-to-host direction
 is not behind a different screen or a different mode — it is the top row of
 the same screen the traces already reach. What selects the row is the open
 question.
 
-### Observed transitions
+### The protocol state machine
 
-The V24 mode-1 and PLINTH Load/Run traces both walk this sequence. Each step
-is one type-1 request from the handheld, answered by a type-2 object, a
-type-3 acknowledgement from the handheld, and a type-4 completion.
-**Provisional**: this is one traced path through the machine, not the whole
-state graph — no abort, retry, or handheld-to-host branch has been captured.
+`ROM00:692A` is a state-transition matrix indexed
+`table[state * 17 + command]`. Bit 7 of an entry marks an **illegal**
+transition (the firmware shows a message box); bit 7 clear means legal, and
+`entry & 0x7F` is the next state. **Stable** — the `*17` multiply and the
+table base are byte-verified at `ROM00:3C06`, the extent is exactly
+14 states x 17 commands = 238 bytes (`692A`-`6A17`, with unrelated data
+beginning at `6A18`), and the decoded machine is internally consistent.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> S00: link opened
-    S00: state 0000
-    S06: state 0006
-    S61: state 0061
-    S64: state 0064
-    S45: state 0045 — carries workstation + program name
-    S44: state 0044 — solicits data, size 00FF
-    Stream: program data chunks
-    S00 --> S06: T2/T3/T4
-    S06 --> S61: T2/T3/T4
-    S61 --> S64: T2/T3/T4
-    S64 --> S45: T2/T3/T4
-    S45 --> S44: T2/T3/T4
-    S44 --> Stream: control object OK
-    Stream --> Stream: marker 0, refill
-    Stream --> [*]: marker 1, end of stream
+    [*] --> NOT_STARTED
+    NOT_STARTED: NOT-STARTED
+    DISCONNECTED: DISCONNECTED
+    CONNECTED: CONNECTED
+    RRD: READY-RX-DATA
+    RRP: READY-RX-PROG
+    RTD: READY-TX-DATA
+    RTP: READY-TX-PROG
+    RECRX: RECORD-RX
+    BLKRX: BLOCK-RX
+    RECTX: RECORD-TX
+    DSTX: DATA-SET-TX
+    BLKTX: BLOCK-TX
+    TERM: TERMINATED
+    NOT_STARTED --> DISCONNECTED: C-INIT-COMMS
+    DISCONNECTED --> CONNECTED: C-DIAL / C-ANSWER / C-MANUAL
+    CONNECTED --> RRD: C-COMMAND
+    CONNECTED --> TERM: C-SHUT-DOWN
+    RRD --> RECRX: C-RX-REC
+    RECRX --> RECRX: C-RX-REC
+    RRP --> BLKRX: C-RX-BLK
+    BLKRX --> BLKRX: C-RX-BLK
+    RTD --> RECTX: C-BEGIN-FILE
+    RECTX --> RECTX: C-TX-REC
+    RECTX --> DSTX: C-END-FILE
+    DSTX --> RECTX: C-BEGIN-FILE
+    DSTX --> CONNECTED: C-END-TX
+    RTP --> BLKTX: C-TX-BLK
+    BLKTX --> BLKTX: C-TX-BLK
+    RTD --> CONNECTED: C-END-TX
+    RTP --> CONNECTED: C-END-TX
+    BLKTX --> CONNECTED: C-END-TX
 ```
 
-A sixth value, `60`, appears in the loaded module's abort case list
-alongside `44`, `45`, `61`, and `64` but has not been observed on the wire.
-The `RECORD`/`BLOCK` states named above have no observed wire value at all,
-because no trace has yet exercised a record or block transfer.
+Every state additionally accepts `C-DROP-LINE` back to `NOT-STARTED` and
+`C_ABORT` to `CRASHED`; `CRASHED` accepts only `C-DROP-LINE`. Those 26 edges
+are omitted above for legibility. `REPLY-START` and `REPLY-END` have no row
+in the matrix and are display-only.
+
+The shape is now explicit. A data upload is
+`C-BEGIN-FILE`, then `C-TX-REC` per record, then `C-END-FILE` to
+`DATA-SET-TX`, and either another file or `C-END-TX` back to `CONNECTED`. A
+program transfer needs no file wrapper: `C-TX-BLK` loops in `BLOCK-TX` until
+`C-END-TX`. Receive is symmetric but has no file framing in either mode.
+
+### RECORD carries data, BLOCK carries programs
+
+This was a guess in the previous revision; it is now **stable**. Each of the
+four transfer operations calls `SessionStartDataMode` (`ROM00:452D`) with its
+command index and then loads its own display string:
+
+| Command | Index | Display string | Site |
+|---|---:|---|---|
+| `C-RX-REC` | 9 | `Receiving data` | `ROM00:4EA3` |
+| `C-RX-BLK` | 10 | `Receiving prog` | `ROM00:4F90` |
+| `C-BEGIN-FILE` | 11 | `Sending data` | `ROM00:506A` |
+| `C-TX-BLK` | 14 | `Sending prog` | `ROM00:5222` |
+
+`452D` is called from 15 sites carrying command indices 0..16; only 6
+(`C-RX-CMD`) and 7 (`C-TX-REPLY`) have no call site in ROM00.
+
+### What selects the operation
+
+Three states — `READY-RX-PROG`, `READY-TX-DATA`, `READY-TX-PROG` — have **no
+incoming legal transition** in the matrix. The only route out of `CONNECTED`
+is `C-COMMAND`, whose table entry leads to `READY-RX-DATA`.
+
+So the operation is not chosen by the handheld walking the table. It is
+chosen by whatever moves the session into one of the three unreachable ready
+states, and the `C-COMMAND` / `C-RX-CMD` / `C-TX-REPLY` trio plus the
+display-only `REPLY-START` / `REPLY-END` states point at the command-reply
+exchange as the mechanism. **This is a reading of the table's shape, not a
+byte-level finding**: no capture has exercised it, and `Session_SetState`
+(`ROM00:3BF5`) is called from the transition path only, so a second writer
+would have to be in the RAM-resident module.
+
+For a server this is the key question, because the same mechanism selects the
+uncaptured handheld-to-host upload.
 
 ## Historical server readiness
 

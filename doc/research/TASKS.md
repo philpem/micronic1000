@@ -2350,3 +2350,42 @@ current priority order; the concise lists above are authoritative.
     Commstar screen, the uncaptured upload direction is the top row of a
     screen the harness already reaches; what selects the row is the new
     priority question.
+  * **Commstar state machine SOLVED (2026-09-01):** `ROM00:692A` is the
+    session state-transition matrix, indexed `table[state * 17 + command]`.
+    Bit 7 set marks an illegal transition (message box, `ram:E3C2 = 2`);
+    bit 7 clear is legal and `entry & 0x7F` is the next state. The `*0x11`
+    multiply and the table base are byte-verified at `ROM00:3C06`
+    (`SessionCoroJumpTable`). Extent is exactly 14 states x 17 commands =
+    238 bytes, `692A-6A17`; unrelated data begins at `6A18`, so state-name
+    entries 14 (`REPLY-START`) and 15 (`REPLY-END`) have no row and are
+    display-only. The decoded machine: INIT-COMMS opens, DIAL/ANSWER/MANUAL
+    connect, C-COMMAND leaves CONNECTED for READY-RX-DATA, RECORD ops loop
+    in RECORD-RX/RECORD-TX with BEGIN-FILE/END-FILE/END-TX file framing,
+    BLOCK ops loop in BLOCK-RX/BLOCK-TX with no file wrapper, and every
+    state accepts C-DROP-LINE (to NOT-STARTED) and C_ABORT (to CRASHED).
+  * **RECORD=data / BLOCK=program promoted to CONFIRMED (2026-09-01):** was
+    recorded as an unproven vocabulary reading. Each of the four transfer
+    operations calls `SessionStartDataMode` (`ROM00:452D`) with its command
+    index and loads its own display string: cmd 9 `C-RX-REC` ->
+    `Receiving data` (`4EA3`), 10 `C-RX-BLK` -> `Receiving prog` (`4F90`),
+    11 `C-BEGIN-FILE` -> `Sending data` (`506A`), 14 `C-TX-BLK` ->
+    `Sending prog` (`5222`). `452D` has 15 call sites carrying command
+    indices 0..16; only 6 (`C-RX-CMD`) and 7 (`C-TX-REPLY`) are absent.
+  * **RENAME (2026-09-01):** `ROM00:3BF5` `CoroutineSetArgs` ->
+    `Session_SetState`. The routine hardcodes `LD (E22D),A` and is the sole
+    writer of the session state in ROM00 (the only `LD (E22D),A` in the
+    image is at `ROM00:3C02`, inside it); the old name predated that finding
+    and contradicted the bytes. No doc referenced the old name. `ram:E22D`
+    labelled `g_bSessionState` with a repeatable comment; `ROM00:3BE8`
+    `Session_GetState` given a plate. Labels added:
+    `Session_TransitionTable` (692A), `Session_StateNameTable` (6A4A),
+    `Session_CommandNameTable` (6B67), `Session_OpDisplayStrings` (6C8E),
+    each with a plate recording the decoded contents. Program saved.
+  * **Operation selection narrowed, still OPEN (2026-09-01):**
+    `READY-RX-PROG`, `READY-TX-DATA` and `READY-TX-PROG` have no incoming
+    legal transition in the matrix, so the operation cannot be selected by
+    the handheld walking the table. A second writer of `g_bSessionState`
+    must exist in the RAM-resident session module. The C-COMMAND/C-RX-CMD/
+    C-TX-REPLY trio plus display-only REPLY-START/REPLY-END point at the
+    command-reply exchange, but that is a reading of the table's shape, not
+    a byte-level finding.
