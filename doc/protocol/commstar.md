@@ -24,7 +24,7 @@ it is not proven against historical hardware.
 | Validated frame envelope | **Provisional** | Length, type, sequence, and target-id fields are stable; other bytes are not |
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
 | Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
-| Handheld-to-host record transfer | **Not implementable** | No exchange in this direction has been captured |
+| Handheld-to-host record transfer | **Not implementable** | The operations are named (`C-TX-REC`, `C-TX-BLK`) but no exchange in this direction has been captured |
 | IR wire framing | **Not implementable** | Requires a hardware capture |
 
 The synthetic peer in the repository is regression infrastructure, not a
@@ -291,12 +291,55 @@ connect/disconnect lifecycle, separate readiness states for data versus
 program in each direction, and distinct `RECORD` and `BLOCK` transfer modes
 each with an RX and a TX form. `DATA-SET-TX` has no RX counterpart.
 
-**These indices are not the wire state values.** The table is indexed 0-15;
-the values carried in request payload +0 are `00`, `06`, `44`, `45`, `61`,
-and `64`. No mapping between the two numbering systems is established, and
-`ROM00:6A4A` has no static xref — the index is supplied by the RAM-resident
-session module. Do not assume, for example, that wire `44` is
-`READY-RX-PROG` because of its high nibble.
+### The firmware's own command names
+
+`ROM00:6B67` is a parallel table of 17 pointers to command-name strings.
+**Stable** (byte-read from ROM; every pointer resolves inside the string
+block that immediately follows the table).
+
+| Index | Name | Group |
+|---:|---|---|
+| 0 | `C-INIT-COMMS` | link setup |
+| 1 | `C-DIAL` | link setup |
+| 2 | `C-ANSWER` | link setup |
+| 3 | `C-MANUAL` | link setup |
+| 4 | `C-DROP-LINE` | link teardown |
+| 5 | `C-COMMAND` | command exchange |
+| 6 | `C-RX-CMD` | command exchange |
+| 7 | `C-TX-REPLY` | command exchange |
+| 8 | `C-SHUT-DOWN` | termination |
+| 9 | `C-RX-REC` | record transfer |
+| 10 | `C-RX-BLK` | block transfer |
+| 11 | `C-BEGIN-FILE` | file framing |
+| 12 | `C-TX-REC` | record transfer |
+| 13 | `C-END-FILE` | file framing |
+| 14 | `C-TX-BLK` | block transfer |
+| 15 | `C-END-TX` | file framing |
+| 16 | `C_ABORT` | termination |
+
+Index 16 is spelled with an underscore where every other entry uses a
+hyphen; that is verbatim from ROM, not a transcription slip.
+
+This is the operation vocabulary the firmware implements, and it accounts
+for the transfer modes the state table names: `RECORD` and `BLOCK` each have
+an RX and a TX command, wrapped by `C-BEGIN-FILE` / `C-END-FILE` /
+`C-END-TX`, with `C-COMMAND` / `C-RX-CMD` / `C-TX-REPLY` for the
+command-and-reply exchange and four link-setup entries covering direct,
+dialled, answered, and manual connection.
+
+**Neither table's index is a proven wire value.** The state table is indexed 0-15 and the
+command table 0-16, while the values carried in request payload +0 are
+`00`, `06`, `44`, `45`, `61`, and `64`. No mapping between these numbering
+systems is established. Neither table has a static xref — both indices are
+supplied by the RAM-resident session module — and the Load/Run path never
+displays a name from either table, so the traces cannot correlate them
+either. Do not assume, for example, that wire `44` is `READY-RX-PROG`
+because of its high nibble.
+
+What the two tables do establish is the **shape** of the protocol,
+independently of any capture: which operations exist, that record and block
+transfer are distinct modes with separate directions, and that file framing
+is a wrapper around them rather than a property of individual blocks.
 
 ### Observed transitions
 

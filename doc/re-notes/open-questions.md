@@ -101,12 +101,17 @@ source tree (not published here).
   and re-capture to see whether they land in the object. `LOAD` needs a
   second reachable Commstar operation to vary.
 
-* **Wire state values versus the 16 named states** — `ROM00:6A4A` names 16
-  session states (`NOT-STARTED` … `REPLY-END`), but the wire carries `00`,
-  `06`, `44`, `45`, `61`, `64`, and the table has no static xref: the index
-  is supplied by the RAM-resident session module.
-  *Resolve:* breakpoint the writer of the display index during a traced
-  session and correlate it with the wire state value in the same exchange.
+* **Wire values versus the named states and commands** — `ROM00:6A4A` names
+  16 session states (`NOT-STARTED` … `REPLY-END`) and `ROM00:6B67` names 17
+  commands (`C-INIT-COMMS` … `C_ABORT`), but the wire carries `00`, `06`,
+  `44`, `45`, `61`, `64`. Neither table has a static xref — the RAM-resident
+  session module supplies both indices — and the Load/Run path displays no
+  name from either table, confirmed by scanning the LCD through a full
+  traced session, so the existing traces cannot correlate them.
+  *Resolve:* reach the Commstar session screen itself rather than Load/Run,
+  since that is the screen these tables feed; then read the displayed name
+  and the wire state from the same exchange. Failing that, breakpoint the
+  writer of either display index during a traced session.
 
 * **Third `u16` of the request header** — It equals the trailing object
   length for states `00`, `45`, `61`, `64`, but is `0x0080` for state `06`

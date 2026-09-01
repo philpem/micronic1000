@@ -2311,3 +2311,23 @@ current priority order; the concise lists above are authoritative.
     the table is indexed 0-15 while the wire carries `00`/`06`/`44`/`45`/
     `61`/`64`, and `6A4A` has no static xref because the RAM-resident session
     module supplies the index. Mapping the two numberings is a new OPEN item.
+  * **Commstar command vocabulary recovered (2026-09-01):** `ROM00:6B67` is a
+    parallel table of 17 pointers to command-name strings: `C-INIT-COMMS`,
+    `C-DIAL`, `C-ANSWER`, `C-MANUAL`, `C-DROP-LINE`, `C-COMMAND`, `C-RX-CMD`,
+    `C-TX-REPLY`, `C-SHUT-DOWN`, `C-RX-REC`, `C-RX-BLK`, `C-BEGIN-FILE`,
+    `C-TX-REC`, `C-END-FILE`, `C-TX-BLK`, `C-END-TX`, `C_ABORT` (index 16 is
+    verbatim underscore-spelled in ROM). Every pointer resolves inside the
+    string block immediately following the table, as does every pointer in
+    the 16-entry state table at `6A4A`. Together these give the operation
+    vocabulary the earlier notes recorded only as unenumerated "C-* texts":
+    RECORD and BLOCK are distinct transfer modes each with RX and TX forms,
+    wrapped by BEGIN-FILE/END-FILE/END-TX file framing, with a separate
+    command/reply exchange and four link-setup variants.
+  * **Index-to-wire mapping is NOT established, and this trace cannot do it
+    (2026-09-01):** neither table has a static xref — the RAM-resident
+    session module supplies both indices. Scanning the LCD through a
+    complete V24 mode-1 Load/Run session shows that none of the 16 state
+    names or 17 command names is ever displayed on that path, so the
+    existing traces cannot correlate index with wire value. Reaching the
+    Commstar session screen itself, rather than Load/Run, is the route.
+    Do not infer a mapping from the high nibble of the wire values.
