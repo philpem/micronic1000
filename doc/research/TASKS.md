@@ -3004,3 +3004,79 @@ current priority order; the concise lists above are authoritative.
     (`4569` at `SP+10h`, `45D1` at `SP+18h`, `45EE` at `SP+1Ah`). None is
     characterised; the demonstration supplies zeros and works, so they are
     not mandatory for the paths exercised.
+
+## Commstar: the argument sweep, and the reachability question answered (2026-09-01)
+
+* **CORRECTION to the entry above.** `C-END-FILE` takes **no** argument, and
+  `C-INIT-COMMS` takes **ten**, not three. Both errors came from the same
+  mistake in the first sweep, and it is worth recording because it is easy to
+  repeat.
+  * `ROM00:523F` is inside `C-TX-BLK` (`51EC`–`52A4`), not `C-END-FILE`
+    (`5179`–`51EB`). The scan derived each routine's extent from Ghidra's
+    function list, but Ghidra has **no functions defined between `4D25` and
+    `5307`**, so one stale boundary swallowed the following routine whole.
+    Routine starts in this region are better found from the frame prologue
+    `LD DE,nnnn / CALL D837`, which is what `analysis/commstar_args.py` now
+    does.
+  * The offset in `LD HL,off / ADD HL,SP` is relative to **SP at that
+    instant**, and argument marshalling pushes as it goes. Reading
+    `off − 0Ch` without tracking the stack depth misplaces every argument
+    fetched with a push outstanding — which is why `C-INIT-COMMS`'s slots
+    looked sparse and non-contiguous. With the depth tracked they come out as
+    ten consecutive 16-bit slots, `SP+0` through `SP+18`, and `C-COMMAND`'s
+    three match `ROM01:1343`'s three pushes exactly. That agreement is the
+    check that the tracker is right.
+* **`ram:E492` is a 54-byte command record**, assembled field by field at
+  `ROM00:4B84`–`4C05` through the bounded copy `ram:DB89(dst, src, maxlen)`,
+  and transmitted whole at `ROM00:4C11`–`4C19` as wire state `0045`. The
+  destinations are contiguous and their maxima tile the record exactly. This
+  **explains the state-45 object measured earlier**: the runs the experiment
+  saw as "zero in every capture" are five identity fields latched by
+  `C-INIT-COMMS`, and the "8-byte program name plus padding" at +42 is one
+  12-byte parameter field taken from `C-COMMAND`'s `SP+2`.
+* **The `LOAD` field is the operation name.** `ROM00:731B` is
+  `tbl_sess_operations`, seven records of `{char name[5]; u8 target_state;}`,
+  copied to `ram:E247` at boot by the descriptor at `ROM00:7D68`. This
+  **corrects** the note above and in `forms-ui.md` that treated
+  RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC as display field names belonging to
+  `tbl_sess_status_fmt`; that template is only `7310..731A`, and nothing
+  reads `731B` as text.
+* **States 4, 5 and 6 are NOT unreachable — this closes the open question.**
+  `C-COMMAND`'s first argument indexes `tbl_sess_operations`; `ROM00:4B3D`
+  stages the target state in `ram:E491` and `ROM00:4C69` commits it through
+  `Session_SetState` **with no gate at all** — not the transition table, not
+  `E48D`. The firmware does this itself: `ROM01:135F`/`1365` push index 3
+  (`LOAD` -> `READY-RX-PROG`) or 4 (`PROG` -> `READY-TX-PROG`) and call
+  `ram:EE0C`. So states 4 and 6 are reached in ordinary Load/Run operation.
+  State 5 (`SEND`, index 2) has no ROM caller but uses the identical
+  instruction, and the index is unbounded — **LIKELY** reachable from an
+  application. The table's rows 4/5/6 being wired as transition *sources*
+  with no incoming cell is the design signature of exactly this.
+  * Consequence: **clean teardown is not blocked.** `C-END-TX`'s completion
+    path needs `E48D = 1` and a state from which it is legal; `SEND` or
+    `PROG` reaches those states without touching `E48D`.
+  * `analysis/decode_state_machine.py` now reads the operation table too and
+    draws those edges, so the generated diagram shows every state's entry.
+* **Wire state `0062` is the direct-connection substitute for dialling.**
+  `ROM00:5DFD` is a bare 6-byte control frame, byte-identical to the `0065`
+  and `0000` routines but for the immediate. `C-DIAL` and `C-ANSWER` send it
+  when the link type in `ram:E520` is not 6; `C-MANUAL` always does. Only
+  link type 6 (a modem) takes the `0060`/`0061` paths, so **an IR peer should
+  expect `0062` and never `0060`.** All twelve `SessionSetParams` call sites
+  are now enumerated on the protocol page.
+* **The block commands are the program path.** `C-TX-BLK` passes its buffer
+  to `ROM00:3E14`, the same walker `C-TX-REC` uses, so blocks and records
+  share the `[u8 count][payload]` memory format. `C-RX-BLK` is the mirror via
+  `Session_ReadStreamChunk`, with a **hard-coded 128-byte maximum** pushed at
+  `ROM00:4FAD` — so its buffer must be at least 129 bytes. The block path
+  emits **no separator bytes**: `ROM00:3D9B` has exactly four call sites and
+  the only two literals (`1Eh` at `5107`, `1Ch` at `5193`) are both on the
+  record path. Records need separators because they are variable-length items
+  in one stream; blocks are framed by the transport's payload-length field.
+* **Still open:** which of the four blank identity fields is User id,
+  Password, Group id or Telephone. The V24 Log-on form collects exactly four
+  string fields for the four unidentified slots, and the 6-character maximum
+  on `SP+12` is the only distinguishing clue. Also open: `C-COMMAND`'s
+  `SP+4`, and the `0045` flag byte, which is **LIKELY** a last-block marker
+  (0 from the automatic flush at `6187`, 1 from the explicit flush at `61F9`)
+  and would be settled by capturing a transfer longer than 128 bytes.

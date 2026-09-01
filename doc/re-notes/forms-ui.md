@@ -230,5 +230,11 @@ Errors are rendered by `SessionStateBuild` (ROM00:4351) through
 qualifier + `(RCV1/RCV2)` status pair + message) is documented in
 [commstar — error/status screen format](../protocol/commstar.md) and
 summarised for operators in the [user guide](../manual/user-guide.md).
-The field names RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC come from the template
-`tbl_sess_status_fmt` at ROM00:7310.
+**Correction.** RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC are *not* field names
+from `tbl_sess_status_fmt`. That template is only `ROM00:7310..731A`
+(`"     ("`, `"/"`, `")"`). The names belong to a separate structure that
+begins where it ends: `ROM00:731B` is `tbl_sess_operations`, seven records of
+`{char name[5]; u8 target_state;}`, copied to `ram:E247` at boot. It is the
+table `C-COMMAND` indexes to choose an operation *and* the session state that
+operation enters — nothing reads it as display text. See
+[the protocol page](../protocol/commstar.md#how-states-4-5-and-6-are-entered).

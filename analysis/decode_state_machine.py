@@ -30,6 +30,9 @@ CMD_NAMES = 0x6B67      # 17 pointers to command-name strings
 NCMD = 17
 NSTATE = 14             # rows; 6A18 onward is unrelated data
 
+OPS = 0x731B            # {char name[5]; u8 target_state;} until an all-zero
+OPS_VIA = 2             # C-COMMAND is legal from CONNECTED, so ops start there
+
 
 def read_names(rom: bytes, table: int, count: int) -> list[str]:
     """Follow a pointer table to its NUL-terminated strings."""
@@ -38,6 +41,24 @@ def read_names(rom: bytes, table: int, count: int) -> list[str]:
         p = rom[table + 2 * i] | (rom[table + 2 * i + 1] << 8)
         end = rom.index(b"\x00", p)
         out.append(rom[p:end].decode("ascii").strip())
+    return out
+
+
+def operations(rom: bytes, table: int = OPS) -> list[tuple[str, int]]:
+    """Read the operation table C-COMMAND indexes.
+
+    Each 6-byte record names an operation and the session state it enters.
+    ``C-COMMAND`` stages the state byte in ``ram:E491`` (ROM00:4B3D) and
+    commits it with ``Session_SetState`` on a successful logon (ROM00:4C69),
+    consulting neither the transition table nor the ``E48D`` mode gate. This
+    is how states the matrix cannot reach are entered.
+    """
+    out = []
+    for i in range(64):
+        rec = rom[table + 6 * i:table + 6 * i + 6]
+        if not any(rec):
+            break
+        out.append((rec[:5].split(b"\x00")[0].decode("ascii"), rec[5]))
     return out
 
 
@@ -84,7 +105,7 @@ def universal(cell, command: int, nstate: int = NSTATE):
     return ok, targets
 
 
-def mermaid(states, cmds, cell) -> str:
+def mermaid(states, cmds, cell, ops=()) -> str:
     """Render the machine, folding the two near-universal commands into a note."""
     # Commands legal from (almost) every state clutter the graph; fold them.
     fold = {}
@@ -103,15 +124,19 @@ def mermaid(states, cmds, cell) -> str:
         if c in fold:
             continue
         out.append(f"    {ids[s]} --> {ids[v]}: {cmds[c]}")
-    # Mark the states no legal path can reach.
+    # C-COMMAND's own entries, which do not go through the table at all.
+    for name, target in ops:
+        if target < NSTATE:
+            out.append(f'    {ids[OPS_VIA]} --> {ids[target]}: C-COMMAND "{name}"')
+    # Mark the states the table alone cannot reach.
     dead = [s for s in range(NSTATE) if s not in reach]
     if dead:
-        out.append("    classDef unreachable stroke-dasharray: 4 4")
-        out.append("    class " + ",".join(ids[s] for s in dead) + " unreachable")
+        out.append("    classDef offtable stroke-dasharray: 4 4")
+        out.append("    class " + ",".join(ids[s] for s in dead) + " offtable")
     return "\n".join(out)
 
 
-def report(states, cmds, cell) -> int:
+def report(states, cmds, cell, ops=()) -> int:
     reach = reachable(cell)
     print(f"transition matrix ROM00:{TABLE:04X}, {NSTATE} states x {NCMD} commands\n")
     print("legal transitions:")
@@ -122,9 +147,15 @@ def report(states, cmds, cell) -> int:
         path = " -> ".join(cmds[c] for c in reach[s]) or "(start)"
         print(f"  {states[s]:14} {path}")
     dead = [s for s in range(NSTATE) if s not in reach]
-    print("\nUNREACHABLE by any legal path:")
+    print("\nnot reachable through the table:")
     for s in dead:
         print(f"  {states[s]}")
+    if ops:
+        print(f"\noperation table ROM00:{OPS:04X} -- C-COMMAND sets these directly,")
+        print("bypassing the table (ROM00:4B3D stages, ROM00:4C69 commits):")
+        for i, (name, target) in enumerate(ops):
+            note = "" if target in reach else "   <- off-table entry"
+            print(f"  {i}  {name:6} -> {states[target]}{note}")
     # No cell may produce a state that nothing can enter -- including the
     # illegal path, where the low seven bits still become the new state.
     produced = {cell(s, c) & 0x7F for s in range(NSTATE) for c in range(NCMD)}
@@ -147,11 +178,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--rom", type=Path, default=ROM00)
     args = ap.parse_args(argv)
 
-    _, states, cmds, cell = load(args.rom)
+    rom, states, cmds, cell = load(args.rom)
+    ops = operations(rom)
     if args.mermaid:
-        print(mermaid(states, cmds, cell))
+        print(mermaid(states, cmds, cell, ops))
         return 0
-    return report(states, cmds, cell)
+    return report(states, cmds, cell, ops)
 
 
 if __name__ == "__main__":

@@ -367,6 +367,47 @@ data object:  [u16 status][u16 marker][u16 N] data[N] [u16 00]
 `marker` 0 permits another refill; `marker` 1 ends the stream. `N` matched the
 data length exactly in every captured object.
 
+### The wire states
+
+The `state` field in a type-1 request is set by `SessionSetParams`
+(`ROM00:5973`), which has twelve call sites in ROM00. Each is a fixed tuple,
+so the complete set of wire states is enumerable from the ROM:
+
+| State | Routine | Payload | Meaning |
+|---|---|---|---|
+| `0000` | `5B79` | none | link init |
+| `0006` | `5BF7`, `5CD7` | up to 128 | link configure, from `C-INIT-COMMS` |
+| `0043` | `62C7` | none | short query preceding an `0044` |
+| `0044` | `620B`, `62C7` | up to 128 | data block **in** |
+| `0045` | `612A` | variable | data block **out** |
+| `0060` | `5E2A` | variable | connect: **dial** (link type 6 only) |
+| `0061` | `606C` | none | connect: **answer** |
+| `0062` | `5DFD` | none | connect: **direct** |
+| `0064` | `60D6` | none | begin transmission |
+| `0065` | `5BA6` | none | end of transaction |
+
+**`0062` is the direct-connection substitute for dialling.** `ROM00:5DFD` is
+byte-for-byte identical to the state-`0065` and state-`0000` routines but for
+the one immediate: a bare six-byte control frame expecting a six-byte reply.
+It is what `C-DIAL` and `C-ANSWER` send when the link type in `ram:E520` is
+**not** 6, and what `C-MANUAL` sends unconditionally. Only when the link type
+is 6 — a modem — do `C-DIAL` and `C-ANSWER` take the `0060`/`0061` paths
+instead. Since an IR link is never link type 6, **a peer for real hardware
+should expect `0062` here and never `0060`.**
+
+`ram:E520` is written at exactly two places, `ROM00:5676` and `ROM00:56B1`,
+both reached from `C-INIT-COMMS` — so the link type is latched once at
+session setup and never changes.
+
+`0065` is emitted at the tail of every data routine, so a peer sees it after
+each exchange rather than only at session end.
+
+**LIKELY: the `0045` flag byte is a last-block marker.** It is 0 when the
+frame comes from the automatic 128-byte flush (`ROM00:6187`) and 1 from the
+explicit end-of-transmission flush (`ROM00:61F9`). A capture of a transfer
+longer than 128 bytes would settle it: only the final `0045` frame should
+differ.
+
 #### State-45 object layout
 
 Measured by varying one input at a time and comparing captures
@@ -374,23 +415,36 @@ Measured by varying one input at a time and comparing captures
 observing that it, and nothing else in the frame, changed. **Stable as
 measured**; the frame length stayed 66 throughout.
 
-| Object | Frame | Size | Field | Encoding |
-|---:|---:|---:|---|---|
-| +0 | +12 | 14 | zero in every capture | — |
-| +14 | +26 | 4 | `LOAD` | fixed; unchanged by every input varied |
-| +18 | +30 | 8 | workstation number | **right-justified, space-padded** |
-| +26 | +38 | 16 | zero in every capture | — |
-| +42 | +54 | 8 | program name | **left-justified, NUL-padded** |
-| +50 | +62 | 4 | zero in every capture | — |
+The 54-byte object is the **command record**, assembled at `ram:E492` and
+transmitted whole by `C-COMMAND` (`ROM00:4C11`–`4C19`). Measurement and the
+ROM agree field for field:
+
+| Object | Frame | Size | Field | Source | Encoding |
+|---:|---:|---:|---|---|---|
+| +0 | +12 | 8 | identity 1 | `E6D0` | zero in every capture |
+| +8 | +20 | 6 | identity 2 | `E6E8` | zero in every capture |
+| +14 | +26 | 4 | **operation name** | `*(E48F)` | `LOAD` on this path |
+| +18 | +30 | 8 | **workstation number** | `E6EF` | **right-justified, space-padded** |
+| +26 | +38 | 8 | identity 4 | `E6C4` | zero in every capture |
+| +34 | +46 | 8 | identity 5 | `E6D9` | zero in every capture |
+| +42 | +54 | 12 | **command parameter** | `C-COMMAND` `SP+2` | **left-justified, NUL-padded**; the program name here |
 
 The two padding conventions differ and are each confirmed by a short value:
 workstation `ABC` serialises as `20 20 20 20 20 41 42 43`, program name `XY`
-as `58 59 00 00 00 00 00 00`.
+as `58 59 00 00 00 00 00 00`. The parameter field is 12 bytes, so a program
+name of 8 characters leaves the last four zero — which is why measurement
+alone read it as an 8-byte field followed by padding.
 
-`LOAD` did not change when either text input was varied and is not a ROM
-string literal, so it is a runtime constant for this operation rather than
-user data. Whether it is an operation name that other Commstar operations
-replace is open — no second operation is reachable on the tested path.
+**The `LOAD` field is the operation name, and other operations do replace
+it.** It comes from `tbl_sess_operations`, whose seven entries are `RCV1`,
+`RCV2`, `SEND`, `LOAD`, `PROG`, `TIME` and `ENDC` —
+[see below](#how-states-4-5-and-6-are-entered). It did not vary under the
+inputs tested because `C-COMMAND`'s *first* argument selects it, and the
+Load/Run path always passes the same index.
+
+The four blank identity fields are latched by `C-INIT-COMMS`, which is why
+they are empty here: Load/Run collects no credentials. See
+[the API page](../reference/commstar-api.md#c-init-comms).
 
 For harness provenance see
 [RE notes: Commstar evidence](../re-notes/commstar-evidence.md#captured-session-requests).
@@ -550,13 +604,23 @@ stateDiagram-v2
     DATA_SET_TX --> CONNECTED: C-END-TX
     BLOCK_TX --> BLOCK_TX: C-TX-BLK
     BLOCK_TX --> CONNECTED: C-END-TX
-    classDef unreachable stroke-dasharray: 4 4
-    class READY_RX_PROG,READY_TX_DATA,READY_TX_PROG,BLOCK_RX,RECORD_TX,DATA_SET_TX,BLOCK_TX unreachable
+    CONNECTED --> READY_RX_DATA: C-COMMAND "RCV1"
+    CONNECTED --> READY_RX_DATA: C-COMMAND "RCV2"
+    CONNECTED --> READY_TX_DATA: C-COMMAND "SEND"
+    CONNECTED --> READY_RX_PROG: C-COMMAND "LOAD"
+    CONNECTED --> READY_TX_PROG: C-COMMAND "PROG"
+    CONNECTED --> CONNECTED: C-COMMAND "TIME"
+    CONNECTED --> TERMINATED: C-COMMAND "ENDC"
+    classDef offtable stroke-dasharray: 4 4
+    class READY_RX_PROG,READY_TX_DATA,READY_TX_PROG,BLOCK_RX,RECORD_TX,DATA_SET_TX,BLOCK_TX offtable
 ```
 
 The figure is generated from the ROM by
 `analysis/decode_state_machine.py --mermaid`, so it cannot drift from the
-firmware. Dashed states are those no legal path can reach.
+firmware. Dashed states are those the transition table alone cannot reach;
+the `C-COMMAND "NAME"` edges are the operation table's direct entries, which
+bypass the table — see
+[How states 4, 5 and 6 are entered](#how-states-4-5-and-6-are-entered).
 
 Two near-universal commands are folded out of the figure to keep it legible:
 `C-DROP-LINE` is legal from **all 14** states and returns to `NOT-STARTED`,
@@ -608,8 +672,9 @@ inside `SessionCoroJumpTable`; the other 45 set the state directly:
   state; the caller commits it.
 
 **No site sets `READY-RX-PROG`, `READY-TX-DATA` or `READY-TX-PROG` from a
-literal.** Those three are reachable only through the `E48C` path — that is,
-only when the transition table actually runs.
+literal.** They are set through the **`E491` path**, which is a separate
+mechanism from `E48C` and does not involve the transition table at all — see
+[How states 4, 5 and 6 are entered](#how-states-4-5-and-6-are-entered).
 
 The gate is the mode byte `ram:E48D`, and it reads the opposite way round to
 what its name suggests: `SessionStartDataMode` dispatches a command to the
@@ -647,16 +712,65 @@ breadth-first from `NOT-STARTED` over legal transitions only:
 | `TERMINATED` | `C-INIT-COMMS` → `C-DIAL` → `C-SHUT-DOWN` |
 | `CRASHED` | `C-INIT-COMMS` → `C_ABORT` |
 
-**Unreachable:** `READY-RX-PROG`, `READY-TX-DATA`, `READY-TX-PROG`,
-`BLOCK-RX`, `RECORD-TX`, `DATA-SET-TX`, `BLOCK-TX`. And no cell anywhere in
-the table yields state 4, 5 or 6 — not on the legal path, and not on the
-illegal path either, where the entry's low seven bits would still become the
-new state.
+**Not reachable through the table:** `READY-RX-PROG`, `READY-TX-DATA`,
+`READY-TX-PROG`, `BLOCK-RX`, `RECORD-TX`, `DATA-SET-TX`, `BLOCK-TX`. No cell
+anywhere in the table yields state 4, 5 or 6 — not on the legal path, and not
+on the illegal path either, where the entry's low seven bits would still
+become the new state.
 
-So the only complete transfer the table permits is **Data Reception**
-(`C-INIT-COMMS` → `C-DIAL` → `C-COMMAND` → `C-RX-REC`). Every other
-operation — including the Program Reception the firmware actually performs —
-enters a state the table cannot reach.
+So the only complete transfer the *table* permits is **Data Reception**
+(`C-INIT-COMMS` → `C-DIAL` → `C-COMMAND` → `C-RX-REC`).
+
+This is a statement about the table, not about the machine. States 4, 5 and 6
+are entered by a different route entirely.
+
+### How states 4, 5 and 6 are entered
+
+`C-COMMAND` sets the session state directly, from a table of named
+operations, bypassing the transition matrix.
+
+`ROM00:731B` is an array of seven 6-byte records, `{char name[5]; u8
+target_state;}`, copied to `ram:E247` at boot by the descriptor at
+`ROM00:7D68` (`src 7301, dst E22D, len 205`):
+
+| Index | Name | Target state |
+|---|---|---|
+| 0 | `RCV1` | 3 `READY-RX-DATA` |
+| 1 | `RCV2` | 3 `READY-RX-DATA` |
+| 2 | `SEND` | **5 `READY-TX-DATA`** |
+| 3 | `LOAD` | **4 `READY-RX-PROG`** |
+| 4 | `PROG` | **6 `READY-TX-PROG`** |
+| 5 | `TIME` | 2 `CONNECTED` |
+| 6 | `ENDC` | 12 `TERMINATED` |
+
+`C-COMMAND`'s first argument is the index. `ROM00:4B29`–`4B3D` multiplies it
+by six, reads the state byte from `ram:E24C + 6i` into `ram:E491`, and stages
+the name pointer in `ram:E48F`. **There is no bounds check.** On a successful
+logon, `ROM00:4C62` reads `E491` back and calls `Session_SetState` with **no
+gate of any kind** — not the table, not `E48D`.
+
+**CONFIRMED, and the firmware itself does it.** `ROM01:1343` pushes index 3
+(`LOAD`) or 4 (`PROG`) and calls `ram:EE0C`:
+
+```text
+ROM01:135F  LD   HL,0003h    ; "LOAD" -> READY-RX-PROG
+ROM01:1365  LD   HL,0004h    ; "PROG" -> READY-TX-PROG
+ROM01:1368  PUSH HL
+ROM01:1369  CALL 0EE0Ch      ; C-COMMAND
+```
+
+So **states 4 and 6 are reached by ordinary firmware operation** — that *is*
+Load/Run choosing to receive or send a program. State 5 (`SEND`, index 2) uses
+the identical single instruction but no ROM caller passes index 2; an
+application must, through `ram:EE0C`. **LIKELY reachable** on that basis.
+
+The asymmetry in the table is the design signature: rows 4, 5 and 6 are fully
+wired as transition *sources* while having no incoming cell anywhere. These
+are states you enter by naming an operation and leave through the table.
+
+**Correction.** An earlier revision of this page called these states
+unreachable and treated that as an open puzzle. They are not unreachable; the
+table simply is not the only way in.
 
 That is not a contradiction; it is what the mode gate is for. With
 `ram:E48D = 2`, `SessionStartDataMode` returns without consulting the table
