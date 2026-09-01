@@ -246,6 +246,23 @@ source tree (not published here).
   `01h`); operator report that `N/Z` cycles the value remains open.
   *Resolve:* hardware test on the Load/Run form.
 
+## Naming and annotation
+
+* **Should `ram:D837` keep the name `CoroutineTaskSwitch`?** — The bytes at
+  `D836`-`D857` are the C compiler's frame-setup helper: it pops its own
+  return address, adds `DE` (the local frame size) to SP, saves IX/IY, and
+  re-enters the popped address via `CALL D836` = `JP (HL)`. That is
+  CONFIRMED and it is what makes `LD DE,nnnn / CALL D837` the entry sequence
+  of all 348 compiled routines — see the
+  [listing-repair script](ghidra-repair-script.md) pass 1. The "coroutine
+  task switch" reading is not supported by those bytes. The symbol has not
+  been renamed, because a rename is the symbol plus its plate plus every doc
+  mention plus a `TASKS.md` entry, in one pass, and this one is the owner's
+  call. The plate at `D837` records both readings and flags the identity as
+  under review.
+  *Resolve:* owner decides the replacement name (`Lib_FrameEnter` and
+  `Compiler_FrameSetup` are the obvious candidates), then one rename pass.
+
 ## How to add a new OPEN item
 
 Add the question, the one-sentence evidence, and the discriminating

@@ -71,6 +71,12 @@ listing.
 `~/ghidra_scripts/` and run it against `micron1.bin`; it takes no arguments
 and needs nothing from the Python decoder.
 
+This pass is also folded into the consolidated
+[listing-repair script](ghidra-repair-script.md) as its pass 4, with the same
+behaviour plus a check-before-write fast path. Prefer the consolidated script
+for routine use; `DefineInlineTables.java` stays as the standalone version of
+just this repair.
+
 It scans every initialised memory block for `CALL E0B2`, decodes the table
 that follows, clears the range, types it as `word[2*count+2]`, and attaches a
 plate listing the decoded cases. A table whose count exceeds 64, or which

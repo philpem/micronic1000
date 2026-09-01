@@ -103,6 +103,18 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 - `watch_queue.py` — find the deferred-call queue consumer.
 - `hunt_rtc.py` — (historical) early RTC scan.
 
+## Ghidra scripts (`ghidra/`)
+
+- `AnalyseMicronicRom.java` — **the one to run.** Consolidated,
+  self-contained, idempotent listing repair: clears the wrong no-return
+  flag on the `ram:D837` frame helper, types both banks' boot-load chains
+  and links their deferred-call targets, types `RST 10h` inline operands,
+  defines the `InlineTableDispatch` tables, and creates functions at every
+  compiler frame prologue. No arguments. Documented in
+  `doc/re-notes/ghidra-repair-script.md`.
+- `DefineInlineTables.java` — the standalone version of just the
+  `InlineTableDispatch` pass (see `doc/re-notes/inline-dispatch.md`).
+
 ## Other
 
 - `BootTrace.java`, `BootTrace.pending.java` — Ghidra-side boot

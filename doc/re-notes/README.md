@@ -19,6 +19,8 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 ## Pages
 
 * [Method and evidence rules](method.md) — how to read every RE note
+* [Listing-repair script](ghidra-repair-script.md) — the consolidated Ghidra
+  pass that keeps the database honest, and what auto-analysis gets wrong
 * [Commstar evidence and traces](commstar-evidence.md) — full transport, emulator
   peer, and captured requests with ROM addresses and trace bytes
 * [OS internals](os-diposb.md) — kernel, BDOS dispatch, and boot chains
