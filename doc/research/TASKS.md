@@ -2927,3 +2927,25 @@ current priority order; the concise lists above are authoritative.
     although the record flushes during it, a repeated multi-record upload has
     not been demonstrated. The regression tolerates the non-zero harness exit
     for that reason, and says so.
+  * **UPLOAD STREAM FORMAT DECODED (2026-09-01):** `[u8 namelen][name] 1Eh
+    [record] 1Ch`. Both `C-BEGIN-FILE` (`ROM00:5034`, via `3EDE`) and
+    `C-TX-REC` (`ROM00:50ED`, via `3E14`) take a **pointer** to a counted
+    buffer `[u8 count][bytes]`, read from the **last** word pushed (caller
+    `SP+0`, callee `SP+0Ch`) — not the third-down slot the other entry points
+    use. The two marker bytes come from `ROM00:3D9B` calls with literals:
+    `1Eh` at `5107` in `C-TX-REC`, `1Ch` at `5193` in `C-END-FILE`; those are
+    the only two literal `3D9B` sites in the image.
+    Note the asymmetry: the **name** is sent with its count byte, the
+    **record** is not — `3E14` sends `buffer[1..count]` only.
+    Verified with `[06]"MYFILE"` + `"SCAN:0042:WIDGET"`, and a second
+    name/payload pair. Pinned by `CommstarRecordUploadTest`.
+  * **`c3 03 01` explained (2026-09-01):** it was never a protocol prefix. An
+    earlier attempt passed a **null pointer** to `C-BEGIN-FILE`, so it read
+    `mem[0]` — `C3h`, the first byte of resident code — as the name length.
+    With a real name buffer the field is the filename, as designed. A good
+    reminder that an unexplained constant is often just a bad argument.
+  * **Still OPEN after this pass:** the intermediate wire state `0062`; whether
+    multiple `C-TX-REC` calls append records to one file (untested); and
+    `C-END-TX` still does not return, so clean session teardown is
+    undemonstrated. The regression tolerates the harness's non-zero exit for
+    that reason and says so in a comment.

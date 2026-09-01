@@ -111,34 +111,43 @@ obstacles: the emulator has to keep the RTC running while a loaded program
 executes, or no periodic interrupt fires and the receive path never runs; and
 the peer has to be pumped from the same loop.
 
-### Uploading a record
+### Uploading a file of records
 
-`C-TX-REC` takes a **pointer** to a counted buffer, and unlike the other
-entry points it reads the **last** word pushed (caller `SP+0`), not the third
-down. `ROM00:3E14` walks that buffer:
-
-```text
-record:  [u8 count][payload ... count bytes]
-```
-
-sending one byte at a time — the same `{count, payload}` shape the receive
-side uses. `C-END-TX` flushes it.
-
-What reaches the host, for a record of `"HELLO-FROM-M1000"`:
+Both `C-BEGIN-FILE` and `C-TX-REC` take a **pointer** to a counted buffer,
+and unlike the other entry points they read the **last** word pushed (caller
+`SP+0`), not the third down:
 
 ```text
-c3 03 01  1e  48 45 4c 4c 4f 2d 46 52 4f 4d 2d 4d 31 30 30 30  1c
-prefix    ^   the payload, verbatim                            suffix
-          the byte C-TX-REC itself sends first, via 3D9B(1Eh)
+buffer:  [u8 count][bytes ... count of them]
 ```
 
-Confirmed with two different payloads; `"SCAN:0042:WIDGET"` arrives the same
-way. Regression: `CommstarRecordUploadTest`.
+`C-BEGIN-FILE` names the file, `C-TX-REC` supplies a record, `C-END-FILE`
+closes it, `C-END-TX` flushes. What reaches the host is one object:
 
-The `c3 03 01` prefix and the `1c` suffix are not explained. Nor is the state
-`0062` the session passes through on the way. And `C-END-TX` does not return —
-the record flushes during it, but the session does not cleanly terminate, so
-a repeated multi-record upload has not been demonstrated.
+```text
+06 4d 59 46 49 4c 45  1e  53 43 41 4e ... 54  1c
+^^ ^^^^^^^^^^^^^^^^^  ^^  ^^^^^^^^^^^^^^^^^  ^^
+ |  "MYFILE"          |   "SCAN:0042:WIDGET"  |
+ count, from          |   the record payload  C-END-FILE's
+ C-BEGIN-FILE         C-TX-REC's marker       terminator
+```
+
+So the stream format is:
+
+```text
+[u8 namelen][name]  1Eh [record]  1Ch
+```
+
+Note the asymmetry: the **name** is sent with its count byte, the **record**
+is not — `ROM00:3E14` sends `buffer[1..count]` only. The two marker bytes come
+from `ROM00:3D9B` calls with literals: `1Eh` at `ROM00:5107` inside
+`C-TX-REC`, `1Ch` at `ROM00:5193` inside `C-END-FILE`.
+
+Regression: `CommstarRecordUploadTest`.
+
+Passing a null pointer is what produced the meaningless `c3 03 01` prefix in
+an earlier attempt: `C-BEGIN-FILE` read `mem[0]` — `C3h`, the first byte of
+resident code — as its name length.
 
 ### Suppressing validation
 

@@ -132,7 +132,8 @@ COMMSTAR_API_COM = bytes.fromhex(
 )
 
 
-def build_record_upload_com(payload: bytes, buf: int = 0xE850) -> bytes:
+def build_record_upload_com(payload: bytes, name: bytes = b"", buf: int = 0xE850,
+                            namebuf: int = 0xE870) -> bytes:
     """A COM that drives a Commstar record upload and sends ``payload``.
 
     C-INIT-COMMS -> C-DIAL -> suppress validation -> C-BEGIN-FILE ->
@@ -142,6 +143,7 @@ def build_record_upload_com(payload: bytes, buf: int = 0xE850) -> bytes:
     third word down (caller SP+4), C-TX-REC reads the last word pushed.
     """
     record = bytes([len(payload)]) + payload      # [u8 count][payload]
+    namerec = bytes([len(name)]) + name           # same shape for the file name
 
     def mark(v):
         return bytes([0x3E, v]) + bytes.fromhex("3240e8")
@@ -162,10 +164,13 @@ def build_record_upload_com(payload: bytes, buf: int = 0xE850) -> bytes:
     ldir = len(com)
     com += (b"\x21\x00\x00" + bytes([0x11, buf & 0xFF, buf >> 8])
             + bytes([0x01, len(record), 0x00]) + bytes.fromhex("edb0"))
+    ldir2 = len(com)
+    com += (b"\x21\x00\x00" + bytes([0x11, namebuf & 0xFF, namebuf >> 8])
+            + bytes([0x01, len(namerec), 0x00]) + bytes.fromhex("edb0"))
     com += call4(0xEE20) + call4(0xEE10)           # C-INIT-COMMS, C-DIAL
     com += bytes.fromhex("3e02" "328de4")          # E48D = 2
-    com += call4(0xEE08)                           # C-BEGIN-FILE
-    com += call_last(0xEE44, buf)                  # C-TX-REC
+    com += call_last(0xEE08, namebuf)              # C-BEGIN-FILE(name)
+    com += call_last(0xEE44, buf)                  # C-TX-REC(record)
     com += call4(0xEE18) + call4(0xEE1C)           # C-END-FILE, C-END-TX
     # Final marker in bank 2 as well, so --upload-marker sees the run finish
     # and the harness exits cleanly.
@@ -174,7 +179,10 @@ def build_record_upload_com(payload: bytes, buf: int = 0xE850) -> bytes:
     com += bytes([0xC3, spin & 0xFF, spin >> 8])
     src = 0x100 + len(com)
     com += record
-    return com[:ldir + 1] + bytes([src & 0xFF, src >> 8]) + com[ldir + 3:]
+    src2 = 0x100 + len(com)
+    com += namerec
+    com = com[:ldir + 1] + bytes([src & 0xFF, src >> 8]) + com[ldir + 3:]
+    return com[:ldir2 + 1] + bytes([src2 & 0xFF, src2 >> 8]) + com[ldir2 + 3:]
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
@@ -185,10 +193,10 @@ class CommstarRecordUploadTest(unittest.TestCase):
     counted buffer, the firmware transmits it, and the peer receives it.
     """
 
-    def _upload(self, payload: bytes) -> str:
+    def _upload(self, payload: bytes, name: bytes = b"FILE1") -> bytes:
         with tempfile.TemporaryDirectory() as tmp:
             com = Path(tmp) / "rec.com"
-            com.write_bytes(build_record_upload_com(payload))
+            com.write_bytes(build_record_upload_com(payload, name))
             proc = subprocess.run(
                 [str(PYTHON), str(HARNESS), "--commstar-peer",
                  "--upload", str(com), "--upload-marker", "0200:55"],
@@ -204,15 +212,20 @@ class CommstarRecordUploadTest(unittest.TestCase):
         self.assertIsNotNone(line, f"no record reached the host:\n{proc.stdout}")
         return bytes.fromhex(line.split(": ")[1])
 
-    def test_record_reaches_the_host_intact(self):
-        obj = self._upload(b"HELLO-FROM-M1000")
-        # c3 03 01 | 1e | payload | 1c
-        self.assertEqual(obj[3], 0x1E, obj.hex())       # marker C-TX-REC sends
-        self.assertEqual(obj[4:-1], b"HELLO-FROM-M1000", obj.hex())
+    def test_upload_stream_format(self):
+        """[u8 namelen][name] 1Eh [record] 1Ch"""
+        obj = self._upload(b"HELLO-FROM-M1000", name=b"MYFILE")
+        n = obj[0]
+        self.assertEqual(n, len(b"MYFILE"), obj.hex())
+        self.assertEqual(obj[1:1 + n], b"MYFILE", obj.hex())
+        self.assertEqual(obj[1 + n], 0x1E, obj.hex())    # C-TX-REC's marker
+        self.assertEqual(obj[2 + n:-1], b"HELLO-FROM-M1000", obj.hex())
+        self.assertEqual(obj[-1], 0x1C, obj.hex())       # C-END-FILE's marker
 
-    def test_payload_is_carried_verbatim(self):
-        obj = self._upload(b"SCAN:0042:WIDGET")
-        self.assertEqual(obj[4:-1], b"SCAN:0042:WIDGET", obj.hex())
+    def test_name_and_payload_are_both_carried_verbatim(self):
+        obj = self._upload(b"SCAN:0042:WIDGET", name=b"STOCK")
+        self.assertEqual(obj[1:6], b"STOCK", obj.hex())
+        self.assertEqual(obj[7:-1], b"SCAN:0042:WIDGET", obj.hex())
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
