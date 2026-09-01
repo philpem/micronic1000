@@ -70,7 +70,7 @@ All banks present the same page-zero gate.
 | `47h` | `BANK_SEL` | W | 32K bank select |
 | `48h` | `LCD_STROBE` | W | Drive/sense strobe (paired with `49h`) |
 | `49h` | `BOOTKEYS` | R | Boot-key/probe sense (paired with `48h`) |
-| `4Ah` | `LINK_CTRL` | W | External-link control latch (shadowed). bit0 transfer active, bit1 port select, bit4 direction/enable, bit5 strobe |
+| `4Ah` | `LINK_CTRL` | W | External-link control latch (shadowed). bit0 `XFREN` transfer active, bit1 `PORTSEL` port select, bit4 `DIREN` direction/enable, bit5 `STROBE`, bits6+7 `RXARM` receive-armed (paired) |
 | `4Bh` | `LINK_STATUS` | R | Link status. bit0 byte available, bit1 block finished, bit2 one more byte, bit3 failed, bit4 inbound pending, bit5 error latch, bit6 handshake busy, bit7 ready to send |
 | `4Ch` | `LINK_CMD` | W | Link command latch (`0x81` during present/ready handshake) |
 | `4Dh` | `LINK_TXD` | W | Link TX data latch |

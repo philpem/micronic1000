@@ -2842,3 +2842,31 @@ current priority order; the concise lists above are authoritative.
     the payload stream. The harness's `W` PC-hit counters are useless for this
     (they sample `pc` between emulator slices and miss almost everything); a
     real `--watch-pc` using `mach.set_breakpoint` is the tool to add first.
+  * **`LINK_CTRL` bits 6+7 identified: the receive-arm (2026-09-01,
+    CONFIRMED):** they are always driven as a **pair** — set by
+    `LinkPortLatchSetHi` (`ROM00:34BD`), cleared by `LinkPortLatchClr`
+    (`ROM00:34D2`) — and the whole mechanism is the link interrupt poll,
+    now `Link_IrqPollArmOrService` (`ROM00:31B6`):
+    clear `RXARM`; test `RXBUSY` (status bit 4); if pending, run the receive
+    dispatcher (`2FBD`) leaving `RXARM` clear; if idle, set `RXARM`.
+    So an idle handheld sits with `RXARM` set, telling the controller it is
+    ready to be given data, and `LinkBlockTx` clears it at `ROM00:327D` for
+    the duration of a transmit. **For a physical adapter this is the signal
+    to watch — `RXARM` set means the handheld is listening**, and
+    `LINK_CTRL` is the only place it says so. That completes the `LINK_CTRL`
+    bit map: 0, 1, 4, 5, 6, 7 all now have roles; 2 and 3 are never driven.
+  * **CORRECTION — `F794 = C2h` is not an anomaly (2026-09-01):** the previous
+    entry flagged the application route ending with `LINK_CTRL` bits 6 and 7
+    set as suspicious, "which `LinkBlockTx` never drives". True but
+    misleading: `LinkBlockTx` does not drive them, the interrupt poll does,
+    and `C2h` (`RXARM` + `PORTSEL`) is the **normal idle value**. Load/Run
+    ends at `02h` only because it stopped inside a transfer, where
+    `LinkBlockTx` had cleared them. The two routes' control shadows are
+    therefore consistent, and the stall is still unlocalised.
+  * **Still OPEN — where the application-route transfer stalls.** Both routes
+    reach the present handshake (`F796=81h`) and write the prelude
+    (`F797=03h`); the application never streams a complete frame, so the peer
+    has nothing to answer. The `RXARM` reading removes the only apparent
+    asymmetry, so localising it needs real instrumentation: a `--watch-pc`
+    built on `mach.set_breakpoint`, since the existing `W` counters sample
+    `pc` between emulator slices and miss almost every hit.

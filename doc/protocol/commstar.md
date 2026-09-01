@@ -190,6 +190,37 @@ and shifted, not four separate polls.
 | 1 | `PORTSEL` | Port select, driven from active-link-id bit 5 by `LinkPortSelect` |
 | 4 | `DIREN` | Direction/enable — cleared at open, set during the handshake, cleared at close |
 | 5 | `STROBE` | Strobe — set, short delay, cleared |
+| 6, 7 | `RXARM` | Receive-armed, always driven as a pair. Set when the handheld has nothing to receive, cleared while it services a receive or runs a transfer |
+
+Bits 0, 1, 4 and 5 are driven only by the transfer routines; bits 6 and 7 are
+driven only by the interrupt poll and by `LinkBlockTx`, which clears them
+before transmitting.
+
+### The receive-armed handshake
+
+`RXARM` is how the handheld tells the controller it is ready to be given data.
+The interrupt poll at `ROM00:31B6` is the whole mechanism:
+
+```text
+31B6  CALL 34D2    ; clear RXARM
+31B9  CALL 34E7    ; IN (4Bh) / AND 10h -- is RXBUSY set?
+31BC  JR Z,31C2    ; nothing pending ->
+31BE  CALL 2FBD    ; something pending: run the receive dispatcher,
+31C1  RET          ;   leaving RXARM clear for the duration
+31C2  CALL 34BD    ; idle: set RXARM
+31C5  RET
+```
+
+So an idle handheld sits with `RXARM` set. A controller wanting to deliver
+data asserts `RXBUSY`; the poll sees it, clears `RXARM`, and dispatches. When
+the handheld transmits instead, `LinkBlockTx` clears `RXARM` at its start
+(`ROM00:327D`).
+
+For a physical adapter this is the signal to watch: **`RXARM` set means the
+handheld is listening.** Without it, an adapter has no way to know when it may
+begin a delivery, and `LINK_CTRL` is the only place the handheld says so.
+
+
 
 **Confidence.** The roles are CONFIRMED in the sense that they are read
 directly from the branch each bit drives. What is *not* established is what
