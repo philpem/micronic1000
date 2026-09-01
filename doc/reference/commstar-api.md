@@ -19,33 +19,55 @@ Each entry is four bytes at a fixed address in battery-backed RAM. Call it
 like an ordinary subroutine; see the calling convention below for the
 important caveat.
 
-| Address | Command | Session screen |
-|---|---|---|
-| `EE00` | `C_ABORT` | |
-| `EE04` | `C-ANSWER` | |
-| `EE08` | `C-BEGIN-FILE` | Sending data |
-| `EE0C` | `C-COMMAND` | |
-| `EE10` | `C-DIAL` | |
-| `EE14` | `C-DROP-LINE` | |
-| `EE18` | `C-END-FILE` | |
-| `EE1C` | `C-END-TX` | |
-| `EE20` | `C-INIT-COMMS` | |
-| `EE24` | *initialise session* (`Session_InitState`) | |
-| `EE28` | `C-MANUAL` | |
-| `EE2C` | `C-RX-BLK` | Receiving prog |
-| `EE30` | `C-SHUT-DOWN` | |
-| `EE34` | `C-RX-REC` | Receiving data |
-| `EE38` | `C_ABORT` | |
-| `EE3C` | `C-SHUT-DOWN` | |
-| `EE40` | `C-TX-BLK` | Sending prog |
-| `EE44` | `C-TX-REC` | |
-| `EE48` | `C-SHUT-DOWN` | |
-| `EE4C` | `C_ABORT` | |
+| Address | Routine | Command dispatched | Session screen |
+|---|---|---|---|
+| `EE00` | `5469` | `C_ABORT` (16) | |
+| `EE04` | `48BF` | `C-ANSWER` (2) | |
+| `EE08` | `5034` | `C-BEGIN-FILE` (11) | Sending data |
+| `EE0C` | `4AE0` | `C-COMMAND` (5) | |
+| `EE10` | `47F6` | `C-DIAL` (1) | |
+| `EE14` | `4A25` | `C-DROP-LINE` (4) | |
+| `EE18` | `5179` | `C-END-FILE` (13) | |
+| `EE1C` | `52A5` | `C-END-TX` (15) | |
+| `EE20` | `4563` | `C-INIT-COMMS` (0) | |
+| `EE24` | `46E9` | — *initialise session* | |
+| `EE28` | `4974` | `C-MANUAL` (3) | |
+| `EE2C` | `4F5A` | `C-RX-BLK` (10) | Receiving prog |
+| `EE30` | `4D29` | — *message box* | |
+| `EE34` | `4E6D` | `C-RX-REC` (9) | Receiving data |
+| `EE38` | `5444` | — *solicit data block* | |
+| `EE3C` | `4D75` | `C-SHUT-DOWN` (8) | |
+| `EE40` | `51EC` | `C-TX-BLK` (14) | Sending prog |
+| `EE44` | `50ED` | `C-TX-REC` (12) | |
+| `EE48` | `4D4F` | — *message box* | |
+| `EE4C` | `5428` | — *send data block* | |
 
-Fifteen of the protocol's seventeen commands are reachable. `C-RX-CMD` and
-`C-TX-REPLY` have no entry point — no routine in either ROM issues them.
-Several commands appear more than once; the duplicates are distinct wrapper
-routines and have not been told apart.
+**Each command appears exactly once.** The "command dispatched" column is
+derived, not assumed: `SessionStartDataMode` (`ROM00:452D`) has fifteen call
+sites in ROM00 and each pushes a distinct literal index, so the mapping from
+slot to command is one-to-one and complete.
+
+**Correction.** An earlier version of this table listed `C_ABORT` three times
+and `C-SHUT-DOWN` three times, and said the duplicates "have not been told
+apart". There are no duplicates — those labels were wrong. Five slots
+dispatch no protocol command at all:
+
+* `EE24` `46E9` initialises the session (below).
+* `EE30` `4D29` and `EE48` `4D4F` are **message-box helpers**, calling
+  `SessionMessageBox` with `"   not available"` / `"   in Workstation"`.
+  They differ only in which buffer pair they use (`E278`/`E279` versus
+  `E288`/`E289`).
+* `EE38` `5444` forwards three arguments to `ROM00:5915` -> `62C7`, which
+  sends wire states `0043` then `0044` — it **solicits a data block from the
+  host**.
+* `EE4C` `5428` forwards two arguments to `ROM00:58F9` -> `63CA` -> `612A`,
+  wire state `0045` — it **sends a data block**.
+
+The last two are the raw transfer primitives, below the command layer: they
+never call `SessionStartDataMode`, so no state check applies to them at all.
+
+The two commands with no entry point are `C-RX-CMD` (6) and `C-TX-REPLY` (7).
+Neither has a stub slot and no routine in either ROM dispatches them.
 
 `EE24` is not a protocol command. It initialises the session: it clears a
 dozen session variables, sets `ram:E48D = 2`, and displays
@@ -285,7 +307,7 @@ being how far SP has moved since the routine's `CALL D837` prologue. Reading
 | `C-ANSWER` `EE04` | `48BF` | `SP+0` |
 | `C-BEGIN-FILE` `EE08` | `5034` | `SP+0` — `[u8 len][name]` |
 | `C-COMMAND` `EE0C` | `4AE0` | `SP+0` operation index, `SP+2` 12-byte parameter, `SP+4` |
-| `C-DIAL` `EE10` | `47F6` | `SP+0` |
+| `C-DIAL` `EE10` | `47F6` | `SP+0` — the number buffer |
 | `C-DROP-LINE` `EE14` | `4A25` | none |
 | `C-END-FILE` `EE18` | `5179` | none |
 | `C-END-TX` `EE1C` | `52A5` | `SP+0` disposition |
@@ -293,21 +315,16 @@ being how far SP has moved since the routine's `CALL D837` prologue. Reading
 | *initialise session* `EE24` | `46E9` | `SP+0`, `+2`, `+4`, `+6`, `+8` |
 | `C-MANUAL` `EE28` | `4974` | none |
 | `C-RX-BLK` `EE2C` | `4F5A` | `SP+0` — destination, ≥129 bytes |
-| `C-SHUT-DOWN` `EE30` | `4D29` | none |
+| *message box* `EE30` | `4D29` | none |
 | `C-RX-REC` `EE34` | `4E6D` | `SP+0` |
-| `C_ABORT` `EE38` | `5444` | `SP+0`, `+2`, `+4` |
+| *solicit data block* `EE38` | `5444` | `SP+0`, `+2`, `+4`, forwarded to `5915` |
 | `C-SHUT-DOWN` `EE3C` | `4D75` | none |
 | `C-TX-BLK` `EE40` | `51EC` | `SP+0` — `[u8 count][payload]` |
 | `C-TX-REC` `EE44` | `50ED` | `SP+0` — `[u8 count][record]` |
-| `C-SHUT-DOWN` `EE48` | `4D4F` | none |
-| `C_ABORT` `EE4C` | `5428` | `SP+0`, `+2` |
+| *message box* `EE48` | `4D4F` | none |
+| *send data block* `EE4C` | `5428` | `SP+0`, `+2`, forwarded to `58F9` |
 
-Two things this settles.
-
-**The duplicate wrappers differ in arity.** `C_ABORT` appears three times
-and each takes a different number of arguments — none, three, two — so they
-are genuinely distinct routines, not aliases. The three `C-SHUT-DOWN`
-wrappers all take none.
+One thing this settles.
 
 **`C-END-TX` takes one argument, `C-END-FILE` none.** This corrects the note
 committed in `c840242`, which attributed the read at `ROM00:523F` to
@@ -415,9 +432,35 @@ buffer — the form editor computes the address — so **the confirming
 experiment is to type a distinct value into each of the four fields and read
 back `E6C4`, `E6D9` and `E6D0`.**
 
-That Telephone is never passed fits: **nothing in either ROM calls `C-DIAL`,
-`C-ANSWER` or `C-MANUAL`.** The number is collected for a dial path the
-firmware itself never takes.
+Telephone is not passed to `C-INIT-COMMS` because it goes to the **connect
+command** instead, and which connect command runs is itself table-driven.
+`ram:D108` (from `micron2.bin` offset `0x7C52`) holds four 6-byte link-method
+records, selected by the Mode field:
+
+| Method | Type | Connect command | Baud | Number buffer |
+|---|---|---|---|---|
+| `LOCAL LINK` | 4 | `EE10` `C-DIAL` | `0Eh` = 9600 | `ECB4` |
+| `MODEM A/ANS` | 6 | `EE04` `C-ANSWER` | `07h` = 1200 | — |
+| `MODEM A/DIAL` | 6 | `EE10` `C-DIAL` | `07h` = 1200 | `ECB4` |
+| `MODEM MAN/D` | 6 | `EE28` `C-MANUAL` | `07h` = 1200 | — |
+
+`ROM01:131D`–`1330` pushes the record's number-buffer field and calls the
+record's connect command indirectly through `ram:D828`:
+
+```text
+ROM01:131D  LD   HL,(0D467h)   ; the selected record
+ROM01:1320  LD   DE,4 / ADD HL,DE
+ROM01:1324  LD   E,(HL) / INC HL / LD D,(HL) / PUSH DE   ; record +4, the number
+ROM01:1328  LD   HL,(0D467h) / INC HL
+ROM01:132C  LD   E,(HL) / INC HL / LD D,(HL) / EX DE,HL  ; record +1, the command
+ROM01:1330  CALL 0D828h        ; indirect call
+```
+
+**Correction.** An earlier note here said nothing in either ROM calls
+`C-DIAL`, `C-ANSWER` or `C-MANUAL`. That was drawn from a scan for the direct
+opcodes `CD 10 EE` and friends, which finds nothing because the call is
+**indirect**. All three are reachable, and on `LOCAL LINK` — the IR path —
+the connect command is `C-DIAL`, taking `ECB4` as its argument.
 
 `ram:D120` → `E6E8` → record `+8` is **not** a form field and is
 unidentified; its six-character maximum is the only clue.

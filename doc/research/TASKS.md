@@ -3146,3 +3146,108 @@ current priority order; the concise lists above are authoritative.
   * The capture also shows wire state **`0062` live** in the request sequence
     (`0000 0006 0062 0045 0045`), confirming the direct-connect state
     identified statically.
+
+## Ghidra listing repair consolidated; the D837 no-return flag was eating functions (2026-09-01)
+
+Built `analysis/ghidra/AnalyseMicronicRom.java`: one self-contained,
+idempotent script replacing the throwaway repair scripts. Five passes —
+frame-helper flow, boot-load chains, `RST 10h` inline operands,
+`InlineTableDispatch` tables, compiler frame prologues. Full write-up in
+`doc/re-notes/ghidra-repair-script.md`.
+
+* **CONFIRMED and consequential: `ram:D837` was flagged no-return, and that
+  flag deletes C function bodies.** The bytes (`D836`-`D857`, byte-verified)
+  show the helper pops the `CALL`'s return address and re-enters it through
+  `CALL D836` = `JP (HL)`, so `CALL D837` *falls through* to the caller's
+  body. With the flag set, Ghidra's non-returning-function repair treats
+  every compiled routine's body as dead code. Measured: a run of the other
+  four passes with the flag still set created 143 functions and background
+  auto-analysis then deleted **61 existing** ones (59 hand-named, incl.
+  `Lib_StrCmp`, `Lib_StrCopy`, `RunLoadedProgram`, `Kernel_RunStagedCall`,
+  most of the `SessionOpStub_*` farm). All 61 were restored from a pre-run
+  `list_functions_enhanced` snapshot — the §11 diff-guard rule paid for
+  itself. The flag is now clear and pass 1 re-clears it on every run.
+* **OPEN: the name `CoroutineTaskSwitch` at `ram:D837` is wrong** but has not
+  been changed — a rename is symbol + plate + docs + this file in one pass
+  and is the owner's call. The plate now carries both readings, tagged. Filed
+  in `doc/re-notes/open-questions.md` under "Naming and annotation".
+* **Two bugs fixed from `AnnotateRst10Calls.java`:** enqueued boot-chain
+  targets resolve in the bank whose chain is running (`ROM00`/`ROM01`), not
+  in the flat `ram` space — that left 156 dangling references in the bank-0
+  chain alone, now repointed; and the script no longer overwrites comments.
+* **Function count 934 -> 1087**, all 934 originals verified intact by an
+  address-and-name diff. Includes the eight routines between `ROM00:4D25` and
+  `5307` that previously had no function at all. Second run reports zero
+  changes in every pass.
+* Two prologue sites stay deliberately deferred: `ROM00:7409` and `7472` are
+  the ROM images of RAM module A (`ram:D8CE`, `ram:D937`), where internal
+  addresses would resolve against the wrong space.
+
+## Commstar: who starts a session, and a bad entry-point table (2026-09-01)
+
+* **CORRECTION: the stub-slot table had four slots mislabelled, and there are
+  no duplicate wrappers.** Derived properly this time —
+  `SessionStartDataMode` (`ROM00:452D`) has fifteen call sites in ROM00 and
+  each pushes a distinct literal command index, so slot -> command is
+  one-to-one and complete. The earlier table listed `C_ABORT` three times and
+  `C-SHUT-DOWN` three times and said the duplicates were untold-apart; that
+  was wrong, and so was the observation (made the same day) that "the
+  duplicate wrappers differ in arity". Five slots dispatch no command:
+  * `EE24` `46E9` — initialises the session.
+  * `EE30` `4D29`, `EE48` `4D4F` — **message-box helpers**
+    (`"   not available"` / `"   in Workstation"`), differing only in buffer
+    pair (`E278`/`E279` vs `E288`/`E289`).
+  * `EE38` `5444` -> `5915` -> `62C7` — **solicits a data block**, wire states
+    `0043` then `0044`.
+  * `EE4C` `5428` -> `58F9` -> `63CA` -> `612A` — **sends a data block**, wire
+    state `0045`.
+  The last two never call `452D`, so no state validation applies to them.
+* **CORRECTION: `C-DIAL`, `C-ANSWER` and `C-MANUAL` *are* called.** The
+  earlier claim that nothing calls them came from scanning for the direct
+  opcodes `CD 10 EE` and friends. The call is **indirect**:
+  `ROM01:131D`-`1330` reads the connect-command address from the selected
+  link-method record and calls it through `ram:D828`. On `LOCAL LINK` — the IR
+  path — that is `C-DIAL`, with `ECB4` (Telephone) as its argument.
+* **The link-method table, byte-verified** at `micron2.bin 0x7C52` -> `ram:D108`,
+  four 6-byte records mapping 1:1 onto the strings at `0x7A2F`:
+  `LOCAL LINK` (type 4, `C-DIAL`, 9600, number `ECB4`), `MODEM A/ANS`
+  (type 6, `C-ANSWER`, 1200), `MODEM A/DIAL` (type 6, `C-DIAL`, 1200,
+  `ECB4`), `MODEM MAN/D` (type 6, `C-MANUAL`, 1200). The adjacent table at
+  `0x7C4C` (`05 06 07 0A 0C 0E`) is **baud rates**, matching the six strings
+  at `0x7A5F` — not link types.
+  * So **`ram:E520` is 4 for the IR link and 6 for any modem method**, and it
+    is a caller-supplied parameter, never probed from hardware.
+* **The handheld is the sole initiator. CONFIRMED.** `C-COMMAND` is a
+  generator, not a parser — `ROM00:4C19` transmits the 54-byte record and only
+  then reads a reply.
+  * There *is* an always-armed interrupt receive path: `ROM00:2352` is a
+    `{u8 mask, u16 handler}` table copied to `ram:FD84`; mask `04` vectors to
+    `ROM00:31B6`, which tests `RXBUSY` and calls the receive dispatcher **with
+    no session-state test**. `31B6` has no xref in Ghidra — it is reachable
+    only through that table.
+  * But the dispatcher `ROM00:2FBD` exits upward only at `ROM00:30D7`,
+    `LD HL,(FDD2) / JP (HL)`, and **`ram:FDD2` has exactly one writer**,
+    `ROM00:2F36`, inside the transaction starter. An unsolicited frame can
+    therefore never reach the session layer. This is "no path exists", not
+    "no path found".
+  * `C-ANSWER` is not a listen primitive: it transmits (`0061` on link type 6,
+    `0062` otherwise). "Answer" means telling the far end to answer a phone.
+* **There is no Plinth detection.** `Plinth not connected.` (`ROM00:6D6F`,
+  referenced only at `ROM00:4463`) is the `C-INIT-COMMS` failure message,
+  printed when the peer does not answer — whatever is attached. `LinkProbe`
+  (`ROM00:348A`) returns a status byte that **both callers discard**
+  (`ROM00:0202`, `0229`); it is a cold-boot controller reset. Plinth vs V24
+  adaptor is a menu choice (`micron2.bin 0x7663`) that becomes bit 5 of the
+  link id; `LinkPortSelect` (`ROM00:3455`) drives port `2Ch` as well as
+  `LINK_CTRL` bit 1. **OPEN:** which polarity is which connector — needs a
+  hardware test.
+* **Retry budget for a host implementer:** a request retries `32h` = 50 times
+  (`ROM00:2F58` / `30FC`), a reply `14h` = 20 times (`ROM00:3042`).
+* **OPEN, flagged as a hazard:** with the link idle, a frame of a type other
+  than 2 or 3 that passes the length and id checks reaches the `JP (HL)`
+  through `FDD2`, which is `0000` on a cold machine. **LIKELY** a reset. Do not
+  send unsolicited frames; a type-2 frame is the safe probe.
+* **OPEN:** whether the Plinth can assert NMI. `NmiHandlerImage`
+  (`ROM00:3B13`) wakes/aborts the machine and the physical NMI source is
+  unrecorded. If the Plinth drives it, a host could at least wake a unit —
+  though still not start a session.

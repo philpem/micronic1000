@@ -463,6 +463,103 @@ For harness provenance see
 For the experiment that would settle the object field offsets by measurement,
 see [RE notes: Open questions](../re-notes/open-questions.md#state-45-payload-structure).
 
+## Who starts a session
+
+**The handheld does, always.** This matters for anyone building a host: a
+Commstar server is purely reactive. It cannot poll a handheld, push a program
+to it, or ask it to upload.
+
+### `C-COMMAND` is a generator, not a parser
+
+It is tempting to read `C-COMMAND` as the IR command interpreter. It is the
+opposite: `ROM00:4AE0` assembles the 54-byte command record and **transmits**
+it (`ROM00:4C19`), then looks at the reply. There is no inbound decode
+anywhere in the routine. The handheld names the operation; the host obeys.
+
+### The receive path is always armed, but dead-ends
+
+The handheld *will* take bytes at any time. `ROM00:2352` is a five-record
+interrupt table, `{u8 mask, u16 handler}`, copied to `ram:FD84` at cold start;
+`IrqWorkerPollPort5` (`ROM00:230A`) reads port `05h` and calls each handler
+whose bit is set. Mask `04` vectors to `ROM00:31B6`:
+
+```text
+31B6  CALL 34D2h      ; clear RXARM
+31B9  CALL 34E7h      ; IN (4Bh) / AND 10h -- RXBUSY?
+31BC  JR   Z,31C2h
+31BE  CALL 2FBDh      ; yes: the receive dispatcher
+31C1  RET
+31C2  CALL 34BDh      ; no: set RXARM again
+```
+
+**There is no session-state test here.** An idle handheld sits with `RXARM`
+set and services the link on interrupt. `ROM00:31B6` has no xref in Ghidra —
+it is reachable only through the `ram:FD84` table — which is why it is easy to
+miss.
+
+What an unsolicited frame *cannot* do is reach the session layer. The receive
+dispatcher `ROM00:2FBD` branches only on the link-layer state in `ram:FDD5`,
+and its sole exit into anything above is `ROM00:30D7`,
+`LD HL,(FDD2) / JP (HL)`. **`ram:FDD2` has exactly one writer in the whole
+image**, `ROM00:2F36`, inside the transaction *starter* `ROM00:2F24`. So the
+only continuation an inbound frame can vector into is one the handheld
+installed when it began its own request.
+
+That is "the firmware has no path", not "no path has been found".
+
+### `C-ANSWER` is not a listen primitive
+
+It reads `ram:E520` and dispatches: link type 6 sends wire state `0061`,
+anything else sends `0062`. Either way **the handheld transmits**. "Answer"
+means telling the far end to answer a phone line.
+
+### What a host can do
+
+* **Be ready and answer.** The signal is `LINK_CTRL` (`4Ah`) bits 6+7
+  (`RXARM`) **set** — the handheld is listening. `LinkBlockTx` clears them at
+  `ROM00:327D` before transmitting.
+* **Take a reasonable time.** The handheld retries a request up to `32h` = 50
+  times (`ROM00:2F58` sets `FDD6`, `ROM00:30FC` decrements), and a reply up to
+  `14h` = 20 times (`ROM00:3042`). Miss the window and the operator sees
+  `Plinth not connected.`
+* **Serve any operation.** The handheld names it; the host reacts.
+
+### Do not send unsolicited frames
+
+**LIKELY, and worth designing around.** With the link idle, `ROM00:2FBD` will
+accept any frame whose embedded length matches the byte count and whose byte
++4 equals `ram:FDD4`. A frame of a type other than 2 or 3 falls through
+`ROM00:3060` -> `3078` -> `30AD` -> `30D7`, the `JP (HL)` through `FDD2` —
+which is `0000` on a cold machine, so the jump lands on the reset vector. A
+type-2 frame is the safe one: it draws a three-byte reply and moves the link
+to state 3, nothing more.
+
+### There is no Plinth detection
+
+`Plinth not connected.` (`ROM00:6D6F`) is **not** a detection result. Its one
+code reference is `ROM00:4463`, inside a helper reached from
+`C-INIT-COMMS`'s result switch (`ROM00:46D6`): result 9 or default. The
+handheld prints it when the peer fails to answer its link-configure request,
+whatever is physically attached.
+
+`LinkProbe` (`ROM00:348A`) does return a status byte, but **both its callers,
+`ROM00:0202` and `ROM00:0229`, discard it** — it is a cold-boot reset of the
+link controller.
+
+Plinth versus V24 adaptor is a **menu choice**, not a detection: the picker is
+at `micron2.bin` `0x7663`, and the selection becomes bit 5 of the link id,
+which `LinkPortSelect` (`ROM00:3455`) turns into two line states — note it
+drives port `2Ch` as well as `LINK_CTRL` bit 1. Which polarity is which
+connector is **open** and needs a hardware test.
+
+### `ram:E520`, the link type
+
+Two writers, both in `C-INIT-COMMS`'s callees (`ROM00:5676`, `ROM00:56B1`);
+it is a **caller-supplied parameter, never probed from hardware**. The only
+value it is ever compared against is 6. From the link-method table:
+**4 = `LOCAL LINK` (the IR path), 6 = any of the three modem methods.** So
+`E520 == 6` does not mean "MODEM A/ANS" specifically.
+
 ## Session states
 
 ### The firmware's own state names
