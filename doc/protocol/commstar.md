@@ -384,41 +384,50 @@ stateDiagram-v2
     NOT_STARTED: NOT-STARTED
     DISCONNECTED: DISCONNECTED
     CONNECTED: CONNECTED
-    RRD: READY-RX-DATA
-    RRP: READY-RX-PROG
-    RTD: READY-TX-DATA
-    RTP: READY-TX-PROG
-    RECRX: RECORD-RX
-    BLKRX: BLOCK-RX
-    RECTX: RECORD-TX
-    DSTX: DATA-SET-TX
-    BLKTX: BLOCK-TX
-    TERM: TERMINATED
+    READY_RX_DATA: READY-RX-DATA
+    READY_RX_PROG: READY-RX-PROG
+    READY_TX_DATA: READY-TX-DATA
+    READY_TX_PROG: READY-TX-PROG
+    RECORD_RX: RECORD-RX
+    BLOCK_RX: BLOCK-RX
+    RECORD_TX: RECORD-TX
+    DATA_SET_TX: DATA-SET-TX
+    BLOCK_TX: BLOCK-TX
+    TERMINATED: TERMINATED
+    CRASHED: CRASHED
     NOT_STARTED --> DISCONNECTED: C-INIT-COMMS
-    DISCONNECTED --> CONNECTED: C-DIAL / C-ANSWER / C-MANUAL
-    CONNECTED --> RRD: C-COMMAND
-    CONNECTED --> TERM: C-SHUT-DOWN
-    RRD --> RECRX: C-RX-REC
-    RECRX --> RECRX: C-RX-REC
-    RRP --> BLKRX: C-RX-BLK
-    BLKRX --> BLKRX: C-RX-BLK
-    RTD --> RECTX: C-BEGIN-FILE
-    RECTX --> RECTX: C-TX-REC
-    RECTX --> DSTX: C-END-FILE
-    DSTX --> RECTX: C-BEGIN-FILE
-    DSTX --> CONNECTED: C-END-TX
-    RTP --> BLKTX: C-TX-BLK
-    BLKTX --> BLKTX: C-TX-BLK
-    RTD --> CONNECTED: C-END-TX
-    RTP --> CONNECTED: C-END-TX
-    BLKTX --> CONNECTED: C-END-TX
+    DISCONNECTED --> CONNECTED: C-DIAL
+    DISCONNECTED --> CONNECTED: C-ANSWER
+    DISCONNECTED --> CONNECTED: C-MANUAL
+    CONNECTED --> READY_RX_DATA: C-COMMAND
+    CONNECTED --> TERMINATED: C-SHUT-DOWN
+    READY_RX_DATA --> RECORD_RX: C-RX-REC
+    READY_RX_PROG --> BLOCK_RX: C-RX-BLK
+    READY_TX_DATA --> RECORD_TX: C-BEGIN-FILE
+    READY_TX_DATA --> CONNECTED: C-END-TX
+    READY_TX_PROG --> BLOCK_TX: C-TX-BLK
+    READY_TX_PROG --> CONNECTED: C-END-TX
+    RECORD_RX --> RECORD_RX: C-RX-REC
+    BLOCK_RX --> BLOCK_RX: C-RX-BLK
+    RECORD_TX --> RECORD_TX: C-TX-REC
+    RECORD_TX --> DATA_SET_TX: C-END-FILE
+    DATA_SET_TX --> RECORD_TX: C-BEGIN-FILE
+    DATA_SET_TX --> CONNECTED: C-END-TX
+    BLOCK_TX --> BLOCK_TX: C-TX-BLK
+    BLOCK_TX --> CONNECTED: C-END-TX
+    classDef unreachable stroke-dasharray: 4 4
+    class READY_RX_PROG,READY_TX_DATA,READY_TX_PROG,BLOCK_RX,RECORD_TX,DATA_SET_TX,BLOCK_TX unreachable
 ```
 
-`C-DROP-LINE` is legal from **all 14** states and returns to `NOT-STARTED`.
-`C_ABORT` reaches `CRASHED` from **states 1-12 only** — it is an illegal
+The figure is generated from the ROM by
+`analysis/decode_state_machine.py --mermaid`, so it cannot drift from the
+firmware. Dashed states are those no legal path can reach.
+
+Two near-universal commands are folded out of the figure to keep it legible:
+`C-DROP-LINE` is legal from **all 14** states and returns to `NOT-STARTED`,
+and `C_ABORT` reaches `CRASHED` from **states 1-12 only** — it is an illegal
 transition from `NOT-STARTED` (nothing to abort) and from `CRASHED` (already
-aborted), so `CRASHED` accepts only `C-DROP-LINE`. Those 26 edges are omitted
-above for legibility. `REPLY-START` and `REPLY-END` have no row
+aborted), so `CRASHED` accepts only `C-DROP-LINE`. `REPLY-START` and `REPLY-END` have no row
 in the matrix and are display-only.
 
 The shape is now explicit. A data upload is
@@ -486,6 +495,46 @@ evidence against it.
 
 So enabling the protocol state machine is itself a stub-slot call — the same
 mechanism that selects the four transfer operations.
+
+### What the table permits, and why the firmware works around it
+
+The table is the authority on legal command sequences, so the question "what
+order must a peer issue commands in?" is answered by walking it, not by
+experiment. `analysis/decode_state_machine.py` does that from the ROM image;
+breadth-first from `NOT-STARTED` over legal transitions only:
+
+| Reachable | Path |
+|---|---|
+| `DISCONNECTED` | `C-INIT-COMMS` |
+| `CONNECTED` | `C-INIT-COMMS` → `C-DIAL` |
+| `READY-RX-DATA` | … → `C-COMMAND` |
+| `RECORD-RX` | … → `C-RX-REC` |
+| `TERMINATED` | `C-INIT-COMMS` → `C-DIAL` → `C-SHUT-DOWN` |
+| `CRASHED` | `C-INIT-COMMS` → `C_ABORT` |
+
+**Unreachable:** `READY-RX-PROG`, `READY-TX-DATA`, `READY-TX-PROG`,
+`BLOCK-RX`, `RECORD-TX`, `DATA-SET-TX`, `BLOCK-TX`. And no cell anywhere in
+the table yields state 4, 5 or 6 — not on the legal path, and not on the
+illegal path either, where the entry's low seven bits would still become the
+new state.
+
+So the only complete transfer the table permits is **Data Reception**
+(`C-INIT-COMMS` → `C-DIAL` → `C-COMMAND` → `C-RX-REC`). Every other
+operation — including the Program Reception the firmware actually performs —
+enters a state the table cannot reach.
+
+That is not a contradiction; it is what the mode gate is for. With
+`ram:E48D = 2`, `SessionStartDataMode` returns without consulting the table
+at all, so an operation runs whatever the current state. **CONFIRMED by
+experiment:** an application that sets `E48D = 2` itself and then issues
+`C_ABORT` from `NOT-STARTED` gets no message box and `ram:E512 = 0`, the
+early-return marker — where the identical call with `E48D = 0` raises the
+illegal-transition box.
+
+The practical reading is that the transition table is a *partial* validator.
+It fully describes the RECORD-RX path and is bypassed for everything else.
+Treat it as evidence of the protocol's intended shape, not as a constraint
+the firmware enforces on itself.
 
 ### End-to-end confirmation of the state machine
 

@@ -155,10 +155,13 @@ source tree (not published here).
   message box and waits in `SessionWaitContinue` for a keypress that a
   headless caller never sends. `Session_InitState` likewise displays
   `Comms in progress` and does not return.
-  *What remains:* an application must drive a **legal** transition sequence,
-  or satisfy the UI. Establishing a legal command order that reaches
-  `RECORD-TX` — and what `Session_InitState` does after its clear loop — is
-  the remaining work for the upload direction.
+  *What remains:* there is **no** legal command order reaching `RECORD-TX` —
+  breadth-first search of the table shows states 4, 5, 6, 8, 9, 10 and 11 are
+  unreachable, and no cell anywhere yields 4, 5 or 6. Validation must
+  therefore be suppressed (`ram:E48D = 2`), which is confirmed to remove the
+  message box. Even then a headless caller has not been observed resuming, so
+  the remaining work is to find what the operation routines wait on after
+  issuing their command.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.

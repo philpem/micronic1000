@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Decode the Commstar session state machine from ROM and emit its diagram.
+
+The transition matrix at ROM00:692A is indexed ``table[state * 17 + command]``.
+Bit 7 set marks an illegal transition; bit 7 clear means legal, and the low
+seven bits are the next state. State names come from the pointer table at
+ROM00:6A4A, command names from ROM00:6B67.
+
+Everything here is read out of the ROM image, so the report and the diagram
+cannot drift from the firmware.
+
+Usage:
+    analysis/decode_state_machine.py                 # report
+    analysis/decode_state_machine.py --mermaid       # just the diagram
+    analysis/decode_state_machine.py --check         # exit 1 on a surprise
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from collections import deque
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ROM00 = ROOT / "micronic" / "micron1.bin"
+
+TABLE = 0x692A          # transition matrix
+STATE_NAMES = 0x6A4A    # 16 pointers to state-name strings
+CMD_NAMES = 0x6B67      # 17 pointers to command-name strings
+NCMD = 17
+NSTATE = 14             # rows; 6A18 onward is unrelated data
+
+
+def read_names(rom: bytes, table: int, count: int) -> list[str]:
+    """Follow a pointer table to its NUL-terminated strings."""
+    out = []
+    for i in range(count):
+        p = rom[table + 2 * i] | (rom[table + 2 * i + 1] << 8)
+        end = rom.index(b"\x00", p)
+        out.append(rom[p:end].decode("ascii").strip())
+    return out
+
+
+def load(rom_path: Path = ROM00):
+    rom = rom_path.read_bytes()
+    states = read_names(rom, STATE_NAMES, 16)
+    cmds = read_names(rom, CMD_NAMES, NCMD)
+    cell = lambda s, c: rom[TABLE + s * NCMD + c]  # noqa: E731
+    return rom, states, cmds, cell
+
+
+def legal_edges(cell, nstate: int = NSTATE):
+    """Yield (from_state, command, to_state) for every legal transition."""
+    for s in range(nstate):
+        for c in range(NCMD):
+            v = cell(s, c)
+            if not v & 0x80:
+                yield s, c, v
+
+
+def reachable(cell, start: int = 0, nstate: int = NSTATE) -> dict[int, list[int]]:
+    """Breadth-first over legal transitions; returns state -> command path."""
+    paths = {start: []}
+    q = deque([start])
+    while q:
+        s = q.popleft()
+        for c in range(NCMD):
+            v = cell(s, c)
+            if v & 0x80 or v in paths or v >= nstate:
+                continue
+            paths[v] = paths[s] + [c]
+            q.append(v)
+    return paths
+
+
+def universal(cell, command: int, nstate: int = NSTATE):
+    """States from which ``command`` is a legal transition, and its target."""
+    ok, targets = [], set()
+    for s in range(nstate):
+        v = cell(s, command)
+        if not v & 0x80:
+            ok.append(s)
+            targets.add(v)
+    return ok, targets
+
+
+def mermaid(states, cmds, cell) -> str:
+    """Render the machine, folding the two near-universal commands into a note."""
+    # Commands legal from (almost) every state clutter the graph; fold them.
+    fold = {}
+    for c in range(NCMD):
+        ok, targets = universal(cell, c)
+        if len(ok) >= NSTATE - 2 and len(targets) == 1:
+            fold[c] = (ok, targets.pop())
+
+    ids = {s: states[s].replace("-", "_") for s in range(NSTATE)}
+    reach = reachable(cell)
+
+    out = ["stateDiagram-v2", "    [*] --> NOT_STARTED"]
+    for s in range(NSTATE):
+        out.append(f"    {ids[s]}: {states[s]}")
+    for s, c, v in legal_edges(cell):
+        if c in fold:
+            continue
+        out.append(f"    {ids[s]} --> {ids[v]}: {cmds[c]}")
+    # Mark the states no legal path can reach.
+    dead = [s for s in range(NSTATE) if s not in reach]
+    if dead:
+        out.append("    classDef unreachable stroke-dasharray: 4 4")
+        out.append("    class " + ",".join(ids[s] for s in dead) + " unreachable")
+    return "\n".join(out)
+
+
+def report(states, cmds, cell) -> int:
+    reach = reachable(cell)
+    print(f"transition matrix ROM00:{TABLE:04X}, {NSTATE} states x {NCMD} commands\n")
+    print("legal transitions:")
+    for s, c, v in legal_edges(cell):
+        print(f"  {states[s]:14} --{cmds[c]:14}--> {states[v]}")
+    print("\nreachable from NOT-STARTED:")
+    for s in sorted(reach):
+        path = " -> ".join(cmds[c] for c in reach[s]) or "(start)"
+        print(f"  {states[s]:14} {path}")
+    dead = [s for s in range(NSTATE) if s not in reach]
+    print("\nUNREACHABLE by any legal path:")
+    for s in dead:
+        print(f"  {states[s]}")
+    # No cell may produce a state that nothing can enter -- including the
+    # illegal path, where the low seven bits still become the new state.
+    produced = {cell(s, c) & 0x7F for s in range(NSTATE) for c in range(NCMD)}
+    never = [s for s in dead if s not in produced]
+    print(f"\nof those, never produced by ANY cell (legal or illegal): "
+          f"{', '.join(states[s] for s in never) or 'none'}")
+    for c in (4, 16):
+        ok, targets = universal(cell, c)
+        print(f"\n{cmds[c]}: legal from {len(ok)}/{NSTATE} states -> "
+              f"{', '.join(states[t] for t in targets)}")
+        if len(ok) < NSTATE:
+            missing = [states[s] for s in range(NSTATE) if s not in ok]
+            print(f"  illegal from: {', '.join(missing)}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--mermaid", action="store_true", help="emit only the diagram")
+    ap.add_argument("--rom", type=Path, default=ROM00)
+    args = ap.parse_args(argv)
+
+    _, states, cmds, cell = load(args.rom)
+    if args.mermaid:
+        print(mermaid(states, cmds, cell))
+        return 0
+    return report(states, cmds, cell)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

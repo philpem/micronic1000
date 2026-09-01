@@ -100,10 +100,33 @@ transition, which puts a message box on the screen and waits in
 `SessionWaitContinue` for a keypress. `EE24` displays `Comms in progress` and
 likewise does not return.
 
-So an application must either drive a *legal* sequence of transitions, or be
-prepared to satisfy the UI. Issuing a command that the state machine rejects
-will hang a headless caller. This is the practical obstacle to sending data
-back, and it is a sequencing problem rather than a calling-convention one.
+So an application must either drive a *legal* sequence of transitions, or
+suppress validation. Issuing a command the state machine rejects will hang a
+headless caller on the message box.
+
+### Suppressing validation
+
+Set `ram:E48D = 2` before issuing commands:
+
+```text
+3E 02        LD   A,2
+32 8D E4     LD   (0E48Dh),A
+```
+
+`SessionStartDataMode` then returns without consulting the transition table,
+so an operation runs whatever the current state. **CONFIRMED:** with this in
+place, `C_ABORT` from `NOT-STARTED` raises no message box and leaves
+`ram:E512 = 0`, the early-return marker; the identical call without it raises
+the illegal-transition box.
+
+This is not a trick — it is how the firmware itself reaches operations the
+table cannot: only the `RECORD-RX` path is legally reachable, so Program
+Reception and everything on the transmit side must run with validation off.
+
+**A call may still not return even so.** Suppressing validation removes the
+message box but the operation routine does more than issue its command, and a
+headless caller has still not been observed resuming. That is the open
+obstacle to a full upload sequence.
 
 ## Worked example
 
