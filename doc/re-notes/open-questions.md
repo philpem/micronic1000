@@ -168,6 +168,18 @@ source tree (not published here).
   the Load/Run route but it is wired to that trace's phases; generalising it
   would let the whole upload sequence be exercised.
 
+* **Watch: anything that writes `ram:E48D`** — The mode gate decides whether a
+  command is validated against the transition table (`!= 2`) or bypasses it
+  entirely (`== 2`), so any writer changes the meaning of every subsequent
+  command. Only two are known — `Session_InitCommsCmd` (`ROM00:4563`, from
+  its stack argument) and `Session_InitState` (`ROM00:46E9`, the literal 2) —
+  and both are reachable only as runtime-stub slots, so a loaded application
+  can set it too, as this project's own test COMs do.
+  *Watch for:* any further writer found in RAM-resident module code, a loaded
+  application, or a banked page not yet dumped; and any path that leaves it
+  at 2 across a session boundary, which would silently disable validation for
+  everything that follows.
+
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.
   *Resolve:* bisect 127 and pin as a regression.

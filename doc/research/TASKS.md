@@ -2719,3 +2719,25 @@ current priority order; the concise lists above are authoritative.
     to the Load/Run trace's phases; generalising it would allow the full
     `C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX` upload sequence
     to be exercised and captured.
+  * **IR control/status bit ROLES established (2026-09-01):** "set bit 5" is
+    replaced by what each bit does in the protocol, read directly from the
+    branch it drives rather than guessed from electrical convention.
+    `LINK_STATUS` (`4Bh`): bit0 a received byte is available (gates `INI` at
+    `ROM00:33D4`); bit1 block finished / status valid — while bits 0 and 1
+    are both clear the handheld waits, then fails `EEh`; bit2 one further
+    byte to take (extra `INI` at `33F4`); bit3 transfer failed, `ECh`; bit4
+    inbound data pending, must be CLEAR before the handheld transmits
+    (`32BB`); bit5 error latch sampled at end of transmit, set yields `ECh`;
+    bit6 handshake busy, must go clear (`32F3`); bit7 ready to accept a
+    transmit byte, polled before every `OUTI` (`3319`). The receive decode is
+    **one** status read shifted by successive `RRCA` at `33CF`, testing bits
+    0,1,2,3 in order — not four separate polls, which the earlier
+    "polls bits 0-3" wording implied.
+    `LINK_CTRL` (`4Ah`): bit0 transfer active, bit1 port select from
+    link-id bit 5, bit4 direction/enable, bit5 strobe.
+    Still OPEN: what any bit means electrically at the connector, and whether
+    a real controller derives them this way. Two things corroborate the
+    reading — the turn-taking rule follows from bit 4, and the synthetic peer
+    implementing exactly this table completes real sessions. Repeatables set
+    on `io:004A` and `io:004B`; tables added to the protocol page and the
+    memory/IO reference.

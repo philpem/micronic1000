@@ -98,6 +98,47 @@ handshake. The exact port catalogue is in
 The M1000 drives `LINK_CTRL` and polls `LINK_STATUS` through a fixed
 ordering. No electrical names for status or control bits are proven.
 
+### What the status and control bits do
+
+Electrical names remain unproven, but each bit's **role in the protocol** is
+recoverable from how the firmware uses it — and that is what a controller
+model has to reproduce. Every row below is read from the drivers; the
+"required of a model" column is what the repository's synthetic peer does,
+which is sufficient to drive real firmware through a complete session.
+
+`LINK_STATUS` (`4Bh`), read by the handheld:
+
+| Bit | Role | Required of a controller model |
+|---:|---|---|
+| 0 | A received byte is available | Assert while bytes remain to hand over; the handheld reads one per assertion |
+| 1 | Block finished, status valid | Assert once the block is drained. While bit 0 and bit 1 are both clear the handheld keeps waiting, then gives up with `EEh` |
+| 2 | One further byte to take | Assert to have exactly one extra byte read after the block |
+| 3 | Transfer failed | Assert to fail the transfer with `ECh` |
+| 4 | Inbound data pending | Must be **clear** before the handheld will begin transmitting |
+| 5 | Error latch, sampled at end of transmit | Leave clear; set yields `ECh` |
+| 6 | Handshake busy | Must go **clear** to complete the transmit handshake |
+| 7 | Ready to accept a transmit byte | Assert; polled before every byte written to `LINK_TXD` |
+
+The receive decode is a chain of `RRCA` at `ROM00:33CF`, testing bits 0, 1,
+2, 3 in that order — so the four receive bits are one status byte read once
+and shifted, not four separate polls.
+
+`LINK_CTRL` (`4Ah`), driven by the handheld:
+
+| Bit | Role |
+|---:|---|
+| 0 | Transfer active — cleared then set to open, cleared to close |
+| 1 | Port select, driven from active-link-id bit 5 by `LinkPortSelect` |
+| 4 | Direction/enable — cleared at open, set during the handshake, cleared at close |
+| 5 | Strobe — set, short delay, cleared |
+
+**Confidence.** The roles are CONFIRMED in the sense that they are read
+directly from the branch each bit drives. What is *not* established is what
+any bit means electrically at the connector, or whether a real controller
+derives them the same way. Two behaviours corroborate the reading: the
+turn-taking rule below follows from bit 4, and a peer implementing exactly
+this table completes real sessions.
+
 **Transmit ordering (stable as latch sequence):**
 
 1. The port-select latch follows active-link-id bit 5 (one of two IR
