@@ -104,6 +104,44 @@ So an application must either drive a *legal* sequence of transitions, or
 suppress validation. Issuing a command the state machine rejects will hang a
 headless caller on the message box.
 
+### Arguments: `C-INIT-COMMS`
+
+`EE20` reads its mode byte from the caller's stack at **`SP+4`** — the third
+word down from the top of the pushed arguments — so at least three words must
+be pushed. Calibrated by pushing eight distinguishable values and observing
+which reached `ram:E48D`. The firmware pushes four words and passes mode 0
+(`ROM01:12F4`), then unwinds 20 bytes.
+
+```text
+21 00 00  E5     LD HL,0 / PUSH HL     ; SP+6
+21 00 00  E5     LD HL,0 / PUSH HL     ; SP+4  <- the mode byte
+21 00 00  E5     LD HL,0 / PUSH HL     ; SP+2
+21 00 00  E5     LD HL,0 / PUSH HL     ; SP+0
+CD 20 EE         CALL 0EE20h
+EB               EX DE,HL              ; keep the result out of the way
+21 08 00 39 F9   LD HL,8 / ADD HL,SP / LD SP,HL   ; unwind
+EB               EX DE,HL              ; result back in HL
+```
+
+Passing mode 0 keeps the gate clear, so the command **is** validated.
+
+### A verified legal transition
+
+Running exactly that from a loaded COM leaves `ram:E48C = 1`. That is the
+transition table's output: `NOT-STARTED` + `C-INIT-COMMS` → `DISCONNECTED`
+(state 1), which is precisely what walking the table predicts. So an
+application can drive a validated Commstar transition, and the table's
+prediction is confirmed by execution rather than only by reading.
+
+The wrapper then takes its zero-result path into session initialisation
+(`ram:E6FC = 0x37`) and displays `Comms in progress` — the session is
+running and waiting for the host. `g_bSessionState` itself stays 0: this
+wrapper *stages* the next state in `E48C` without committing it.
+
+What is missing is only the other end. The next step is a responding peer
+attached to an application-driven session; the harness has one for the
+Load/Run path but it is wired to that trace's phases.
+
 ### Suppressing validation
 
 Set `ram:E48D = 2` before issuing commands:

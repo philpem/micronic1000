@@ -2695,3 +2695,27 @@ current priority order; the concise lists above are authoritative.
     legal first command from `NOT-STARTED` and takes a mode byte on the
     stack; driving that first, with the harness's synthetic peer attached, is
     the next experiment.
+  * **`C-INIT-COMMS` argument layout (2026-09-01, CONFIRMED):** `ram:EE20`
+    reads its mode byte from the caller's stack at **`SP+4`** — the third
+    word down from the top of the pushed arguments — so at least three words
+    must be pushed. Calibrated by pushing eight distinguishable values and
+    observing which reached `ram:E48D` (`0x33`, the sixth of eight pushed).
+    The firmware pushes four words, passes mode 0 (`ROM01:12F4`), and unwinds
+    20 bytes. `ROM00:4563` created as a function `Session_InitCommsCmd` with
+    a plate; its Ghidra body is a stub because the routine runs on into the
+    shared init sequence and its extent is not bounded.
+  * **An application drove a VALIDATED Commstar transition (2026-09-01):** a
+    loaded COM pushing four zero words and calling `ram:EE20` leaves
+    `ram:E48C = 1` — the transition table's output for
+    `NOT-STARTED` + `C-INIT-COMMS` -> `DISCONNECTED`, exactly what walking
+    the table predicts. The table's prediction is therefore confirmed by
+    execution, not only by reading. The wrapper then takes its zero-result
+    path into session init (`E6FC = 0x37`) and displays
+    `Comms in progress`, waiting for the host. Note it *stages* the next
+    state in `E48C` without committing it — `g_bSessionState` stays 0; the
+    commit sites are the 17 `LD A,(E48C) / CALL Session_SetState` sequences.
+  * **Next: an emulator task, not an analysis one.** Attach a responding peer
+    to an application-driven session. The harness's synthetic peer is wired
+    to the Load/Run trace's phases; generalising it would allow the full
+    `C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX` upload sequence
+    to be exercised and captured.
