@@ -3239,7 +3239,9 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   (`ROM00:0202`, `0229`); it is a cold-boot controller reset. Plinth vs V24
   adaptor is a menu choice (`micron2.bin 0x7663`) that becomes bit 5 of the
   link id; `LinkPortSelect` (`ROM00:3455`) drives port `2Ch` as well as
-  `LINK_CTRL` bit 1. **OPEN:** which polarity is which connector — needs a
+  `LINK_CTRL` bit 1. **RESOLVED 2026-09-01**, see below — and "connector" was
+  the wrong word: both are IR ports on the handheld. Formerly: which polarity
+  is which connector — needs a
   hardware test.
 * **Retry budget for a host implementer:** a request retries `32h` = 50 times
   (`ROM00:2F58` / `30FC`), a reply `14h` = 20 times (`ROM00:3042`).
@@ -3320,3 +3322,51 @@ its installer.** New pass 6 links them all.
 Verified: two consecutive runs, second reports zero changes in every pass;
 `list_functions_enhanced` diff before/after shows **zero lost, zero renamed**
 at 1087 functions.
+
+## Commstar: the controller transaction decoded (2026-09-01)
+
+* **`LinkBlockTx` (`ROM00:3277`) and `LinkBlockRx` (`ROM00:3378`) are decoded
+  end to end.** This is the layer a physical IR adapter implements, and it was
+  the last major undecoded one. Full step-by-step listings are on the protocol
+  page; the load-bearing results:
+* **The prelude byte is `link id & 1Fh`, written at `ROM00:32B3`.** That is
+  why a peer cannot recover the full 8-bit id from the wire — the firmware
+  masks it to five bits before it leaves. `link_id_from_prelude` in
+  `analysis/micronic/peer.py` is necessarily guessing the top three bits.
+* **There is no checksum anywhere in either routine** — not a single
+  accumulating `XOR` or `ADD` in 478 bytes. Integrity is not this layer's job.
+  Per the user, the physical link is **synchronous** (clock and data in each
+  direction) between emitter/detector pairs almost in contact, so little
+  stray light enters and errors are unlikely. A host must not expect a
+  checksum and must not add one.
+* **The two "trailing excluded bytes" are signalled out of band, CONFIRMED.**
+  Receive status `4Bh` bit 2 gates a single extra `INI` at `ROM00:33F3`. The
+  frame's length field never covers them, which is why the peer appends them
+  separately. Their *meaning* stays open — nothing in `LinkBlockRx` interprets
+  them, so it is a controller convention this ROM cannot explain.
+* **Receive status register `4Bh`:** bit 0 = byte waiting, bit 1 = end of
+  frame, bit 2 = one further byte to take, bit 3 = controller error. The
+  framing is carried entirely by these bits; there is no in-band delimiter.
+* **Transmit result convention:** carry clear with `A = 0` on success; carry
+  set with `EBh` (controller absent or not ready), `ECh` (status bit 5 error)
+  or `EEh` (timed out).
+* **Timing budget for an adapter:** `026Ch` = 620 spin-loop counts for a
+  handshake response, `06F9h` = 1785 per payload byte, on a 3.579545 MHz Z80,
+  plus fixed settling delays of 128, 32 and 2 `DJNZ` iterations. Generous for
+  on-board hardware, much less so across a millisecond round trip — **an
+  adapter bridging to a host over USB should service the latch handshake
+  locally rather than round-tripping each byte.**
+* **OPEN, and only hardware can answer it:** the prelude is written to the
+  same data latch (`4Dh`) as the payload but *before* the strobe sequence, so
+  whether the controller forwards it onto the IR line or consumes it as
+  addressing is not determinable from the firmware. It decides whether the
+  prelude is a byte an adapter will see. A logic capture settles it.
+* **Port select resolved.** "Connector" was the wrong word: Plinth and V24 are
+  two **IR ports on the handheld** — base and top — and the connector is the
+  infrared link itself. `LinkBlockTx` tests link-id bit 5 (`ROM00:3278`,
+  `AND 20h`) and hands it to `LinkPortSelect` (`ROM00:3454`), which drives
+  `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: id bit 5 clear -> both
+  set, id bit 5 set -> both clear. **LIKELY** bit 5 clear = Plinth, since the
+  factory default screen reads `PLINTH / LOCAL LINK / 9600` and every
+  default-configuration trace carries link id `43h`. Confirming needs a
+  capture with `V24 ADAPTOR` selected.

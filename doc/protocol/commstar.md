@@ -131,6 +131,152 @@ real — is that this is a half-duplex, credit-based byte pump. The handheld
 will not transmit while the controller says it has inbound data, and it will
 not send a byte until the controller says it can take one.
 
+### The transmit transaction, decoded
+
+`LinkBlockTx` (`ROM00:3277`, 257 bytes) is the whole handheld-to-controller
+transmit path, and it is now decoded end to end. **CONFIRMED** — every step
+below is byte-read from the ROM.
+
+It takes the link id in `A`. `ram:F794` shadows the control latch, so every
+control write is read-modify-write against that shadow.
+
+```text
+3277  LD   C,A / AND 20h / CALL 3454h   ; select the IR port from id bit 5
+327D  CALL 34D2h                        ; clear RXARM -- stop listening
+3280  (F794) &= FEh -> OUT (4Ah)        ; bit 0 low
+328A  (F794) |= 01h -> OUT (4Ah)        ;   then high: a start-of-transaction edge
+3294  (F794) &= EFh -> OUT (4Ah)        ; bit 4 low
+329E  LD B,80h / DJNZ $                 ; settle, 128 iterations
+32A4  CALL 34ECh / JP Z,335Ah           ; link present?  no -> EBh
+32AA  CALL 34F8h / JP Z,335Ah           ; ready?         no -> EBh
+32B0  LD A,C / AND 1Fh
+32B3  LD (F797),A / OUT (4Dh),A         ; the PRELUDE: link id, low 5 bits
+32B8  LD DE,026Ch                       ; 620-count timeout
+32BB  IN A,(4Bh) / CPL / AND 10h        ; wait for status bit 4 (active low)
+32CC  (F794) |= 20h -> OUT (4Ah)        ; bit 5 high
+32D6  (F794) |= 10h -> OUT (4Ah)        ; bit 4 high
+32E0  LD B,20h / DJNZ $                 ; 32 iterations
+32E6  (F794) &= DFh -> OUT (4Ah)        ; bit 5 low again -- a strobe pulse
+32F0  LD DE,026Ch
+32F3  IN A,(4Bh) / CPL / AND 40h        ; wait for status bit 6 (active low)
+```
+
+Then the payload, one descriptor at a time (`ROM00:3508` yields the next
+run), with `OUTI` to the data latch:
+
+```text
+3315  LD DE,06F9h                       ; 1785-count timeout, per byte
+3318  IN A,(4Bh) / RLCA / JR NC,334Eh   ; status bit 7 high = ready for a byte
+331D  OUTI                              ; OUT (4Dh),(HL) ; HL++ ; B--
+3322  JP NZ,3318h                       ; more bytes in this run
+3328  DJNZ 3311h                        ; more runs
+332B  JP 3309h                          ; next descriptor
+```
+
+and finally the completion check:
+
+```text
+332E  CALL 34ECh / JR Z,3356h           ; still present?   no -> EEh
+3336  IN A,(4Bh) / CPL / AND 40h        ; wait status bit 6 (active low)
+3343  JR Z,3356h                        ; timed out        -> EEh
+3346  AND 20h / JR NZ,335Eh             ; status bit 5 set -> ECh
+334A  XOR A                             ; success: A = 0, carry clear
+3362  (F794) &= EFh -> OUT (4Ah)        ; bit 4 low
+336C  (F794) &= FEh -> OUT (4Ah)        ; bit 0 low -- end of transaction
+```
+
+**Result convention:** carry clear and `A = 0` on success; carry set with
+`A = EBh` (controller absent or not ready), `ECh` (controller reported an
+error in status bit 5) or `EEh` (timed out waiting for completion).
+
+#### What this settles
+
+**The prelude byte comes from `ROM00:32B3`, and it is `link id & 1Fh`.** That
+is why a peer cannot recover the full eight-bit id from the wire — the
+firmware masks it to five bits before it ever leaves the machine. The peer
+library's `link_id_from_prelude` reconstruction is guessing at the other
+three bits, and now we know it must.
+
+**There is no checksum, anywhere.** Neither `LinkBlockTx` nor `LinkBlockRx`
+contains a single accumulating `XOR` or `ADD` — I checked every opcode in
+both. Integrity is not this layer's job, and the link's physical character is
+why that is reasonable: it is a **synchronous, clocked link** (clock and data
+in each direction) between emitter/detector pairs that sit almost in contact,
+so very little stray light reaches them. A host implementation should not
+expect to find a checksum to validate, and should not add one.
+
+**One thing the ROM cannot tell us.** The prelude is written to the *same*
+data latch as the payload (`4Dh`), but *before* the strobe sequence, whereas
+payload bytes follow it. So whether the controller forwards the prelude onto
+the IR line or consumes it as addressing is **not determinable from the
+firmware** — it depends on the controller. This matters for a real adapter:
+it decides whether the prelude is a byte you will see. A logic capture of the
+line during a transfer settles it immediately.
+
+#### Timing budget
+
+Two timeout constants, both counted in `DEC DE / LD A,D / OR E` spin loops on
+a 3.579545 MHz Z80:
+
+| Where | Count | Waiting for |
+|---|---|---|
+| `32B8`, `32F0`, `3333` | `026Ch` = 620 | a handshake response |
+| `3315`, `331F` | `06F9h` = 1785 | readiness for the next payload byte |
+
+Plus fixed settling delays of 128, 32 and 2 `DJNZ` iterations. These are the
+numbers an adapter has to beat. They are generous for hardware on the same
+board and much less so for anything with a round trip measured in
+milliseconds — **an adapter that bridges to a host over USB should service
+the latch handshake locally rather than round-tripping each byte.**
+
+### The receive transaction, decoded
+
+`LinkBlockRx` (`ROM00:3378`, 221 bytes) is the mirror. The payload loop reads
+with `INI` from the data-in latch `4Eh`, gated by the status register, and it
+is the **status bits that carry the framing** — there is no in-band delimiter:
+
+```text
+33CD  LD   C,4Eh                  ; the data-in latch
+33CF  IN   A,(4Bh)                ; status
+33D1  RRCA / JR NC,33E0h          ; bit 0: a byte is waiting?  no -> 33E0
+33D4  INI                         ; IN (HL),(4Eh) ; HL++ ; B--
+33D6  LD   DE,06F9h               ; reset the per-byte timeout
+33D9  JP   NZ,33CFh               ; more bytes in this run
+
+33E0  RRCA / JR C,33F0h           ; bit 1: end of frame -> 33F0
+33E3  DEC  DE / ... / JP NZ,33CFh ; else keep spinning
+33EB  LD   A,0EEh                 ; timed out
+
+33F0  RRCA / JR NC,33F7h          ; bit 2: one more byte to take?
+33F3  PUSH AF / INI / POP AF      ;   yes -- take exactly one
+33F7  RRCA / JR C,341Ch           ; bit 3: controller reported an error
+```
+
+So the **receive status register `4Bh`** decodes as:
+
+| Bit | Meaning on receive |
+|---|---|
+| 0 | a byte is waiting in the data-in latch |
+| 1 | end of frame |
+| 2 | one further byte to take |
+| 3 | the controller reports an error |
+
+This is what the two "trailing excluded bytes" in the captured frames are
+about: they are **not** part of the counted frame, and the handheld does not
+find them by counting. The controller signals them out of band, and
+`ROM00:33F3` takes one byte when status bit 2 says so. The frame's own length
+field never covers them, which is exactly why the peer library has to append
+them separately and why they are excluded from the length.
+
+**A note on how far this goes.** The mechanism is CONFIRMED — status bit 2
+gates a single extra `INI`. What those bytes *mean* is still open: the peer
+sends the frame's type and sequence there because that is what the firmware
+accepts, but nothing in `LinkBlockRx` interprets them, so their purpose is a
+controller-level convention this ROM cannot explain.
+
+The per-byte timeout is `06F9h` = 1785, the same constant the transmit path
+uses, and the failure code is `EEh` as before.
+
 ### The command and probe latches
 
 `LINK_CMD` (`4Ch`) has exactly one writer and exactly one value. `LinkPresent`
@@ -546,11 +692,35 @@ whatever is physically attached.
 `ROM00:0202` and `ROM00:0229`, discard it** — it is a cold-boot reset of the
 link controller.
 
-Plinth versus V24 adaptor is a **menu choice**, not a detection: the picker is
-at `micron2.bin` `0x7663`, and the selection becomes bit 5 of the link id,
-which `LinkPortSelect` (`ROM00:3455`) turns into two line states — note it
-drives port `2Ch` as well as `LINK_CTRL` bit 1. Which polarity is which
-connector is **open** and needs a hardware test.
+Plinth versus V24 adaptor is a **menu choice**, not a detection. There is no
+electrical connector to detect: both are **IR ports on the handheld** — the
+Plinth port on the base, the V24 port on the top — and the "connector" is the
+infrared link itself.
+
+The picker is at `micron2.bin` `0x7663`, and the selection becomes **bit 5 of
+the link id**. `LinkBlockTx` tests it on entry and hands the result to
+`LinkPortSelect` (`ROM00:3454`):
+
+```text
+ROM00:3277  LD   C,A          ; the link id
+ROM00:3278  AND  20h          ; id bit 5 -> Z set when CLEAR
+ROM00:327A  CALL 3454h
+```
+
+`LinkPortSelect` drives **two** latches consistently — `LINK_CTRL` (`4Ah`)
+bit 1 and port `2Ch` bit 5 move together:
+
+| id bit 5 | `LINK_CTRL` bit 1 | port `2Ch` bit 5 | Port |
+|---|---|---|---|
+| clear (id `43h`) | **set** | **set** | Plinth (base) |
+| set (id `63h`) | clear | clear | V24 (top) |
+
+**LIKELY, from the default configuration.** The factory default screen reads
+`PLINTH / LOCAL LINK / 9600`, and every emulator trace taken with defaults
+carries link id `43h` — bit 5 clear. So bit 5 clear selects the Plinth port.
+This is an inference from the default, not a direct label-to-bit mapping in
+code; a capture with `V24 ADAPTOR` selected would confirm it, as would
+watching which of the two IR ports goes active.
 
 ### `ram:E520`, the link type
 
