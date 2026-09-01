@@ -3080,3 +3080,52 @@ current priority order; the concise lists above are authoritative.
   `SP+4`, and the `0045` flag byte, which is **LIKELY** a last-block marker
   (0 from the automatic flush at `6187`, 1 from the explicit flush at `61F9`)
   and would be settled by capturing a transfer longer than 128 bytes.
+
+## Commstar: closing the identity fields and the binary-data question (2026-09-01)
+
+* **`C-INIT-COMMS`'s ten arguments, CONFIRMED from the firmware's own call
+  site.** `ROM01:12AD`–`1304` pushes ten words and cleans up with
+  `LD HL,0014h / ADD HL,SP / LD SP,HL` — twenty bytes, ten words, matching
+  the sweep exactly. The mode word at `SP+4` is literal **0**, which is an
+  independent check on the slot arithmetic: `ram:E48D` measures 0 on the
+  Load/Run path in every emulator run.
+  * `SP+10`=`ECAB`, `SP+12`=`D120`, `SP+14`=`EC8E`, `SP+16`=`EC99`,
+    `SP+18`=`ECA2` are the five identity strings; `SP+8` is the constant 60
+    (**SUSPECTED** a timeout in seconds); `SP+0`, `SP+2`, `SP+6` go to
+    `ROM00:5669`.
+* **The identity fields are the V24 Log-on form's, LIKELY in display order.**
+  `ram:EC97` is the form's backing object: Mode (`+0`), Linespeed (`+1`), then
+  four fixed 9-byte string fields at `+2`, `+11`, `+20`, `+29` (`EC99`,
+  `ECA2`, `ECAB`, `ECB4`). The form's field descriptors at `ROM01:78E1` are
+  `{u16 index; u16 label_ptr}` in display order — Mode, Linespeed, User id,
+  Password, Group id, Telephone number. Taking the object's order to match
+  gives User id -> `E6C4` -> record `+26`, Password -> `E6D9` -> record `+34`,
+  Group id -> `E6D0` -> record `+0`.
+  * **Why only LIKELY:** no table in either ROM pairs a field index with its
+    buffer — the form editor computes the address — so the ordering is an
+    inference from the uniform 9-byte stride, not a byte-proof. **The
+    confirming experiment is to type a distinct value into each of the four
+    form fields and read back `E6C4`, `E6D9`, `E6D0`.**
+  * Telephone (`ECB4`) is **never passed to `C-INIT-COMMS`**, which fits:
+    **nothing in either ROM calls `C-DIAL`, `C-ANSWER` or `C-MANUAL`.** The
+    number is collected for a dial path the firmware itself never takes.
+  * Still open: `ram:D120` -> `E6E8` -> record `+8`, max 6 characters. Not a
+    form field, unidentified.
+* **"Blocks are programs, records are data" is about framing, not content.**
+  Nothing in the firmware inspects what is handed to it; the labels come from
+  the display strings alone (`6CE8` "Sending prog", `6CDB` "Sending data").
+  What is hard and fast: **the record path is not 8-bit clean.** `ROM00:3E14`
+  sends every byte raw — no comparison, no escape, no stuffing — so a record
+  containing `1Eh` or `1Ch` is indistinguishable from a separator on the wire,
+  with no way to quote it. The block path carries no in-band markers, so it is
+  8-bit clean. **Binary data files therefore go on the block path.**
+  * The handheld never parses separators either: the only `1Eh`/`1Ch`
+    comparisons in ROM00 are at `279B`, `018E`, `27BA`, none in the session
+    code. Segmenting the record stream is entirely the **host's** job.
+* **`LD DE,nnnn / CALL D837` is a frame prologue, not a cross-page call.**
+  `ram:D837` (from `analysis/battery_ram.bin`) is
+  `e1 c5 44 4d 21 00 00 39 eb 39 f9 d5 dd e5 fd e5 60 69 cd 36 d8`:
+  POP HL (return address) / PUSH BC / BC = return / HL = SP / EX DE,HL /
+  ADD HL,SP / LD SP,HL — so **DE is the local-frame size**, 0 meaning no
+  locals — then PUSH old SP / PUSH IX / PUSH IY and jump back to the caller.
+  The genuine inter-bank call is `RST 10h ; db bank ; dw target`.

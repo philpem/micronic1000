@@ -206,6 +206,271 @@ Blocks are framed by the transport itself — the payload-length field in the
 frame header — so raw binary needs no in-band markers, and could not tolerate
 them.
 
+#### Which path for binary data?
+
+"Blocks are programs, records are data" is a statement about **framing, not
+content.** Nothing in the firmware inspects what you hand it, and the two
+labels come only from the display strings (`Sending prog` at `ROM00:6CE8`
+versus `Sending data` at `6CDB`).
+
+What *is* hard and fast is that **the record path is not 8-bit clean.**
+`ROM00:3E14` walks the buffer and sends every byte raw — it contains no
+comparison, no escape, no stuffing. So a record whose payload contains `1Eh`
+or `1Ch` puts a byte on the wire that the host cannot distinguish from a
+record separator or an end-of-file marker. There is no way to quote it.
+
+The block path has no in-band markers at all, so it is 8-bit clean.
+
+**So yes, you can have binary data files — send them as blocks.** The
+firmware will call it a program on screen and the session will run in
+`READY-TX-PROG` rather than `READY-TX-DATA`, but the bytes are unexamined and
+arrive intact. The reverse also holds: a "program" whose bytes happen to
+avoid `1Eh` and `1Ch` would survive the record path, though there would be no
+reason to send it that way.
+
+Note also that the handheld never *parses* separators. The only comparisons
+against `1Eh`/`1Ch` anywhere in ROM00 are at `279B`, `018E` and `27BA`, none
+of them in the session code. The separators exist purely so the **host** can
+segment the stream, which means a Commstar server has to do that
+segmentation itself.
+
+### Why the session cannot end cleanly
+
+`C-END-TX` **does take a 16-bit argument**, at the same last-pushed slot as
+`C-BEGIN-FILE` and `C-TX-REC`, and which of two dispositions it takes is
+decided by the mode gate:
+
+```text
+530D  LD A,(0E48Dh)          ; the mode gate again
+5316  CALL E04B              ; E48D == 1 ?
+5319  JP Z,533Eh             ; not 1 -> the ARGUMENT path
+
+531C  LD HL,(0E516h)         ; E48D == 1: the clean completion --
+5324  CALL 41D9h             ;   display "Data transmitted"
+5330  LD A,(0E48Ch) / CALL 3BF5h   ;   and commit the session state
+
+533E  LD HL,000Ch / ADD HL,SP      ; otherwise: read the caller's argument
+5346  CALL 3F20h                   ;   and send it, 58B8(arg+1, 00FFh, arg)
+```
+
+So there are two ways to finish, and with the session at `CONNECTED` neither
+is available:
+
+* `E48D = 2` — dispatch is suppressed, so `C-END-TX` takes the argument path
+  and transmits. This is what the demonstration does, with an argument it
+  never meant to supply, and it is why the screen ends at `Abort pending`.
+* `E48D = 1` — dispatch runs, but `table[CONNECTED][C-END-TX]` is `8Dh`:
+  illegal, next state `CRASHED`. `452D` returns non-zero and `52F8` exits
+  before the completion path.
+
+The clean finish at `531C` needs **both** `E48D = 1` **and** a state from
+which `C-END-TX` is legal — `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX`
+or `BLOCK-TX`. Those are the states the transition table cannot reach, so a
+clean teardown and the reachability question are the same question.
+
+### Argument reference
+
+Every entry point's arguments, swept from the ROM by
+`analysis/commstar_args.py` and cross-checked against the firmware's own call
+sites. A wrapper reads an argument with `LD HL,off / ADD HL,SP`, where `off`
+is relative to **SP at that instant** — so argument marshalling, which pushes
+as it goes, shifts it. The caller's slot is `off − 0Ch − depth`, `depth`
+being how far SP has moved since the routine's `CALL D837` prologue. Reading
+`off − 0Ch` alone misplaces any argument fetched with a push outstanding;
+`C-RX-BLK` is the case that catches it.
+
+| Entry point | Routine | Arguments |
+|---|---|---|
+| `C_ABORT` `EE00` | `5469` | none |
+| `C-ANSWER` `EE04` | `48BF` | `SP+0` |
+| `C-BEGIN-FILE` `EE08` | `5034` | `SP+0` — `[u8 len][name]` |
+| `C-COMMAND` `EE0C` | `4AE0` | `SP+0` operation index, `SP+2` 12-byte parameter, `SP+4` |
+| `C-DIAL` `EE10` | `47F6` | `SP+0` |
+| `C-DROP-LINE` `EE14` | `4A25` | none |
+| `C-END-FILE` `EE18` | `5179` | none |
+| `C-END-TX` `EE1C` | `52A5` | `SP+0` disposition |
+| `C-INIT-COMMS` `EE20` | `4563` | ten — see below |
+| *initialise session* `EE24` | `46E9` | `SP+0`, `+2`, `+4`, `+6`, `+8` |
+| `C-MANUAL` `EE28` | `4974` | none |
+| `C-RX-BLK` `EE2C` | `4F5A` | `SP+0` — destination, ≥129 bytes |
+| `C-SHUT-DOWN` `EE30` | `4D29` | none |
+| `C-RX-REC` `EE34` | `4E6D` | `SP+0` |
+| `C_ABORT` `EE38` | `5444` | `SP+0`, `+2`, `+4` |
+| `C-SHUT-DOWN` `EE3C` | `4D75` | none |
+| `C-TX-BLK` `EE40` | `51EC` | `SP+0` — `[u8 count][payload]` |
+| `C-TX-REC` `EE44` | `50ED` | `SP+0` — `[u8 count][record]` |
+| `C-SHUT-DOWN` `EE48` | `4D4F` | none |
+| `C_ABORT` `EE4C` | `5428` | `SP+0`, `+2` |
+
+Two things this settles.
+
+**The duplicate wrappers differ in arity.** `C_ABORT` appears three times
+and each takes a different number of arguments — none, three, two — so they
+are genuinely distinct routines, not aliases. The three `C-SHUT-DOWN`
+wrappers all take none.
+
+**`C-END-TX` takes one argument, `C-END-FILE` none.** This corrects the note
+committed in `c840242`, which attributed the read at `ROM00:523F` to
+`C-END-FILE`. `523F` is inside `C-TX-BLK` (`51EC`–`52A4`); `C-END-FILE` is
+`5179`–`51EB` and contains no stack read at all. The earlier scan used an
+extent that swallowed the following routine.
+
+### The command record
+
+`C-COMMAND` assembles a **54-byte record at `ram:E492`** and transmits it
+whole:
+
+```text
+ROM00:4C11  LD   HL,0036h    ; 54 bytes
+ROM00:4C14  PUSH HL
+ROM00:4C15  LD   HL,0E492h
+ROM00:4C18  PUSH HL
+ROM00:4C19  CALL 5880h       ; -> 612A, wire state 45h
+```
+
+The fields are copied in one by one at `ROM00:4B84`–`4C05`, each through the
+bounded string copy `ram:DB89(dst, src, maxlen)`. The destinations are
+contiguous and their maxima tile the record exactly:
+
+| Offset | Size | Copied from | Field |
+|---|---|---|---|
+| `+0` | 8 | `E6D0` | *(unidentified)* |
+| `+8` | 6 | `E6E8` | *(unidentified)* |
+| `+14` | 4 | `*(E48F)` | **operation name** |
+| `+18` | 8 | `E6EF` | **workstation id** |
+| `+26` | 8 | `E6C4` | *(unidentified)* |
+| `+34` | 8 | `E6D9` | *(unidentified)* |
+| `+42` | 12 | `C-COMMAND` `SP+2` | per-command parameter |
+
+**CONFIRMED against the traces.** Every Load/Run capture carries a 54-byte
+object at wire state `0045`, with `"LOAD"` at object `+14` and the
+workstation serial at `+18` — the two fields decoded above, at the offsets
+this layout predicts. The remaining fields are blank in those traces, which
+is consistent: Load/Run asks the operator for no credentials.
+
+`E48F` holds a pointer into the operation table, set at `ROM00:4B26` from
+`E247 + 6 × index` — so **`C-COMMAND`'s first argument selects both the
+operation name sent at `+14` and the session state entered on success.**
+See the protocol page for the operation table itself.
+
+### `C-INIT-COMMS`
+
+Ten arguments, all 16-bit slots. **CONFIRMED**: the firmware's own call site,
+`ROM01:12AD`–`ROM01:1304`, pushes exactly ten words and cleans up with
+`LD HL,0014h / ADD HL,SP / LD SP,HL` — twenty bytes.
+
+| Slot | What the firmware passes | Destination | Record field |
+|---|---|---|---|
+| `SP+0` | a local | → `ROM00:5669` | — |
+| `SP+2` | low byte of `(ram:D467)` | → `ROM00:5669` | — |
+| `SP+4` | **0** | **`ram:E48D`**, the session mode | — |
+| `SP+6` | conditional, from the Mode field | → `ROM00:5669` | — |
+| `SP+8` | the constant **60** | → `ROM00:5669` | — |
+| `SP+10` | `ram:ECAB` | `E6D0`, max 8 | `+0` |
+| `SP+12` | `ram:D120` | `E6E8`, max 6 | `+8` |
+| `SP+14` | `ram:EC8E` | `E6EF`, max 8 | `+18` **workstation id** |
+| `SP+16` | `ram:EC99` | `E6C4`, max 8 | `+26` |
+| `SP+18` | `ram:ECA2` | `E6D9`, max 8 | `+34` |
+
+The mode at `SP+4` is **0** here, which independently confirms the slot
+arithmetic: `ram:E48D` measures 0 on the Load/Run path in every emulator run.
+
+`C-INIT-COMMS` transmits nothing itself. It stores the session mode and
+**latches five identity strings** that every later `C-COMMAND` sends. The
+constant 60 at `SP+8` is **SUSPECTED** to be a timeout in seconds; nothing
+confirms it.
+
+#### Where the identity strings come from
+
+`ram:EC97` is the V24 Log-on form's backing object. Its layout is a byte for
+each of the two choice fields followed by four fixed 9-byte string fields:
+
+| Offset | Address | Size | Form field |
+|---|---|---|---|
+| `+0` | `EC97` | 1 | Mode |
+| `+1` | `EC98` | 1 | Linespeed |
+| `+2` | `EC99` | 9 | *(string 1)* |
+| `+11` | `ECA2` | 9 | *(string 2)* |
+| `+20` | `ECAB` | 9 | *(string 3)* |
+| `+29` | `ECB4` | 9 | *(string 4)* |
+
+The form's field descriptors are at `ROM01:78E1`, four bytes each as
+`{u16 index; u16 label_ptr}`, and they run in display order: Mode,
+Linespeed, User id, Password, Group id, Telephone number.
+
+**LIKELY, on the strength of the layout rather than a direct proof:** the
+four string fields sit in the same order as the form displays them, so
+
+| Form field | Buffer | Latched into | Record field |
+|---|---|---|---|
+| User id | `EC99` | `E6C4` | `+26` |
+| Password | `ECA2` | `E6D9` | `+34` |
+| Group id | `ECAB` | `E6D0` | `+0` |
+| Telephone number | `ECB4` | — | *not sent* |
+
+The stride is uniform at 9 bytes and the offsets (`+2`, `+11`, `+20`, `+29`)
+are exactly regular, so a different ordering would have to be a coincidence.
+It is still an inference: no table in either ROM pairs a field index with its
+buffer — the form editor computes the address — so **the confirming
+experiment is to type a distinct value into each of the four fields and read
+back `E6C4`, `E6D9` and `E6D0`.**
+
+That Telephone is never passed fits: **nothing in either ROM calls `C-DIAL`,
+`C-ANSWER` or `C-MANUAL`.** The number is collected for a dial path the
+firmware itself never takes.
+
+`ram:D120` → `E6E8` → record `+8` is **not** a form field and is
+unidentified; its six-character maximum is the only clue.
+
+### Sending and receiving blocks
+
+A **block** is a program; a **record** is data. The two paths use the same
+counted-buffer format in memory but differ on the wire.
+
+**Send a block** — `C-TX-BLK`, `ram:EE40`:
+
+```text
+buffer:  [u8 count][count bytes]        ; count 0..255
+PUSH buffer / CALL 0EE40h / POP DE      ; HL = result
+```
+
+The pointer goes to `ROM00:3E14`, the *same* counted-buffer walker
+`C-TX-REC` uses. `C-TX-BLK` issues the state-`0064` "begin transmit" itself
+on its first call, so no separate bracket command is needed; `C-END-TX`
+flushes the tail.
+
+**Receive a block** — `C-RX-BLK`, `ram:EE2C`:
+
+```text
+PUSH buffer / CALL 0EE2Ch / POP DE      ; buffer must be >= 129 bytes
+```
+
+On return `buffer[0]` is the count actually received and `buffer[1..count]`
+the data. `HL` is the status: `0` continue, **`8` end of data** — at which
+point the firmware displays `Program received` — and `4`/`9`/other are
+errors. Loop until `8`.
+
+The **129-byte minimum is not negotiable**: `ROM00:4FAD` pushes a hard-coded
+maximum of `0080h` before calling `Session_ReadStreamChunk`, so a block is at
+most 128 data bytes plus the count byte. Note the asymmetry — `C-TX-BLK`
+will *send* up to 255 bytes in one call, resegmented into 128-byte wire
+frames by the buffer underneath.
+
+**The block path emits no separator bytes.** This is the substantive
+difference from records. `ROM00:3D9B` is the byte injector, and it has
+exactly four call sites in ROM00: `3E57` and `3F0D` (payload and filename
+loops), `5107` (`C-TX-REC`, literal `1Eh`) and `5193` (`C-END-FILE`, literal
+`1Ch`). `C-TX-BLK` has no equivalent instruction — its first action after the
+command dispatch is the `3E14` call. `1Dh` GS is never pushed as an argument
+anywhere in ROM00, and the single `1Fh` push (`ROM00:5FD7`) goes to a
+different routine on the dial path.
+
+That follows from what the two paths carry. Records are variable-length items
+in one continuous byte stream, so they need RS between and FS at the end.
+Blocks are framed by the transport itself — the payload-length field in the
+frame header — so raw binary needs no in-band markers, and could not tolerate
+them.
+
 ### Why the session cannot end cleanly
 
 `C-END-TX` **does take a 16-bit argument**, at the same last-pushed slot as
