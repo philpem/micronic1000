@@ -2476,3 +2476,24 @@ current priority order; the concise lists above are authoritative.
     candidate whose count exceeds 64 or which overruns its block.
     The Python decoder and the Ghidra script locate the sites independently
     and agree on all 45 — a cross-check on both.
+  * **Misaligned handler `ROM01:115F` repaired (2026-09-01):** the one handler
+    that would not stay disassembled across runs. `21 00 00 C9` =
+    `LD HL,0 / RET` (return 0, "key not handled"); its counterpart at `115B`
+    is `LD HL,1 / RET`. Ghidra had decoded the four bytes one byte late as an
+    undefined byte plus `NOP / NOP / RET`, because nothing referenced `115F` —
+    the dispatcher reaches it via `JP (HL)` — so the true entry was never a
+    disassembly seed, and the stale `NOP` at `1160` then blocked the 3-byte
+    `LD HL,0000`. `DefineInlineTables.java` now clears code units that start
+    *inside* a handler entry before disassembling (never a defined function
+    entry). Fully idempotent afterwards: 0 cleared / 0 disassembled /
+    0 realigned on a second run.
+  * **`ROM01:1163` is the field-editor key dispatch (CONFIRMED):** reached by
+    `JP` from `ROM01:10DE` with a keyboard-ring byte in `HL`. Cases
+    `0x0D -> 10E1` (returns 1), `0x14 -> 10E5` (sets `ram:D463 = 1`),
+    `0xDB -> 10EF` (reads `ram:EB1A`, points `DE` at `ram:EC97`), default
+    `-> 115F` (returns 0). `0xDB` is the raw counter-edit byte used to change
+    the V24 Log-on Mode field and `ram:EC97` is that form's 30-byte backing
+    object, so this reaches the same path as the V24 mode-1 emulator trace,
+    from static analysis instead. The `0x14` handler and `ram:D463` are
+    unidentified. Plates added at `115F` and `1163`; `115F` labelled
+    `FieldKeyDispatch_Unhandled`.

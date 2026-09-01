@@ -43,7 +43,7 @@ public class DefineInlineTables extends GhidraScript {
      *  present in the same address space as the calling code. */
     private static final int RAM_BASE = 0x8000;
 
-    private int defined, skipped, cleared, refs, disassembled;
+    private int defined, skipped, cleared, refs, disassembled, realigned;
 
     @Override
     public void run() throws Exception {
@@ -57,7 +57,7 @@ public class DefineInlineTables extends GhidraScript {
         println("defined " + defined + " tables, " + skipped + " skipped, "
                 + cleared + " bogus instructions removed");
         println("added " + refs + " handler references, disassembled "
-                + disassembled + " orphaned handlers");
+                + disassembled + " orphaned handlers, realigned " + realigned);
     }
 
     /** Find and process every CALL E0B2 in one block. */
@@ -148,10 +148,52 @@ public class DefineInlineTables extends GhidraScript {
                                   SourceType.ANALYSIS, 0);
             refs++;
             if (!(lst.getCodeUnitAt(to) instanceof Instruction)) {
+                realign(to);
                 disassemble(to);
                 disassembled++;
                 println("  disassembled orphaned handler " + to);
             }
+        }
+    }
+
+    /**
+     * Clear code units that start just *inside* a handler entry point.
+     *
+     * A handler address comes from a validated table, so it is a real entry
+     * point. If Ghidra has laid instructions down starting one or two bytes
+     * into it, that code is misaligned and blocks disassembly at the true
+     * entry. ROM01:115F is the case that motivated this: `21 00 00 C9`
+     * (LD HL,0 / RET) had been decoded one byte late as NOP / NOP / RET,
+     * leaving 115F an undefined byte that disassemble() could not fix
+     * because the stale NOP at 1160 collided with the 3-byte LD HL,0000.
+     *
+     * Only bytes strictly after the entry are cleared, and never the entry of
+     * a defined function -- if a function starts there, the disagreement is
+     * real and needs a human, so it is left alone.
+     */
+    private void realign(Address entry) {
+        Listing lst = currentProgram.getListing();
+        Address clearTo = null;
+        for (int d = 1; d <= 3; d++) {
+            Address probe;
+            try {
+                probe = entry.add(d);
+            } catch (AddressOutOfBoundsException ex) {
+                break;
+            }
+            CodeUnit cu = lst.getCodeUnitAt(probe);
+            if (!(cu instanceof Instruction)) {
+                continue;
+            }
+            if (currentProgram.getFunctionManager().getFunctionAt(probe) != null) {
+                break;                       // a real function entry; leave it
+            }
+            clearTo = cu.getMaxAddress();
+        }
+        if (clearTo != null) {
+            lst.clearCodeUnits(entry, clearTo, false);
+            realigned++;
+            println("  realigned misaligned code at " + entry + "-" + clearTo);
         }
     }
 

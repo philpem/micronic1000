@@ -85,8 +85,29 @@ tables carry no xrefs and a handler that was only reachable via the bogus
 fall-through reverts to undefined bytes. 233 references; 4 handlers needed
 recovering.
 
-The script is idempotent: a second run reports 0 instructions cleared, so it
-is safe to re-run after any reanalysis that re-disassembles the tables.
+### Misaligned handlers
+
+One handler needed more than a plain `disassemble()`. `ROM01:115F` is the
+default arm of the table at `1166` — `21 00 00 C9`, i.e. `LD HL,0 / RET`,
+returning 0 for "key not handled". Its counterpart at `115B` is
+`LD HL,1 / RET`.
+
+Ghidra had decoded those four bytes **one byte late**: an undefined byte at
+`115F`, then `NOP / NOP / RET` at `1160-1162`. Nothing referenced `115F`,
+because the dispatcher reaches it through `JP (HL)`, so the correct entry was
+never a disassembly seed — and once the stale `NOP` existed at `1160`, a
+plain `disassemble(115F)` could not lay down the 3-byte `LD HL,0000` without
+colliding with it. The handler silently stayed undefined on every run.
+
+The script now realigns such cases: when a handler entry is not an
+instruction, it clears any code unit that *starts inside* the entry (up to
+three bytes in) and then disassembles. It never clears the entry of a defined
+function — if a function starts there, the disagreement is real and wants a
+human.
+
+The script is idempotent: a second run reports 0 cleared, 0 disassembled and
+0 realigned, so it is safe to re-run after any reanalysis that
+re-disassembles the tables.
 
 The Python decoder and the Ghidra script find the sites independently and
 agree on all 45, which is a useful cross-check on both.
