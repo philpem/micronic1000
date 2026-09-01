@@ -86,61 +86,35 @@ ROM01:1427  JP   Z,143Ah     ; 0 -> continue
 There is no separate "run" or "get status" entry point in the table. The
 session advances one command at a time, each call returning its own result.
 
-### The caveat: a call may not come back
+### An application-driven session, working
 
-The firmware's callers resume normally, and the mechanism is an ordinary
-call: `ram:D837` is a stack-frame prologue that saves `IX`/`IY`, invokes the
-body through `D836` (`JP (HL)`), and returns the result in `HL`. There is no
-scheduler involved.
-
-Calls made from a loaded COM have nonetheless not come back, and the reason
-turns out to be mundane rather than structural: **the firmware stops to talk
-to the user.** Calling `C_ABORT` from the boot state reaches an illegal
-transition, which puts a message box on the screen and waits in
-`SessionWaitContinue` for a keypress. `EE24` displays `Comms in progress` and
-likewise does not return.
-
-So an application must either drive a *legal* sequence of transitions, or
-suppress validation. Issuing a command the state machine rejects will hang a
-headless caller on the message box.
-
-### Arguments: `C-INIT-COMMS`
-
-`EE20` reads its mode byte from the caller's stack at **`SP+4`** — the third
-word down from the top of the pushed arguments — so at least three words must
-be pushed. Calibrated by pushing eight distinguishable values and observing
-which reached `ram:E48D`. The firmware pushes four words and passes mode 0
-(`ROM01:12F4`), then unwinds 20 bytes.
+A loaded COM can hold a complete Commstar session. This sequence, with the
+argument layout above, gets through five commands and uploads data to the
+host:
 
 ```text
-21 00 00  E5     LD HL,0 / PUSH HL     ; SP+6
-21 00 00  E5     LD HL,0 / PUSH HL     ; SP+4  <- the mode byte
-21 00 00  E5     LD HL,0 / PUSH HL     ; SP+2
-21 00 00  E5     LD HL,0 / PUSH HL     ; SP+0
-CD 20 EE         CALL 0EE20h
-EB               EX DE,HL              ; keep the result out of the way
-21 08 00 39 F9   LD HL,8 / ADD HL,SP / LD SP,HL   ; unwind
-EB               EX DE,HL              ; result back in HL
+CALL 0EE20h   ; C-INIT-COMMS, mode 0   -> DISCONNECTED
+CALL 0EE10h   ; C-DIAL                 -> CONNECTED
+LD A,2 / LD (0E48Dh),A                 ; suppress validation
+CALL 0EE08h   ; C-BEGIN-FILE
+CALL 0EE44h   ; C-TX-REC               <- the handheld sends data
+CALL 0EE18h   ; C-END-FILE
 ```
 
-Passing mode 0 keeps the gate clear, so the command **is** validated.
+Observed: ten request/reply exchanges, the session state reaching
+`CONNECTED`, and **three objects sent by the handheld to the host** — 9 bytes
+at state `0006`, then 128 and 72 bytes at state `0045`.
 
-### A verified legal transition
+Each command returns, so an application really can drive a sequence. Two
+things had to be true first, and both were harness bugs rather than protocol
+obstacles: the emulator has to keep the RTC running while a loaded program
+executes, or no periodic interrupt fires and the receive path never runs; and
+the peer has to be pumped from the same loop.
 
-Running exactly that from a loaded COM leaves `ram:E48C = 1`. That is the
-transition table's output: `NOT-STARTED` + `C-INIT-COMMS` → `DISCONNECTED`
-(state 1), which is precisely what walking the table predicts. So an
-application can drive a validated Commstar transition, and the table's
-prediction is confirmed by execution rather than only by reading.
-
-The wrapper then takes its zero-result path into session initialisation
-(`ram:E6FC = 0x37`) and displays `Comms in progress` — the session is
-running and waiting for the host. `g_bSessionState` itself stays 0: this
-wrapper *stages* the next state in `E48C` without committing it.
-
-What is missing is only the other end. The next step is a responding peer
-attached to an application-driven session; the harness has one for the
-Load/Run path but it is wired to that trace's phases.
+**The payload content is not meaningful yet.** `C-TX-REC` was called with a
+zero argument, so what the handheld sent is whatever buffer that selects —
+the bytes look like resident code. The *exchange* is established; the record
+format and how to nominate a record are not.
 
 ### Suppressing validation
 

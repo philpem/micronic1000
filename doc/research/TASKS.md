@@ -2870,3 +2870,37 @@ current priority order; the concise lists above are authoritative.
     asymmetry, so localising it needs real instrumentation: a `--watch-pc`
     built on `mach.set_breakpoint`, since the existing `W` counters sample
     `pc` between emulator slices and miss almost every hit.
+  * **`--watch-pc` added (2026-09-01):** comma-separated hex addresses, real
+    breakpoints via `mach.set_breakpoint`, reporting bank and registers at
+    each hit. This is the instrument the `W` counters could never be: they
+    sample `pc` between emulator slices and read zero even on a route that
+    demonstrably transmits. Two caveats worth knowing: it matches raw
+    addresses **regardless of bank**, so `ROM00:2FBD` and `ROM01:2FBD` are
+    conflated; and heavy watching perturbs timing, because every breakpoint
+    ends a slice — watching six addresses was enough to stop the upload path
+    completing.
+  * **ROOT CAUSE of the application stall — the harness, not the firmware
+    (2026-09-01):** `run_loaded_program` executes a loaded COM in its **own**
+    loop, and that loop never called `advance_rtc`. With no RTC the periodic
+    interrupt never fires, so `Link_IrqPollArmOrService` never runs, so the
+    receive path never runs: the handheld could transmit but never hear the
+    reply. The `--watch-pc` reporting and the peer pump were also only in the
+    main loop, which is why the peer appeared to see no traffic at all. All
+    three fixed. Note this also invalidates the earlier reading of `F796=81h`
+    / `F797=03h` as "the application reached the wire" — it had, but the
+    evidence for that was not what I claimed at the time.
+  * **HANDHELD-TO-HOST TRANSFER ACHIEVED (2026-09-01):** a loaded COM driving
+    `C-INIT-COMMS` (mode 0) -> `C-DIAL` -> suppress validation
+    (`ram:E48D = 2`) -> `C-BEGIN-FILE` -> `C-TX-REC` -> `C-END-FILE` completes
+    five commands, reaches session state `CONNECTED` (`E22D = 02`), performs
+    ten request/reply exchanges, and **uploads three objects to the host**:
+    9 bytes at state `0006`, then 128 and 72 bytes at state `0045`.
+    `CommstarPeer` receives all three. Every command returns, so an
+    application genuinely drives a sequence.
+    The state progression `NOT-STARTED -> DISCONNECTED -> CONNECTED` is
+    exactly what the transition table predicts for `C-INIT-COMMS` then
+    `C-DIAL`, now confirmed by execution.
+    **Still open:** the record format and how a record is nominated. The
+    demonstration passed a zero argument to `C-TX-REC`, so the handheld sent
+    whatever buffer that selects — the bytes look like resident code, not
+    application data. `C-END-TX` also did not complete (marker stopped at B5).

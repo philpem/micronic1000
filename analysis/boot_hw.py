@@ -119,6 +119,9 @@ OPTIONS
                            Select V24 form mode N (0..3) with the raw
                            counter-edit byte before accepting the form.
                            Experimental trace control; not a V24 peer.
+  --watch-pc A[,B,...]     Report each time execution reaches a hex address,
+                           with registers. Real breakpoints, so nothing is
+                           missed. Example: --watch-pc 3277,32b6,3318
   --commstar-peer          Attach the protocol peer to a plain --upload run so
                            a loaded application can hold a Commstar session.
                            Replies come from micronic.peer.CommstarPeer.
@@ -333,6 +336,20 @@ TRACE_LOADRUN_NAME = (
 # can hold a Commstar session with something on the other end. Independent of
 # the Load/Run phase script, which keeps its own responder.
 COMMSTAR_PEER_MODE = has_flag("--commstar-peer")
+
+# --watch-pc ADDR[,ADDR...]  Report every time execution reaches an address.
+# Uses real breakpoints, unlike the W counters, which sample the PC between
+# emulator slices and therefore miss almost every hit.
+WATCH_PC = []
+if has_flag("--watch-pc"):
+    try:
+        WATCH_PC = [int(a, 16) & 0xFFFF
+                    for a in get_arg("--watch-pc").replace(" ", "").split(",") if a]
+    except ValueError:
+        print("--watch-pc takes comma-separated hex addresses", file=sys.stderr)
+        sys.exit(2)
+watch_hits = {a: 0 for a in WATCH_PC}
+WATCH_REPORT_LIMIT = 4
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
@@ -873,6 +890,7 @@ def _shadow_policy(request):
 
 
 shadow_peer = CommstarPeer(on_request=_shadow_policy)
+_peer_state = {"tx_seen": 0, "replies": 0}
 shadow_tx_seen = 0
 shadow_agree = 0
 shadow_differ = []
@@ -1347,6 +1365,31 @@ def run_loaded_program(name_addr, entry_addr, prefix, marker=None, marker_bank=N
             return True
         mach.ticks_to_stop = SLICE_TICKS
         mach.run()
+        # Drive the RTC here as the main loop does. Without it no periodic
+        # interrupt fires, so the link receive path never runs and a loaded
+        # program that starts a Commstar session can transmit but never hear
+        # the reply.
+        advance_rtc(SLICE_TICKS - mach.ticks_to_stop)
+        # The loaded program runs in this loop, not the main one, so the
+        # --watch-pc reporting has to happen here as well.
+        wpc = mach.pc & 0xFFFF
+        if wpc in watch_hits:
+            watch_hits[wpc] += 1
+            if watch_hits[wpc] <= WATCH_REPORT_LIMIT:
+                print(
+                    f"[watch-pc] {wpc:04X} hit#{watch_hits[wpc]} bank={cb:02X} "
+                    f"AF={mach.af:04X} BC={mach.bc:04X} DE={mach.de:04X} "
+                    f"HL={mach.hl:04X} SP={mach.sp:04X} F794={mem[0xF794]:02X}"
+                )
+        if COMMSTAR_PEER_MODE and session_link_peer is not None:
+            captured = session_link_peer.peek_tx()
+            if len(captured) > _peer_state["tx_seen"]:
+                shadow_peer.feed_tx(bytes(captured[_peer_state["tx_seen"]:]))
+                _peer_state["tx_seen"] = len(captured)
+                for reply in shadow_peer.take_rx():
+                    session_link_peer.feed_rx(reply)
+                    _peer_state["replies"] += 1
+                    print(f"[commstar-peer] replied {reply.hex()}")
     raise RuntimeError(
         f"marker {marker_addr:04X}={marker_value:02X} not observed"
     )
@@ -1492,6 +1535,11 @@ if LCD_ENABLED:
     render_lcd(prev_fb, 0, cb)
 
 i = 0
+for _watch in WATCH_PC:
+    mach.set_breakpoint(_watch)
+if WATCH_PC:
+    print(f"[watch-pc] armed {[f'{a:04X}' for a in WATCH_PC]}")
+
 while i < MAX_SLICES and stall < 8000:
     if (i & 0xFFF) == 0:
         gc.collect()
@@ -1502,6 +1550,15 @@ while i < MAX_SLICES and stall < 8000:
         print("run err", type(e).__name__, e)
         break
     pc = mach.pc & 0xFFFF
+    if pc in watch_hits:
+        watch_hits[pc] += 1
+        if watch_hits[pc] <= WATCH_REPORT_LIMIT:
+            print(
+                f"[watch-pc] {pc:04X} hit#{watch_hits[pc]} bank={cb:02X} "
+                f"AF={mach.af:04X} BC={mach.bc:04X} DE={mach.de:04X} "
+                f"HL={mach.hl:04X} SP={mach.sp:04X} "
+                f"F794={mem[0xF794]:02X}"
+            )
     if TRACE_LOADRUN_SOURCE and loadrun_source_breakpoint == pc:
         print(
             f"[loadrun-source] breakpoint {pc:04X} "
@@ -2225,9 +2282,12 @@ if TRACE_SESSION_BUILDER:
     print(f"builder_trace_status={builder_trace_status}")
 if TRACE_SESSION_TRANSACTION:
     print(f"transaction_trace_status={transaction_trace_status}")
+if WATCH_PC:
+    print("[watch-pc] totals: " + "  ".join(
+        f"{a:04X}={watch_hits[a]}" for a in WATCH_PC))
 if COMMSTAR_PEER_MODE:
     print(
-        f"[commstar-peer] replies={shadow_agree} "
+        f"[commstar-peer] replies={shadow_agree + _peer_state['replies']} "
         f"records-received={len(uploaded_records)}"
     )
     for state, obj in uploaded_records:

@@ -25,7 +25,7 @@ it is not proven against historical hardware.
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
 | Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
 | Handheld-to-host data in requests | **Provisional** | Captured and decoded: the handheld sends objects to the host in its type-1 requests — 9 bytes at state `0006`, 54 bytes at state `0045` carrying operator text. `CommstarPeer` receives them |
-| Handheld-to-host RECORD transfer | **Not implementable** | The command sequence is known (`C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`) but no RECORD exchange has been captured, so its object format is not |
+| Handheld-to-host RECORD transfer | **Provisional** | The sequence runs end to end from an application and the peer receives the uploaded objects. What is still open is the record format and how a record is nominated — the demonstration passed a zero argument, so it sent an arbitrary buffer |
 | IR wire framing | **Not implementable** | Requires a hardware capture |
 
 The synthetic peer in the repository is regression infrastructure, not a
@@ -44,7 +44,7 @@ For the firmware evidence behind each claim, see
 | Drive a COM/DIP download against real firmware | **Provisional** | Works in the emulator; needs RAM visibility for the receive arm |
 | Download a COM/DIP image from a physical server | **Not implementable** | Blocked on the wire layer and a wire-visible arm |
 | Receive data a handheld sends in a request | **Provisional** | Works: `CommstarPeer` receives and decodes the objects the handheld sends at states `0006` and `0045` |
-| Receive a RECORD-mode file from a handheld | **Not implementable** | No RECORD exchange has been captured |
+| Receive a RECORD-mode upload from a handheld | **Provisional** | Demonstrated: an application driving `C-INIT-COMMS` / `C-DIAL` / `C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` uploads objects the peer receives. The record format, and how a record is nominated, are not established |
 | Build the IR adapter hardware | **Not implementable** | Connector-facing modulation and timing are open |
 
 ## Roles and byte-level terminology
