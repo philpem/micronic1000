@@ -329,7 +329,11 @@ dialled, answered, and manual connection.
 
 **Neither table's index is a proven wire value.** The state table is indexed 0-15 and the
 command table 0-16, while the values carried in request payload +0 are
-`00`, `06`, `44`, `45`, `61`, and `64`. No mapping between these numbering
+`00`, `06`, `44`, `45`, `61`, and `64`. A seventh, `65`, is passed to
+`SessionSetParams` and `SessionTxSendFrame33` on the `C_ABORT` path
+(`ROM00:5BA6`) — direct evidence that these numeric values are the parameter
+an operation *sends*, rather than merely an internal label.
+No mapping between these numbering
 systems is established. Neither table has a static xref — both indices are
 supplied by the RAM-resident session module — and the Load/Run path never
 displays a name from either table, so the traces cannot correlate them

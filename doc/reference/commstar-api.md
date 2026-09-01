@@ -123,10 +123,36 @@ This is not a trick — it is how the firmware itself reaches operations the
 table cannot: only the `RECORD-RX` path is legally reachable, so Program
 Reception and everything on the transmit side must run with validation off.
 
-**A call may still not return even so.** Suppressing validation removes the
-message box but the operation routine does more than issue its command, and a
-headless caller has still not been observed resuming. That is the open
-obstacle to a full upload sequence.
+**A call still does not return, and now the reason is visible.** With
+validation suppressed, `SessionStartDataMode` returns 0, and the operation
+wrapper reads 0 as *proceed*:
+
+```text
+ROM00:5473  CALL 452Dh       ; SessionStartDataMode(C_ABORT)
+ROM00:547A  LD   A,H / OR L
+ROM00:547C  JP   NZ,54E1h    ; non-zero -> exit
+ROM00:547F  CALL 593Ah       ; zero -> do the work
+```
+
+`593A` reaches `SessionTxRunState65`, which prepares a frame header, sets the
+session parameters with wire state `0x65`, sends the frame through service 33
+and then waits in `SessionRxByteLoop`.
+
+So these are not local calls that happen to block — **they are link
+transactions**. The routine transmits and waits for the host to answer. A
+call made with no peer attached cannot return, and that is the protocol
+working, not a fault.
+
+The practical consequence: exercising the API needs a responding peer, which
+is exactly what a Commstar server is. The emulator's synthetic peer already
+does this for the Load/Run path; pointing it at an application-driven session
+is the next step.
+
+In the bare-COM test the link transmit counter never fired, so it blocks
+somewhere between entering `SessionTxRunState65` and reaching the link
+driver — plausibly because no session was ever opened. `C-INIT-COMMS` is the
+legal first command from `NOT-STARTED`, and driving that first is the
+obvious next experiment.
 
 ## Worked example
 

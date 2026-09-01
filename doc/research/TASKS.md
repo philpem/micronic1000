@@ -2672,3 +2672,26 @@ current priority order; the concise lists above are authoritative.
     legal path can reach. The script independently reproduces every finding
     from the manual pass, including the `C_ABORT` exception (illegal from
     `NOT-STARTED` and `CRASHED`) that the hand reading originally got wrong.
+  * **ANSWERED — what an operation routine waits on (2026-09-01):** it waits
+    for the peer. With validation suppressed `SessionStartDataMode` returns 0,
+    and the operation wrapper reads 0 as *proceed*: `ROM00:547C` is
+    `JP NZ,54E1` (non-zero exits), so zero falls through to `CALL 593A`, a
+    thin wrapper on `SessionTxRunState65` (`ROM00:5BA6`). That prepares a
+    frame header, calls `SessionSetParams(0x65, 6, 6, 0, 0)`, sends the frame
+    via `SessionTxSendFrame33`, then waits in `SessionRxByteLoop`. So the API
+    operations are **link transactions**, not local calls that happen to
+    block — a call made with no host attached cannot return, and that is the
+    protocol working correctly rather than a fault. Exercising the API
+    therefore needs a responding peer, which is precisely what a Commstar
+    server is.
+  * **New wire state value `0x65` (2026-09-01):** passed to `SessionSetParams`
+    and `SessionTxSendFrame33` on the `C_ABORT` path. This is the first direct
+    evidence that the `44`/`45`/`60`/`61`/`64` family are the parameter an
+    operation *transmits*, not merely internal labels.
+  * **Still OPEN:** in the bare-COM test the `LinkBlockTx` (`ROM00:3277`) hit
+    counter never fired, so execution blocks between entering
+    `SessionTxRunState65` and reaching the link driver — plausibly because no
+    session was ever opened. `C-INIT-COMMS` (`ram:EE20`, stub slot 65) is the
+    legal first command from `NOT-STARTED` and takes a mode byte on the
+    stack; driving that first, with the harness's synthetic peer attached, is
+    the next experiment.
