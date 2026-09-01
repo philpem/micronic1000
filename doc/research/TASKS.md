@@ -2610,3 +2610,30 @@ current priority order; the concise lists above are authoritative.
     effect; that stale label is deleted. Note `create_label` on a function
     entry adds a second symbol rather than renaming — use
     `rename_function_by_address`.
+  * **CORRECTION — the `E48D` gate polarity is INVERTED (2026-09-01):** two
+    entries above state that `SessionStartDataMode` dispatches "only when
+    `E48D == 2`". Backwards. The comparison helper `ram:E04B` returns with
+    **Z set when its operands differ** (`E055`: `LD HL,0 / XOR A / RET`;
+    `E064`: `LD HL,1 / LD A,L / OR H / RET`), and `ROM00:453F` branches
+    `JP Z,454B` — so the dispatch path is taken when `E48D != 2`, and
+    `E48D == 2` returns 0 **without** dispatching. Consequences: on the
+    Load/Run path (`E48D = 0`) the transition table **is** consulted, so
+    `g_bSessionState` advancing `00 -> 02` is consistent with the table
+    rather than evidence against it; and `Session_InitState` setting
+    `E48D = 2` *quiesces* dispatch rather than arming it.
+  * **End-to-end confirmation of the state machine (2026-09-01):** a loaded
+    COM calling `ram:EE00` (`C_ABORT`) from the boot state puts
+    `C_ABORT / called from / NOT-STARTED / Press >> to continue` on the LCD.
+    That is `SessionCoroJumpTable`'s illegal-transition path, and it confirms
+    in one live run: the table's row/column indexing, that bit 7 set means
+    illegal (row 0 column 16 = `0x80`), that both name tables render the
+    message, that `g_bSessionState` is the row index, and that it boots to 0.
+  * **Why an application call does not return — ANSWERED (2026-09-01):** not
+    a calling-convention or scheduler issue. `ram:D837` is an ordinary
+    stack-frame prologue: saves `IX`/`IY`, invokes the body through
+    `D836` (`JP (HL)`), epilogue at `D84C` restores and returns the result in
+    `HL`. The firmware simply stops to talk to the user — an illegal
+    transition raises a message box and waits in `SessionWaitContinue` for a
+    keypress. `Session_InitState` similarly displays `Comms in progress` and
+    does not return. An application must therefore drive a **legal**
+    transition sequence, or satisfy the UI.

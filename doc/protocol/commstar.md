@@ -467,22 +467,51 @@ inside `SessionCoroJumpTable`; the other 45 set the state directly:
 literal.** Those three are reachable only through the `E48C` path — that is,
 only when the transition table actually runs.
 
-And it does not run on Load/Run. `SessionStartDataMode` forwards to the
-dispatcher only when the mode byte `ram:E48D` is 2, and a full V24 mode-1
-trace ends with `E48D = 0`: the table is never consulted, yet
-`g_bSessionState` still advances `00` -> `02` through literal sets. That is
-what reconciles an apparently unreachable state with a session that plainly
-performs Program Reception.
+The gate is the mode byte `ram:E48D`, and it reads the opposite way round to
+what its name suggests: `SessionStartDataMode` dispatches a command to the
+state machine when `E48D` is **not** 2, and returns 0 without dispatching
+when it **is** 2. The comparison helper it uses (`ram:E04B`) returns with the
+zero flag set when its operands *differ*, and the branch is `JP Z`.
+
+So on Load/Run, where `E48D` measures 0, the table **is** consulted — and
+`g_bSessionState` advancing `00` -> `02` is consistent with that rather than
+evidence against it.
 
 `E48D` has exactly two writers, both reached only as runtime-stub slots:
 
 | Stub slot | Routine | Effect |
 |---|---|---|
 | `ram:EE20` (index 65) | `ROM00:4563` | sets `E48D` from its argument, then issues `C-INIT-COMMS` |
-| `ram:EE24` (index 66) | `ROM00:46E9` | sets `E48D = 2` and `ram:E6FC = 0x37` |
+| `ram:EE24` (index 66) | `Session_InitState` (`ROM00:46E9`) | sets `E48D = 2`, `ram:E6FC = 0x37`, clears a dozen session cells, and displays `Comms in progress` |
 
 So enabling the protocol state machine is itself a stub-slot call — the same
 mechanism that selects the four transfer operations.
+
+### End-to-end confirmation of the state machine
+
+Calling `C_ABORT` (`ram:EE00`) from a loaded COM, with the session in its
+boot state, puts this on the screen:
+
+```text
+      C_ABORT
+    called from
+    NOT-STARTED
+Press >> to continue
+```
+
+That is `SessionCoroJumpTable`'s illegal-transition path, and it confirms
+several separate readings at once from a single live run:
+
+* the transition table is indexed as documented — row `NOT-STARTED` (0),
+  column `C_ABORT` (16);
+* that cell is `0x80`, and **bit 7 set does mean illegal**;
+* both name tables are what render the message — the command name from
+  `ROM00:6B67` and the state name from `ROM00:6A4A`;
+* `g_bSessionState` really is the row index, and it really does boot to 0.
+
+It also explains why the call never returns: the firmware is sitting in
+`SessionWaitContinue`, waiting for a keypress that a headless application
+never sends.
 
 ### Nothing in the firmware calls it
 

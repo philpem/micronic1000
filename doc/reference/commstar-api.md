@@ -48,10 +48,14 @@ Several commands appear more than once; the duplicates are distinct wrapper
 routines and have not been told apart.
 
 `EE24` is not a protocol command. It initialises the session: it clears a
-dozen session variables and sets the mode gate that makes the firmware
-consult the session state machine at all; without it the
-transition table is never used and only the states `NOT-STARTED`,
-`CONNECTED` and `CRASHED` are reachable.
+dozen session variables, sets `ram:E48D = 2`, and displays
+`Comms in progress`. It does not return — it appears to run the session
+rather than merely prepare it, so treat it as a session *runner* whose
+contract is not yet established.
+
+Note that `E48D = 2` **suppresses** per-command dispatch:
+`SessionStartDataMode` runs the state machine when `E48D` is *not* 2. See
+the protocol page.
 
 ## Calling convention
 
@@ -82,19 +86,24 @@ ROM01:1427  JP   Z,143Ah     ; 0 -> continue
 There is no separate "run" or "get status" entry point in the table. The
 session advances one command at a time, each call returning its own result.
 
-### The caveat: a bare COM does not get control back
+### The caveat: a call may not come back
 
-The firmware's callers plainly resume — they `POP` and test `HL`. A loaded
-COM does not. A program that writes a marker before the call and another
-after it leaves only the first, and that holds even when the markers are
-written to *fixed* RAM, so it is not a paging artefact.
+The firmware's callers resume normally, and the mechanism is an ordinary
+call: `ram:D837` is a stack-frame prologue that saves `IX`/`IY`, invokes the
+body through `D836` (`JP (HL)`), and returns the result in `HL`. There is no
+scheduler involved.
 
-**Why is OPEN.** The entry routines open with the stack-frame prologue at
-`ram:D837`, which saves `IX`/`IY` and re-enters through `D836`; a caller that
-is not part of the firmware's task structure may simply never be resumed.
-Until that is understood, an application cannot expect to issue a *sequence*
-of commands the way the firmware does — which is what sending data back
-would require.
+Calls made from a loaded COM have nonetheless not come back, and the reason
+turns out to be mundane rather than structural: **the firmware stops to talk
+to the user.** Calling `C_ABORT` from the boot state reaches an illegal
+transition, which puts a message box on the screen and waits in
+`SessionWaitContinue` for a keypress. `EE24` displays `Comms in progress` and
+likewise does not return.
+
+So an application must either drive a *legal* sequence of transitions, or be
+prepared to satisfy the UI. Issuing a command that the state machine rejects
+will hang a headless caller. This is the practical obstacle to sending data
+back, and it is a sequencing problem rather than a calling-convention one.
 
 ## Worked example
 

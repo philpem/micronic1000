@@ -147,15 +147,18 @@ source tree (not published here).
   [Commstar application API](../reference/commstar-api.md)), but cannot yet
   issue a *sequence* of commands — see the next item.
 
-* **Why a bare COM does not resume after a Commstar entry point** — The
-  firmware's own callers resume normally: `ROM01:1421` pops the argument and
-  stores the returned `HL` to `ram:D0FE`. A loaded COM does not, even with
-  the marker written to fixed RAM, so it is not a paging artefact. Sending
-  data to a host needs several commands in sequence, so this blocks the whole
-  upload direction from an application.
-  *Resolve:* characterise the stack-frame prologue at `ram:D837` (and
-  `D836`), which every entry routine calls first, and establish what a caller
-  must set up to be resumed.
+* **Answered — why a bare COM does not resume.** Not a calling-convention
+  problem. `ram:D837` is an ordinary stack-frame prologue (saves `IX`/`IY`,
+  invokes the body via `D836` = `JP (HL)`, returns the result in `HL`); no
+  scheduler is involved. The firmware simply **stops to talk to the user**:
+  `C_ABORT` from the boot state is an illegal transition, so it raises a
+  message box and waits in `SessionWaitContinue` for a keypress that a
+  headless caller never sends. `Session_InitState` likewise displays
+  `Comms in progress` and does not return.
+  *What remains:* an application must drive a **legal** transition sequence,
+  or satisfy the UI. Establishing a legal command order that reaches
+  `RECORD-TX` — and what `Session_InitState` does after its clear loop — is
+  the remaining work for the upload direction.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.
