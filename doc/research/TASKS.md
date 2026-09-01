@@ -2497,3 +2497,33 @@ current priority order; the concise lists above are authoritative.
     from static analysis instead. The `0x14` handler and `ram:D463` are
     unidentified. Plates added at `115F` and `1163`; `115F` labelled
     `FieldKeyDispatch_Unhandled`.
+  * **CORRECTION — `Session_SetState` has 46 callers (2026-09-01):** an
+    earlier entry found the single `LD (E22D),A` instruction and inferred
+    that the session state could therefore only be set through the transition
+    path. Wrong inference: the instruction is unique, the *function* is not.
+    `ROM00:3BF5` has 46 callers, only one of them (`3C7E`) inside
+    `SessionCoroJumpTable`. 26 pass a literal — and only ever `0`
+    NOT-STARTED, `2` CONNECTED or `13` CRASHED; 17 pass `(ram:E48C)` and 2
+    pass `(ram:E491)`. `E48C` is the cell the dispatcher writes with
+    `entry & 0x7F`, so those sites commit a transition the table staged: the
+    dispatcher computes the next state, the caller commits it.
+  * **State machine is gated by `ram:E48D` (2026-09-01, CONFIRMED):**
+    `SessionStartDataMode` forwards to the dispatcher only when `E48D == 2`.
+    A full V24 mode-1 Load/Run trace ends with `E48D = 0` (measured with
+    `--dump-mem e48d:1`), so that path never consults the transition table,
+    yet `g_bSessionState` still advances `00 -> 02` via literal sets — which
+    reconciles the apparently unreachable states 4/5/6 with a session that
+    plainly performs Program Reception. `E22D` boots to `0` (NOT-STARTED)
+    from the `ROM00:7301` block, a useful consistency check; the `OK`/`NO`
+    tokens live at `7303`/`7307` in the same block.
+  * **`Session_EnableStateMachine` (`ROM00:46E9`) identified (2026-09-01):**
+    stores the literal `2` into `E48D` and `0x37` into `ram:E6FC`. `E48D` has
+    exactly two writers — this one and `ROM00:4563` (which stores its
+    caller's argument then issues `C-INIT-COMMS`). Neither has a direct
+    `CALL`/`JP` anywhere; both are reachable only as runtime-stub slots,
+    indices 65 (`ram:EE20`) and 66 (`ram:EE24`) in
+    `Session_RuntimeStubSourceTable`. So arming the protocol state machine is
+    itself a stub-slot call by the loaded session module — the same mechanism
+    that selects the four transfer operations. **The open question is now a
+    single one: what makes the module call slot 66.** Meaning of
+    `E6FC = 0x37` is OPEN. Labels/plates added; program saved.

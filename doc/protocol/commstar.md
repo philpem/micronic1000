@@ -447,36 +447,48 @@ command index and then loads its own display string:
 
 Three states — `READY-RX-PROG`, `READY-TX-DATA`, `READY-TX-PROG` — have **no
 incoming legal transition** in the matrix. The only route out of `CONNECTED`
-is `C-COMMAND`, whose table entry leads to `READY-RX-DATA`.
+is `C-COMMAND`, which leads to `READY-RX-DATA`.
 
-So the operation is not chosen by the handheld walking the table — and there
-is no second writer of the state to do it another way. An exhaustive search of
-ROM00, ROM01 and the battery RAM finds exactly one instruction that writes
-`g_bSessionState`: `ROM00:3C02`, inside `Session_SetState`, reached only from
-the transition path. (The only other occurrence of the address is `ROM00:7D6A`,
-a boot-time memcpy descriptor, not code.)
+The answer is that the transition table is **gated off** on the traced path,
+and the state is driven directly instead.
 
-The selector is elsewhere. Each of the four operations is a separate routine
-reachable **only** through a RAM runtime-stub slot — no `CALL` or `JP` to any
-of them exists in any image:
+`Session_SetState` (`ROM00:3BF5`) contains the only instruction in any image
+that writes `g_bSessionState`, but it has **46 callers**. Only one of them is
+inside `SessionCoroJumpTable`; the other 45 set the state directly:
 
-| Operation | Routine | Stub slot |
+* 26 pass a literal, and only ever `0` `NOT-STARTED`, `2` `CONNECTED` or
+  `13` `CRASHED`.
+* 17 pass `(ram:E48C)` and 2 pass `(ram:E491)` — computed. `E48C` is the cell
+  `SessionCoroJumpTable` writes with `entry & 0x7F`, so those sites *commit*
+  a transition the table computed earlier. The dispatcher stages the next
+  state; the caller commits it.
+
+**No site sets `READY-RX-PROG`, `READY-TX-DATA` or `READY-TX-PROG` from a
+literal.** Those three are reachable only through the `E48C` path — that is,
+only when the transition table actually runs.
+
+And it does not run on Load/Run. `SessionStartDataMode` forwards to the
+dispatcher only when the mode byte `ram:E48D` is 2, and a full V24 mode-1
+trace ends with `E48D = 0`: the table is never consulted, yet
+`g_bSessionState` still advances `00` -> `02` through literal sets. That is
+what reconciles an apparently unreachable state with a session that plainly
+performs Program Reception.
+
+`E48D` has exactly two writers, both reached only as runtime-stub slots:
+
+| Stub slot | Routine | Effect |
 |---|---|---|
-| `C-BEGIN-FILE` — Sending data | `ROM00:5034` | `ram:EE08` |
-| `C-RX-BLK` — Receiving prog | `ROM00:4F5A` | `ram:EE2C` |
-| `C-RX-REC` — Receiving data | `ROM00:4E6D` | `ram:EE34` |
-| `C-TX-BLK` — Sending prog | `ROM00:51EC` | `ram:EE40` |
+| `ram:EE20` (index 65) | `ROM00:4563` | sets `E48D` from its argument, then issues `C-INIT-COMMS` |
+| `ram:EE24` (index 66) | `ROM00:46E9` | sets `E48D = 2` and `ram:E6FC = 0x37` |
 
-The slots are filled at boot from `ROM00:7D88`, a flat array of 16-bit
-addresses whose entry *i* feeds `ram:ED1C + 4i`. So the operation is selected
-by **which stub slot the loaded session module invokes**, not by the state
-machine. What drives the module's choice is still open, and it is also why
-`SessionStartDataMode` returns early unless the mode byte `ram:E48D` is 2:
-the Load/Run path can run its operation routine without driving the state
-machine at all.
+So enabling the protocol state machine is itself a stub-slot call the loaded
+session module makes — the same mechanism that selects the four transfer
+operations. **Provisional**: the chain is byte-verified, but what makes the
+module call slot 66, and hence which operation a real session performs,
+is not established.
 
-For a server this is the key question, because the same mechanism selects the
-uncaptured handheld-to-host upload.
+For a server this is the crux: the uncaptured handheld-to-host upload lives
+behind the same decision.
 
 ## Historical server readiness
 

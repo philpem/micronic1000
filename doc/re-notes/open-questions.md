@@ -129,16 +129,20 @@ source tree (not published here).
   `CONNECTED` is `C-COMMAND`, which leads to `READY-RX-DATA`. So the
   operation is chosen by whatever moves the session into one of those three
   states, not by the handheld walking the table.
-  There is **no** second writer: an exhaustive search of ROM00, ROM01 and the
-  battery RAM finds one write instruction for `g_bSessionState`
-  (`ROM00:3C02`, inside `Session_SetState`), reached only from the transition
-  path. Instead each operation is a routine reachable only through a RAM
-  runtime-stub slot (`EE08`/`EE2C`/`EE34`/`EE40`, filled at boot from
-  `ROM00:7D88`), so the module's choice of slot is the selector.
-  *Resolve:* find what makes the loaded session module call one slot rather
-  than another, and check the mode byte `ram:E48D` during a traced session —
-  `SessionStartDataMode` returns early unless it is 2, so the Load/Run path
-  may bypass the state machine entirely.
+  Narrowed to one question. `Session_SetState` holds the only write
+  instruction for `g_bSessionState`, but it has **46 callers** — an earlier
+  note wrongly inferred from the single instruction that the state could only
+  be set through the transition table. 26 callers pass a literal (only `0`,
+  `2` or `13`); 17 pass `(ram:E48C)`, the cell the dispatcher stages the next
+  state into. No literal site sets `READY-RX-PROG`, `READY-TX-DATA` or
+  `READY-TX-PROG`, so those are reachable only when the table actually runs —
+  which needs the mode gate `ram:E48D` to be 2. A full V24 mode-1 trace ends
+  with `E48D = 0`, so Load/Run never arms it. `E48D` has two writers, both
+  runtime-stub slots: `ROM00:4563` (slot 65) and `Session_EnableStateMachine`
+  (`ROM00:46E9`, slot 66, stores the literal 2).
+  *Resolve:* find what makes the loaded session module call stub slot 66
+  (`ram:EE24`). That single call arms the state machine, and with it the
+  three ready states and the handheld-to-host operations.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.
