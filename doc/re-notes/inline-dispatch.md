@@ -60,6 +60,37 @@ ROM, so the ROM images alone are sufficient.
 The decoder is validated against the five tables that were already documented
 by hand (`4E4E`, `528E`, `53C4`, `540D`, `5A66`); all five match exactly.
 
+## Defining the tables in Ghidra
+
+Ghidra disassembles these tables as code by default, because the bytes follow
+a `CALL` and nothing tells it the flow does not continue there. That produced
+**279 bogus instructions** across the 45 sites and derailed the surrounding
+listing.
+
+`analysis/ghidra/DefineInlineTables.java` fixes this. Copy it to
+`~/ghidra_scripts/` and run it against `micron1.bin`; it takes no arguments
+and needs nothing from the Python decoder.
+
+It scans every initialised memory block for `CALL E0B2`, decodes the table
+that follows, clears the range, types it as `word[2*count+2]`, and attaches a
+plate listing the decoded cases. A table whose count exceeds 64, or which
+would run past the end of its block, is skipped and reported rather than
+defined — that guard is what keeps a chance byte sequence from being typed as
+a table.
+
+It then adds a reference from every entry to its handler and disassembles any
+handler left as raw bytes. That pass matters because the dispatcher reaches
+handlers through `JP (HL)`: Ghidra has no flow to them, so without it the
+tables carry no xrefs and a handler that was only reachable via the bogus
+fall-through reverts to undefined bytes. 233 references; 4 handlers needed
+recovering.
+
+The script is idempotent: a second run reports 0 instructions cleared, so it
+is safe to re-run after any reanalysis that re-disassembles the tables.
+
+The Python decoder and the Ghidra script find the sites independently and
+agree on all 45, which is a useful cross-check on both.
+
 ## Every call site
 
 45 sites, 188 cases: 25 in ROM00, 20 in ROM01, none in RAM. Case values are

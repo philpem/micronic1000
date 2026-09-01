@@ -21,6 +21,10 @@ Usage:
     analysis/decode_inline_tables.py --json out.json
     analysis/decode_inline_tables.py --image ROM00=micronic/micron1.bin@0
 
+To type these tables as data in Ghidra, use the standalone
+analysis/ghidra/DefineInlineTables.java instead - it finds the call sites
+itself and needs nothing from this script.
+
 The battery-RAM image is optional and is gitignored like the other RAM dumps.
 Regenerate it from the Ghidra database with:
 
@@ -221,6 +225,7 @@ def main(argv: list[str]) -> int:
             )
         Path(args.markdown).write_text("\n".join(lines) + "\n")
         print(f"wrote {args.markdown}")
+
     return 0
 
 

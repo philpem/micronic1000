@@ -2460,3 +2460,19 @@ current priority order; the concise lists above are authoritative.
     without driving the state machine at all — which would explain why
     states 4/5/6 are unreachable in the transition table yet the traced
     session performs Program Reception.
+  * **InlineTableDispatch tables defined as data in Ghidra (2026-09-01):**
+    the 45 inline tables were being disassembled as code, producing **279
+    bogus instructions** and derailing the surrounding listing.
+    `analysis/ghidra/DefineInlineTables.java` is a self-contained Ghidra
+    script — no arguments, nothing generated — that scans every initialised
+    block for `CALL E0B2`, decodes the following table, clears the range,
+    types it `word[2*count+2]` and plates it with the decoded cases. It then
+    adds a reference from each entry to its handler and disassembles any
+    handler left as raw bytes: the dispatcher reaches handlers through
+    `JP (HL)`, so Ghidra has no flow to them and, once the bogus
+    fall-through is cleared, a handler reachable only that way reverts to
+    undefined bytes. 233 references added. The script is idempotent (a
+    second run clears 0) and guards against false positives by skipping any
+    candidate whose count exceeds 64 or which overruns its block.
+    The Python decoder and the Ghidra script locate the sites independently
+    and agree on all 45 — a cross-check on both.
