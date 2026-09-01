@@ -2527,3 +2527,27 @@ current priority order; the concise lists above are authoritative.
     that selects the four transfer operations. **The open question is now a
     single one: what makes the module call slot 66.** Meaning of
     `E6FC = 0x37` is OPEN. Labels/plates added; program saved.
+  * **Nothing in the firmware arms the state machine (2026-09-01, CONFIRMED
+    negative):** searching ROM00, ROM01, the upper RAM dumped *live* after a
+    completed session, and the banked RAM pages for a `CALL`/`JP` to each
+    stub slot finds only two of six invoked — slot 65 (`EE20`, set mode +
+    `C-INIT-COMMS`) from `ROM01:1305`, and slot 68 (`EE2C`, `C-RX-BLK`
+    Receiving prog) from `ROM01:141F`. Slots 59 (Sending data), 66 (enable
+    state machine), 70 (Receiving data) and 73 (Sending prog) have no caller
+    anywhere. That matches the direct measurement: slot 66 is what would set
+    `E48D = 2`, and `E48D` is 0 at session end, so the transition table is
+    never consulted at runtime. The shipped firmware only ever drives Program
+    Reception. Live RAM differs from the cold image by 2427 bytes, so the
+    module is genuinely loaded and the negative is not a dump artefact. A
+    live slot reads `D7 00 63 45` = `RST 10h ; db bank ; dw target`,
+    confirming the banked-call thunk shape and the `ROM00:7D88` derivation.
+  * **TRAP when searching for stub callers:** `RAM02:1101-11FE` is a
+    127-entry descending list of every even address from `EEFE` down to
+    `EE02`, so every stub slot address appears there as data. Those are not
+    references. Noted in the `ROM00:7D88` plate.
+  * **LIKELY — the missing caller is a loaded application:** the stubs are
+    fixed addresses in the transfer-vector table (`ED1C-F17F`), the
+    documented route for loaded code to reach firmware services, and an
+    application's own code is in none of the images searched. That would make
+    the handheld-to-host upload an application-facing API rather than a
+    firmware UI feature. Under investigation.

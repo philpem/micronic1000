@@ -481,14 +481,46 @@ performs Program Reception.
 | `ram:EE20` (index 65) | `ROM00:4563` | sets `E48D` from its argument, then issues `C-INIT-COMMS` |
 | `ram:EE24` (index 66) | `ROM00:46E9` | sets `E48D = 2` and `ram:E6FC = 0x37` |
 
-So enabling the protocol state machine is itself a stub-slot call the loaded
-session module makes — the same mechanism that selects the four transfer
-operations. **Provisional**: the chain is byte-verified, but what makes the
-module call slot 66, and hence which operation a real session performs,
-is not established.
+So enabling the protocol state machine is itself a stub-slot call — the same
+mechanism that selects the four transfer operations.
 
-For a server this is the crux: the uncaptured handheld-to-host upload lives
-behind the same decision.
+### Nothing in the firmware calls it
+
+Searching every image for a `CALL` or `JP` to each slot address — ROM00,
+ROM01, the upper RAM dumped live after a completed session, and the banked
+RAM pages — finds only two of the six invoked:
+
+| Slot | Operation | Invoked from |
+|---|---|---|
+| 65 `EE20` | set mode, `C-INIT-COMMS` | `ROM01:1305` |
+| 68 `EE2C` | `C-RX-BLK` — Receiving prog | `ROM01:141F` |
+| 59 `EE08` | `C-BEGIN-FILE` — Sending data | **nothing** |
+| 66 `EE24` | enable the state machine | **nothing** |
+| 70 `EE34` | `C-RX-REC` — Receiving data | **nothing** |
+| 73 `EE40` | `C-TX-BLK` — Sending prog | **nothing** |
+
+That is consistent with the measurement: slot 66 is what would set
+`E48D = 2`, nothing calls it, and `E48D` is 0 at the end of a full session.
+**The transition table is never consulted by the firmware at runtime.**
+
+So of the four operations, the shipped firmware only ever drives *Program
+Reception*. The other three, and the state machine itself, are present and
+correct but unreferenced.
+
+**LIKELY — the missing caller is the application, not the firmware.** The
+stub slots are fixed addresses in the transfer-vector table (`ED1C`-`F17F`),
+which is the documented mechanism for loaded code to reach firmware
+services. A loaded COM or DIP program can call `EE08` / `EE24` / `EE34` /
+`EE40` directly, and its code appears in none of the images searched. That
+matches the shape of a Commstar deployment: the firmware loads an
+application, and the *application* uploads collected records. It also means
+the handheld-to-host direction is an application-facing API rather than a
+firmware UI feature — which is why no amount of driving the Load/Run screen
+will produce one.
+
+This is the most useful thing yet established for a server implementer, and
+it is a redirection rather than an answer: stop looking for a UI path to the
+upload, and look at what a loaded application does with these stubs.
 
 ## Historical server readiness
 
