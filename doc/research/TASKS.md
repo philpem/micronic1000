@@ -2772,3 +2772,33 @@ current priority order; the concise lists above are authoritative.
     agree, and add the upload policy (`C-BEGIN-FILE` / `C-TX-REC` /
     `C-END-FILE` / `C-END-TX`) so a handheld-to-host transfer can be driven
     and captured for the first time.
+  * **Phase-script retirement ATTEMPTED AND REVERTED (2026-09-01):** making
+    `CommstarPeer` the sole source of replies on the Load/Run path broke
+    `test_synthetic_loadrun_streams_multichunk_com` — the two-chunk stream
+    hangs (180 s timeout). The single-chunk case passes, so the desync only
+    shows with more than one exchange. Diagnosis: the script also performs
+    **peer-initiated pushes** — queues sent with no preceding request — and
+    the peer, which generates one reply per request it sees, can have a reply
+    queued at exactly those points. Feeding the peer's stale reply instead of
+    the intended push desynchronises the stream. Reverted rather than shipped;
+    shadow mode is retained and still agrees 12/12 (V24) and 13/13 (PLINTH).
+    **To retire it properly the peer must model peer-initiated frames**, so it
+    knows when it is *not* the one to speak. That is a peer-side change, not a
+    harness one.
+  * **`--commstar-peer` mode added (2026-09-01):** attaches the protocol peer
+    to a plain `--upload` run so a loaded application can hold a session with
+    something on the other end, plus an upload policy that records any object
+    the handheld sends and acknowledges it. Additive — the Load/Run path is
+    untouched. The peer pump is generic: whatever the handheld transmits, the
+    peer answers, with no phases or breakpoints.
+  * **Application-driven upload attempt (2026-09-01):** a COM issuing
+    `C-INIT-COMMS` / `C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`
+    with the four-word argument layout blocks in the **first** call. The
+    screen reaches `Comms in progress`, but `LinkBlockTx` and `LinkOpen` never
+    fire and the peer sees no traffic at all (`replies=0`), so the session
+    stalls before any transmission. The peer and pump are therefore unproven
+    against an application-driven session — they are proven only against the
+    Load/Run route.
+    *Hypothesis for next time:* the session needs the service-33 / link-IRQ
+    plumbing that the Load/Run trace arms and a bare `--upload` run does not.
+    Compare what `--trace-loadrun-source` sets up before its first exchange.

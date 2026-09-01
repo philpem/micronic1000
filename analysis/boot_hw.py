@@ -119,6 +119,9 @@ OPTIONS
                            Select V24 form mode N (0..3) with the raw
                            counter-edit byte before accepting the form.
                            Experimental trace control; not a V24 peer.
+  --commstar-peer          Attach the protocol peer to a plain --upload run so
+                           a loaded application can hold a Commstar session.
+                           Replies come from micronic.peer.CommstarPeer.
   --trace-loadrun-name TEXT
                            Type TEXT into the Load/Run Name field before
                            choosing the source. Used with --serial to measure
@@ -326,6 +329,10 @@ TRACE_LOADRUN_V24_MODE = (
 TRACE_LOADRUN_NAME = (
     get_arg("--trace-loadrun-name") if has_flag("--trace-loadrun-name") else ""
 )
+# Attach the protocol peer to a plain --upload run, so a loaded application
+# can hold a Commstar session with something on the other end. Independent of
+# the Load/Run phase script, which keeps its own responder.
+COMMSTAR_PEER_MODE = has_flag("--commstar-peer")
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
@@ -846,9 +853,20 @@ from micronic.peer import CommstarPeer
 # Shadow responder: the protocol-aware peer runs alongside the phase script
 # and is asked what it would have replied at each point. It changes nothing;
 # it exists to prove the two agree before the script is retired.
+# Records the handheld sends us during an application-driven upload.
+uploaded_records = []
+
+
 def _shadow_policy(request):
     """Mirror the phase script's application policy, so any remaining
     difference is a protocol difference rather than a policy one."""
+    if request.obj:
+        # The handheld sent us data: this is the handheld-to-host direction.
+        uploaded_records.append((request.state, request.obj))
+        print(
+            f"[commstar-peer] received {len(request.obj)} bytes from state "
+            f"{request.state:#06x}: {request.obj[:24].hex()}"
+        )
     if request.state == 0x0044:
         return (1, bytes.fromhex("4f4ba55a3cc3"))   # the OK control object
     return None                                      # plain control ack
@@ -886,7 +904,7 @@ def feed_rx_checked(queue):
 
 session_link_peer = (
     proto.LinkPeer(completion_bits=0x02)
-    if TRACE_SESSION_TRANSACTION or TRACE_LOADRUN_SOURCE
+    if TRACE_SESSION_TRANSACTION or TRACE_LOADRUN_SOURCE or COMMSTAR_PEER_MODE
     else None
 )
 
@@ -1680,6 +1698,17 @@ while i < MAX_SLICES and stall < 8000:
     # check for Main Menu reached
     # For legacy queue, check qidx progress; for expect, check txt contains Main Menu
     fb_txt, _ = get_lcd_text()
+    if COMMSTAR_PEER_MODE and session_link_peer is not None:
+        # Generic pump: whatever the handheld transmits, the peer answers.
+        # No phases and no breakpoints -- the protocol drives itself.
+        captured = session_link_peer.peek_tx()
+        if len(captured) > shadow_tx_seen:
+            shadow_peer.feed_tx(bytes(captured[shadow_tx_seen:]))
+            shadow_tx_seen = len(captured)
+            for reply in shadow_peer.take_rx():
+                session_link_peer.feed_rx(reply)
+                shadow_agree += 1
+                print(f"[commstar-peer] replied {reply.hex()}")
     if TRACE_LOADRUN_SOURCE and loadrun_source_trace_status == "pending":
         if loadrun_source_link_phase == 0:
             request = session_link_peer.peek_tx()
@@ -2196,6 +2225,13 @@ if TRACE_SESSION_BUILDER:
     print(f"builder_trace_status={builder_trace_status}")
 if TRACE_SESSION_TRANSACTION:
     print(f"transaction_trace_status={transaction_trace_status}")
+if COMMSTAR_PEER_MODE:
+    print(
+        f"[commstar-peer] replies={shadow_agree} "
+        f"records-received={len(uploaded_records)}"
+    )
+    for state, obj in uploaded_records:
+        print(f"[commstar-peer] record from {state:#06x}: {obj.hex()}")
 if TRACE_LOADRUN_SOURCE:
     print(f"loadrun_source_trace_status={loadrun_source_trace_status}")
 if TRACE_LOADRUN_SOURCE:
