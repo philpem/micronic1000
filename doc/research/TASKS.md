@@ -2551,3 +2551,34 @@ current priority order; the concise lists above are authoritative.
     application's own code is in none of the images searched. That would make
     the handheld-to-host upload an application-facing API rather than a
     firmware UI feature. Under investigation.
+  * **Commstar application API CONFIRMED by experiment (2026-09-01):** the
+    LIKELY hypothesis is now demonstrated. A 16-byte COM that calls the stub
+    at `ram:EE24` leaves `E48D = 2` **and** `E6FC = 0x37` — both side effects
+    of `Session_EnableStateMachine` — while a control COM (`HELLO_COM`) that
+    makes no such call leaves both at 0. So a loaded application can drive
+    Commstar directly through the transfer-vector entry points, which is the
+    only demonstrated route to the fifteen operations the firmware UI never
+    invokes. Pinned by `CommstarApplicationApiTest`.
+  * **Calling convention: the entry points do NOT return (CONFIRMED):** a COM
+    writing a marker before the call and another after it leaves only the
+    first (`bank2[0200] = AA`, never `55`), while the call's side effects are
+    present. Each entry is a banked-call thunk onto a routine that begins
+    with a coroutine switch, so control transfers to the session machinery
+    and does not resume after the `CALL`. Applications hand the session off;
+    they do not drive it instruction by instruction.
+  * **Full API surface mapped (2026-09-01):** twenty contiguous slots,
+    `ram:EE00`-`EE4F` (indices 57-76 of `Session_RuntimeStubSourceTable`).
+    Each slot's command was read from the literal argument of the first
+    `CALL 452D` inside its target routine, so the mapping is byte-derived,
+    not inferred from ordering. Fifteen of the seventeen commands are
+    reachable; `C-RX-CMD` (6) and `C-TX-REPLY` (7) have no slot, consistent
+    with neither having a `452D` call site anywhere. Several commands appear
+    more than once (`C-SHUT-DOWN` x3, `C_ABORT` x3) via distinct wrapper
+    routines that have not been told apart. `EE24` is not a command: it arms
+    the state machine. Documented as an ABI in
+    `doc/reference/commstar-api.md`.
+  * **TEST BUG FIXED (2026-09-01):** the `capture_tx` helper added earlier was
+    inserted between `@unittest.skipUnless` and `BootUploadTest`, so the
+    decorator attached to the helper and that class was left ungated — its
+    slow emulator tests would run without `MICRONIC_RUN_EMULATOR_TESTS=1`.
+    Decorator restored; all 12 tests in the module now skip without the opt-in.

@@ -518,9 +518,15 @@ the handheld-to-host direction is an application-facing API rather than a
 firmware UI feature — which is why no amount of driving the Load/Run screen
 will produce one.
 
+**CONFIRMED by experiment.** A 16-byte COM that calls `EE24` leaves the mode
+gate at 2 and its companion cell at `0x37`, where a control program that does
+not make the call leaves both at 0. So the entry points do work from an
+application. The twenty of them are catalogued as an ABI in
+[Commstar application API](../reference/commstar-api.md).
+
 This is the most useful thing yet established for a server implementer, and
 it is a redirection rather than an answer: stop looking for a UI path to the
-upload, and look at what a loaded application does with these stubs.
+upload, and look at what a loaded application does with these entry points.
 
 ## Historical server readiness
 

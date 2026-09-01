@@ -30,7 +30,6 @@ HELLO_COM = (
 )
 
 
-@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
 def capture_tx(stdout: str, label: str) -> str:
     """Return the whole hex capture printed as ``<label> TX=...``.
 
@@ -45,6 +44,7 @@ def capture_tx(stdout: str, label: str) -> str:
     raise AssertionError(f"no {prefix!r} line in harness output:\n{stdout}")
 
 
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
 class BootUploadTest(unittest.TestCase):
     def run_upload(self, suffix, data):
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,6 +118,64 @@ class BootUploadTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("finalized 53121 bytes", proc.stdout)
         self.assertIn("upload_status=succeeded", proc.stdout)
+
+
+# Arms the Commstar session state machine through the application API entry
+# point at ram:EE24, with a marker before the call and another after it.
+COMMSTAR_API_COM = bytes.fromhex(
+    "3eaa"      # 0100 LD A,0AAh
+    "320002"    # 0102 LD (0200h),A   ; reached the call
+    "cd24ee"    # 0105 CALL 0EE24h    ; arm the state machine
+    "3e55"      # 0108 LD A,055h
+    "320002"    # 010A LD (0200h),A   ; would mark a normal return
+    "c30d01"    # 010D JP $
+)
+
+
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class CommstarApplicationApiTest(unittest.TestCase):
+    """A loaded application can drive Commstar through the EExx entry points.
+
+    The firmware itself never calls fifteen of the twenty entry points, so
+    this is the only demonstrated route to the operations its UI does not
+    offer -- including the handheld-to-host direction.
+    """
+
+    def _run(self, com: bytes, marker: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "t.com"
+            image.write_bytes(com)
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), "--upload", str(image),
+                 "--upload-marker", marker,
+                 "--dump-mem", "e48d:1", "--dump-mem", "e6fc:1"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=300, check=False,
+            )
+        self.assertIn("execution entered bank 2 at 0100", proc.stdout)
+        return proc.stdout
+
+    @staticmethod
+    def _cell(stdout: str, name: str) -> int:
+        for line in stdout.splitlines():
+            if f"[mem] final {name}:" in line:
+                return int(line.split(f"{name}:")[1].split()[1], 16)
+        raise AssertionError(f"no final dump of {name}:\n{stdout}")
+
+    def test_control_program_leaves_commstar_untouched(self):
+        out = self._run(HELLO_COM, "0200:A5")
+        self.assertIn("marker 0200=A5 observed", out)
+        self.assertEqual(self._cell(out, "E48D"), 0x00)
+        self.assertEqual(self._cell(out, "E6FC"), 0x00)
+
+    def test_application_can_arm_the_state_machine(self):
+        # The post-call marker never lands: the entry point transfers control
+        # rather than returning, so 0200h keeps the pre-call value.
+        out = self._run(COMMSTAR_API_COM, "0200:55")
+        self.assertIn("marker 0200=55 not observed", out)
+        # Both side effects of ROM00:46E9 are present.
+        self.assertEqual(self._cell(out, "E48D"), 0x02)
+        self.assertEqual(self._cell(out, "E6FC"), 0x37)
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")

@@ -83,6 +83,7 @@ nav:
       - DIPOS-B extensions: reference/extensions.md
       - Barcode reader: reference/barcode.md
       - Program file formats: reference/program-formats.md
+      - Commstar application API: reference/commstar-api.md
       - Memory and I/O map: reference/memory-io.md
   - Protocol reference:
       - protocol/README.md
