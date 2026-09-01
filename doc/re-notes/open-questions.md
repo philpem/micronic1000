@@ -141,8 +141,21 @@ source tree (not published here).
   runtime-stub slots: `ROM00:4563` (slot 65) and `Session_EnableStateMachine`
   (`ROM00:46E9`, slot 66, stores the literal 2).
   *Resolve:* find what makes the loaded session module call stub slot 66
-  (`ram:EE24`). That single call arms the state machine, and with it the
-  three ready states and the handheld-to-host operations.
+  (`ram:EE24`, `Session_InitState`). That single call arms the state machine,
+  and with it the three ready states and the handheld-to-host operations. An
+  application can make the call itself (see
+  [Commstar application API](../reference/commstar-api.md)), but cannot yet
+  issue a *sequence* of commands — see the next item.
+
+* **Why a bare COM does not resume after a Commstar entry point** — The
+  firmware's own callers resume normally: `ROM01:1421` pops the argument and
+  stores the returned `HL` to `ram:D0FE`. A loaded COM does not, even with
+  the marker written to fixed RAM, so it is not a paging artefact. Sending
+  data to a host needs several commands in sequence, so this blocks the whole
+  upload direction from an application.
+  *Resolve:* characterise the stack-frame prologue at `ram:D837` (and
+  `D836`), which every entry routine calls first, and establish what a caller
+  must set up to be resumed.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.

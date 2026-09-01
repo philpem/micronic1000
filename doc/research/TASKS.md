@@ -2582,3 +2582,31 @@ current priority order; the concise lists above are authoritative.
     decorator attached to the helper and that class was left ungated — its
     slow emulator tests would run without `MICRONIC_RUN_EMULATOR_TESTS=1`.
     Decorator restored; all 12 tests in the module now skip without the opt-in.
+  * **CORRECTION — the entry points DO return (2026-09-01):** the previous
+    entry claimed "the entry points do NOT return" from a COM experiment.
+    Wrong as a general statement. The firmware's own call sites resume
+    normally and read a result: `ROM01:141E CALL EE2C` is followed by
+    `POP DE` (caller cleans the stack argument) and `LD (D0FE),HL` — **the
+    result comes back in `HL`**. Same shape at `ROM01:1305`/`130E`. The COM
+    observation is real but narrower: a *bare application* does not resume,
+    and that holds with the marker in fixed RAM, so it is not a paging
+    artefact. Why is now its own OPEN item.
+  * **Commstar calling convention (CONFIRMED from ROM01):** arguments pushed
+    on the stack, caller removes them; result in `HL`; the caller stores it
+    to `ram:D0FE`, labelled `g_wSessionLastResult`. That cell is also the
+    sequencing mechanism — `ROM01:140E-1417` requires `D0FE == 8` before
+    issuing `C-RX-BLK`. There is **no** separate "run" or "get status" entry
+    point: callers test `D0FE` between commands. `0` and `8` are both treated
+    as success at that site.
+  * **`ram:D837` is a stack-frame prologue, not a task switch:** it saves
+    `IX`/`IY`, adjusts `SP` by `DE`, and re-enters through `D836`. `E04B`,
+    `E05A` and `E086` are 16-bit compare helpers (compiler runtime), not
+    session guards — an earlier reading of `CALL E086` as a session check was
+    wrong.
+  * **RENAME (2026-09-01):** `ROM00:46E9` `Session_ConnectCheckCoro` ->
+    `Session_InitState`. It performs no connect check: it sets `E48D = 2` and
+    `E6FC = 0x37`, then clears a dozen session variables. It was briefly
+    labelled `Session_EnableStateMachine`, which named only the `E48D` side
+    effect; that stale label is deleted. Note `create_label` on a function
+    entry adds a second symbol rather than renaming — use
+    `rename_function_by_address`.
