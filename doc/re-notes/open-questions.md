@@ -129,13 +129,16 @@ source tree (not published here).
   `CONNECTED` is `C-COMMAND`, which leads to `READY-RX-DATA`. So the
   operation is chosen by whatever moves the session into one of those three
   states, not by the handheld walking the table.
-  *Resolve:* find the second writer of `g_bSessionState` (`ram:E22D`).
-  `Session_SetState` (`ROM00:3BF5`) is the only writer in ROM00 and is
-  called from the transition path alone, so another must exist in the
-  RAM-resident session module. The `C-COMMAND` / `C-RX-CMD` / `C-TX-REPLY`
-  trio and the display-only `REPLY-START` / `REPLY-END` states point at the
-  command-reply exchange; confirm by breakpointing `E22D` writes through a
-  traced session.
+  There is **no** second writer: an exhaustive search of ROM00, ROM01 and the
+  battery RAM finds one write instruction for `g_bSessionState`
+  (`ROM00:3C02`, inside `Session_SetState`), reached only from the transition
+  path. Instead each operation is a routine reachable only through a RAM
+  runtime-stub slot (`EE08`/`EE2C`/`EE34`/`EE40`, filled at boot from
+  `ROM00:7D88`), so the module's choice of slot is the selector.
+  *Resolve:* find what makes the loaded session module call one slot rather
+  than another, and check the mode byte `ram:E48D` during a traced session —
+  `SessionStartDataMode` returns early unless it is 2, so the Load/Run path
+  may bypass the state machine entirely.
 
 * **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
   `0x1FAE` Line failure; whether 127 succeeds is open.

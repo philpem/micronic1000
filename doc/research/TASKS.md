@@ -2423,3 +2423,40 @@ current priority order; the concise lists above are authoritative.
     - *String-load containment:* no `RET` between the `CALL 452D` and the
       display-string load in either checked routine (4E77->4EA3, 4F64->4F90),
       so they are the same linear flow. SURVIVES.
+  * **InlineTableDispatch fully decoded (2026-09-01):** format byte-verified
+    at `ram:E0B2-E0D8`: `CALL E0B2` followed by `u16 count`,
+    `{u16 case, u16 handler} * count`, `u16 default`. Switch value arrives in
+    `HL`; the dispatcher tail-jumps (`JP (HL)` at E0D8) so the handler returns
+    to the caller's caller and the bytes after the table are unreachable from
+    that call. Compare is full 16-bit in two stages (low at E0C1, high at
+    E0CD). Counter is pre-decremented, so `count == 0` falls through to the
+    default, which is read from the two bytes after the last entry.
+    `analysis/decode_inline_tables.py` decodes every site: **45 sites, 188
+    cases — 25 in ROM00, 20 in ROM01, none in RAM.** Validated against the
+    five tables previously decoded by hand (`4E4E`, `528E`, `53C4`, `540D`,
+    `5A66`); all five match exactly. Listing in
+    `doc/re-notes/inline-dispatch.md`, regenerable with `--markdown`.
+    Case values are not one namespace — each table means what its caller
+    switches on.
+  * **HYPOTHESIS DISPROVEN — no second writer of `g_bSessionState`
+    (2026-09-01):** the previous entry predicted a second writer in the
+    RAM-resident module. There is none. Searching ROM00, ROM01 and the
+    battery-RAM image for every addressing form (`LD (nn),A/HL/BC/DE`,
+    `LD HL/DE/BC/IX/IY,nn`) finds a single write instruction, `ROM00:3C02`
+    inside `Session_SetState`. ROM01 and RAM contain no reference to `E22D`
+    at all; the only other occurrence in ROM00 is `7D6A`, the boot-time
+    memcpy descriptor (`7301 -> E22D`, 205 bytes) already recorded in the
+    os-diposb notes.
+  * **Operation selection is the runtime-stub slot (2026-09-01, SUSPECTED):**
+    the four transfer routines are reachable only through RAM stub slots —
+    no `CALL` or `JP` to `4E6D`/`4F5A`/`5034`/`51EC` exists in any image.
+    `ROM00:7D88` is the ROM source table (flat 16-bit array, entry i at
+    `7D88+2i`, feeding `ram:ED1C+4i`); base confirmed because it reproduces
+    all three slot->target pairs already recorded (58->48BF, 60->4AE0,
+    68->4F5A). The four operations are indices 59 (`5034`, Sending data),
+    68 (`4F5A`, Receiving prog), 70 (`4E6D`, Receiving data) and 73 (`51EC`,
+    Sending prog). Also note `SessionStartDataMode` returns early unless
+    `ram:E48D` == 2, so the Load/Run path may run an operation routine
+    without driving the state machine at all — which would explain why
+    states 4/5/6 are unreachable in the transition table yet the traced
+    session performs Program Reception.

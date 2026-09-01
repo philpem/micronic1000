@@ -449,14 +449,31 @@ Three states — `READY-RX-PROG`, `READY-TX-DATA`, `READY-TX-PROG` — have **no
 incoming legal transition** in the matrix. The only route out of `CONNECTED`
 is `C-COMMAND`, whose table entry leads to `READY-RX-DATA`.
 
-So the operation is not chosen by the handheld walking the table. It is
-chosen by whatever moves the session into one of the three unreachable ready
-states, and the `C-COMMAND` / `C-RX-CMD` / `C-TX-REPLY` trio plus the
-display-only `REPLY-START` / `REPLY-END` states point at the command-reply
-exchange as the mechanism. **This is a reading of the table's shape, not a
-byte-level finding**: no capture has exercised it, and `Session_SetState`
-(`ROM00:3BF5`) is called from the transition path only, so a second writer
-would have to be in the RAM-resident module.
+So the operation is not chosen by the handheld walking the table — and there
+is no second writer of the state to do it another way. An exhaustive search of
+ROM00, ROM01 and the battery RAM finds exactly one instruction that writes
+`g_bSessionState`: `ROM00:3C02`, inside `Session_SetState`, reached only from
+the transition path. (The only other occurrence of the address is `ROM00:7D6A`,
+a boot-time memcpy descriptor, not code.)
+
+The selector is elsewhere. Each of the four operations is a separate routine
+reachable **only** through a RAM runtime-stub slot — no `CALL` or `JP` to any
+of them exists in any image:
+
+| Operation | Routine | Stub slot |
+|---|---|---|
+| `C-BEGIN-FILE` — Sending data | `ROM00:5034` | `ram:EE08` |
+| `C-RX-BLK` — Receiving prog | `ROM00:4F5A` | `ram:EE2C` |
+| `C-RX-REC` — Receiving data | `ROM00:4E6D` | `ram:EE34` |
+| `C-TX-BLK` — Sending prog | `ROM00:51EC` | `ram:EE40` |
+
+The slots are filled at boot from `ROM00:7D88`, a flat array of 16-bit
+addresses whose entry *i* feeds `ram:ED1C + 4i`. So the operation is selected
+by **which stub slot the loaded session module invokes**, not by the state
+machine. What drives the module's choice is still open, and it is also why
+`SessionStartDataMode` returns early unless the mode byte `ram:E48D` is 2:
+the Load/Run path can run its operation routine without driving the state
+machine at all.
 
 For a server this is the key question, because the same mechanism selects the
 uncaptured handheld-to-host upload.
