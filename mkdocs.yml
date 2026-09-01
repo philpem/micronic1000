@@ -84,6 +84,7 @@ nav:
       - Barcode reader: reference/barcode.md
       - Program file formats: reference/program-formats.md
       - Commstar application API: reference/commstar-api.md
+      - Commstar peer library: reference/commstar-peer.md
       - Memory and I/O map: reference/memory-io.md
   - Protocol reference:
       - protocol/README.md

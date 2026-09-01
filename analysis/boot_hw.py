@@ -841,6 +841,49 @@ def read_word(addr):
 
 rtc = RTC146818()
 rtc_sel = 0x00
+from micronic.peer import CommstarPeer
+
+# Shadow responder: the protocol-aware peer runs alongside the phase script
+# and is asked what it would have replied at each point. It changes nothing;
+# it exists to prove the two agree before the script is retired.
+def _shadow_policy(request):
+    """Mirror the phase script's application policy, so any remaining
+    difference is a protocol difference rather than a policy one."""
+    if request.state == 0x0044:
+        return (1, bytes.fromhex("4f4ba55a3cc3"))   # the OK control object
+    return None                                      # plain control ack
+
+
+shadow_peer = CommstarPeer(on_request=_shadow_policy)
+shadow_tx_seen = 0
+shadow_agree = 0
+shadow_differ = []
+shadow_unsolicited = 0
+
+
+def feed_rx_checked(queue):
+    """Feed the emulator's link peer, comparing against the shadow peer."""
+    global shadow_tx_seen, shadow_agree, shadow_unsolicited
+    try:
+        captured = session_link_peer.peek_tx()
+        if len(captured) > shadow_tx_seen:
+            shadow_peer.feed_tx(bytes(captured[shadow_tx_seen:]))
+            shadow_tx_seen = len(captured)
+        expected = shadow_peer.take_rx()
+    except Exception as exc:                      # never break a trace over this
+        shadow_differ.append(f"shadow error: {exc}")
+        expected = []
+    if not expected:
+        shadow_unsolicited += 1
+    elif bytes(queue) == expected[0]:
+        shadow_agree += 1
+    else:
+        shadow_differ.append(
+            f"scripted={bytes(queue).hex()} shadow={expected[0].hex()}"
+        )
+    return session_link_peer.feed_rx(queue)
+
+
 session_link_peer = (
     proto.LinkPeer(completion_bits=0x02)
     if TRACE_SESSION_TRANSACTION or TRACE_LOADRUN_SOURCE
@@ -1649,7 +1692,7 @@ while i < MAX_SLICES and stall < 8000:
                         [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
                     )
                     loadrun_source_initial_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_link_phase = 1
                     print(
                         f"[loadrun-source] initial TX={request[:request_length].hex()}"
@@ -1671,7 +1714,7 @@ while i < MAX_SLICES and stall < 8000:
                 # Type 4 completes the type-2 request; its response carries
                 # no payload in this mechanically scoped trace.
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 2
                 loadrun_source_next_request_offset = session_link_peer.pending_tx
                 loadrun_source_breakpoint = 0x31BE
@@ -1693,7 +1736,7 @@ while i < MAX_SLICES and stall < 8000:
                         [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
                     )
                     loadrun_source_second_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_next_request_offset += request_length
                     loadrun_source_link_phase = 4
                     print(
@@ -1714,7 +1757,7 @@ while i < MAX_SLICES and stall < 8000:
                 == expected_reply
             ):
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 5
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1740,7 +1783,7 @@ while i < MAX_SLICES and stall < 8000:
                         [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
                     )
                     loadrun_source_second_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_next_request_offset += request_length
                     loadrun_source_link_phase = 6
                     loadrun_source_breakpoint = 0x5DFD
@@ -1765,7 +1808,7 @@ while i < MAX_SLICES and stall < 8000:
                 == expected_reply
             ):
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 7
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1789,7 +1832,7 @@ while i < MAX_SLICES and stall < 8000:
                         [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
                     )
                     loadrun_source_second_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_next_request_offset += request_length
                     loadrun_source_link_phase = 8
                     print(
@@ -1810,7 +1853,7 @@ while i < MAX_SLICES and stall < 8000:
                 == expected_reply
             ):
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 9
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1834,7 +1877,7 @@ while i < MAX_SLICES and stall < 8000:
                         [0, 7, 0, 2, sequence, link_id, 0, 0, 2, sequence]
                     )
                     loadrun_source_second_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_next_request_offset += request_length
                     loadrun_source_link_phase = 10
                     print(
@@ -1855,7 +1898,7 @@ while i < MAX_SLICES and stall < 8000:
                 == expected_reply
             ):
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 11
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1888,7 +1931,7 @@ while i < MAX_SLICES and stall < 8000:
                         ]
                     )
                     loadrun_source_second_tx_count = session_link_peer.pending_tx
-                    session_link_peer.feed_rx(phase1)
+                    feed_rx_checked(phase1)
                     loadrun_source_link_phase = 12
                     print(
                         f"[loadrun-source] state44 TX={request[:request_length].hex()}"
@@ -1908,7 +1951,7 @@ while i < MAX_SLICES and stall < 8000:
                 == expected_reply
             ):
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(phase2)
+                feed_rx_checked(phase2)
                 loadrun_source_link_phase = 13
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -1976,7 +2019,7 @@ while i < MAX_SLICES and stall < 8000:
                 ) + payload + bytes([0, 0, 2, sequence])
                 loadrun_source_data_offset += len(payload)
                 loadrun_source_second_tx_count = session_link_peer.pending_tx
-                session_link_peer.feed_rx(peer_initiated)
+                feed_rx_checked(peer_initiated)
                 loadrun_source_link_phase = 14
                 loadrun_source_phase14_start = i
                 print(
@@ -1998,7 +2041,7 @@ while i < MAX_SLICES and stall < 8000:
                 and reply_tail.endswith(expected_reply)
             ):
                 completion = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
-                session_link_peer.feed_rx(completion)
+                feed_rx_checked(completion)
                 loadrun_source_link_phase = 15
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
@@ -2155,6 +2198,13 @@ if TRACE_SESSION_TRANSACTION:
     print(f"transaction_trace_status={transaction_trace_status}")
 if TRACE_LOADRUN_SOURCE:
     print(f"loadrun_source_trace_status={loadrun_source_trace_status}")
+if TRACE_LOADRUN_SOURCE:
+    print(
+        f"[shadow-peer] agreed={shadow_agree} differed={len(shadow_differ)} "
+        f"unsolicited={shadow_unsolicited}"
+    )
+    for line in shadow_differ:
+        print(f"[shadow-peer] {line}")
 # final snapshot dumps (task-requested cells + any --dump-mem ranges)
 if SNAPSHOT_RANGES:
     print("\n--- final memory snapshot ---")

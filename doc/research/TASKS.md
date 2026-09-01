@@ -2741,3 +2741,34 @@ current priority order; the concise lists above are authoritative.
     implementing exactly this table completes real sessions. Repeatables set
     on `io:004A` and `io:004B`; tables added to the protocol page and the
     memory/IO reference.
+  * **IR bit names INFERRED and an IR hardware section added (2026-09-01):**
+    `LINK_STATUS` bits named `RXRDY`/`RXEND`/`RXTAIL`/`RXERR`/`RXBUSY`/
+    `TXERR`/`HSBUSY`/`TXRDY`, `LINK_CTRL` bits `XFREN`/`PORTSEL`/`DIREN`/
+    `STROBE`, all marked INFERRED — a naming convenience derived from the
+    branch each bit drives, not a datasheet. The protocol page gains a "How
+    the IR hardware works" section describing the transfer as the six-step
+    handshake it is, and stating the practical consequence: a half-duplex,
+    credit-based byte pump where the handheld will not transmit while the
+    controller reports inbound data, and will not send a byte until the
+    controller says it can take one.
+  * **`micronic.peer.CommstarPeer` built (2026-09-01):** a protocol-aware,
+    **transport-independent** Commstar host. It parses handheld
+    transmissions and generates replies, knowing nothing about the emulator,
+    the latches or a serial port — so the same object serves the emulator now
+    and a physical IR adapter later. `analysis/test_peer.py` (15 tests, no
+    emulator) checks framing, request decode and reply generation against
+    captured bytes.
+  * **Shadow-mode verification (2026-09-01):** the peer runs alongside the
+    hand-written phase script inside a live trace and is asked what it would
+    have replied at each point. **V24 mode 1: 12 agreed, 0 differed. PLINTH:
+    13 agreed, 0 differed.** The single difference in the first run was
+    policy, not protocol — the shadow had no application callback and sent a
+    control ack where the script sends the state-44 `OK` object; attaching
+    the same policy closed it. Pinned by `CommstarShadowPeerTest`. The
+    "unsolicited" counts are peer-initiated type-2 frames the script pushes
+    without a preceding request, which the peer correctly does not generate
+    as replies.
+  * **Next:** retire the phase script in favour of the peer now that they
+    agree, and add the upload policy (`C-BEGIN-FILE` / `C-TX-REC` /
+    `C-END-FILE` / `C-END-TX`) so a handheld-to-host transfer can be driven
+    and captured for the first time.

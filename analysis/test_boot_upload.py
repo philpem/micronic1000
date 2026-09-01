@@ -133,6 +133,53 @@ COMMSTAR_API_COM = bytes.fromhex(
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
+class CommstarShadowPeerTest(unittest.TestCase):
+    """The protocol-aware peer must agree with the hand-written phase script.
+
+    micronic.peer.CommstarPeer runs alongside the scripted responder during a
+    real trace and is asked what it would have replied at each point. Until it
+    agrees everywhere, it cannot replace the script.
+    """
+
+    def _trace(self, *extra):
+        image_data = build_dip_file(
+            header_kwargs={
+                "system_id": 0x00E5,
+                "entry_bank_offset": 0,
+                "image_size": len(HELLO_COM),
+                "run_bank_offset": 0,
+                "entry_address": 0x0100,
+            },
+            blocks=[(0, 0, 0x0100, HELLO_COM)],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "hello.dip"
+            image.write_bytes(image_data)
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), *extra,
+                 "--synthetic-loadrun", str(image), "--synthetic-loadrun-finalize"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=300, check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
+        line = next(l for l in proc.stdout.splitlines() if "[shadow-peer] agreed=" in l)
+        fields = dict(p.split("=") for p in line.split("] ")[1].split())
+        return {k: int(v) for k, v in fields.items()}, proc.stdout
+
+    def test_agrees_on_the_v24_route(self):
+        counts, out = self._trace("--trace-loadrun-source", "v24",
+                                  "--trace-loadrun-v24-mode", "1")
+        self.assertEqual(counts["differed"], 0, out)
+        self.assertGreaterEqual(counts["agreed"], 12)
+
+    def test_agrees_on_the_plinth_route(self):
+        counts, out = self._trace("--trace-loadrun-source", "plinth")
+        self.assertEqual(counts["differed"], 0, out)
+        self.assertGreaterEqual(counts["agreed"], 13)
+
+
+@unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
 class CommstarApplicationApiTest(unittest.TestCase):
     """A loaded application can drive Commstar through the EExx entry points.
 

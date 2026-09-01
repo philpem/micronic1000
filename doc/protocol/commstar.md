@@ -98,6 +98,37 @@ handshake. The exact port catalogue is in
 The M1000 drives `LINK_CTRL` and polls `LINK_STATUS` through a fixed
 ordering. No electrical names for status or control bits are proven.
 
+### How the IR hardware works
+
+The handheld does not drive the IR line directly. It talks to an off-board
+link controller through six latches (`4Ah`-`4Fh`), and the controller does
+the serialising. Everything below describes that latch boundary, which is the
+part the firmware defines; what the controller then puts on the IR line is
+not established.
+
+A transfer is a handshake, not a stream:
+
+1. **Open.** The handheld selects the port (`LINK_CTRL` bit 1, from the
+   active link id), pulses `XFREN`, and clears `DIREN`.
+2. **Present.** It polls `TXRDY`, then writes `81h` to `LINK_CMD` — the
+   controller's "are you there" exchange.
+3. **Address.** It writes the low five bits of the link id to `LINK_TXD` as a
+   prelude, outside the frame's own byte count.
+4. **Turn the line.** It waits for `RXBUSY` to clear, raises `STROBE` and
+   `DIREN`, waits, drops `STROBE`, then waits for `HSBUSY` to clear.
+5. **Stream.** Each payload byte is written to `LINK_TXD` only while `TXRDY`
+   is asserted, with a per-byte timeout.
+6. **Close.** `DIREN` and `XFREN` are cleared.
+
+Receiving inverts steps 1-4 and then reads `LINK_RXD` while `RXRDY` is
+asserted. The whole receive status is fetched **once** and shifted, so the
+four receive bits are one decision, not four polls.
+
+The practical consequence for anyone building a controller — emulated or
+real — is that this is a half-duplex, credit-based byte pump. The handheld
+will not transmit while the controller says it has inbound data, and it will
+not send a byte until the controller says it can take one.
+
 ### What the status and control bits do
 
 Electrical names remain unproven, but each bit's **role in the protocol** is
@@ -106,18 +137,19 @@ model has to reproduce. Every row below is read from the drivers; the
 "required of a model" column is what the repository's synthetic peer does,
 which is sufficient to drive real firmware through a complete session.
 
-`LINK_STATUS` (`4Bh`), read by the handheld:
+`LINK_STATUS` (`4Bh`), read by the handheld. The names are **INFERRED** from
+the branch each bit drives — they are a naming convenience, not a datasheet:
 
-| Bit | Role | Required of a controller model |
-|---:|---|---|
-| 0 | A received byte is available | Assert while bytes remain to hand over; the handheld reads one per assertion |
-| 1 | Block finished, status valid | Assert once the block is drained. While bit 0 and bit 1 are both clear the handheld keeps waiting, then gives up with `EEh` |
-| 2 | One further byte to take | Assert to have exactly one extra byte read after the block |
-| 3 | Transfer failed | Assert to fail the transfer with `ECh` |
-| 4 | Inbound data pending | Must be **clear** before the handheld will begin transmitting |
-| 5 | Error latch, sampled at end of transmit | Leave clear; set yields `ECh` |
-| 6 | Handshake busy | Must go **clear** to complete the transmit handshake |
-| 7 | Ready to accept a transmit byte | Assert; polled before every byte written to `LINK_TXD` |
+| Bit | Inferred name | Role | Required of a controller model |
+|---:|---|---|---|
+| 0 | `RXRDY` | A received byte is available | Assert while bytes remain to hand over; the handheld reads one per assertion |
+| 1 | `RXEND` | Block finished, status valid | Assert once the block is drained. While bits 0 and 1 are both clear the handheld keeps waiting, then gives up with `EEh` |
+| 2 | `RXTAIL` | One further byte to take | Assert to have exactly one extra byte read after the block |
+| 3 | `RXERR` | Transfer failed | Assert to fail the transfer with `ECh` |
+| 4 | `RXBUSY` | Inbound data pending | Must be **clear** before the handheld will begin transmitting |
+| 5 | `TXERR` | Error latch, sampled at end of transmit | Leave clear; set yields `ECh` |
+| 6 | `HSBUSY` | Handshake busy | Must go **clear** to complete the transmit handshake |
+| 7 | `TXRDY` | Ready to accept a transmit byte | Assert; polled before every byte written to `LINK_TXD` |
 
 The receive decode is a chain of `RRCA` at `ROM00:33CF`, testing bits 0, 1,
 2, 3 in that order — so the four receive bits are one status byte read once
@@ -125,12 +157,12 @@ and shifted, not four separate polls.
 
 `LINK_CTRL` (`4Ah`), driven by the handheld:
 
-| Bit | Role |
-|---:|---|
-| 0 | Transfer active — cleared then set to open, cleared to close |
-| 1 | Port select, driven from active-link-id bit 5 by `LinkPortSelect` |
-| 4 | Direction/enable — cleared at open, set during the handshake, cleared at close |
-| 5 | Strobe — set, short delay, cleared |
+| Bit | Inferred name | Role |
+|---:|---|---|
+| 0 | `XFREN` | Transfer active — cleared then set to open, cleared to close |
+| 1 | `PORTSEL` | Port select, driven from active-link-id bit 5 by `LinkPortSelect` |
+| 4 | `DIREN` | Direction/enable — cleared at open, set during the handshake, cleared at close |
+| 5 | `STROBE` | Strobe — set, short delay, cleared |
 
 **Confidence.** The roles are CONFIRMED in the sense that they are read
 directly from the branch each bit drives. What is *not* established is what
