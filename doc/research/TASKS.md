@@ -2949,3 +2949,34 @@ current priority order; the concise lists above are authoritative.
     `C-END-TX` still does not return, so clean session teardown is
     undemonstrated. The regression tolerates the harness's non-zero exit for
     that reason and says so in a comment.
+  * **Multi-record uploads confirmed (2026-09-01):** repeated `C-TX-REC` calls
+    **append**, so the general stream form is
+    `[u8 namelen][name] (1Eh [record])* 1Ch`. Two records under one name
+    arrive as `05 "STOCK" 1e "REC-ONE" 1e "REC-TWO" 1c`.
+  * **LIKELY — the markers are ASCII information separators (2026-09-01):**
+    `1Eh` is RS (record separator) and `1Ch` is FS (file separator), used
+    exactly as ASCII defines them: `1Eh` before each record, `1Ch` to end the
+    file. Corroborating detail: only those two are ever sent — GS (`1Dh`) and
+    US (`1Fh`) appear nowhere in the session code. Tagged LIKELY (era
+    convention combined with observed behaviour), not CONFIRMED.
+  * **`C-END-TX` explained — structural, not a bug (2026-09-01):**
+    `ROM00:52A5` reads the session state (`CALL 3BE8`) and branches on it to
+    pick "Program Transmission" (states 6 or 11) or "Data Transmission"
+    otherwise, setting `ram:E514`/`E516` to the title and completion strings —
+    which is where the 2x2 operation matrix strings actually get chosen. It
+    then issues command 15. But `C-END-TX` is legal only from
+    `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX` or `BLOCK-TX` — exactly
+    the states the transition table can never reach. Since the upload only
+    works with validation suppressed, the session is still `CONNECTED` when
+    `C-END-TX` runs (`E22D=02`, `E518=02` measured), the firmware notices,
+    and the screen goes to `Comms in progress` / `Abort pending`.
+    **So the upload is a forced one:** records reach the host intact, but the
+    session aborts rather than closing. This is the practical consequence of
+    the reachability result — a *validated* upload does not appear possible in
+    this firmware.
+  * **State `0062` located, not explained (2026-09-01):** the only
+    `LD HL,0062` in ROM00 is at `5E16`, in the sequence push 6 / push 6 /
+    push 62h / `CALL 5973` — the same shape as
+    `SessionSetParams(0x65, 6, 6, ...)` in `SessionTxRunState65`. So `0062` is
+    a session TX parameter emitted by the "state-62 builder" the earlier notes
+    mention. What the exchange means is still open.

@@ -25,7 +25,7 @@ it is not proven against historical hardware.
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
 | Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
 | Handheld-to-host data in requests | **Provisional** | Captured and decoded: the handheld sends objects to the host in its type-1 requests — 9 bytes at state `0006`, 54 bytes at state `0045` carrying operator text. `CommstarPeer` receives them |
-| Handheld-to-host RECORD transfer | **Provisional** | Works with controlled content, and the stream format is decoded: `[u8 namelen][name] 1Eh [record] 1Ch`. Name and record are both application-supplied counted buffers. Open: the intermediate state `0062`, multi-record files, and clean teardown |
+| Handheld-to-host RECORD transfer | **Provisional** | Works with controlled content; the stream format is `[u8 namelen][name] (1Eh [record])* 1Ch`, multi-record confirmed. The transfer must run with validation suppressed, so the session ends in an abort rather than a clean teardown — `C-END-TX` is legal only from states the table cannot reach |
 | IR wire framing | **Not implementable** | Requires a hardware capture |
 
 The synthetic peer in the repository is regression infrastructure, not a

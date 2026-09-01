@@ -132,11 +132,19 @@ closes it, `C-END-TX` flushes. What reaches the host is one object:
  C-BEGIN-FILE         C-TX-REC's marker       terminator
 ```
 
-So the stream format is:
+Repeated `C-TX-REC` calls **append**, so the general form is:
 
 ```text
-[u8 namelen][name]  1Eh [record]  1Ch
+[u8 namelen][name]  (1Eh [record])*  1Ch
 ```
+
+Two records under one name arrive as
+`05 "STOCK" 1e "REC-ONE" 1e "REC-TWO" 1c`.
+
+**LIKELY: these are the ASCII information separators.** `1Eh` is RS (record
+separator) and `1Ch` is FS (file separator), and the firmware uses them
+exactly as ASCII defines them — `1Eh` before each record, `1Ch` to end the
+file. Only those two appear; GS (`1Dh`) and US (`1Fh`) are never sent.
 
 Note the asymmetry: the **name** is sent with its count byte, the **record**
 is not — `ROM00:3E14` sends `buffer[1..count]` only. The two marker bytes come
@@ -148,6 +156,25 @@ Regression: `CommstarRecordUploadTest`.
 Passing a null pointer is what produced the meaningless `c3 03 01` prefix in
 an earlier attempt: `C-BEGIN-FILE` read `mem[0]` — `C3h`, the first byte of
 resident code — as its name length.
+
+### Why the session cannot end cleanly
+
+`C-END-TX` does not complete, and the reason is structural rather than a bug.
+It reads the session state (`ROM00:52AB`) to choose between "Program
+Transmission" and "Data Transmission", then issues command 15 — but that
+command is legal only from `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX`
+or `BLOCK-TX`. **Those are exactly the states the transition table can never
+reach.**
+
+Because the upload only works with validation suppressed, the session never
+legitimately enters a transmit state: it is still `CONNECTED` when `C-END-TX`
+runs. The firmware notices and the screen goes to `Comms in progress` /
+`Abort pending`.
+
+So the upload is a *forced* one. The records reach the host intact, but the
+session ends in an abort rather than a clean teardown, and that follows
+directly from the reachability result on the protocol page. A validated
+upload does not appear to be possible in this firmware.
 
 ### Suppressing validation
 
