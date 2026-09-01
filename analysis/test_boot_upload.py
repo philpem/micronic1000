@@ -212,6 +212,54 @@ class CommstarRecordUploadTest(unittest.TestCase):
         self.assertIsNotNone(line, f"no record reached the host:\n{proc.stdout}")
         return bytes.fromhex(line.split(": ")[1])
 
+    def _upload_frames(self, payload: bytes, name: bytes,
+                       buf: int = 0xE850, namebuf: int = 0xE830):
+        """Every state-0045 frame of one upload, as (arg, bytes).
+
+        ``namebuf`` sits *below* ``buf`` here: a record long enough to span
+        more than one frame would otherwise run over the name buffer, which
+        is a property of these test addresses and not of the firmware.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            com = Path(tmp) / "rec.com"
+            com.write_bytes(build_record_upload_com(payload, name, buf=buf,
+                                                    namebuf=namebuf))
+            proc = subprocess.run(
+                [str(PYTHON), str(HARNESS), "--commstar-peer",
+                 "--upload", str(com), "--upload-marker", "0200:55"],
+                cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, timeout=600, check=False,
+            )
+        frames = [(int(l.split("arg=")[1].split(":")[0]),
+                   bytes.fromhex(l.split(": ")[1]))
+                  for l in proc.stdout.splitlines()
+                  if "record from 0x0045" in l]
+        self.assertTrue(frames, f"no state-0045 frame reached the host:\n{proc.stdout}")
+        return frames
+
+    def test_multi_frame_transfer_marks_only_the_last_frame(self):
+        """The state-0045 arg field is a last-block marker.
+
+        A payload longer than the 128-byte wire buffer is segmented, so this
+        is the case that tells a last-block marker apart from a constant. The
+        static prediction was that the automatic flush (ROM00:6187) passes 0
+        and the explicit end-of-transmission flush (ROM00:61F9) passes 1.
+        """
+        payload = bytes(0x41 + (i % 26) for i in range(200))
+        frames = self._upload_frames(payload, b"LONGFILE")
+        self.assertGreater(len(frames), 1, "payload did not span two frames")
+        args = [a for a, _ in frames]
+        self.assertEqual(args, [0] * (len(frames) - 1) + [1], args)
+        self.assertEqual(frames[0][1].__len__(), 128, "first frame is not a full buffer")
+
+    def test_multi_frame_stream_reassembles_by_concatenation(self):
+        """Frames carry no internal headers: joining them yields the stream."""
+        payload = bytes(0x41 + (i % 26) for i in range(200))
+        frames = self._upload_frames(payload, b"LONGFILE")
+        joined = b"".join(f for _, f in frames)
+        expected = bytes([8]) + b"LONGFILE" + b"\x1e" + payload + b"\x1c"
+        self.assertEqual(joined, expected)
+
     def test_upload_stream_format(self):
         """[u8 namelen][name] 1Eh [record] 1Ch"""
         obj = self._upload(b"HELLO-FROM-M1000", name=b"MYFILE")

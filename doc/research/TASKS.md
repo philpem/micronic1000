@@ -3129,3 +3129,20 @@ current priority order; the concise lists above are authoritative.
   ADD HL,SP / LD SP,HL — so **DE is the local-frame size**, 0 meaning no
   locals — then PUSH old SP / PUSH IX / PUSH IY and jump back to the caller.
   The genuine inter-bank call is `RST 10h ; db bank ; dw target`.
+* **CONFIRMED: the state-`0045` arg field is a last-block marker
+  (2026-09-01).** Measured, not inferred: a 200-byte record is segmented by
+  the 128-byte wire buffer into `arg=0 len=128` then `arg=1 len=83`, matching
+  the static prediction (0 from the automatic flush `ROM00:6187`, 1 from the
+  explicit flush `ROM00:61F9`). Concatenating the frames reproduces the
+  211-byte stream byte for byte, so **frames carry no internal headers** and a
+  peer reassembles by plain concatenation, ending when it sees `arg = 1`.
+  `analysis/boot_hw.py` now logs the arg with each received record.
+  * The first attempt appeared to send 371 bytes for a 211-byte stream. That
+    was the test's own fault, not the firmware's: `build_record_upload_com`
+    defaults put the name buffer at `0xE870`, only 0x20 bytes above the record
+    buffer at `0xE850`, so a 201-byte record ran straight over it. With the
+    name buffer moved *below* the record buffer the stream is exact. Worth
+    remembering when writing COMs that drive uploads.
+  * The capture also shows wire state **`0062` live** in the request sequence
+    (`0000 0006 0062 0045 0045`), confirming the direct-connect state
+    identified statically.

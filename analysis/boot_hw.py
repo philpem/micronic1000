@@ -879,7 +879,7 @@ def _shadow_policy(request):
     difference is a protocol difference rather than a policy one."""
     if request.obj:
         # The handheld sent us data: this is the handheld-to-host direction.
-        uploaded_records.append((request.state, request.obj))
+        uploaded_records.append((request.state, request.arg, request.obj))
         print(
             f"[commstar-peer] received {len(request.obj)} bytes from state "
             f"{request.state:#06x}: {request.obj[:24].hex()}"
@@ -2290,8 +2290,10 @@ if COMMSTAR_PEER_MODE:
         f"[commstar-peer] replies={shadow_agree + _peer_state['replies']} "
         f"records-received={len(uploaded_records)}"
     )
-    for state, obj in uploaded_records:
-        print(f"[commstar-peer] record from {state:#06x}: {obj.hex()}")
+    for state, arg, obj in uploaded_records:
+        # arg is the request's second u16 -- LIKELY a last-block marker on
+        # state 0045, which a transfer spanning more than one frame settles.
+        print(f"[commstar-peer] record from {state:#06x} arg={arg}: {obj.hex()}")
     seq = " ".join(f"{r.state:04x}" for r in shadow_peer.requests)
     print(f"[commstar-peer] request states seen: {seq}")
 if TRACE_LOADRUN_SOURCE:

@@ -382,7 +382,7 @@ so the complete set of wire states is enumerable from the ROM:
 | `0045` | `612A` | variable | data block **out** |
 | `0060` | `5E2A` | variable | connect: **dial** (link type 6 only) |
 | `0061` | `606C` | none | connect: **answer** |
-| `0062` | `5DFD` | none | connect: **direct** |
+| `0062` | `5DFD` | none | connect: **direct** (seen in every IR capture) |
 | `0064` | `60D6` | none | begin transmission |
 | `0065` | `5BA6` | none | end of transaction |
 
@@ -402,11 +402,23 @@ session setup and never changes.
 `0065` is emitted at the tail of every data routine, so a peer sees it after
 each exchange rather than only at session end.
 
-**LIKELY: the `0045` flag byte is a last-block marker.** It is 0 when the
+**CONFIRMED: the `0045` arg field is a last-block marker.** It is 0 when the
 frame comes from the automatic 128-byte flush (`ROM00:6187`) and 1 from the
-explicit end-of-transmission flush (`ROM00:61F9`). A capture of a transfer
-longer than 128 bytes would settle it: only the final `0045` frame should
-differ.
+explicit end-of-transmission flush (`ROM00:61F9`). Measured by uploading a
+200-byte record, which the 128-byte wire buffer segments into two frames:
+
+```text
+frame 0: arg=0  len=128
+frame 1: arg=1  len=83
+```
+
+**Frames carry no internal headers** — concatenating them reproduces the
+211-byte stream `[u8 8]"LONGFILE" 1Eh <200 bytes> 1Ch` byte for byte. So a
+peer reassembles a record stream by plain concatenation, and knows the
+transfer is complete when it sees `arg = 1`.
+
+Regressions: `test_multi_frame_transfer_marks_only_the_last_frame` and
+`test_multi_frame_stream_reassembles_by_concatenation`.
 
 #### State-45 object layout
 
