@@ -414,9 +414,11 @@ stateDiagram-v2
     BLKTX --> CONNECTED: C-END-TX
 ```
 
-Every state additionally accepts `C-DROP-LINE` back to `NOT-STARTED` and
-`C_ABORT` to `CRASHED`; `CRASHED` accepts only `C-DROP-LINE`. Those 26 edges
-are omitted above for legibility. `REPLY-START` and `REPLY-END` have no row
+`C-DROP-LINE` is legal from **all 14** states and returns to `NOT-STARTED`.
+`C_ABORT` reaches `CRASHED` from **states 1-12 only** — it is an illegal
+transition from `NOT-STARTED` (nothing to abort) and from `CRASHED` (already
+aborted), so `CRASHED` accepts only `C-DROP-LINE`. Those 26 edges are omitted
+above for legibility. `REPLY-START` and `REPLY-END` have no row
 in the matrix and are display-only.
 
 The shape is now explicit. A data upload is

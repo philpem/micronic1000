@@ -2389,3 +2389,37 @@ current priority order; the concise lists above are authoritative.
     C-TX-REPLY trio plus display-only REPLY-START/REPLY-END point at the
     command-reply exchange, but that is a reading of the table's shape, not
     a byte-level finding.
+  * **Adversarial self-review of the state-machine findings (2026-09-01):**
+    run in place of the cross-provider review AGENTS.md asks for, at the
+    owner's suggestion. Seven falsification attempts; two found real errors.
+    - *Table base/stride/polarity:* re-derived from raw bytes rather than
+      decompiler output. `LD DE,0011` (3C1A), multiply (3C1D), `ADD HL,DE`
+      (3C21), `LD DE,692A` (3C22), `ADD HL,DE` (3C25), `LD E,(HL)` (3C26)
+      with **no intervening `INC HL`** — base exactly `692A`, no off-by-one
+      of the kind that produced the 31F2/31F5 error. Bit-7 test at 3C35 is
+      followed by `JP NZ,3C44`, and 3C44 is the message-box path, so bit 7
+      set = illegal. SURVIVES.
+    - *Was `Lib_Mul16Mod16` a modulo, not a multiply?* If so the index would
+      be `state + command` and the whole reading collapses. Settled
+      structurally: column 4 (C-DROP-LINE) is `0x00` in every row at stride
+      17 and at no other stride tested. SURVIVES.
+    - *Extent 14 rows:* row 14 contains 15 cells decoding to states > 15 and
+      cannot be a state row. Row 15's bytes happen to look state-like
+      (0/4/5) but sit past a proven-invalid row. SURVIVES.
+    - *ERROR FOUND — "every state accepts C_ABORT":* false. `C-DROP-LINE` is
+      legal from all 14 states, but `C_ABORT` is legal only from states 1-12;
+      it is an **illegal** transition from `NOT-STARTED` and from `CRASHED`.
+      The published text also contradicted itself (it claimed both "every
+      state accepts C_ABORT" and "CRASHED accepts only C-DROP-LINE").
+      Corrected in the doc and the `692A` plate.
+    - *Command-index/name-table binding:* previously rested on the 17=17
+      count alone. Now corroborated independently — nine semantic predictions
+      taken from the NAME ORDER (e.g. READY-RX-DATA + C-RX-REC -> RECORD-RX)
+      all land on legal cells with exactly the predicted target, 9/9. And
+      `Session_ProgramReceiveMode` (`ROM00:4F5A`), named before this
+      analysis, issues command 10 = `C-RX-BLK`. STRENGTHENED.
+    - *Unreachable ready states:* exhaustive scan of rows 0-13 finds no legal
+      transition targeting states 4, 5 or 6. SURVIVES.
+    - *String-load containment:* no `RET` between the `CALL 452D` and the
+      display-string load in either checked routine (4E77->4EA3, 4F64->4F90),
+      so they are the same linear flow. SURVIVES.
