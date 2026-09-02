@@ -613,6 +613,63 @@ The offsets above are settled; what is still open is what the four blank
 identity fields carry when an operator does fill them in — see
 [RE notes: Open questions](../re-notes/open-questions.md#state-45-payload-structure).
 
+### Frame sequence numbers and duplicate suppression
+
+**CONFIRMED.** The link layer keeps **one sequence byte per peer**, in a
+64-entry table at `ram:FE43` initialised to `01` (`ROM00:317B`:
+`21 43 FE / 06 40 / 36 01 / 23 / 10 FB`). The index is the low six bits of
+the peer's link id:
+
+```text
+ROM00:3192  LD   A,(0FDD4h)    ; the peer link id
+ROM00:3196  AND  3Fh           ; low 6 bits -> 64 peers
+ROM00:3198  LD   L,A / LD H,0
+ROM00:319B  LD   DE,0FE43h / ADD HL,DE
+```
+
+with accessors get (`31A1`), set (`31A6`) and increment (`31AB`).
+
+Every received frame's sequence byte lands at `ram:FDE7`, and `ROM00:3084`
+decides what to do with it:
+
+```text
+3084  LD   A,(0FDE7h) / LD B,A   ; the sequence we were sent
+3088  CALL 31A1h                 ; the sequence we expected
+308B  CP   B
+308C  JR   Z,30A1h               ; match -> accept
+308E  LD   C,A
+308F  LD   A,(0FDCBh) / CP 2     ; link state 2?
+3094  JR   NZ,309Bh
+3096  LD   A,C / DEC A / CP B
+3099  JR   Z,30A4h               ; expected-1 -> a DUPLICATE, handled
+309B  LD   BC,01EFh / JP 3078h   ; anything else -> protocol error
+```
+
+So the rule is:
+
+| Received sequence | Result |
+|---|---|
+| equals expected | accepted normally |
+| equals **expected − 1**, and link state is 2 | treated as a **retransmission** |
+| anything else | **error `01EF`** |
+
+#### Why a host implementer must care
+
+The handheld retries a request up to 50 times and a reply up to 20
+([above](#what-a-host-can-do)). When a reply goes missing it **resends the
+same frame with the same sequence number**, and the `expected − 1` branch is
+what stops that being seen as new data. A host must therefore:
+
+* **echo sequence numbers rather than inventing them**, and
+* **be idempotent on a repeat** — receiving the same sequence twice means the
+  handheld did not see your answer, not that it has new data.
+
+Get this wrong and the failure is not a clean rejection: the frame takes the
+`01EF` error path, which is the same one a corrupt frame takes.
+
+`CommstarPeer` handles this today by echoing the sequence from the request it
+is answering, which is why it interoperates without ever modelling the table.
+
 ## Who starts a session
 
 **The handheld does, always.** This matters for anyone building a host: a
