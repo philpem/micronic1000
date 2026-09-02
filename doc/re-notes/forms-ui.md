@@ -175,6 +175,36 @@ dispatched through `InlineTableDispatch` at ROM01:1f96, whose inline table
   (after `Lib_CharTranslate`, ram:d8ce) against each entry key, returning
   the matched index — i.e. typing a letter selects a choice.
 
+### The counter-field dispatch (ROM01:1163)
+
+A second, smaller key dispatch sits at ROM01:1163, reached by `JP` from
+ROM01:10de with a keyboard-ring byte in `HL`. Its inline table (1166) maps:
+
+| case | handler | effect |
+|------|---------|--------|
+| 0x0d | 10e1 | returns 1 |
+| 0x14 | 10e5 | sets `ram:d463` = 1 |
+| 0xdb | 10ef | reads `ram:eb1a`, points `DE` at `ram:ec97` |
+| default | `FieldKeyDispatch_Unhandled` (115f) | returns 0 |
+
+The two tail stubs are adjacent and easy to confuse: `115b` is
+`LD HL,1 / RET` (handled) and `115f` is `LD HL,0 / RET` (not handled).
+
+`0xdb` is the raw counter-edit byte that advances a counter field, and
+`ec97` is the 30-byte backing object shared with the V24 Log-on form (Mode,
+Linespeed, User id, Password, Group id, Telephone). This is therefore the
+same path the V24 mode-1 emulator trace exercises when it changes the Mode
+field, reached from static analysis rather than from the trace — see
+[Commstar evidence](commstar-evidence.md).
+
+**OPEN:** the `0x14` handler and `ram:d463` are unidentified.
+
+> **Disassembly note.** `115f` had been decoded one byte late as an
+> undefined byte plus `NOP / NOP / RET`, because the dispatcher reaches its
+> handlers through `JP (HL)` and nothing referenced the true entry. See
+> [InlineTableDispatch](inline-dispatch.md#misaligned-handlers); the repair
+> is automated in `analysis/ghidra/DefineInlineTables.java`.
+
 ## Keyboard keymap
 
 `tbl_kbd_map` (ROM00:1b58) is three 36-byte pages selected by the modifier
@@ -200,5 +230,11 @@ Errors are rendered by `SessionStateBuild` (ROM00:4351) through
 qualifier + `(RCV1/RCV2)` status pair + message) is documented in
 [commstar — error/status screen format](../protocol/commstar.md) and
 summarised for operators in the [user guide](../manual/user-guide.md).
-The field names RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC come from the template
-`tbl_sess_status_fmt` at ROM00:7310.
+**Correction.** RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC are *not* field names
+from `tbl_sess_status_fmt`. That template is only `ROM00:7310..731A`
+(`"     ("`, `"/"`, `")"`). The names belong to a separate structure that
+begins where it ends: `ROM00:731B` is `tbl_sess_operations`, seven records of
+`{char name[5]; u8 target_state;}`, copied to `ram:E247` at boot. It is the
+table `C-COMMAND` indexes to choose an operation *and* the session state that
+operation enters — nothing reads it as display text. See
+[the protocol page](../protocol/commstar.md#how-states-4-5-and-6-are-entered).

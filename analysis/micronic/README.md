@@ -10,8 +10,44 @@ micronic/
   __init__.py   package exports
   rtc.py        HD146818 register model (RTC tick cadence)
   proto.py      raw external-link byte-latch scaffold
+  peer.py       protocol-aware Commstar peer (frames, sessions, downloads)
   program.py    COM/DIP image validator (CONFIRMED grammar)
 ```
+
+## peer.py — the Commstar host side
+
+`proto.py` is the byte pump; `peer.py` is the session above it. It is
+transport independent: feed it what the handheld transmitted and take back
+what to send, so the same object sits behind the emulator's latch model and
+behind a real IR adapter.
+
+```python
+from micronic.peer import CommstarPeer, ProgramDownloadPolicy
+
+policy = ProgramDownloadPolicy({"HELLO": image_bytes})
+peer = CommstarPeer(link_id=0x43, on_request=policy)
+peer.feed_tx(captured_bytes)
+for reply in peer.take_rx():
+    adapter.send(reply)
+```
+
+`ProgramDownloadPolicy` serves the host half of a program download: it reads
+the 54-byte command record out of the `0045` request, answers the command
+with `OK`, then hands the image over in blocks and marks the last one. Two
+constraints in it are load-bearing and both are byte-derived:
+
+* **`MAX_OBJECT_DATA = 126`.** The handheld's `0044` request advertises 128,
+  but its receive descriptor (`ROM00:620B` passes `86h`, body at `ram:E5C4`)
+  only holds 126. CONFIRMED by experiment: 126 completes a download, 127 is
+  dropped and the session aborts.
+* **marker 1 means "last".** `ROM00:3D59` turns it into the end-of-stream
+  flag, and `ROM00:3FEC` only compares a command reply against `OK`/`NO`/`DM`
+  on the status it produces — so a command answered with marker 0 reads as no
+  answer at all.
+
+`test_peer.py` covers all of this without an emulator;
+`CommstarProgramDownloadTest` and `CommstarCleanTeardownTest` in
+`test_boot_upload.py` drive it against the real firmware.
 
 ## rtc.py — the RTC / tick source
 

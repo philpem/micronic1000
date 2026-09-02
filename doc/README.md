@@ -12,26 +12,51 @@ reverse-engineering questions.
   boundary for portable COM applications.
 * [Programmer's guide](manual/programmer-guide.md) — write CP/M-style
   applications for DIPOS-B.
-* [BDOS reference](manual/bdos-reference.md) — supported CALL 0005h
-  functions and DIPOS-B extensions.
-* [Barcode reader](manual/barcode-reader.md) — scanner hook and RDR:
-  byte-stream API.
-* [Commstar protocol](protocol/commstar.md) — verified transport contract,
-  implementation readiness, and the remaining session-layer gaps.
+* [BDOS calls](reference/bdos.md) — standard CALL 0005h services.
+* [DIPOS-B extensions](reference/extensions.md) — device, storage, RTC, and timing.
+* [Barcode reader](reference/barcode.md) — scanner hook and RDR: byte-stream API.
+* [Program file formats](reference/program-formats.md) — COM and DIP grammars.
+* [Memory and I/O map](reference/memory-map.md) — banks, RAM, vectors, and ports.
+* [Commstar transport](protocol/commstar.md) — controller mechanics, the
+  session state machine, and the explicit blockers for a physical server.
+* [Commstar application API](reference/commstar-api.md) — the session entry
+  points a loaded COM or DIP program calls.
+* [Commstar peer library](reference/commstar-peer.md) — the host half of a
+  session, transport independent.
 
-The Commstar session and file-transfer format is not yet sufficiently
-decoded for an interoperable host implementation. The protocol document
-states exactly which layers are safe to implement and which require a trace
-or hardware capture.
+**Where Commstar stands.** Both directions now run end to end against real
+firmware in the emulator: a program download to the handheld, and a record
+upload from it. What blocks an interoperable *physical* host is the IR wire
+layer — modulation, byte framing and timing are uncaptured — plus a
+wire-visible equivalent of the receive arm the emulator peer reads out of
+RAM. The protocol document says which parts of the synthetic peer a physical
+server could reproduce and which it could not.
 
-## Reference and internals
+## Reference
 
-* [System architecture](internals/os-diposb.md)
-* [CP/M compatibility comparison](internals/cp-m-comparison.md)
-* [Memory map and RAM extension points](internals/memory-map.md)
-* [I/O map](internals/io-map.md)
-* [Interrupts and banked calls](internals/interrupts.md)
-* [RTC interface](internals/rtc.md)
+* [API and ABI reference](reference/README.md) — contracts with stability
+  terms (`Stable` / `Provisional` / `Not implementable`)
+* [Protocol reference](protocol/README.md) — Commstar transport
+* [Programmer manual](manual/README.md) — task-oriented guides
+
+## Reverse-engineering notes
+
+Implementation evidence lives in `re-notes/` — the full RE record with ROM
+addresses, trace bytes, and confidence tags:
+
+* [Method and evidence rules](re-notes/method.md)
+* [Commstar evidence and traces](re-notes/commstar-evidence.md)
+* [InlineTableDispatch tables](re-notes/inline-dispatch.md)
+* [Listing-repair script](re-notes/ghidra-repair-script.md)
+* [OS internals](re-notes/os-diposb.md)
+* [Forms and UI](re-notes/forms-ui.md)
+* [CP/M comparison](re-notes/cp-m-comparison.md)
+* [Interrupts](re-notes/interrupts.md)
+* [RTC](re-notes/rtc.md)
+* [Open questions](re-notes/open-questions.md) — single address for every `OPEN`
+
+Legacy paths under `internals/` and `manual/bdos-reference.md` etc. remain
+on disk and redirect to the new locations.
 
 ## Evidence labels
 
@@ -40,6 +65,9 @@ or hardware capture.
 | **CONFIRMED** | Directly established by firmware bytes, a trace, or an xref. |
 | **LIKELY** | Firmware evidence combined with a documented hardware fact. |
 | **SUSPECTED** | Plausible but unverified; the required confirming observation is stated. |
+
+Reference pages use **stability** terms (`Stable` / `Provisional` /
+`Not implementable`) and link to the RE notes for evidence.
 
 ## Research records
 
@@ -50,5 +78,5 @@ not reader-facing API specifications.
 ## Building the HTML site
 
 See `BUILD.md` in the source repository. The builder publishes this landing
-page plus the `manual/`, `protocol/`, and `internals/` trees; it intentionally
-excludes the research archive from site navigation.
+page plus the `manual/`, `protocol/`, `reference/`, and `re-notes/` trees;
+it intentionally excludes the research archive from site navigation.

@@ -30,6 +30,22 @@ scaffold is not sufficient to build an interoperable Commstar adapter:
   grammar.
 * `test_proto.py` covers the raw queue/latch API and the confirmed logical
   header checks.
+* `micronic.barcode` — the barcode/edge-capture side: a `Wand` model of
+  the port-2Dh level source, a Code 39 encoder and reference decoder, and
+  a **Code 39 decode hook written in Z80** for installation at the
+  firmware's `FBC2` hook vector (`decoder_source()` / `assemble_decoder()`),
+  plus a hook **probe** that records the machine state it is entered with.
+  Every width is in the unit the capture loop records; the module carries
+  the firmware limits it enforces (`MIN_WIDTH` 8, `MAX_WIDTH` 0x17FF,
+  `MAX_ELEMENTS` 128) with the instruction that imposes each.
+* `micronic.z80asm` — a small two-pass Z80 assembler, so payloads injected
+  into the emulator live in the repository as readable source rather than
+  hex blobs. It implements the subset those payloads use and raises
+  `AsmError` on anything else rather than emitting something wrong.
+* `test_barcode.py` covers the Code 39 table invariants, the codec, the
+  wand's off-by-one against a Python model of the capture loop, the
+  assembler, the Z80 decoder on a bare CPU, and — under
+  `MICRONIC_RUN_EMULATOR_TESTS=1` — the whole path through the real ROM.
 
 ## Emulator harnesses (Python `z80` module)
 
@@ -41,8 +57,9 @@ Requires the `z80` python module in `venv/`.
   keyboard injection (`--drive-serial`/`--serial`), LCD rendering
   (`--lcd`/`--no-lcd`/`--lcd-rate`), an expect DSL (`--expect`/
   `--expect-file`/`--expect-timeout`), multi-bank RAM (`--ram`/`--ram-size`,
-  `--dump-bank`), and snapshot dumps (`--dump-mem`/`--snapshot`). `--help`
-  prints full usage. Writes a full I/O trace to
+  `--dump-bank`), snapshot dumps (`--dump-mem`/`--snapshot`), and
+  execution/memory watches (`--watch-pc`, `--watch-mem`, `--fill-mem`).
+  `--help` prints full usage. Writes a full I/O trace to
   `/tmp/opencode/micronic_boot_io.txt`. Uses `micronic.rtc`.
 - **`comms_tx_test.py`** — directed verification of the TX path:
   seed the link state + FDEA `{count, ptr}` descriptor, call
@@ -65,7 +82,49 @@ Requires the `z80` python module in `venv/`.
 
 **Multi-bank RAM:** port `47h` (`BANK_SEL`, shadow `F791`) selects the 32K window `0000–7FFF`: `0=ROM0`, `1=ROM1`, `2..N=RAM pages` (32K each). Fixed RAM `8000–FFFF` is always present (32K). Totals: `128K=32K+3×32K (banks 2..4)`, `256K=32K+7×32K (banks 2..8)`, `512K=32K+15×32K (banks 2..16)`. Save/restore on `47h` write (only for installed banks). **Non-present banks read `0xFF` (open bus) and writes are discarded** — required for correct RAM sizing. The firmware walks banks `0x41..0x01` in `Boot_BankWalkInit` regardless of installed RAM; sizing is done by `contig_ram_map_test` (267A) and `ram_page_test_4banks` (2530), with `DelayCountUp` (271F) computing `FEAB = FEA9 * 0x20` (FEA9 = count of present pages) displayed as `Ram: NN K.B.` on the banner. With `--ram 256` the banner must show 256K (not 2016K = 63*0x20).
 
-**Options:** `--ram` / `--ram-size` (128|256|512), `--drive-serial` / `--serial TEXT`, `--max-slices N`, `--dump-bank N`, `--lcd` / `--no-lcd` / `--lcd-rate N`, `--expect SPEC` (repeatable), `--expect-file FILE`, `--expect-timeout N`, `--upload PATH` (drive real loader via `Program_LoadByName`/`Program_ConsumeInputChunk`/`Program_FinalizeInput` below Commstar — not a Commstar peer; `--upload-name NAME` defaults to the input basename, `--upload-bank N` defaults to 2, `--upload-max-bytes N` defaults to 65535, optional `--upload-marker ADDR:VAL`, `--upload-no-run` stops after finalize/state 3), `--trace-session-builder 4|5` (bounded synthetic builder trace; bypasses only the separate preflight), `--trace-session-transaction 4` (bounded harness: runs builder form 4 through the actual service-33/link IRQ path, bypassing only the already documented separate preflight as builder trace 4 does; payload/command semantics remain OPEN), `--trace-loadrun-source plinth|v24 --synthetic-loadrun FILE` (serves a validated COM/DIP file as raw state-44 program data after the confirmed control path; a 126-byte chunk is regression-tested but not a proven maximum), `--synthetic-workflow FILE` (manifest wrapper for the tested PLINTH image path; `run_after_load` invokes the real ROM run path while records, feedback, and safe removal remain adapter policy), optional `--synthetic-loadrun-finalize` (adapter policy: calls the real loader finalizer with success after the final payload; not a claimed Commstar EOF frame), and `--trace-loadrun-debug` (bounded diagnostics for a stalled state-44 reply), `-h`/`--help`.
+**Options:** `--ram` / `--ram-size` (128|256|512), `--drive-serial` / `--serial TEXT`, `--max-slices N`, `--dump-bank N`, `--lcd` / `--no-lcd` / `--lcd-rate N`, `--expect SPEC` (repeatable), `--expect-file FILE`, `--expect-timeout N`, `--upload PATH` (drive real loader via `Program_LoadByName`/`Program_ConsumeInputChunk`/`Program_FinalizeInput` below Commstar — not a Commstar peer; `--upload-name NAME` defaults to the input basename, `--upload-bank N` defaults to 2, `--upload-max-bytes N` defaults to 65535, optional `--upload-marker ADDR:VAL`, `--upload-no-run` stops after finalize/state 3), `--trace-session-builder 4|5` (bounded synthetic builder trace; bypasses only the separate preflight), `--trace-session-transaction 4` (bounded harness: runs builder form 4 through the actual service-33/link IRQ path, bypassing only the already documented separate preflight as builder trace 4 does; payload/command semantics remain OPEN), `--trace-loadrun-source plinth|v24 --trace-loadrun-v24-mode 0..3` (the V24 mode selector is an experimental trace control, not a V24 peer), `--synthetic-loadrun FILE` (serves a validated COM/DIP file as raw state-44 program data after the confirmed PLINTH control path; a 126-byte chunk is regression-tested but not a proven maximum), `--synthetic-workflow FILE` (manifest wrapper for the tested PLINTH image path; `run_after_load` invokes the real ROM run path while records, feedback, and safe removal remain adapter policy), optional `--synthetic-loadrun-finalize` (adapter policy: calls the real loader finalizer with success after the final payload; not a claimed Commstar EOF frame), and `--trace-loadrun-debug` (bounded diagnostics for a stalled state-44 reply), `-h`/`--help`.
+
+**Watching execution and memory:** three instruments, all usable together and all reported again at exit.
+
+- `--watch-pc A[,B,...]` — a real breakpoint at each hex address; prints the registers on each hit (first `WATCH_REPORT_LIMIT` = 4 hits per address) and the per-address totals at exit. Unlike sampling the PC between slices, it misses nothing.
+- `--watch-mem LO:HI[,...]` — every memory write landing in an **inclusive** hex range, reported with the address, the value, the PC, `SP` and the current bank. Note the asymmetry with `--dump-mem`, which takes `ADDR:LEN`. It hooks the CPU's write callback, so it sees `PUSH` and `LDIR` stores as well as `LD (nn),r`; host-side pokes (`host_write`) deliberately bypass it. The printed PC is the address of the instruction **after** the writing one (verified against a known `LD (nn),HL` and a `PUSH`). Printing stops at `--watch-mem-limit` per range (default 24) but counting does not, so a hot region cannot flood the log; the exit summary gives the write count, the distinct writing PCs with counts, and the lowest and highest address touched. Because stack pushes are ordinary writes, a range placed below a stack top measures how far that stack descends.
+- `--fill-mem LO:HI[,...]` — seed an inclusive range of fixed RAM once, at the point the destructive power-on RAM test would have finished (`ram_page_test_4banks`, ROM00:2530), which is the earliest point a marker can survive. The default pattern is address-derived, `mem[a] = (a ^ (a >> 8)) & 0xFF`, so neither a zero-fill nor a constant write can hide in it; `--fill-mem-value NN` substitutes a constant when you want to run a fill and its complement. At exit each range reports how many bytes still hold the marker and the lowest and highest that do not — the survival/low-water mark. Filling live cells (the port shadows at `F780`-`F799`, say) will break the run.
+
+Example — prove a span is untouched while measuring how deep the system stack really goes:
+
+```sh
+timeout 420 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
+    --expect "To Continue Press>>:\r" --expect "serial number:\r12345678\r" \
+    --expect "Main Menu:3" --expect "Version" \
+    --watch-mem f68d:f77f,ffa9:ffff --fill-mem f68d:f819
+```
+
+See `doc/re-notes/unbanked-ram-map.md` for the results this produced.
+
+**Barcode wand (`--barcode-*`):** a model of whatever the firmware reads on `EXTBUS_EDGE` (port `2Dh`) bit 0, so a scan can be driven end to end. Before this the harness returned a constant `FFh` for that port, the edge-detect loops at `ROM00:13CB`/`13ED` never saw a transition, and nothing on the capture path had ever executed.
+
+- **Width unit.** Widths are the numbers the firmware records. The capture loop starts each element at `HL=1` and pre-increments before every poll (`ROM00:13E5`/`13E8`), so an element held for *N* samples is pushed as *N+1*; the model holds each level for `width-1` samples so that what goes in on the command line is what lands in the table at `F9B5`. Limits, all byte-verified: minimum 8 (`ROM00:13FA` `SUB 8` / `JR C` restarts the whole capture below it), maximum 6143 (`ROM00:13EA` `CP D` with `D=18h` ends the capture — this is what the trailing quiet zone does), and at most 128 elements (`ROM00:140F` `CP 80h`, the point at which the reverse copy from `FBB3` downward would collide with the destination at `F9B5`).
+- **Only the capture loop draws samples.** The wand answers with the quiet line unless the PC is at one of the two `IN A,(2Dh)` sites inside the capture (`13CB` arming, `13ED` timing). The presence probe at `12A3` and the idle polls at `1302`/`1317`/`132E`/`1370` therefore cannot eat samples out of a scan and shift every recorded width.
+- `--barcode-widths W1,W2,...` feeds raw element widths, alternating bar, space, bar, … starting with a bar (the capture arms on the 0→1 edge, so element 0 is always the first dark bar). `--barcode-scan TEXT` encodes TEXT as Code 39 instead, with `--barcode-narrow`/`--barcode-wide` (default 12/30) and `--barcode-idle` for the leading quiet zone.
+- `--barcode-probe` installs a hook that records the registers, stack, bank shadow and parameter block it was entered with, then rejects the scan. `--barcode-decode` installs the Code 39 decoder; `--barcode-hook HEX` installs arbitrary bytes. `--barcode-hook-at` (default `9000`, free upper TPA) and `--barcode-hook-bank` (default 0) control where the `FBC0` thunk points.
+- `--barcode-bdos` reads the scan back the way a program would — `CALL 0005h` with `C=03h`, repeatedly. Without it the capture is driven directly (`DI`, `CALL 13B8`) and the run stops at `ROM00:30BD`, because the delivery tail jumps through the device callback at `FDD2` and never returns to its caller.
+
+Acceptance run — widths in, matching table out:
+
+```sh
+timeout 550 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
+    --max-slices 60000 --expect-timeout 45000 \
+    --expect "To Continue Press>>:\r" \
+    --expect "Enter the,Workstation:\r12345678\r" --expect "Main Menu" \
+    --barcode-scan A1 --barcode-probe --watch-mem f9b5:fbb4
+```
+
+Whole path — Code 39 hook installed, scan read back through BDOS `03h`:
+
+```sh
+    ... --barcode-scan A1 --barcode-decode --barcode-bdos --barcode-expect A1
+# [barcode] fn 03h returned 1b024131  b'\x1b\x02A1'
+```
 
 **Expect DSL:** `match:keys` — wait until `match` substrings appear in LCD text, then inject `keys` via the keyboard ring (paced exactly like the `16C9` HALT wait, `FBC9` bit2, `FFA8==1`). Multiple `--expect` steps run in order.
 
@@ -92,7 +151,7 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
   `micronic.program` (stdlib only, 35 tests). Run with
   `analysis/venv/bin/python3 analysis/test_program.py` or
   `python3 analysis/test_program.py` or `python3 -m unittest analysis.test_program`.
-- **`test_boot_upload.py`** — opt-in emulator integration (bounded, requires `z80`): `MICRONIC_RUN_EMULATOR_TESTS=1 analysis/venv/bin/python3 analysis/test_boot_upload.py` runs 5 tests — COM Hello World, one-block DIP Hello World, maximum-size `0xCF81` COM load/byte verification (checks bytes through `D080` and loader state 3), the bounded form-4 service-33/link IRQ transport transaction, and a synthetic PLINTH Load/Run DIP stream to the explicit EOF-policy boundary. The synthetic peer exercises confirmed control and raw payload paths; command grammar and EOF envelope remain compatibility assumptions. One emulator process at a time under `timeout`.
+- **`test_boot_upload.py`** — opt-in emulator integration (bounded, requires `z80`): `MICRONIC_RUN_EMULATOR_TESTS=1 analysis/venv/bin/python3 analysis/test_boot_upload.py` runs nine tests covering COM/DIP loading, maximum-size COM validation, the bounded form-4 service-33 transaction, single- and multi-chunk synthetic PLINTH streams, workflow manifest run behavior, V24 mode-counter editing, and a bounded mode-1 V24 loader trace. The synthetic peer exercises confirmed control and raw payload paths; command grammar and EOF envelope remain compatibility assumptions. One emulator process at a time under `timeout`.
 
 ## Decode scripts (static)
 
@@ -103,10 +162,30 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 - `watch_queue.py` — find the deferred-call queue consumer.
 - `hunt_rtc.py` — (historical) early RTC scan.
 
+## Ghidra scripts (`ghidra/`)
+
+- `AnalyseMicronicRom.java` — **the one to run.** Consolidated,
+  self-contained, idempotent listing repair, in seven ordered passes:
+  reconstructs the battery-RAM image (pass 0, absorbed from
+  `FillBatteryRam.java`), clears the wrong no-return flag on the `ram:D837`
+  frame helper, types both banks' boot-load chains and links their
+  deferred-call targets, types `RST 10h` inline operands, defines the
+  `InlineTableDispatch` tables, creates functions at every compiler frame
+  prologue, and links all 281 runtime stub slots to the routines they stand
+  for. No arguments. Documented in `doc/re-notes/ghidra-repair-script.md`.
+- `DefineInlineTables.java` — the standalone version of just the
+  `InlineTableDispatch` pass (see `doc/re-notes/inline-dispatch.md`).
+
 ## Other
 
 - `BootTrace.java`, `BootTrace.pending.java` — Ghidra-side boot
   trace experiments.
 - `micronic/README.md` — full reusable-model documentation.
-- `../ghidra_scripts/FillBatteryRam.java` — loads the session modules
-  into Ghidra RAM for static analysis.
+- `~/ghidra_scripts/FillBatteryRam.java` — the standalone battery-RAM
+  loader. **Folded into `ghidra/AnalyseMicronicRom.java` as pass 0**, with
+  two corrections: the `ram:E104` copy length (`0129h` from the chain
+  record, not the hardcoded `0130h`, which over-ran into `ram:E22D`), and a
+  much tighter phantom-function predicate — the original deleted every
+  `ram` function at or above `F100`, which on the current database would
+  destroy the whole resident kernel. Prefer the consolidated script; the
+  standalone copy is kept for reference.

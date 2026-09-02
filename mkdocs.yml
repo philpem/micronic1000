@@ -27,6 +27,22 @@ theme:
         name: Switch to light mode
 plugins:
   - search
+  - redirects:
+      redirect_maps:
+        'manual/bdos-reference.md': 'reference/bdos.md'
+        'manual/barcode-reader.md': 'reference/barcode.md'
+        'manual/program-formats.md': 'reference/program-formats.md'
+        'internals/memory-map.md': 'reference/memory-map.md'
+        'reference/memory-io.md': 'reference/memory-map.md'
+        'internals/io-map.md': 'reference/memory-map.md'
+        'internals/os-diposb.md': 're-notes/os-diposb.md'
+        'internals/forms-ui.md': 're-notes/forms-ui.md'
+        'internals/cp-m-comparison.md': 're-notes/cp-m-comparison.md'
+        'internals/interrupts.md': 're-notes/interrupts.md'
+        'internals/rtc.md': 're-notes/rtc.md'
+validation:
+  links:
+    anchors: warn
 extra_javascript:
   # Custom fences below provide the DOM shape expected by these renderers.
   # Keep this order: WaveDrom's default skin creates window.WaveSkin.
@@ -61,19 +77,30 @@ nav:
       - User guide: manual/user-guide.md
       - Supported application profile: manual/supported-profile.md
       - Programmer guide: manual/programmer-guide.md
-      - BDOS reference: manual/bdos-reference.md
       - Devices and storage: manual/devices-and-storage.md
-      - Barcode reader: manual/barcode-reader.md
-      - Program formats: manual/program-formats.md
-  - Protocol:
+  - API and ABI reference:
+      - reference/README.md
+      - BDOS calls: reference/bdos.md
+      - DIPOS-B extensions: reference/extensions.md
+      - Barcode reader: reference/barcode.md
+      - Program file formats: reference/program-formats.md
+      - Commstar application API: reference/commstar-api.md
+      - Commstar peer library: reference/commstar-peer.md
+      - Memory and I/O map: reference/memory-map.md
+  - Protocol reference:
       - protocol/README.md
-      - Commstar: protocol/commstar.md
-  - OS and hardware internals:
-      - internals/README.md
-      - Memory map: internals/memory-map.md
-      - I/O map: internals/io-map.md
-      - Interrupts: internals/interrupts.md
-      - DIPOS-B OS: internals/os-diposb.md
-      - Forms and UI: internals/forms-ui.md
-      - CP/M comparison: internals/cp-m-comparison.md
-      - RTC: internals/rtc.md
+      - Commstar transport: protocol/commstar.md
+  - Reverse-engineering notes:
+      - re-notes/README.md
+      - Method and evidence rules: re-notes/method.md
+      - Commstar evidence and traces: re-notes/commstar-evidence.md
+      - InlineTableDispatch tables: re-notes/inline-dispatch.md
+      - Listing-repair script: re-notes/ghidra-repair-script.md
+      - OS internals: re-notes/os-diposb.md
+      - Forms and UI: re-notes/forms-ui.md
+      - CP/M comparison: re-notes/cp-m-comparison.md
+      - Interrupts: re-notes/interrupts.md
+      - Unbanked RAM map: re-notes/unbanked-ram-map.md
+      - Barcode capture: re-notes/barcode-capture.md
+      - RTC: re-notes/rtc.md
+      - Open questions: re-notes/open-questions.md

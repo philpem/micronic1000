@@ -2,19 +2,19 @@
 
 This page states the portion of DIPOS-B that an application can use from the
 current evidence. It is deliberately narrower than the firmware's full
-surface. Every claim is either **CONFIRMED** or explicitly limited below.
+surface. Every claim below is **Stable** unless explicitly limited.
 
 ## Target environment
 
-* **CONFIRMED:** CPU code is Z80 code. A program enters through the CP/M-style
+* **Stable:** CPU code is Z80 code. A program enters through the CP/M-style
   `CALL 0005h` gate with its function number in `C`.
-* **CONFIRMED:** a raw COM image loads at `0100h` and may occupy through
+* **Stable:** a raw COM image loads at `0100h` and may occupy through
   `D080h`, a maximum of `0xCF81` bytes (53,121 bytes). See
-  [Program formats](program-formats.md).
-* **CONFIRMED:** the `0000h-7FFFh` window is banked; `8000h-FFFFh` is fixed
+  [Program formats](../reference/program-formats.md).
+* **Stable:** the `0000h-7FFFh` window is banked; `8000h-FFFFh` is fixed
   battery-backed RAM. Do not assume a bank selection survives a call unless
   its routine-level contract says so.
-* **CONFIRMED:** `RST 10h` (restart vector 2) is DIPOS-B's banked-call
+* **Stable:** `RST 10h` (restart vector 2) is DIPOS-B's banked-call
   dispatcher. It is an advanced system mechanism, not part of the portable
   COM application profile.
 
@@ -22,11 +22,11 @@ surface. Every claim is either **CONFIRMED** or explicitly limited below.
 
 The following operations are appropriate starting points for a conventional
 CP/M-style application, subject to the ABI qualification in the
-[BDOS reference](bdos-reference.md): console input/output, strings and line
+[BDOS reference](../reference/bdos.md): console input/output, strings and line
 input (functions 01h, 02h, 06h, 09h, 0Ah and 0Bh), standard FCB file
 operations (0Fh-17h and 21h-24h), and drive selection (0Eh and 19h).
 
-**CONFIRMED behaviour; ABI incomplete:** these services are implemented, but
+**Provisional — implemented, ABI incomplete:** these services work, but
 the current manual does not yet publish a complete per-function register,
 flag, blocking, and error contract. Treat returned registers other than a
 documented value as volatile, and do not turn this list into an ABI guarantee.
@@ -54,7 +54,7 @@ documented value as volatile, and do not turn this list into an ABI guarantee.
 ## Packaging and deployment
 
 COM and DIP grammars are byte-verified in
-[Program formats](program-formats.md). The runtime loader's physical input
+[Program formats](../reference/program-formats.md). The runtime loader's physical input
 provider has not been identified, so this repository cannot yet give a
 hardware-independent transfer recipe. A generated image can be checked against
 the documented grammar and size limits, but loading it onto a real device still
@@ -62,7 +62,7 @@ requires an owner-provided route or a future capture-backed workflow.
 
 ## Reading the references
 
-Use the [BDOS reference](bdos-reference.md) for service classification, then
+Use the [BDOS reference](../reference/bdos.md) for service classification, then
 the [programmer's guide](programmer-guide.md) for CP/M deviations and FCB
 context. Evidence pages explain why a claim is believed; they are not a
 substitute for a published callable ABI.

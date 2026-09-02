@@ -7,6 +7,7 @@ __pycache__
 # emulator scratch output
 expect.json
 analysis/ram_bank_*.bin
+analysis/battery_ram.bin
 
 # local scratch / backups
 opencode.json.old

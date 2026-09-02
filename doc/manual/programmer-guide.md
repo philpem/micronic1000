@@ -10,7 +10,7 @@ programming for the Micronic's DIPOS-B operating system.
 
 It describes DIPOS-B's CP/M-shaped entry convention and the supported subset.
 Use it with the [supported profile](supported-profile.md) and
-[BDOS reference](bdos-reference.md); it does not re-teach CP/M.
+ [BDOS reference](../reference/bdos.md); it does not re-teach CP/M.
 
 ### CP/M reference manuals
 
@@ -21,8 +21,8 @@ documentation overrides them where they differ:
 - [CP/M Assembly Language Programming](https://bitsavers.org/pdf/digitalResearch/cpm/CPM_Assembly_Language_Programming_1983.pdf)
 - [CP/M Operating System Manual](http://www.gaby.de/cpm/manuals/archive/cpm22htm/)
 
-Where this guide, the [BDOS reference](bdos-reference.md), or
-[CP/M comparison](../internals/cp-m-comparison.md) states a DIPOS-B
+Where this guide, the [BDOS reference](../reference/bdos.md), or
+[CP/M comparison](../re-notes/cp-m-comparison.md) states a DIPOS-B
 deviation (version `0023h`, 16 drives, device-routed console, RAM
 disks, wrapped `F3h-FFh` table, `F5h`/`FCh-FDh`/`FFh` extensions), that
 DIPOS-B contract is authoritative.
@@ -104,7 +104,7 @@ letter is a **user-visible selector**, not a hardware-unit number. See
   return 0xFF (error).
 - **Function 19h (get current disk)**: returns the currently selected
   drive number in `A` (not `HL`) as the BDOS result; flags are not meaningful
-  through `CALL 0005h` (see [BDOS reference](bdos-reference.md)).
+  through `CALL 0005h` (see [BDOS reference](../reference/bdos.md)).
 - **Function 18h (get login vector)**: **not really implemented** —
   returns a stub.
 
@@ -120,7 +120,7 @@ byte is interpreted by DIPOS-B as follows:
   device.
 
 The 8.3 name path accepts uppercase characters and `?` wildcards for search.
-See the [BDOS reference](bdos-reference.md) for the verified normalization and
+See the [BDOS reference](../reference/bdos.md) for the verified normalization and
 mutation behavior rather than assuming every stock CP/M edge case.
 
 ### File operations that work
@@ -142,7 +142,7 @@ The standard FCB/directory/record functions are implemented:
 | 24h | set random record (table end) |
 
 Records are 128 bytes; a block is 32 records (4096 bytes), matching CP/M.
-Use the [BDOS reference](bdos-reference.md) for the verified field behavior:
+Use the [BDOS reference](../reference/bdos.md) for the verified field behavior:
 in particular, random read/write interpret only offsets `+21h` and `+22h`,
 not the high random-record byte at `+23h`.
 
@@ -158,7 +158,7 @@ not the high random-record byte at `+23h`.
 
 **1Ah is not a stub:** `BdosSetDmaAddress` stores `DE` as the DMA pointer for
 record I/O — it is a real state mutation, but downstream record-I/O ABI
-remains incomplete (see [BDOS reference](bdos-reference.md)). There is no
+remains incomplete (see [BDOS reference](../reference/bdos.md)). There is no
 DPB/allocation-vector scheme to query because the "disks" are fixed-size RAM
 partitions. **Do not rely on functions 0Dh, 1Bh-1Fh for portable behaviour.**
 The high-level file calls (open, read, write, close, search, rename) plus
@@ -197,7 +197,7 @@ decode-hook default at ROM00:1567 zeroes the element count); a
 program installs its own decoder at the hook socket **FBC2** (bank byte
 FBC1, `D7` RST-10 stub at FBC0), which the capture tail (ROM00:1458)
 calls after each capture with `FBB9`/`FBBB` = width-table ptr/count.
-See [the barcode-reader guide](barcode-reader.md) for the install recipe.
+See [the barcode-reader guide](../reference/barcode.md) for the install recipe.
 
 **Important:** `console output` (02h), `console input` (01h) and
 `direct console I/O` (06h) **route through the active device**,
@@ -223,7 +223,7 @@ library — the shell draws it on the same console device your program uses
 **8000-series `*** ERROR ***` banner** (e.g. `8000` Plinth not connected)
 is the shell/session layer's *own* error display and is unrelated to your
 program's BDOS return codes. See the [user guide](user-guide.md) (operator
-view) and [forms and UI](../internals/forms-ui.md) (internals).
+view) and [forms and UI](../re-notes/forms-ui.md) (internals).
 
 ---
 
@@ -256,10 +256,10 @@ only calls allowed by the supported profile should be used by applications:
 | 0xF9 | **set device pair** | select a device pair for a link slot |
 | 0xFA | **write link config** | write a 16-byte buffer into the FE83 IR/link config |
 | 0xFB | **write storage config** | write a 16-byte buffer into the FE93 storage (drive) config |
-| 0xFC | **set RTC time** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record)) | write RTC regs `09/08/07/04/02/00/06` from `+1..+7`; `+0` metadata copied/RTC ignored (LIKELY century `19`) |
-| 0xFD | **get RTC time** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record)) | read RTC into `+1..+7`; `+0` from `g_bRtcRecordMetadata` (`13h`, LIKELY `19`); polls `UIP` |
+| 0xFC | **set RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | write RTC regs `09/08/07/04/02/00/06` from `+1..+7`; `+0` metadata copied/RTC ignored (provisional: century `19`) |
+| 0xFD | **get RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | read RTC into `+1..+7`; `+0` from `g_bRtcRecordMetadata` (`13h`, provisional `19`); polls `UIP` |
 | 0xFE | **`Bdos_InternalTimedWait`** (`ROM00:1122`) internal timed wait | `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`, `FD4D` HALT wait; resident only |
-| 0xFF | **RTC alarm control** ([8-byte record](../internals/rtc.md#bdos-eight-byte-rtc-record), `BdosFfAlarmControl`) | `DE=0` clears `AIE` else `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; UIP blocks both |
+| 0xFF | **RTC alarm control** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record), `BdosFfAlarmControl`) | `DE=0` clears `AIE` else `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; UIP blocks both |
 
 (0xF3 = no-op; 0xF4 enters the mutable, unsafe RST-28 path.)
 
@@ -284,9 +284,9 @@ jumps through garbage — do not probe for extensions by calling them.**
 The clock is an **HD146818** accessed through ports (address latch
 08h, data 28h). You do not need to touch the chip directly — use the
 BDOS extension functions. Canonical 8-byte layout is
-[BDOS eight-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record):
+[BDOS eight-byte RTC record](../re-notes/rtc.md#bdos-eight-byte-rtc-record):
 `+0` metadata (FC copied/RTC ignored, FD from `g_bRtcRecordMetadata`
-`13h` LIKELY century `19`, FF copied unused), `+1` year→`09h`,
+`13h` provisional century `19`, FF copied unused), `+1` year→`09h`,
 `+2` month→`08h`, `+3` day-of-month→`07h`, `+4` hour→`04h`,
 `+5` minute→`02h`, `+6` second→`00h`, `+7` day-of-week→`06h`;
 raw binary, 24-hour (Reg B `46h`), no firmware validation.
@@ -398,7 +398,7 @@ block-structured **DIP** program format ("DIP files"), plus a
 `ram:D081 -> ram:D0F0`); it is distinct from the ROM boot-load chain
 (`ram:D6DB` / `ram:D6F4` `fn=0/1/2/FFFF`), which is boot-only.
 
-### DIP file grammar (CONFIRMED)
+### DIP file grammar (stable)
 
 A DIP file begins with a **14-byte header** (little-endian):
 
@@ -421,7 +421,7 @@ each header expands to a **10-byte
 reports `0x2332` (9010), **"Program corrupt."** (loaded memory changed, not a file
 checksum).
 
-Loader entry points (CONFIRMED):
+Loader entry points (stable):
 `Program_PrepareLoadGeometry` (`0A67`), `Program_LoadByName` (`0B82`),
 `Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
 `Program_RunByName` (`106F`), `Program_NormalizeLoadRange` (`0AE3`),
@@ -431,7 +431,7 @@ around `0C12`/`0CE7` and `ram:D370`; the exact physical source-reader is
 **not** identified — BDOS `open`/`read`/`search` are generic FCB services,
 there is no BDOS execute function.
 
-Fallback to COM (CONFIRMED): if the first chunk is **<14 bytes** or its
+Fallback to COM (stable): if the first chunk is **<14 bytes** or its
 first word **`!= 0xC8C9`**, the loader treats input as **raw COM**, copies
 to `0x0100`, run-bank `0`, entry `0x0100`. The exclusive load ceiling is
 `0xD081`, the start of resident module B, so the maximum COM length is
@@ -446,9 +446,9 @@ many following block header/payload pairs are loaded and later checksum-
 verified; the fixed runtime descriptor array permits at most five.
 
 > Full byte-level spec, error catalogue and boot-chain distinction: see
-> [Program formats: COM and DIP](program-formats.md). The DIP header,
-> block grammar and 8→10-byte expansion are CONFIRMED there; `ram:ECDA`
-> as the maximum available entry-bank offset is **LIKELY** only.
+> [Program formats: COM and DIP](../reference/program-formats.md). The DIP header,
+> block grammar and 8→10-byte expansion are stable there; `ram:ECDA`
+> as the maximum available entry-bank offset is **provisional** only.
 
 A stored `.COM`, in contrast, is the ordinary CP/M single-image file
 loaded at 0100h; the loader validates it (`COM file too big`,
@@ -490,7 +490,7 @@ This guide is based on static analysis of the `micron1.bin` ROM
 - The device/link layer (drive letters → FE83/FE93 config, IR link,
   session ring) in [the Commstar protocol](../protocol/commstar.md).
 - Memory map (battery RAM layout, system variables) in
-  [the memory map](../internals/memory-map.md).
+  [the memory map](../reference/memory-map.md).
 
 All `Bdos*` handlers are named and commented in the Ghidra program.
 
@@ -505,8 +505,8 @@ extensions (especially the unsafe global state in `F6h-FBh` and the
 will run on DIPOS-B with the **caveats** that `19h` returns `A` not
 `HL`, drive `C:`+ is by default a link device but the `FE93` mapping
 is configurable, and `FCh`/`FDh` use the
-[8-byte RTC record](../internals/rtc.md#bdos-eight-byte-rtc-record)
-(`+0` metadata LIKELY century `19`, exact OPEN). The remaining
+[8-byte RTC record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)
+(`+0` metadata provisional century `19`, exact value open). The remaining
 differences (`FCh`/`FDh` clock, `FEh` `Bdos_InternalTimedWait`, `FFh`
 `BdosFfAlarmControl` with `UIP` polling, IR-link and device selection)
 are extra DIPOS-B extensions that a stock CP/M program would not have
