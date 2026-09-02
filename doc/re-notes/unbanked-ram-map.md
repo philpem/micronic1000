@@ -40,6 +40,14 @@ every region of `8000`-`FFFF`, what lives there, and how we know.
    harness skips the destructive RAM test, so a region reading zero in
    its dumps really was never written during the run — unlike
    `analysis/battery_ram.bin`, below.
+6. **Emulator write watch.** `analysis/boot_hw.py --watch-mem LO:HI`
+   hooks the CPU's write callback, so it reports every store the Z80
+   makes into a range — `PUSH` and `LDIR` included — with the writing
+   PC, and `--fill-mem LO:HI` seeds a range with an address-derived
+   marker and reports what survived. Unlike a snapshot, these catch a
+   write that was undone before you looked. The two remaining
+   unidentified spans were closed with them; see "the two spans that
+   stayed empty".
 
 !!! warning "`analysis/battery_ram.bin` is not a hardware dump"
     It is a **dump of the Ghidra `ram` block after
@@ -80,8 +88,8 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `E705`-`EC6C` | 1384 | Workstation/session state, zeroed at boot: `EC00` `workstation_state_page`, `EC41` `g_wEventWord`, `EC49` `g_pScreenDesc`, plus `E720`-`EBFB` link/session cells | CONFIRMED | boot chain `ROM01:7E1D`: memset `E705..EC6C` |
 | `EC6D`-`ED1B` | 175 | **Not written by any boot chain, but live at runtime**: `EC71` `g_acRequestedProgramName`, `EC97`/`EC98` logon indices, `EC99`/`ECA2`/`ECAB`/`ECB4` logon user/password/group/phone, `ECC9` `g_wProgramLoadState`, `ECCB` `g_acLoadedProgramName`, `ECD8`/`ECDA` program bank base/limit, `ECDC` program header, `ECEA` block descriptors | CONFIRMED | reads/writes from `ROM01:0A1D`, `0D54`, `0F90`, `0E05` and the `C-INIT-COMMS` string arguments |
 | `ED1C`-`F17F` | 1124 | Deferred-call / far-call stub arena: 281 × 4-byte `{RST10h, bank, target}` stubs, also used as UI vtable targets | CONFIRMED | fn=2 chain records in both banks; see [OS internals](os-diposb.md#queue-purpose-the-fn2-records) |
-| `F180`-`F68C` | 1293 | Resident kernel (BDOS gate, syscall envelopes, RST/NMI stubs, bank helpers) | CONFIRMED | `InstallKernelToRam` `ROM00:02FE`: `ROM00:369D → F180`, `0x50D` |
-| `F68D`-`F77F` | 243 | **Unclaimed tail of the kernel arena.** No reference of any kind from either ROM or any RAM module; not filled, walked or `PUSH`ed into by anything found. `F180`+`0x600` = `F780`, so the arena reserved for the resident kernel is a round 1536 bytes and the current `0x50D`-byte image leaves these 243 spare. Also the last 243 bytes the system stack would reach if it blew past the port shadows. | LIKELY (spare arena) / OPEN (any use) | see "the two spans still open" below |
+| `F180`-`F68C` | 1293 | Resident kernel (BDOS gate, syscall envelopes, RST/NMI stubs, bank helpers) | CONFIRMED | `InstallKernelToRam` `ROM00:02FE`: `ROM00:369D → F180`. The copy loop is bounded by the *address* `F68D` (`ROM00:0308` `01 8D F6`), not by a length; `0x50D` is `F68D - F180`. A second entry at `ROM00:0318` loads a different, `0xB5`-byte bank-helper image from `ROM00:35E8` to the same base — see "the two spans that stayed empty". |
+| `F68D`-`F77F` | 243 | **Dead gap between the top of the resident kernel image and the port shadows.** No reference of any kind from either ROM or any RAM module, and no write from any of the five workloads driven under the emulator. It is *not* spare room in a round 1536-byte arena — that reading is **disproven** below. It is *not* stack headroom in practice either: the system stack's measured low-water mark is `F7EA`, 107 bytes above `F77F`. | CONFIRMED (unwritten across every driven workload) / OPEN (any use outside them) | `--watch-mem f68d:f77f` = 0 writes in all five runs; `--fill-mem f68d:f819` leaves everything below `F7EA` intact; see "the two spans that stayed empty" below |
 | `F780`-`F799` | 26 | I/O port shadows: `F780` p02, `F782` p02-cfg, `F784` p04, `F786` p07, `F78B` p2A, `F78D` p2C, `F791` `g_bBankShadowP47`, `F794` `g_bLinkCtrlShadow` | CONFIRMED | named, heavily read/written |
 | `F79A`-`F819` | 128 | **System stack**, grows down from `F81A` | CONFIRMED | `31 1A F8` = `LD SP,F81A` at `ROM00:0175`, `01A6`, `01D4`, `024D`; 54 call-pushes recorded at `ram:F818` |
 | `F81A`-`F8B7` | 158 | System variables: `F81C` `g_bWarmbootSig`, `F81D` `g_bBootmodeFlag`, `F81E`-`F82F`, `F8AE`-`F8B6` RAM-disk geometry (`F8B0`=`0100`, `F8B6`=`8000`, set at `ROM00:05A1`) | CONFIRMED | `ROM00:05A1`-`05BB` |
@@ -107,7 +115,7 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FFA3`-`FFA4` | 2 | DMA / transfer address (CP/M-style) | CONFIRMED | `ram:F510`, `F523`, `F535`, `F543` all `LD HL,(FFA3)` |
 | `FFA5`-`FFA7` | 3 | Current FCB pointer (+1 spare byte) | CONFIRMED | `ram:F4EC` `LD (FFA5),HL`, `F501`/`F508` read it |
 | `FFA8` | 1 | Interrupt-enable shadow, tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` `LD A,(FFA8); OR A; JP Z,…; EI` |
-| `FFA9`-`FFFF` | 87 | **Unclaimed remainder above the BDOS variable block** — top of RAM. No reference of any kind; every `FFxx` literal in either ROM that survives an alignment check is a small negative constant (`-1`, `-4`, `-5`, `-8`, `-10`, `-20`, `-24`, `-32`, `-48`) feeding an `ADD HL,rr` subtraction, not an address. | LIKELY (unclaimed) / OPEN (any use) | see "the two spans still open" below |
+| `FFA9`-`FFFF` | 87 | **Unclaimed remainder above the BDOS variable block** — top of RAM. No reference of any kind; every `FFxx` literal in either ROM that survives an alignment check is a small negative constant (`-1`, `-4`, `-5`, `-8`, `-10`, `-20`, `-24`, `-32`, `-48`) feeding an `ADD HL,rr` subtraction, not an address. Nothing writes it, **including a BDOS file workload that wrote 6,391 times into the bounce buffers immediately below without once crossing the boundary.** | CONFIRMED (unwritten across every driven workload, incl. the disk path) / OPEN (any use outside them) | `--watch-mem ffa9:ffff` = 0 writes in all five runs; see "the two spans that stayed empty" below |
 
 ### The two spans that turned out to be structure tails
 
@@ -201,10 +209,11 @@ for months — so the row is a straight import, not a new finding. What is
 new here is only the **extent**: the table is 64 bytes wide, so `FE43`
 and `FE44` belong to it and not to the link-state block below.
 
-### The two spans still open
+### The two spans that stayed empty
 
-`F68D`-`F77F` and `FFA9`-`FFFF` survived the same treatment and stayed
-empty. What was ruled out, and how:
+`F68D`-`F77F` and `FFA9`-`FFFF` survived the static treatment and stayed
+empty, and a write watch over five driven workloads has now failed to
+find a single write into either. What was ruled out statically, and how:
 
 * **No static reference of any kind.** A raw-opcode scan of both full
   ROM images and all five RAM-resident modules for every 16-bit-operand
@@ -236,35 +245,186 @@ empty. What was ruled out, and how:
   `FF7F` with `BC = 24h`, last byte `FFA2`; `ram:F510`/`F523` walk
   `FEFF` with `BC = 80h`, last byte `FF7E`. Both stop exactly where this
   page says they do.
-* **Empirically untouched.** Under `analysis/boot_hw.py` (which skips
-  the destructive RAM test, so zero means "nothing wrote here"), both
-  spans read all-zero at every snapshot of a boot to the Main Menu
-  *and* of a synthetic Load/Run that loads and runs a COM image:
-  `--dump-mem f68d:243 --dump-mem ffa9:87`.
+* **Empirically untouched at every snapshot.** Under
+  `analysis/boot_hw.py` (which skips the destructive RAM test, so zero
+  means "nothing wrote here"), both spans read all-zero at every
+  `--dump-mem f68d:243 --dump-mem ffa9:87` of a boot to the Main Menu and
+  of a synthetic Load/Run.
 
-What that leaves. For `F68D`-`F77F`, the arithmetic is the strongest
-hint: `F180 + 0x600 = F780`, so the kernel's arena is a round 1536 bytes
-and the `0x50D`-byte image leaves 243 spare — and `ROM00:0318`
-`11 80 F1 / 21 E8 35 / 01 35 F2 / 18 E8` is a *second, shorter* install
-that re-enters the same copy loop at `030B` with a terminator of
-`F235`, copying only `F180`-`F234`. Two different images, one arena:
-direct evidence that the arena is sized larger than whichever image goes
-into it. The image
-itself ends on a real `RET` at `F68C` (`ROM00:3BA9` `C9`) with no
-trailing buffer. For `FFA9`-`FFFF`, 87 bytes is simply what is left
-between the last BDOS variable and the top of memory; 87 = 3 × 29
-matches no stride anywhere nearby.
+#### What the write watch showed
 
-**Next experiment for both** (the pattern-fill recipe below, sharpened):
-fill `F68D`-`F799` — deliberately including the port shadows — with an
-address-derived pattern, drive a full session, and read back the
-low-water mark. That answers the only question that matters for
-`F68D`-`F77F`: whether the system stack, which has just 128 bytes of
-headroom below `F81A`, ever descends past `F79A` in normal use. For
-`FFA9`-`FFFF`, fill it and run a **disk-heavy** workflow (directory
-enumeration plus several file writes, which is the path that exercises
-`ram:F4EB`-`F54D` hardest) rather than the Commstar path, since its only
-plausible claimant is a BDOS bounce-buffer off-by-one.
+Snapshots only prove a span is zero *when you look*. `boot_hw.py` now has
+`--watch-mem LO:HI` (see `analysis/README.md`), which hooks the CPU's
+write callback and so sees every store the Z80 makes into a range —
+`PUSH` and `LDIR` included — with the address, the value, `SP`, the bank
+and the PC of the writing instruction. Five workloads were run with both
+spans watched and with `--fill-mem f68d:f819` seeding the gap, the port
+shadows and the whole system stack with an address-derived marker:
+
+| | Workload | Driven by | `F68D`-`F77F` | `FFA9`-`FFFF` | stack low-water |
+|---|---|---|---:|---:|---|
+| A | Cold boot → Main Menu → Display Status | `--expect` steps through the banner, the serial prompt, menu key `3` | **0** | **0** | `F7EA` |
+| B | Load/Run program download over PLINTH | `--trace-loadrun-source plinth --synthetic-loadrun … --synthetic-loadrun-finalize` | **0** | **0** | `F7EA` |
+| C | Commstar record upload, handheld → host | `--commstar-peer --upload` with the `CommstarRecordUploadTest` driver (C-INIT-COMMS → C-DIAL → C-BEGIN-FILE → C-TX-REC → C-END-FILE → C-END-TX); the 51-byte record reached the peer | **0** | **0** | `F7EA` |
+| D | Commstar program download, host → handheld | `--commstar-peer --commstar-serve-program` with the `CommstarProgramDownloadTest` driver; 300 bytes in four blocks, screen reached "Program received" | **0** | **0** | `F7EA` |
+| E | **BDOS file/disk workload** | a purpose-built COM issuing ~70 BDOS file calls (below) | **0** | **0** | `F7EA` |
+
+The instrument is not silently dead. On the same boot, a control watch on
+the port shadows `F780`-`F799` reported **61,923 writes from 33 distinct
+PCs**; and the write callback demonstrably fires on stack pushes (a
+three-instruction probe — `LD (nn),HL`, `PUSH HL`, `LD (nn),A` — reports
+all five bytes), which is what makes a watch below a stack top a valid
+stack-depth measurement.
+
+**Workload E is the one this page asked for.** The COM does: reset disk
+(fn `0D`), select drive A: (`0E`), set the DMA address to `0300` — inside
+the *banked* window, which forces the `FEFF` bounce path at `ram:F510` —
+search-first (`11`) and twelve search-nexts (`12`) over a wildcard FCB,
+delete (`13`), make (`16`), sixteen write-sequentials (`15`), close
+(`10`), open (`0F`), sixteen read-sequentials (`14`), set-random-record
+(`24`), write-random (`22`), read-random (`21`), file-size (`23`), close,
+then DMA to `8100` — *unbanked*, the no-bounce path — search-first and
+eight more search-nexts, delete, reset. It ran through to its completion
+marker, so every call returned. The RAM disk is real in this
+configuration: the Display Status screen reports `RAMdisk size 190k`.
+
+What it moved, from the same run's watch counters:
+
+* `F8B8`-`F937` (BDOS directory swap buffer): **15,851 writes**, all 128
+  bytes, 6 distinct PCs — `ram:F4A1` (the `KernMemCopy` inner loop)
+  ×15,488, `ROM00:056B` ×256 (the boot-time `E5` fill), plus `06D6`,
+  `063F`, `064E`, `08E4`.
+* `FEFF`-`FFA8` (sector bounce, FCB bounce, DMA pointer, FCB pointer,
+  interrupt shadow): **6,391 writes**, 169 of its 170 addresses, 35
+  distinct PCs — `ram:F4A1` ×4,608, `ram:F669`/`F683` ×584 each (the
+  `FFA8` interrupt shadow), `ROM00:06AA` ×308, `ram:F4EF` ×128, and
+  `ROM00:0990`/`09BF` inside the search-first/search-next handlers
+  (`ROM00:096C`/`09A3`, BDOS table entries 11h/12h) and `ROM00:0B3E`
+  inside write-sequential (`0B09`).
+* `FFA9`-`FFFF`: **0**.
+
+That is the discriminating result. The bounce-buffer helpers at
+`ram:F4EB`-`F54D` were driven hard, wrote 6,391 times into the block
+that ends at `FFA8`, and did not cross into `FFA9` once.
+
+#### The "1536-byte kernel arena" reading is disproven
+
+`InstallKernelToRam`, byte-verified from `micron1.bin` at `ROM00:02FE`
+(`11 b5 00 21 e8 35 19 11 80 f1 01 8d f6 7e 12 23 13 7b b9 20 f8 7a b8 20
+f4 c9`):
+
+```
+02FE  11 B5 00     LD DE,00B5
+0301  21 E8 35     LD HL,35E8
+0304  19           ADD HL,DE       ; HL = 369D: the source
+0305  11 80 F1     LD DE,F180      ; the destination
+0308  01 8D F6     LD BC,F68D      ; <- a loop TERMINATOR ADDRESS
+030B  7E 12 23 13  LD A,(HL); LD (DE),A; INC HL; INC DE
+030F  7B B9 20 F8  LD A,E; CP C; JR NZ,030B
+0313  7A B8 20 F4  LD A,D; CP B; JR NZ,030B
+0317  C9           RET
+```
+
+The copy is bounded by an **address**, not a length: it stops when
+`DE == BC == F68D`. So `F68D` is the firmware's own stated exclusive end
+of the kernel image, and the familiar `0x50D` is *derived* from it
+(`F68D - F180`), not the other way round. The constant `0x600` occurs
+nowhere in this code; `F180 + 0x600 = F780` is numerology and there is no
+arena. This page previously carried the arena as LIKELY — it should not
+have.
+
+The second entry at `ROM00:0318` (`11 80 f1 21 e8 35 01 35 f2 18 e8`) is
+not "the same kernel, installed shorter" either:
+
+```
+0318  11 80 F1     LD DE,F180
+031B  21 E8 35     LD HL,35E8      ; note: no ADD HL,DE this time
+031E  01 35 F2     LD BC,F235
+0321  18 E8        JR 030B         ; re-enter the same copy loop
+```
+
+It copies `35E8`-`369C`, `0xB5` bytes — exactly the `DE` value `02FE`
+adds to reach *its* source — to `F180`-`F234`. The ROM holds **two
+different images back to back at `35E8`, both loaded to `F180`**. The
+short one is the bank-switching helper set: `D3 47` (`OUT (BANK_SEL),A`)
+opens and closes every routine in it, around fill, compare and copy loops
+(`35E8`, `3603`, `3627`, `3653`, `3667`, `3670`). The long one at `369D`
+is the resident kernel. Cold boot installs the short set first —
+`ROM00:01ED` `CD 18 03` — because the RAM-sizing code that follows needs
+bank helpers before a kernel exists; the full kernel goes in later at
+`ROM00:023E` `CD FE 02`, immediately before the warm-boot entry `024D`
+that `ROM00:01A3` `CA 4D 02` jumps to when `F81C` already holds `55`.
+Two alternative images sharing one load address is not evidence of an
+oversized arena, and neither image reaches `F68D`.
+
+#### The stack-headroom reading, measured
+
+`--fill-mem f68d:f819` seeds the gap, the port shadows and the entire
+system stack with `mem[a] = (a ^ (a >> 8)) & FF` at the instant the
+destructive RAM test finishes — which is also the instant `ROM00:01D4`
+`31 1A F8` resets `SP` to `F81A`, so nothing live is overwritten. What
+still holds its marker at exit is therefore a **cumulative low-water mark
+for the whole session**.
+
+All five workloads agree: the lowest byte the firmware disturbed is
+`F7EA`. `F81A - F7EA = 0x30`, so the system stack peaks at **48 bytes
+deep and leaves 80 of its 128 bytes unused**, and the nearest it comes to
+`F77F` is `F7EA - F77F` = 107 bytes. Both `F68D`-`F77F` (the whole span)
+and `F79A`-`F7E9` (the unused bottom of the stack) still held the marker
+at exit; the only things that moved below `F7EA` were the port shadows
+`F780`-`F799`, which are live cells and were expected to. The two lowest words of the deepest frame read `31C5`
+and `2346`, both `ROM00` addresses in the link bring-up that runs during
+boot, so the deep point is a boot-time excursion rather than anything a
+session drives deeper. (Marker survival can only under-report: a write
+that happened to store a byte's own marker value would hide. The 80-byte
+contiguous intact run `F79A`-`F7E9` makes that implausible as an
+explanation of the boundary; per run, two bytes inside `F7EA`-`F819` did
+coincide, which is the expected 1-in-256 rate.)
+
+So both readings this page offered for `F68D`-`F77F` are wrong, but not
+symmetrically. "Spare arena" is disproven from the bytes. "Stack
+headroom" is *true in principle and irrelevant in practice*: the span is
+indeed the next thing below the stack, but the stack stops 107 bytes
+short of it in every workload driven, and it must cross the port shadows
+first — which would have broken the machine long before it reached
+`F68D`. What is left for both spans is the same, dull answer: **nothing
+uses them.**
+
+#### The shape of the remaining risk
+
+"Never written across five workloads" is bounded evidence of disuse, not
+proof of freedom. Specifically:
+
+* **Covered:** cold boot and the boot-time RAM sizing, the banner and
+  serial-entry screens, the Main Menu and Display Status screens, the
+  RTC periodic-interrupt path (the workloads log 745-99,146 RTC/link
+  transactions each), the PLINTH Load/Run download and its ROM
+  finalizer, both Commstar directions through the application API, the
+  program loader and `RunLoadedProgram`, and the BDOS file layer end to
+  end including both the bounced and the unbounced DMA paths.
+* **Not covered — the barcode path.** It cannot be driven with the
+  harness as it stands: `boot_hw.py`'s input callback returns a constant
+  `0xFF` for every port it does not model, `EXTBUS_EDGE` (2Dh) among
+  them, so the edge loops at `ROM00:13CB` and `13ED` (both `DB 2D / E6
+  01`) never see a transition and no capture occurs. Driving it needs a wand model — a
+  `--barcode-pattern`-style source feeding timed 2Dh transitions — which
+  is a separate feature. The static bound is reassuring but not a
+  substitute: the capture writes by `PUSH` from `SP = FBB5`
+  (`ROM00:13BB` `ED 73 BD FB`, `13BF` `31 B5 FB`) and its loop counter is
+  a single byte in `C`, so at the absolute worst 256 pushes fill exactly
+  `F9B5`-`FBB4`, its documented 512 bytes; `ROM00:1408` `79 32 B4 F9 FE
+  09 D8 FE 80 38 02 3E 80` then caps the recorded count at `80h`. Neither
+  span is reachable from there.
+* **Not covered — anything only real hardware or a real host can
+  reach:** a genuine V24 adaptor peer, the EXT STORAGE ADAPTER on
+  drives `C:`/`D:` over the 4x transport, alarm/sleep-wake cycles, the
+  self-test and Diagnostics paths beyond the Display Status screen, and
+  any loaded application other than the drivers written here. A
+  Commstar service this peer model does not implement could still
+  exercise firmware neither span has seen.
+* **Not covered — the disassembly bound is unchanged.** `ROM00` is 61%
+  disassembled, `ROM01` 37%; the static negative rests on a raw-opcode
+  scan with an alignment filter, not on full coverage.
 
 ### The one thing that touches everything
 
@@ -333,20 +493,28 @@ nothing more. The negative is now stronger than "no disassembled
 reference": no aligned 16-bit-operand instruction anywhere in either
 full ROM image or any RAM module names an address in it, no `LD SP`
 targets it, and the power-on `SP = FFFF` is overwritten before the first
-push (`ROM00:014B`). It stayed all-zero through a boot to the Main Menu
-and through a synthetic Load/Run. **Falsified by:** it is immediately
-adjacent to a densely packed, exactly-sized BIOS variable block — a
-single off-by-one in `ram:F4EB`-`F54D` (the bounce-buffer helpers) lands
-here, and those helpers have not been exercised hard. Treat a corrupted
-marker as a signal, not a nuisance.
+push (`ROM00:014B`). **The off-by-one worry has now been tested and it
+did not happen:** a COM issuing ~70 BDOS file calls drove the
+bounce-buffer helpers at `ram:F4EB`-`F54D` to 6,391 writes across 169 of
+the 170 bytes of `FEFF`-`FFA8`, and `--watch-mem ffa9:ffff` saw nothing.
+It stayed unwritten through that and through four other workloads (see
+"the two spans that stayed empty"). **Falsified by:** a BDOS path those
+workloads did not reach — most plausibly one belonging to the EXT
+STORAGE ADAPTER drives `C:`/`D:`, which no harness can drive yet. Treat
+a corrupted marker as a signal, not a nuisance.
 
 ### Not recommended, despite looking free
 
-* **`F68D`-`F77F` (243 B).** Unreferenced and empirically untouched, but
-  the system stack top is `F81A` and only 128 bytes of headroom sit
-  between it and the port shadows at `F780`. A stack excursion past
-  `F79A` runs into the shadows first and this region next. Anything you
-  put here is a stack-depth canary, not scratch.
+* **`F68D`-`F77F` (243 B).** Unreferenced and never written in any driven
+  workload, and the system stack turns out to stop a long way short of
+  it — measured low-water mark `F7EA`, 107 bytes above `F77F`, in all
+  five (see "the stack-headroom reading, measured"). It is still the
+  wrong place for scratch: it is the next thing below a stack whose
+  depth you would be betting on, and a stack excursion reaches the port
+  shadows at `F780` before it reaches here, so a corrupted byte in this
+  span means the machine is already broken. Anything you put here is a
+  stack-depth canary, not scratch — but as a canary it is now calibrated:
+  48 bytes used of 128.
 * **`FD64`-`FD83`, `FE45`-`FE82`. Now identified — do not use them.**
   The prior that they were structure padding of their neighbours was
   right, and stronger than stated: they are not padding but *live
@@ -473,17 +641,22 @@ on. Check it:
 
 1. **Seed a non-zero pattern.** Fill the candidate range in the
    emulator's fixed-RAM array after boot completes but before the run of
-   interest. `boot_hw.py` has `--upload-marker ADDR:VAL` for a single
-   byte; a range fill is a two-line addition next to it. Use a
-   **non-zero, non-constant** pattern — an address-derived one such as
-   `mem[a] = (a ^ (a >> 8)) & 0xFF` — so that a routine writing zeros,
-   or writing a constant that happens to equal your fill, cannot hide.
+   interest: `boot_hw.py --fill-mem LO:HI` does this, seeding the range
+   at the point the destructive RAM test finishes and reporting at exit
+   how much of it survived. Its default pattern is **non-zero and
+   non-constant** — address-derived, `mem[a] = (a ^ (a >> 8)) & 0xFF` —
+   so a routine writing zeros, or writing a constant that happens to
+   equal your fill, cannot hide. Better still, add
+   `--watch-mem LO:HI` alongside it: the fill tells you *that* something
+   wrote, the watch tells you *which instruction did*, in real time, and
+   catches a write that was later overwritten with the marker value.
 2. **Run the whole workflow, not a fragment.** Boot to the Main Menu,
    then drive the path you care about end to end, e.g.
 
    ```sh
    timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py \
-       --expect "To Continue Press>>:\r" --expect "Serial:\r12345678\r" \
+       --expect "To Continue Press>>:\r" \
+       --expect "serial number:\r12345678\r" \
        --expect "Main Menu:1" \
        --synthetic-workflow /tmp/driver.json \
        --dump-mem c000:256 --dump-mem cf80:256
@@ -551,6 +724,19 @@ symptom, not a timing one.
   the map itself.
   Corrected above: `FD46`-`FD5B` / `FD5C`-`FD83`, and `FD97`-`FE42` /
   `FE43`-`FE82`.
+* **This page asserted a 1536-byte kernel arena that does not exist.**
+  `F180 + 0x600 = F780` was arithmetic in search of a mechanism: the
+  install loop at `ROM00:02FE` is bounded by the address `F68D`
+  (`0308` `01 8D F6`), the `0x600` appears nowhere, and the "second,
+  shorter install" at `ROM00:0318` copies a *different* image (the
+  `0xB5`-byte bank-helper set at `ROM00:35E8`) rather than a truncated
+  kernel. Corrected in "the two spans that stayed empty". The lesson is
+  the page's own: a round number is not evidence.
+* **The worked example under "Verifying a candidate region empirically"
+  waited for `"Serial:"`.** The serial-entry screen renders
+  `Enter the Workstation serial number shown on the back` — lowercase,
+  no colon — so that step never matched and the run stalled at the
+  banner. Corrected to `"serial number"`.
 
 ## Open
 
@@ -558,13 +744,22 @@ symptom, not a timing one.
   the `FD5C` countdown-timer table (10 × 4 B) and the `FE43` per-link
   sequence table (64 × 1 B) respectively. See "the two spans that turned
   out to be structure tails".
-* `F68D`-`F77F` (243 B) and `FFA9`-`FFFF` (87 B) remain unidentified,
-  but the negative is now much stronger than "no disassembled
-  reference" — see "the two spans still open" for what was ruled out and
-  the sharpened experiment. Best current reading: `F68D`-`F77F` is spare
-  room in a 1536-byte kernel arena (`F180 + 0x600 = F780`) and
-  `FFA9`-`FFFF` is the unclaimed remainder above the last BDOS variable.
-  Neither is safe to *assume* free without the pattern-fill run.
+* `F68D`-`F77F` (243 B) and `FFA9`-`FFFF` (87 B) have **no identity to
+  find**: each is a gap, not a structure. Neither is referenced
+  statically and neither took a single write across five driven
+  workloads — cold boot, a PLINTH Load/Run download, a Commstar record
+  upload, a Commstar program download, and a BDOS file workload that hit
+  the bounce buffers 6,391 times. See "the two spans that stayed empty".
+  Two earlier readings are now settled: the "spare room in a 1536-byte
+  kernel arena" story is **disproven** (`ROM00:0308` `01 8D F6` is a copy
+  terminator, not a size; the `0x600` is numerology), and "stack
+  headroom" is true only in the topological sense — the measured stack
+  low-water mark is `F7EA`, 107 bytes above `F77F`.
+  What remains open is only the *bound*: the barcode path cannot be
+  driven at all with the current harness (no port-2Dh edge model), and
+  nothing exercises the EXT STORAGE ADAPTER drives, a real V24 peer, or
+  alarm/sleep-wake. Either span could still be claimed by firmware
+  those paths reach.
 * Ghidra still labels `FD5C` `comm_work_table`, which reads as a comms
   buffer rather than a timer table. The name is grandfathered and this
   page does not rename it, but a reader following the label alone will

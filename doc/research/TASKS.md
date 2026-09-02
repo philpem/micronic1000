@@ -3779,3 +3779,62 @@ Established and byte-verified this pass:
 
 **OPEN:** port `33h`'s identity and the `2Ah`/`2Ch` bit assignments both need
 hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
+
+## Unbanked RAM: the last two spans, and a memory write-watch (2026-09-02)
+
+* **New harness instruments, documented in `--help` and `analysis/README.md`:**
+  `--watch-mem LO:HI[,...]` (inclusive ranges; hooks the CPU write callback so
+  it catches `PUSH` and `LDIR` as well as `LD (nn),r`; reports address, value,
+  PC, SP and bank; per-range print cap via `--watch-mem-limit`, counting
+  uncapped; exit summary of write count, distinct writing PCs and address
+  extent) and `--fill-mem LO:HI[,...]` / `--fill-mem-value NN` (seeds a marker
+  pattern at the point the destructive power-on RAM test finishes, and reports
+  survival plus lowest/highest changed byte).
+  * Two calibrations worth keeping: `mach.pc` inside a write callback is the
+    address of the instruction **after** the writer, and `PUSH` does go through
+    the callback — which is what makes a watch below a stack top a valid depth
+    measurement. Positive control: `--watch-mem f780:f799` over a plain boot
+    gives **61,923 writes from 33 PCs**.
+* **`F68D`-`F77F` and `FFA9`-`FFFF`: unwritten across every workload we can
+  drive.** Five workloads, both spans watched: cold boot to Main Menu and
+  Display Status; Load/Run PLINTH download; Commstar record upload; Commstar
+  program download; and a **BDOS file/disk workload** (~70 calls through the
+  `0005` gate — `C3 80 F1`, verified — covering reset, select, DMA both
+  banked and unbanked, search-first/next, delete, make, write-seq, open,
+  read-seq, random read/write, file-size, close). **Zero writes into either
+  span in all five.** Tagged CONFIRMED for those workloads, OPEN for anything
+  outside them.
+  * The disk workload is the discriminating test the map nominated for
+    `FFA9`-`FFFF`, and it landed: **15,851 writes into `F8B8`-`F937`** and
+    **6,391 into `FEFF`-`FFA8`** (169 of 170 addresses, 35 PCs) — the bounce
+    buffers were exercised hard and **did not** overrun into `FFA9`.
+  * **Not covered, and stated as such:** barcode capture, the EXT STORAGE
+    ADAPTER drives, a real V24 peer, alarm/sleep-wake, and any non-harness
+    application — plus the standing 61%/37% disassembly bound.
+* **The system stack never gets near `F68D`.** `--fill-mem f68d:f819` (safe
+  because the seed point coincides with `ROM00:01D4` `31 1A F8` resetting `SP`)
+  gives an identical low-water mark of **`F7EA`** in all five workloads: the
+  stack peaks 48 bytes deep, leaves 80 of its 128 bytes unused, and stops
+  **107 bytes short of `F77F`**. So "stack headroom" does not explain the span
+  either. The deepest frame's two lowest words are `31C5` / `2346`, both
+  boot-time link bring-up.
+* **The kernel-arena hypothesis is DISPROVEN, not LIKELY.** `ROM00:02FE` is
+  `11 B5 00 21 E8 35 19 11 80 F1 01 8D F6 7E 12 23 13 7B B9 20 F8 7A B8 20 F4
+  C9` — the copy loop terminates on `DE == BC == F68D`, an **address**, so the
+  `0x50D` length is derived from `F68D` rather than the other way round, and
+  `0x600` appears nowhere.
+  * `ROM00:0318` also is not a "second shorter kernel": it installs a
+    **different image**, `35E8`-`369C` (`0xB5` bytes), a bank-switching helper
+    set — `ROM00:35E8` begins `D3 47`, `OUT (47h),A`, the bank-select port.
+    `ROM00:01ED` (`CD 18 03`) installs the helpers early in cold boot, because
+    RAM sizing needs bank switching before a kernel exists; `ROM00:023E`
+    (`CD FE 02`) installs the full kernel later, just before the warm-boot
+    entry at `024D` that `ROM00:01A3` (`CA 4D 02`) jumps to. Neither image
+    reaches `F68D`.
+* **Barcode could not be driven**, and that is a harness limit, not a firmware
+  one: `boot_hw.py`'s input callback returns a constant `FFh` for unmodelled
+  ports including `EXTBUS_EDGE` (`2Dh`), so the edge loops at `ROM00:13CB` /
+  `13ED` never see a transition. Driving it needs a wand model feeding timed
+  `2Dh` transitions. Static bound recorded instead: the capture pushes from
+  `SP = FBB5` with a single-byte counter capped at `ROM00:140F` (`FE 80`), so
+  at worst 256 pushes fill exactly `F9B5`-`FBB4` and neither span is reachable.

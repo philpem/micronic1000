@@ -122,6 +122,38 @@ OPTIONS
   --watch-pc A[,B,...]     Report each time execution reaches a hex address,
                            with registers. Real breakpoints, so nothing is
                            missed. Example: --watch-pc 3277,32b6,3318
+  --watch-mem LO:HI[,...]  Report every memory write landing in a hex range.
+                           Ranges are INCLUSIVE of both ends (unlike
+                           --dump-mem, which takes ADDR:LEN). Each report
+                           gives the address, the value, the PC, SP and the
+                           current bank. Stack pushes are ordinary writes and
+                           are reported too, so a range below a stack top
+                           measures how far that stack descends: compare the
+                           reported address with SP. Printing stops at
+                           --watch-mem-limit per range but COUNTING does not,
+                           so a hot region cannot flood the log. At exit each
+                           range gets a summary: total writes, the distinct
+                           writing PCs with counts, and the lowest/highest
+                           address touched. Example:
+                             --watch-mem f68d:f77f,ffa9:ffff
+  --watch-mem-limit N      Per-range print cap for --watch-mem (default 24).
+  --fill-mem LO:HI[,...]   Fill an inclusive hex range of fixed RAM with a
+                           marker pattern once, at the point the destructive
+                           power-on RAM test would have finished, so the
+                           pattern is in place for the whole session. The
+                           default pattern is address-derived,
+                           mem[a] = (a ^ (a >> 8)) & FF, so a routine writing
+                           zeros or a constant cannot hide in it. At exit each
+                           range reports how many bytes still hold the pattern
+                           and the lowest and highest byte that does not --
+                           the survival/low-water mark. Filling live cells
+                           (the port shadows at F780-F799, for instance) will
+                           break the run; that is the point of the test, but
+                           expect it. Example: --fill-mem f68d:f77f
+  --fill-mem-value NN      Use the constant hex byte NN for --fill-mem instead
+                           of the address-derived pattern. Run a fill twice,
+                           once with a value and once with its complement, if
+                           you need to rule out a value-dependent write.
   --commstar-peer          Attach the protocol peer to a plain --upload run so
                            a loaded application can hold a Commstar session.
                            Replies come from micronic.peer.CommstarPeer.
@@ -381,6 +413,62 @@ if has_flag("--watch-pc"):
         sys.exit(2)
 watch_hits = {a: 0 for a in WATCH_PC}
 WATCH_REPORT_LIMIT = 4
+
+
+# --watch-mem LO:HI[,LO:HI...]  Report every memory write into a range.
+# Hooked into the CPU's write callback, so it sees stack pushes and
+# LDIR/LDDR stores as well as ordinary LD (nn),r -- everything the Z80
+# writes. Host-side pokes (host_write) bypass it deliberately: they are the
+# harness writing, not the firmware.
+def parse_watch_ranges(text, option):
+    """LO:HI[,LO:HI...] hex, inclusive both ends, normalised low-first."""
+    out = []
+    for part in text.replace(" ", "").split(","):
+        if not part:
+            continue
+        try:
+            lo_s, hi_s = part.split(":", 1)
+            lo = int(lo_s, 16) & 0xFFFF
+            hi = int(hi_s, 16) & 0xFFFF
+        except ValueError:
+            print(f"{option} takes comma-separated hex LO:HI ranges",
+                  file=sys.stderr)
+            sys.exit(2)
+        out.append((lo, hi) if lo <= hi else (hi, lo))
+    return out
+
+
+WATCH_MEM_RANGES = (
+    parse_watch_ranges(get_arg("--watch-mem", ""), "--watch-mem")
+    if has_flag("--watch-mem")
+    else []
+)
+WATCH_MEM_REPORT_LIMIT = int(get_arg("--watch-mem-limit", "24"), 0)
+# per range: writes seen, lines printed, {pc: count}, {addr: count}
+watch_mem_count = {r: 0 for r in WATCH_MEM_RANGES}
+watch_mem_printed = {r: 0 for r in WATCH_MEM_RANGES}
+watch_mem_pcs = {r: {} for r in WATCH_MEM_RANGES}
+watch_mem_addrs = {r: {} for r in WATCH_MEM_RANGES}
+
+# --fill-mem LO:HI[,...] / --fill-mem-value NN
+FILL_MEM_RANGES = (
+    parse_watch_ranges(get_arg("--fill-mem", ""), "--fill-mem")
+    if has_flag("--fill-mem")
+    else []
+)
+FILL_MEM_VALUE = (
+    int(get_arg("--fill-mem-value", "00"), 16) & 0xFF
+    if has_flag("--fill-mem-value")
+    else None
+)
+
+
+def fill_pattern_byte(addr):
+    """Address-derived marker: no constant and no zero run can hide in it."""
+    if FILL_MEM_VALUE is not None:
+        return FILL_MEM_VALUE
+    return (addr ^ (addr >> 8)) & 0xFF
+
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
 )
@@ -866,8 +954,35 @@ def rd(a):
     return mem[a]
 
 
+def note_mem_write(a, v):
+    """Record one watched write. mach.pc during a write callback is the
+    address of the instruction AFTER the writing one (verified against a
+    known LD (nn),HL and a PUSH), so it is reported as pc-after."""
+    for r in WATCH_MEM_RANGES:
+        if r[0] <= a <= r[1]:
+            pc = mach.pc & 0xFFFF
+            sp = mach.sp & 0xFFFF
+            watch_mem_count[r] += 1
+            watch_mem_pcs[r][pc] = watch_mem_pcs[r].get(pc, 0) + 1
+            watch_mem_addrs[r][a] = watch_mem_addrs[r].get(a, 0) + 1
+            if watch_mem_printed[r] < WATCH_MEM_REPORT_LIMIT:
+                watch_mem_printed[r] += 1
+                print(
+                    f"[watch-mem] {r[0]:04X}-{r[1]:04X} #{watch_mem_count[r]} "
+                    f"{a:04X}={v:02X} pc-after={pc:04X} SP={sp:04X} "
+                    f"bank={cb:02X}"
+                )
+                if watch_mem_printed[r] == WATCH_MEM_REPORT_LIMIT:
+                    print(
+                        f"[watch-mem] {r[0]:04X}-{r[1]:04X} print cap "
+                        f"{WATCH_MEM_REPORT_LIMIT} reached; still counting"
+                    )
+
+
 def wr(a, v):
     a &= 0xFFFF
+    if WATCH_MEM_RANGES:
+        note_mem_write(a, v & 0xFF)
     if a < 0x8000 and cb > BANK_MAX:
         if a < VEC_SIZE:
             mem[a] = v & 0xFF  # allow vector writes for missing banks
@@ -892,6 +1007,73 @@ def host_write_word(addr, value):
 
 def read_word(addr):
     return mem[addr] | (mem[(addr + 1) & 0xFFFF] << 8)
+
+
+fill_mem_done = False
+
+
+def apply_fill_mem():
+    """Seed every --fill-mem range with the marker pattern, once."""
+    global fill_mem_done
+    if fill_mem_done or not FILL_MEM_RANGES:
+        return
+    fill_mem_done = True
+    for lo, hi in FILL_MEM_RANGES:
+        host_write(lo, bytes(fill_pattern_byte(a) for a in range(lo, hi + 1)))
+        kind = (
+            f"value {FILL_MEM_VALUE:02X}"
+            if FILL_MEM_VALUE is not None
+            else "pattern (a^(a>>8))"
+        )
+        print(f"[fill-mem] {lo:04X}-{hi:04X} ({hi - lo + 1} bytes) seeded, {kind}")
+
+
+def report_fill_mem():
+    """Which seeded bytes survived, and where the damage starts and ends."""
+    for lo, hi in FILL_MEM_RANGES:
+        changed = [a for a in range(lo, hi + 1) if mem[a] != fill_pattern_byte(a)]
+        total = hi - lo + 1
+        if not changed:
+            print(
+                f"[fill-mem] {lo:04X}-{hi:04X} intact: all {total} bytes still "
+                f"hold the marker"
+            )
+            continue
+        print(
+            f"[fill-mem] {lo:04X}-{hi:04X} {len(changed)}/{total} bytes changed, "
+            f"lowest={changed[0]:04X} highest={changed[-1]:04X}"
+        )
+        for a in changed[:16]:
+            print(
+                f"[fill-mem]   {a:04X}: marker {fill_pattern_byte(a):02X} -> "
+                f"{mem[a]:02X}"
+            )
+        if len(changed) > 16:
+            print(f"[fill-mem]   ... {len(changed) - 16} more")
+
+
+def report_watch_mem():
+    """Per-range totals: how many writes, from which PCs, over which cells."""
+    for r in WATCH_MEM_RANGES:
+        lo, hi = r
+        n = watch_mem_count[r]
+        if not n:
+            print(
+                f"[watch-mem] {lo:04X}-{hi:04X} totals: 0 writes "
+                f"(never written in this run)"
+            )
+            continue
+        addrs = sorted(watch_mem_addrs[r])
+        pcs = sorted(watch_mem_pcs[r].items(), key=lambda kv: -kv[1])
+        pc_s = " ".join(f"{p:04X}x{c}" for p, c in pcs[:12])
+        if len(pcs) > 12:
+            pc_s += f" (+{len(pcs) - 12} more PCs)"
+        print(
+            f"[watch-mem] {lo:04X}-{hi:04X} totals: {n} writes, "
+            f"{len(addrs)} distinct addresses {addrs[0]:04X}..{addrs[-1]:04X}, "
+            f"{len(pcs)} distinct PCs"
+        )
+        print(f"[watch-mem] {lo:04X}-{hi:04X} writing PCs (pc-after): {pc_s}")
 
 
 rtc = RTC146818()
@@ -1650,6 +1832,14 @@ for _watch in WATCH_PC:
     mach.set_breakpoint(_watch)
 if WATCH_PC:
     print(f"[watch-pc] armed {[f'{a:04X}' for a in WATCH_PC]}")
+if WATCH_MEM_RANGES:
+    print("[watch-mem] armed " + " ".join(
+        f"{lo:04X}-{hi:04X}" for lo, hi in WATCH_MEM_RANGES)
+        + f" (print cap {WATCH_MEM_REPORT_LIMIT}/range)")
+if FILL_MEM_RANGES:
+    print("[fill-mem] queued " + " ".join(
+        f"{lo:04X}-{hi:04X}" for lo, hi in FILL_MEM_RANGES)
+        + " (seeded when the RAM test is skipped)")
 
 while i < MAX_SLICES and stall < 8000:
     if (i & 0xFFF) == 0:
@@ -1840,6 +2030,10 @@ while i < MAX_SLICES and stall < 8000:
         mach.pc = 0x01D0
         ramt = True
         print(f"[{i}] skip RAM test")
+        # --fill-mem seeds here: this is where ram_page_test_4banks (2530)
+        # would have finished erasing 8000-FFFF, so it is the earliest point
+        # a marker can survive. One fill per run; nothing re-seeds it.
+        apply_fill_mem()
         continue
     if not contig and pc == 0x267A:
         for k in range(0x40):
@@ -2396,6 +2590,13 @@ if TRACE_SESSION_TRANSACTION:
 if WATCH_PC:
     print("[watch-pc] totals: " + "  ".join(
         f"{a:04X}={watch_hits[a]}" for a in WATCH_PC))
+if WATCH_MEM_RANGES:
+    report_watch_mem()
+if FILL_MEM_RANGES:
+    if not fill_mem_done:
+        print("[fill-mem] WARNING: never seeded (the RAM-test skip was not "
+              "reached), so the survival report below means nothing")
+    report_fill_mem()
 if COMMSTAR_PEER_MODE:
     print(
         f"[commstar-peer] replies={shadow_agree + _peer_state['replies']} "

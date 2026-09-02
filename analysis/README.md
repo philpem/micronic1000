@@ -41,8 +41,9 @@ Requires the `z80` python module in `venv/`.
   keyboard injection (`--drive-serial`/`--serial`), LCD rendering
   (`--lcd`/`--no-lcd`/`--lcd-rate`), an expect DSL (`--expect`/
   `--expect-file`/`--expect-timeout`), multi-bank RAM (`--ram`/`--ram-size`,
-  `--dump-bank`), and snapshot dumps (`--dump-mem`/`--snapshot`). `--help`
-  prints full usage. Writes a full I/O trace to
+  `--dump-bank`), snapshot dumps (`--dump-mem`/`--snapshot`), and
+  execution/memory watches (`--watch-pc`, `--watch-mem`, `--fill-mem`).
+  `--help` prints full usage. Writes a full I/O trace to
   `/tmp/opencode/micronic_boot_io.txt`. Uses `micronic.rtc`.
 - **`comms_tx_test.py`** — directed verification of the TX path:
   seed the link state + FDEA `{count, ptr}` descriptor, call
@@ -66,6 +67,23 @@ Requires the `z80` python module in `venv/`.
 **Multi-bank RAM:** port `47h` (`BANK_SEL`, shadow `F791`) selects the 32K window `0000–7FFF`: `0=ROM0`, `1=ROM1`, `2..N=RAM pages` (32K each). Fixed RAM `8000–FFFF` is always present (32K). Totals: `128K=32K+3×32K (banks 2..4)`, `256K=32K+7×32K (banks 2..8)`, `512K=32K+15×32K (banks 2..16)`. Save/restore on `47h` write (only for installed banks). **Non-present banks read `0xFF` (open bus) and writes are discarded** — required for correct RAM sizing. The firmware walks banks `0x41..0x01` in `Boot_BankWalkInit` regardless of installed RAM; sizing is done by `contig_ram_map_test` (267A) and `ram_page_test_4banks` (2530), with `DelayCountUp` (271F) computing `FEAB = FEA9 * 0x20` (FEA9 = count of present pages) displayed as `Ram: NN K.B.` on the banner. With `--ram 256` the banner must show 256K (not 2016K = 63*0x20).
 
 **Options:** `--ram` / `--ram-size` (128|256|512), `--drive-serial` / `--serial TEXT`, `--max-slices N`, `--dump-bank N`, `--lcd` / `--no-lcd` / `--lcd-rate N`, `--expect SPEC` (repeatable), `--expect-file FILE`, `--expect-timeout N`, `--upload PATH` (drive real loader via `Program_LoadByName`/`Program_ConsumeInputChunk`/`Program_FinalizeInput` below Commstar — not a Commstar peer; `--upload-name NAME` defaults to the input basename, `--upload-bank N` defaults to 2, `--upload-max-bytes N` defaults to 65535, optional `--upload-marker ADDR:VAL`, `--upload-no-run` stops after finalize/state 3), `--trace-session-builder 4|5` (bounded synthetic builder trace; bypasses only the separate preflight), `--trace-session-transaction 4` (bounded harness: runs builder form 4 through the actual service-33/link IRQ path, bypassing only the already documented separate preflight as builder trace 4 does; payload/command semantics remain OPEN), `--trace-loadrun-source plinth|v24 --trace-loadrun-v24-mode 0..3` (the V24 mode selector is an experimental trace control, not a V24 peer), `--synthetic-loadrun FILE` (serves a validated COM/DIP file as raw state-44 program data after the confirmed PLINTH control path; a 126-byte chunk is regression-tested but not a proven maximum), `--synthetic-workflow FILE` (manifest wrapper for the tested PLINTH image path; `run_after_load` invokes the real ROM run path while records, feedback, and safe removal remain adapter policy), optional `--synthetic-loadrun-finalize` (adapter policy: calls the real loader finalizer with success after the final payload; not a claimed Commstar EOF frame), and `--trace-loadrun-debug` (bounded diagnostics for a stalled state-44 reply), `-h`/`--help`.
+
+**Watching execution and memory:** three instruments, all usable together and all reported again at exit.
+
+- `--watch-pc A[,B,...]` — a real breakpoint at each hex address; prints the registers on each hit (first `WATCH_REPORT_LIMIT` = 4 hits per address) and the per-address totals at exit. Unlike sampling the PC between slices, it misses nothing.
+- `--watch-mem LO:HI[,...]` — every memory write landing in an **inclusive** hex range, reported with the address, the value, the PC, `SP` and the current bank. Note the asymmetry with `--dump-mem`, which takes `ADDR:LEN`. It hooks the CPU's write callback, so it sees `PUSH` and `LDIR` stores as well as `LD (nn),r`; host-side pokes (`host_write`) deliberately bypass it. The printed PC is the address of the instruction **after** the writing one (verified against a known `LD (nn),HL` and a `PUSH`). Printing stops at `--watch-mem-limit` per range (default 24) but counting does not, so a hot region cannot flood the log; the exit summary gives the write count, the distinct writing PCs with counts, and the lowest and highest address touched. Because stack pushes are ordinary writes, a range placed below a stack top measures how far that stack descends.
+- `--fill-mem LO:HI[,...]` — seed an inclusive range of fixed RAM once, at the point the destructive power-on RAM test would have finished (`ram_page_test_4banks`, ROM00:2530), which is the earliest point a marker can survive. The default pattern is address-derived, `mem[a] = (a ^ (a >> 8)) & 0xFF`, so neither a zero-fill nor a constant write can hide in it; `--fill-mem-value NN` substitutes a constant when you want to run a fill and its complement. At exit each range reports how many bytes still hold the marker and the lowest and highest that do not — the survival/low-water mark. Filling live cells (the port shadows at `F780`-`F799`, say) will break the run.
+
+Example — prove a span is untouched while measuring how deep the system stack really goes:
+
+```sh
+timeout 420 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
+    --expect "To Continue Press>>:\r" --expect "serial number:\r12345678\r" \
+    --expect "Main Menu:3" --expect "Version" \
+    --watch-mem f68d:f77f,ffa9:ffff --fill-mem f68d:f819
+```
+
+See `doc/re-notes/unbanked-ram-map.md` for the results this produced.
 
 **Expect DSL:** `match:keys` — wait until `match` substrings appear in LCD text, then inject `keys` via the keyboard ring (paced exactly like the `16C9` HALT wait, `FBC9` bit2, `FFA8==1`). Multiple `--expect` steps run in order.
 
