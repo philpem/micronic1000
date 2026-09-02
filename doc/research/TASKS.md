@@ -3431,3 +3431,37 @@ at 1087 functions.
   artifact. Discriminating experiment: instrument `ROM00:60D6` / `59FB` reply
   classification on a failing run. Recorded in the test file so an innocuous
   edit that changes a driver's length does not cost someone an afternoon.
+
+## Commstar: closing open items (2026-09-01)
+
+* **CORRECTION: the `43h` / `63h` link-id story was wrong, twice over.**
+  * They are **not** a fixed pair inside 4-byte device slots. `ROM00:31FF` is
+    the accessor and it decodes as a device-number lookup on a **flat
+    16-entry array**: `CP 41h` splits drive letters (-> `ram:FE93`) from
+    device numbers (-> `ram:FE83`), then `DEC A` / `CP 10h` / `ADD HL,DE`.
+    So `ram:FE83` = `80 AB 63 43 80 2B 63 43 80 67 63 43 80 67 63 43` maps a
+    device number to a wire id, and `43h`/`63h` are the ids of two particular
+    devices.
+  * **Measured: the Load/Run source picker does not select the IR port.**
+    Running the harness both ways, `--trace-loadrun-source plinth` and
+    `--trace-loadrun-source v24`, the traces genuinely diverge (13 agreed /
+    1 unsolicited vs 12 agreed / 2 unsolicited) yet **both carry prelude `03`
+    and link id `43h`**. The earlier "LIKELY `43h` = Plinth" rested on the
+    default screen reading `PLINTH`; that argument is void, because the V24
+    route produces `43h` too.
+  * The likely source of the confusion: there are **two** pickers. The
+    five-entry storage picker at `micron2.bin 0x757F` (`WORKSTATION MEMORY`,
+    `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
+    what the harness drives; the two-entry picker at `0x7663` sits in the
+    comms setup form and **no current trace exercises it**.
+  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on link-id bit 5
+    (`ROM00:3278`) and `LinkPortSelect` drives `LINK_CTRL` bit 1 and port
+    `2Ch` bit 5 together. **OPEN:** which id selects which physical port.
+    Next experiment: drive the `0x7663` picker and re-read the prelude.
+* **CLOSED: `ram:D120` -> `E6E8` -> command record `+8`.** It is not a
+  credential buffer. `D120` is the byte immediately after the four 6-byte
+  link-method records at `ram:D108` (`D108 + 4*6 = D120`) — the table
+  terminator. It has **exactly one reference in either ROM**, the
+  `C-INIT-COMMS` push at `ROM01:12B9`, and **nothing writes it**. The pointer
+  therefore addresses a zero byte, the bounded copy yields an empty string,
+  and record `+8` is blank in every trace. A vestigial slot.

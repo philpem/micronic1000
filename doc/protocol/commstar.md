@@ -697,9 +697,8 @@ electrical connector to detect: both are **IR ports on the handheld** — the
 Plinth port on the base, the V24 port on the top — and the "connector" is the
 infrared link itself.
 
-The picker is at `micron2.bin` `0x7663`, and the selection becomes **bit 5 of
-the link id**. `LinkBlockTx` tests it on entry and hands the result to
-`LinkPortSelect` (`ROM00:3454`):
+`LinkBlockTx` routes on **bit 5 of the link id**, which it tests on entry and
+hands to `LinkPortSelect` (`ROM00:3454`):
 
 ```text
 ROM00:3277  LD   C,A          ; the link id
@@ -710,17 +709,48 @@ ROM00:327A  CALL 3454h
 `LinkPortSelect` drives **two** latches consistently — `LINK_CTRL` (`4Ah`)
 bit 1 and port `2Ch` bit 5 move together:
 
-| id bit 5 | `LINK_CTRL` bit 1 | port `2Ch` bit 5 | Port |
-|---|---|---|---|
-| clear (id `43h`) | **set** | **set** | Plinth (base) |
-| set (id `63h`) | clear | clear | V24 (top) |
+| id bit 5 | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
+|---|---|---|
+| clear (id `43h`) | **set** | **set** |
+| set (id `63h`) | clear | clear |
 
-**LIKELY, from the default configuration.** The factory default screen reads
-`PLINTH / LOCAL LINK / 9600`, and every emulator trace taken with defaults
-carries link id `43h` — bit 5 clear. So bit 5 clear selects the Plinth port.
-This is an inference from the default, not a direct label-to-bit mapping in
-code; a capture with `V24 ADAPTOR` selected would confirm it, as would
-watching which of the two IR ports goes active.
+**Which of those is the base port and which is the top is NOT established.**
+An earlier revision of this page asserted `43h` = Plinth and `63h` = V24 on
+the strength of the factory default screen reading `PLINTH`. That reasoning
+does not hold up, for two reasons found while trying to confirm it:
+
+* **`43h` and `63h` are wire ids in a device table, not a picker output.**
+  `ROM00:31FF` is the accessor, and it decodes as a lookup on a device
+  number, **not** as four 4-byte slots:
+
+  ```text
+  31FF  CP   41h / JR C,320Bh    ; >= 'A' -> a drive letter
+  3203  SUB  41h / LD HL,0FE93h  ;   index the drive-letter table
+  320B  LD   HL,0FE83h           ; otherwise a device number
+  320E  AND  A / JR Z,321Ch      ;   0 is invalid
+  3211  DEC  A / CP 10h          ;   1-based, bounded to 16
+  3216  LD   D,0 / LD E,A / ADD HL,DE / XOR A / RET
+  ```
+
+  So `ram:FE83` is a flat 16-entry array — `80 AB 63 43 80 2B 63 43 80 67 63
+  43 80 67 63 43` — mapping a device number to a wire id, and `43h`/`63h` are
+  the ids of two particular devices.
+
+* **Measured: the Load/Run source picker does not change the id.** Running the
+  harness both ways — `--trace-loadrun-source plinth` and `--trace-loadrun-source
+  v24` — the two traces genuinely diverge (13 agreed / 1 unsolicited versus 12
+  agreed / 2 unsolicited) and yet **both carry prelude `03` and link id
+  `43h`**. So whatever selects the IR port, it is not that picker.
+
+There are two separate pickers, and this is probably the confusion: the
+five-entry storage picker at `micron2.bin 0x757F` (`WORKSTATION MEMORY`,
+`WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
+what the harness drives, while the two-entry picker at `0x7663` (`PLINTH`,
+`V24 ADAPTOR`) sits in the comms setup form and is **not** exercised by any
+current trace.
+
+What would settle it: drive the `0x7663` picker and re-read the prelude, or
+watch which IR port goes active on real hardware.
 
 ### `ram:E520`, the link type
 

@@ -524,7 +524,7 @@ Ten arguments, all 16-bit slots. **CONFIRMED**: the firmware's own call site,
 | `SP+6` | conditional, from the Mode field | → `ROM00:5669` | — |
 | `SP+8` | the constant **60** | → `ROM00:5669` | — |
 | `SP+10` | `ram:ECAB` | `E6D0`, max 8 | `+0` |
-| `SP+12` | `ram:D120` | `E6E8`, max 6 | `+8` |
+| `SP+12` | `ram:D120` (a zero byte) | `E6E8`, max 6 | `+8`, always blank |
 | `SP+14` | `ram:EC8E` | `E6EF`, max 8 | `+18` **workstation id** |
 | `SP+16` | `ram:EC99` | `E6C4`, max 8 | `+26` |
 | `SP+18` | `ram:ECA2` | `E6D9`, max 8 | `+34` |
@@ -602,8 +602,16 @@ opcodes `CD 10 EE` and friends, which finds nothing because the call is
 **indirect**. All three are reachable, and on `LOCAL LINK` — the IR path —
 the connect command is `C-DIAL`, taking `ECB4` as its argument.
 
-`ram:D120` → `E6E8` → record `+8` is **not** a form field and is
-unidentified; its six-character maximum is the only clue.
+**Record field `+8` is always blank, and now we know why.** `ram:D120` is not
+a credential buffer at all: it is the byte immediately after the four 6-byte
+link-method records at `ram:D108` (`D108 + 4 x 6 = D120`), i.e. the table's
+terminator. **It has exactly one reference in either ROM** — the
+`C-INIT-COMMS` push at `ROM01:12B9` — and **nothing anywhere writes it**. So
+the pointer passed for this slot addresses a zero byte, the bounded copy into
+`E6E8` yields an empty string, and record `+8` is empty in every trace.
+
+Treat it as a vestigial slot. A host should expect six bytes of nothing
+there, and should not read meaning into it.
 
 ### Suppressing validation
 
