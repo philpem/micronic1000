@@ -3617,3 +3617,62 @@ changed. Files touched: `doc/protocol/commstar.md`,
   scratch**. Keep host staging within the size a real firmware transfer would
   use, and restore the window afterwards. **A test whose result changes when
   you add a NOP is a memory-collision symptom, not a timing one.**
+
+## Commstar: buffers must be unbanked, and a map of where they can go (2026-09-02)
+
+* **CONFIRMED: every buffer passed to a Commstar entry point must live in
+  unbanked RAM (`0x8000`-`0xFFFF`).** A COM's own spare space above its code
+  cannot serve, which was the obvious idea and is wrong. Each entry point is a
+  four-byte thunk `RST 10h ; db bank ; dw target`; `ROM00:0010` compares the
+  target bank against `ram:F791` and takes `ram:D74B` when they differ, which
+  **switches the lower-32K bank and jumps**. Nothing maps the caller's page
+  while the callee runs, so a routine executing in ROM00 sees ROM at
+  `0x0000`-`0x7FFF`, not the caller's data.
+  * The design says so itself: the cross-bank path maintains a **shadow stack**
+    at `ram:E36F`, because the ordinary stack would otherwise be unreachable.
+  * Positive confirmation, not just absence: **every** buffer the firmware
+    passes is unbanked — `ROM01:141A` -> `C-RX-BLK` at `ram:D39D`,
+    `ROM01:1343` -> `C-COMMAND` at `ram:D422`, `C-INIT-COMMS`'s strings at
+    `ECAB`, `EC99`, `ECA2`, `EC8E`, `D120`.
+  * Corroborated from the disk path: `ram:F510` reads the DMA address and does
+    `CP 0x80 / RET NC`, so the BDOS bounces a sector through `FEFF` exactly
+    when the caller's buffer is below `0x8000` and uses it in place when it is
+    already unbanked (`ROM00:3A2D`).
+* **New page: `doc/re-notes/unbanked-ram-map.md`** — a full region map of
+  `0x8000`-`0xFFFF` with evidence tags, ranked scratch recommendations, a
+  do-not-touch list, and a recipe for verifying a candidate empirically.
+* **The crowding is invisible to an address search**, which is why guessing has
+  cost us twice. The firmware's idiom is one base literal plus a walked
+  pointer, so live buffers read as unreferenced holes:
+  * `F9B5`-`FBB4` (512 B) is the **barcode edge-timing capture buffer**, and it
+    is filled by `PUSH` — `ROM00:13BF` sets `SP = FBB5`, pushes a word per
+    edge, then reverses in place with `IX = F9B5` / `IY = FBB3`. Zero
+    `LD (nn)` references.
+  * `D481`-`D680` is the **loaded program's stack**: `LD SP,D681` at
+    `ram:D7FA` / `ROM00:71A9` (`31 81 D6`), growing down.
+  * `FEFF`-`FF7E` and `FF7F`-`FFA2` are the **BDOS sector and FCB bounce
+    buffers**; `F8B8`-`F937` the directory swap buffer.
+* **Recommended scratch: `C000`-`D080`**, immediately below the loader's
+  ceiling — `ROM00:7052` `21 81 D0 / 22 BD E3` sets
+  `g_pProgramLoadCeiling = D081`, and module B begins exactly there. No
+  instruction in either ROM or any of the five RAM-resident modules touches
+  `8006`-`D080`. **A strong negative bounded by disassembly coverage, not a
+  proof** — hence the empirical recipe on the map page.
+* **Second instance of the staging-collision bug, fixed before it bit.**
+  `boot_hw.py` had `UPLOAD_NAME_ADDR = 0xD600`, which is above the `D081`
+  ceiling but **`81h` bytes inside the loaded program's stack**. Moved to
+  `0xC000`. `UPLOAD_BUFFER_ADDR` stays at `E5C2`: that path deliberately
+  impersonates the service-33 receive object, so the address is correct there
+  and is not general scratch.
+* **CORRECTION to this project's own framing:** `analysis/battery_ram.bin` is
+  **not a hardware dump**. It is a dump of the Ghidra `ram` block after
+  `FillBatteryRam.java` — a simulation. Every copy matches ROM exactly and
+  `ED1C`-`F17F` still holds the `21 01 00 C9` fill pattern. Read as ground
+  truth it would license "zero, therefore free" for seven spans, four of them
+  provably live.
+  * But the related claim that the standalone `FillBatteryRam.java` over-copy
+    is *visible* in that dump does **not** hold: `E22D`-`E238` reads
+    `00 00 4F 4B 00 00 4E 4F 00 01 44 4D`, matching `ROM00:7301` exactly. The
+    script bug is real; the dump does not show it.
+* **Still unidentified, not invented:** `F68D`-`F77F`, `FD64`-`FD83`,
+  `FE45`-`FE82`, `FFA9`-`FFFF`.

@@ -99,5 +99,6 @@ nav:
       - Forms and UI: re-notes/forms-ui.md
       - CP/M comparison: re-notes/cp-m-comparison.md
       - Interrupts: re-notes/interrupts.md
+      - Unbanked RAM map: re-notes/unbanked-ram-map.md
       - RTC: re-notes/rtc.md
       - Open questions: re-notes/open-questions.md

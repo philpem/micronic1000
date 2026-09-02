@@ -146,6 +146,51 @@ ROM01:1427  JP   Z,143Ah     ; 0 -> continue
 There is no separate "run" or "get status" entry point in the table. The
 session advances one command at a time, each call returning its own result.
 
+### Every buffer must live in unbanked RAM
+
+**CONFIRMED, and it is the first thing to get right.** A pointer you pass to
+any of these entry points must address the **fixed upper 32K**
+(`0x8000`-`0xFFFF`). A buffer in the caller's own page — the obvious place, in
+the space a CP/M-style COM has above its code — is **invisible to the
+routine**.
+
+The reason is the call mechanism. Each entry point is a four-byte thunk
+`RST 10h ; db bank ; dw target`, and `RST 10h` (`ROM00:0010`) compares the
+target bank against the current one:
+
+```text
+ROM00:0010  POP  HL            ; HL = the inline operands
+ROM00:0011  LD   E,(HL)        ; target bank
+ROM00:0012  LD   A,(0F791h)    ; current bank
+ROM00:0015  CP   E
+ROM00:0016  JP   NZ,0D74Bh     ; different -> the cross-bank path
+```
+
+`ram:D74B` **switches the lower-32K bank and jumps**. Nothing maps the
+caller's page while the callee runs, so the Commstar routine executing in
+ROM00 sees ROM at `0x0000`-`0x7FFF`, not your data. The design is explicit
+about this: the cross-bank path maintains a **shadow stack** at `ram:E36F`,
+precisely because the ordinary stack would otherwise be unreachable too.
+
+The firmware's own practice confirms it — **every buffer it passes is
+unbanked**:
+
+| Call site | Entry point | Buffer |
+|---|---|---|
+| `ROM01:141A` | `C-RX-BLK` | `ram:D39D` |
+| `ROM01:1343` | `C-COMMAND` | `ram:D422` |
+| `ROM01:12AD`-`12BD` | `C-INIT-COMMS` | `ram:ECAB`, `EC99`, `ECA2`, `EC8E`, `D120` |
+
+Not one of them is below `0x8000`.
+
+**So a driver COM must place its buffers in the upper 32K** — which means
+finding space that the firmware is not already using. That is not obvious by
+inspection, and picking an address by guesswork has already caused one real
+bug: the emulator harness staged upload chunks at `ram:E5C2` and ran over
+live session state. See
+[RE notes: unbanked RAM map](../re-notes/unbanked-ram-map.md) for what is
+occupied and what is safe.
+
 ### An application-driven session, working
 
 A loaded COM can hold a complete Commstar session. This was the first

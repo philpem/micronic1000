@@ -1161,9 +1161,17 @@ rtc_phase_rate = None
 
 
 CALL_SENTINEL = 0xFFFF
-# Keep the short logical name above the loader's exclusive D081h program
-# ceiling. Input chunks use the confirmed service-33 receive payload object.
-UPLOAD_NAME_ADDR = 0xD600
+# The logical name lived at D600h, which is above the loader's D081h program
+# ceiling but *inside the loaded program's stack*: RunLoadedProgram sets
+# SP = D681h (ram:D7FA / ROM00:71A9, `31 81 D6`) and the stack grows down, so
+# D600h is 81h bytes into it. Never observed failing -- the stack is shallow
+# where the name is read -- but it is the same collision class as the staging
+# overrun described below, so it moves to the free span under the ceiling.
+# See doc/re-notes/unbanked-ram-map.md.
+UPLOAD_NAME_ADDR = 0xC000
+# Input chunks deliberately impersonate the service-33 receive payload object,
+# so this address is correct for that path specifically and is not general
+# scratch.
 UPLOAD_BUFFER_ADDR = 0xE5C2
 # Cap a staged chunk at what a real receive can hold. The service-33 receive
 # object is 134 bytes at ram:E5BC with its body 8 bytes in, so the firmware
