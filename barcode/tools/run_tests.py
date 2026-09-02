@@ -69,12 +69,19 @@ def bare_run(code, origin, widths):
     return bytes(mem[p:p + n])
 
 
-def upc_widths(eleven, module=12, break_check=False):
-    d = [int(c) for c in eleven]
+def upc_widths(digits, module=12, break_check=False, reverse=False):
+    """Widths and the string the decoder should report.
+
+    Eleven digits means UPC-A, twelve means EAN-13; the check digit is
+    appended either way.  A UPC-A is reported as twelve digits, an EAN-13
+    as thirteen -- the leading zero of a UPC-A is implied, not printed.
+    """
+    d = [int(c) for c in digits]
     check = upcmod.check_digit(d)
     d.append((check + 5) % 10 if break_check else check)
-    return upcmod.widths(d, module=module, validate=not break_check), \
-        "".join(str(x) for x in d).encode()
+    widths = upcmod.widths(d, module=module, validate=not break_check,
+                           reverse=reverse)
+    return widths, "".join(str(x) for x in d).encode()
 
 
 def bare_suite(code, origin):
@@ -84,6 +91,26 @@ def bare_suite(code, origin):
     for eleven in ("03600029145", "01234567890", "72527273070"):
         w, expect = upc_widths(eleven)
         cases.append((f"UPC-A {expect.decode()}", w, expect))
+    # EAN-13: the leading digit exists only in the left half's parity
+    # pattern, so these exercise a mechanism UPC-A never touches.
+    for twelve in ("590123412345", "400638133393", "978030640615"):
+        w, expect = upc_widths(twelve)
+        cases.append((f"EAN-13 {expect.decode()}", w, expect))
+    # Every leading digit, to walk the whole parity table.  Leading zero is
+    # the special case: all-L parity *is* UPC-A, so it is reported as twelve
+    # digits without the implied zero, which is what a scanner would give.
+    for lead in range(10):
+        twelve = f"{lead}00000000000"
+        w, expect = upc_widths(twelve)
+        if lead == 0:
+            expect = expect[1:]
+        cases.append((f"EAN-13 leading {lead}", w, expect))
+    # Drawn right to left.  The symbol is structurally symmetric, so the
+    # decoder should recover the same digits from the reversed elements.
+    w, expect = upc_widths("03600029145", reverse=True)
+    cases.append((f"UPC-A {expect.decode()} reversed", w, expect))
+    w, expect = upc_widths("590123412345", reverse=True)
+    cases.append((f"EAN-13 {expect.decode()} reversed", w, expect))
     # A slow scan: same symbol, wider modules.  Exercises the fact that the
     # decoder calibrates from the symbol rather than assuming a width.
     w, expect = upc_widths("03600029145", module=40)
@@ -162,6 +189,12 @@ def main():
         bad += firmware_suite(args.binary, "A1")
         w, expect = upc_widths("03600029145")
         print(f"  UPC-A {expect.decode()}:")
+        bad += firmware_suite(args.binary, expect.decode(), widths=w)
+        w, expect = upc_widths("590123412345")
+        print(f"  EAN-13 {expect.decode()}:")
+        bad += firmware_suite(args.binary, expect.decode(), widths=w)
+        w, expect = upc_widths("590123412345", reverse=True)
+        print(f"  EAN-13 {expect.decode()} scanned in reverse:")
         bad += firmware_suite(args.binary, expect.decode(), widths=w)
 
     print("FAILED" if bad else "all passed")
