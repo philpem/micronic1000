@@ -190,6 +190,86 @@ OPTIONS
                            Bound a stalled synthetic state-44 reply phase and
                            print the link state and captured TX suffix.
 
+BARCODE WAND  (--barcode-*)
+  The edge-capture front end (ROM00:13BB) polls EXTBUS_EDGE (port 2Dh) bit 0
+  and records how many polls each level lasts. These options attach a wand
+  model to that port, so a scan can be driven end to end. Widths are in the
+  unit the firmware records -- the value the capture loop pushes into the
+  table at F9B5 -- so the widths given here are the widths that land there.
+  The model holds each level for width-1 samples to absorb the loop's
+  LD HL,1 / INC HL pre-increment.
+
+  Only the two IN A,(2Dh) sites inside the capture loop draw samples
+  (ROM00:13CB arming, ROM00:13ED timing). Every other read of the port --
+  the device-presence probe at ROM00:12A3, the idle polls at 1302/1317/
+  132E/1370 -- sees the quiet line, so they cannot shift the widths.
+
+  --barcode-widths W1,W2,...
+                          Element widths, alternating bar, space, bar, ...
+                          starting with a bar. 8 is the minimum the firmware
+                          accepts (ROM00:13FA SUB 8 restarts the capture
+                          below it) and 6143 the maximum (ROM00:13EA ends a
+                          capture at 1800h). No more than 128 elements
+                          (ROM00:140F CP 80h). This option or --barcode-scan
+                          is what enables the wand.
+  --barcode-scan TEXT     Encode TEXT as Code 39 and use that instead. The
+                          '*' start/stop characters are added for you; '*'
+                          may not appear in TEXT. Ten data characters is the
+                          most that fits in 128 elements.
+  --barcode-narrow N      Narrow-element width for --barcode-scan (default 12)
+  --barcode-wide N        Wide-element width for --barcode-scan (default 30)
+  --barcode-idle N        Samples of quiet line before the first bar
+                          (default 4). The arm loop spins on these.
+  --barcode-line2 0|1     Level reported on port 2Dh bit 1, the second line
+                          the presence probe at ROM00:12A3 reads (default 0,
+                          which makes the probe record device type 2 in
+                          F9AB).
+  --barcode-probe         Install a decode hook that records the machine
+                          state it was entered with -- registers, stack,
+                          bank shadow and the parameter block -- then
+                          rejects the scan. Use it to measure the hook
+                          contract rather than assume it.
+  --barcode-decode        Install the Code 39 decoder from
+                          micronic/barcode.py as the decode hook.
+  --barcode-hook HEX      Install these raw hex bytes as the decode hook.
+  --barcode-hook-at ADDR  Where the hook is written (hex, default 9000, in
+                          the free upper TPA). The thunk at FBC0 is pointed
+                          at it.
+  --barcode-hook-bank N   Bank byte written to FBC1 (default 0). When it
+                          differs from the bank running the capture, the
+                          RST 10h thunk takes its cross-bank path and the
+                          hook returns through the kernel's bank-restore
+                          trampoline instead of straight to ROM00:1468.
+  --barcode-record-at A   Receive buffer handed to the delivery path through
+                          FBB7 (hex, default f958, which is where ExtBusArm
+                          points it on the real reader channel).
+  --barcode-expect TEXT   Assert the decoded scan equals TEXT.
+  --barcode-bdos          Read the scan back the way a program would: set
+                          the reader channel, then CALL 0005h with C=03h
+                          repeatedly and print the byte stream. Without it
+                          the capture is driven directly (DI, CALL 13B8),
+                          which stops at ROM00:30BD because the delivery
+                          tail jumps through the device callback at FDD2
+                          and never returns.
+  --barcode-device NN     Reader-channel selector written to FBC5 (hex,
+                          default 04, which picks FE83+5 = wire 2Bh).
+  --barcode-bdos-slices N Slice budget for --barcode-bdos (default 20000).
+  --barcode-trampoline-at A
+                          Where the harness's DI/CALL stub goes (hex,
+                          default f68d, the dead gap below the port
+                          shadows).
+
+  Examples:
+    # Acceptance test: widths in, matching table out.
+    timeout 550 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \\
+      --max-slices 60000 --expect-timeout 45000 \\
+      --expect "To Continue Press>>:\\r" \\
+      --expect "Enter the,Workstation:\\r12345678\\r" --expect "Main Menu" \\
+      --barcode-scan A1 --barcode-probe --watch-mem f9b5:fbb4
+
+    # Whole path: Code 39 hook, read back through BDOS function 03h.
+    ... --barcode-scan A1 --barcode-decode --barcode-bdos --barcode-expect A1
+
 EXPECT DSL GRAMMAR
   match:keys              Wait for match substrings in LCD text (20×8, 160 bytes),
                           then type keys into the keyboard ring (paced, one per
@@ -254,6 +334,8 @@ from micronic.rtc import RTC146818
 from micronic.commstar import SyntheticWorkflow
 from micronic.program import validate
 from micronic import proto
+from micronic import barcode
+from micronic.z80asm import assemble as z80_assemble
 
 
 # ---------- CLI args ----------
@@ -468,6 +550,68 @@ def fill_pattern_byte(addr):
     if FILL_MEM_VALUE is not None:
         return FILL_MEM_VALUE
     return (addr ^ (addr >> 8)) & 0xFF
+
+
+# --------------------------------------------------------------------------
+# Barcode wand model  (--barcode-*)
+#
+# The edge-capture front end (ROM00:13BB) polls port 2Dh bit 0 and records
+# the number of polls each level lasts. BARCODE_WAND turns a list of element
+# widths into that level sequence; ich() hands it one sample per IN A,(2Dh)
+# while a capture is running. Widths are in the unit the firmware records,
+# so what goes in on the command line is what lands in the table at F9B5.
+# --------------------------------------------------------------------------
+BARCODE_NARROW = int(get_arg("--barcode-narrow", "12"), 0)
+BARCODE_WIDE = int(get_arg("--barcode-wide", "30"), 0)
+BARCODE_IDLE = int(get_arg("--barcode-idle", "4"), 0)
+BARCODE_LINE2 = int(get_arg("--barcode-line2", "0"), 0)
+BARCODE_HOOK_AT = int(get_arg("--barcode-hook-at", "9000"), 16) & 0xFFFF
+BARCODE_HOOK = get_arg("--barcode-hook", None)
+BARCODE_DECODE = has_flag("--barcode-decode")
+BARCODE_PROBE = has_flag("--barcode-probe")
+BARCODE_HOOK_BANK = int(get_arg("--barcode-hook-bank", "0"), 0) & 0xFF
+BARCODE_BDOS = has_flag("--barcode-bdos")
+BARCODE_BDOS_SLICES = int(get_arg("--barcode-bdos-slices", "20000"), 0)
+# ((FBC5 >> 2) + 5) & 1Fh indexes the FE83 device table (ROM00:110C /
+# ROM00:320B), and the entry is at FE83 + index - 1. 04h therefore picks
+# FE83+5, which the ROM ships as 2Bh -- the wire LinkCommandLookup routes
+# to ExtBusArm (ROM00:1221).
+BARCODE_DEVICE_SELECT = int(get_arg("--barcode-device", "04"), 16) & 0xFF
+BARCODE_RECORD_AT = int(get_arg("--barcode-record-at", "f958"), 16) & 0xFFFF
+BARCODE_TRAMPOLINE_AT = int(get_arg("--barcode-trampoline-at", "f68d"), 16) & 0xFFFF
+BARCODE_EXPECT = get_arg("--barcode-expect", None)
+
+BARCODE_WIDTHS = None
+if has_flag("--barcode-widths"):
+    try:
+        BARCODE_WIDTHS = [int(w, 0) for w in
+                          get_arg("--barcode-widths", "").replace(" ", "").split(",") if w]
+    except ValueError:
+        print("--barcode-widths takes comma-separated integers", file=sys.stderr)
+        sys.exit(2)
+elif has_flag("--barcode-scan"):
+    try:
+        BARCODE_WIDTHS = barcode.encode_code39(
+            get_arg("--barcode-scan", ""),
+            narrow=BARCODE_NARROW, wide=BARCODE_WIDE)
+    except barcode.Code39Error as exc:
+        print(f"--barcode-scan: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+BARCODE_ENABLED = BARCODE_WIDTHS is not None
+if BARCODE_ENABLED:
+    try:
+        BARCODE_WAND = barcode.Wand(BARCODE_WIDTHS, idle=BARCODE_IDLE,
+                                    line2=BARCODE_LINE2)
+    except barcode.Code39Error as exc:
+        print(f"--barcode-widths: {exc}", file=sys.stderr)
+        sys.exit(2)
+else:
+    BARCODE_WAND = None
+# The wand only answers port 2Dh once the capture driver arms it, so the
+# device probes the firmware runs at other times see a quiet line.
+barcode_armed = False
+barcode_status = "pending" if BARCODE_ENABLED else None
 
 SYNTHETIC_LOADRUN_PATH = (
     get_arg("--synthetic-loadrun") if has_flag("--synthetic-loadrun") else None
@@ -1261,6 +1405,21 @@ def ich(*a):
         return 0x00
     if p == 0x49:
         return 0x00
+    if p == 0x2D:
+        # EXTBUS_EDGE. bit0 is the level the capture loop times; bit1 is the
+        # second line the device-presence probe at ROM00:12A3 tests.
+        #
+        # Only the two IN A,(2Dh) sites inside the capture loop advance the
+        # wand: ROM00:13CB (arm, wait for the leading edge) and ROM00:13ED
+        # (time the current element). Every other read of this port -- the
+        # presence probe at 12A3, the idle polls at 1302/1317/132E/1370 --
+        # sees the quiet line. Without that gate those polls would eat
+        # samples out of the scan and shift every recorded width.
+        if BARCODE_WAND is None:
+            return 0xFF
+        if barcode_armed and (mach.pc & 0xFFFF) in BARCODE_CAPTURE_POLL_PCS:
+            return BARCODE_WAND.read()
+        return BARCODE_WAND.idle_byte()
     if p == 0x4E:
         return session_link_peer.read_rx() if session_link_peer else 0x00
     if p == 0x4C:
@@ -1683,6 +1842,258 @@ def run_loaded_program(name_addr, entry_addr, prefix, marker=None, marker_bank=N
     raise RuntimeError(
         f"marker {marker_addr:04X}={marker_value:02X} not observed"
     )
+
+
+# --------------------------------------------------------------------------
+# Barcode capture driver
+#
+# Runs one edge capture the way ExtBusArmWindow (ROM00:1382) does: DI, then
+# CALL ROM00:13B8. Interrupts must be off because the capture parks the real
+# SP in FBBD and repurposes SP as the width-table pointer, so any interrupt
+# push would land in the table.
+#
+# The trampoline lives in the dead gap at F68D-F77F (see
+# doc/re-notes/unbanked-ram-map.md: no firmware reference, zero writes across
+# every driven workload), so it displaces nothing.
+# --------------------------------------------------------------------------
+BARCODE_CAPTURE_ENTRY = 0x13B8
+# The PC reported inside an input callback is the address after the IN, so
+# both spellings of each of the two capture-loop poll sites are accepted.
+BARCODE_CAPTURE_POLL_PCS = frozenset((0x13CB, 0x13CD, 0x13ED, 0x13EF))
+# ExtBusComplete (ROM00:14A3) tail-calls LinkResetSession (ROM00:30BD), which
+# posts the completion event and jumps through the device callback at FDD2.
+# It never comes back, so a synthetic capture has to stop there; by that point
+# the whole delivery record has already been written.
+BARCODE_DELIVERY_DONE = 0x30BD
+BARCODE_HOOK_THUNK = 0xFBC0     # D7 = RST 10h, bank, address lo, address hi
+BARCODE_PARAM_BLOCK = 0xFBB9    # table pointer, then 16-bit element count
+BARCODE_TABLE = 0xF9B5
+BARCODE_RAW_COUNT = 0xF9B4
+BARCODE_RESULT_BUFFER = 0xFBB7  # ExtBusArm's caller-supplied receive buffer
+
+
+def barcode_install_hook():
+    """Point the FBC0 thunk at whichever hook this run asked for."""
+    if BARCODE_PROBE:
+        code, syms = barcode.assemble_probe(BARCODE_HOOK_AT)
+        kind = "probe"
+    elif BARCODE_DECODE:
+        code, syms = barcode.assemble_decoder(BARCODE_HOOK_AT)
+        kind = "code39"
+    elif BARCODE_HOOK:
+        code, syms = bytes.fromhex(BARCODE_HOOK.replace(" ", "")), {}
+        kind = "raw"
+    else:
+        return None, {}, "none (firmware discard hook at ROM00:1567)"
+    host_write(BARCODE_HOOK_AT, code)
+    host_write(BARCODE_HOOK_THUNK,
+               bytes([0xD7, BARCODE_HOOK_BANK,
+                      BARCODE_HOOK_AT & 0xFF, BARCODE_HOOK_AT >> 8]))
+    print(f"[barcode] hook {kind}: {len(code)} bytes at {BARCODE_HOOK_AT:04X}, "
+          f"thunk FBC0 = {bytes(mem[0xFBC0:0xFBC4]).hex()}")
+    return code, syms, kind
+
+
+def barcode_report_probe(syms):
+    """Print the machine state the probe recorded at hook entry."""
+    if not syms:
+        return
+    word = lambda name: read_word(syms[name])  # noqa: E731
+    calls = mem[syms["p_calls"]]
+    print(f"[barcode] hook entered {calls} time(s)")
+    if not calls:
+        return
+    print(f"[barcode] hook entry AF={word('p_af'):04X} BC={word('p_bc'):04X} "
+          f"DE={word('p_de'):04X} HL={word('p_hl'):04X} "
+          f"IX={word('p_ix'):04X} IY={word('p_iy'):04X} "
+          f"SP={word('p_sp'):04X} F791={mem[syms['p_bank']]:02X}")
+    param = bytes(mem[syms["p_param"]:syms["p_param"] + 4])
+    print(f"[barcode] hook entry FBB9..FBBC = {param.hex()} "
+          f"(table {param[0] | param[1] << 8:04X}, count "
+          f"{param[2] | param[3] << 8})")
+    stack = bytes(mem[syms["p_stk"]:syms["p_stk"] + 16])
+    words = " ".join(f"{stack[i] | stack[i + 1] << 8:04X}"
+                     for i in range(0, 16, 2))
+    print(f"[barcode] hook entry stack from SP: {words}")
+
+
+def perform_barcode_bdos():
+    """Read one scan out through BDOS function 03h, the way a program would.
+
+    Nothing here is synthetic except the wand and the hook: the firmware
+    selects the reader channel from the FE83 device table, arms the front
+    end through ExtBusArm, runs the capture as its own work item, calls the
+    decode hook, and delivers the result. This harness only calls
+    CALL 0005h with C=03h, repeatedly, and records what comes back in A.
+    """
+    global barcode_armed
+    _, syms, kind = barcode_install_hook()
+    host_write(0xFBC5, bytes([BARCODE_DEVICE_SELECT]))
+    index = ((BARCODE_DEVICE_SELECT >> 2) + 5) & 0x1F
+    wire = mem[0xFE83 + index - 1]
+    print(f"[barcode] BDOS reader channel: FBC5={BARCODE_DEVICE_SELECT:02X} "
+          f"-> FE83+{index - 1} = wire {wire:02X}")
+
+    want = BARCODE_EXPECT if BARCODE_EXPECT is not None else ""
+    reads = 2 + len(want) if want else 6
+    body = "".join(f"    ld  c,3\n    call 0x0005\n    ld  (buf+{k}),a\n"
+                   for k in range(reads))
+    tramp, tsyms = z80_assemble(
+        f"{body}    ret\nbuf: ds {reads}\n", origin=BARCODE_TRAMPOLINE_AT)
+    host_write(BARCODE_TRAMPOLINE_AT, tramp)
+
+    barcode_armed = True
+    original_sp = prepare_call(0, BARCODE_TRAMPOLINE_AT, ())
+    mach.set_breakpoint(CALL_SENTINEL)
+    returned = False
+    try:
+        for _ in range(BARCODE_BDOS_SLICES):
+            mach.ticks_to_stop = SLICE_TICKS
+            mach.run()
+            advance_rtc(SLICE_TICKS - mach.ticks_to_stop)
+            if (mach.pc & 0xFFFF) == CALL_SENTINEL:
+                returned = True
+                break
+    finally:
+        mach.clear_breakpoint(CALL_SENTINEL)
+        barcode_armed = False
+    mach.sp = original_sp
+    stream = bytes(mem[tsyms["buf"]:tsyms["buf"] + reads])
+    print(f"[barcode] fn 03h returned {'' if returned else '(TIMED OUT) '}"
+          f"{stream.hex()}  {stream!r}")
+    print(f"[barcode] wand: {BARCODE_WAND.reads} port-2Dh reads, "
+          f"{BARCODE_WAND.transitions} level changes; "
+          f"F9B4={mem[0xF9B4]} F9AB={mem[0xF9AB]:02X} FBB5={mem[0xFBB5]:02X}")
+    print(f"[barcode] envelope F958: {bytes(mem[0xF958:0xF970]).hex()}")
+    if not returned:
+        return False
+    if want:
+        expect_stream = bytes([0x1B, len(want)]) + want.encode("ascii")
+        if stream == expect_stream:
+            print(f"[barcode] PASS: fn 03h stream {stream!r} == "
+                  f"1Bh, count, data")
+            return True
+        print(f"[barcode] FAIL: fn 03h stream {stream!r} != {expect_stream!r}")
+        return False
+    return True
+
+
+def perform_barcode_capture():
+    """Drive one capture end to end and report what the firmware recorded."""
+    global barcode_armed
+    _, syms, kind = barcode_install_hook()
+
+    # Give the delivery path (ROM00:1470) a buffer of its own. Without this it
+    # would write through whatever ExtBusArm last left in FBB7.
+    host_write_word(BARCODE_RESULT_BUFFER, BARCODE_RECORD_AT)
+    host_write(BARCODE_RECORD_AT, b"\x00" * 32)
+
+    tramp_src = f"""
+        di
+        call {BARCODE_CAPTURE_ENTRY:#06x}
+        sbc a,a          ; FF when the capture returned carry (failed)
+        ld  (result),a
+        ret
+result: db 0
+"""
+    tramp, tsyms = z80_assemble(tramp_src, origin=BARCODE_TRAMPOLINE_AT)
+    host_write(BARCODE_TRAMPOLINE_AT, tramp)
+
+    barcode_armed = True
+    original_sp = prepare_call(0, BARCODE_TRAMPOLINE_AT, ())
+    hook_bp = BARCODE_HOOK_AT if kind != "none" else None
+    if hook_bp is not None:
+        mach.set_breakpoint(hook_bp)
+    mach.set_breakpoint(CALL_SENTINEL)
+    mach.set_breakpoint(BARCODE_DELIVERY_DONE)
+    returned = False
+    delivered = False
+    try:
+        for _ in range(4000):
+            mach.ticks_to_stop = SLICE_TICKS
+            mach.run()
+            pc = mach.pc & 0xFFFF
+            if pc == BARCODE_DELIVERY_DONE:
+                delivered = True
+                print("[barcode] delivery complete: reached LinkResetSession "
+                      "(ROM00:30BD); stopping before it jumps through (FDD2)")
+                break
+            if pc == hook_bp:
+                print(f"[barcode] hook reached: PC={pc:04X} AF={mach.af:04X} "
+                      f"BC={mach.bc:04X} DE={mach.de:04X} HL={mach.hl:04X} "
+                      f"IX={mach.ix:04X} IY={mach.iy:04X} SP={mach.sp:04X} "
+                      f"bank={cb:02X}")
+                stack = [read_word(mach.sp + 2 * k) for k in range(6)]
+                print("[barcode] stack at hook entry: "
+                      + " ".join(f"{w:04X}" for w in stack))
+                mach.clear_breakpoint(hook_bp)
+                hook_bp = None
+                continue
+            if pc == CALL_SENTINEL:
+                returned = True
+                break
+    finally:
+        if hook_bp is not None:
+            mach.clear_breakpoint(hook_bp)
+        mach.clear_breakpoint(CALL_SENTINEL)
+        mach.clear_breakpoint(BARCODE_DELIVERY_DONE)
+        barcode_armed = False
+    if not returned and not delivered:
+        print(f"[barcode] capture did not return; PC={mach.pc & 0xFFFF:04X}",
+              file=sys.stderr)
+    mach.sp = original_sp
+
+    failed = 0 if delivered else mem[tsyms["result"]]
+    raw_count = mem[BARCODE_RAW_COUNT]
+    print(f"[barcode] wand: {len(BARCODE_WIDTHS)} elements fed, "
+          f"{BARCODE_WAND.reads} port-2Dh reads, "
+          f"{BARCODE_WAND.transitions} level changes")
+    outcome = ("delivered to the receive buffer" if delivered
+               else "carry set: no data delivered" if failed
+               else "carry clear")
+    print(f"[barcode] capture outcome: {outcome}"
+          f", F9B4 element count = {raw_count}")
+    recorded = [read_word(BARCODE_TABLE + 2 * k) for k in range(min(raw_count, 128))]
+    print(f"[barcode] recorded widths ({len(recorded)}): {recorded}")
+    ok = recorded == BARCODE_WIDTHS
+    print(f"[barcode] widths match input: {ok}")
+    if not ok and len(recorded) == len(BARCODE_WIDTHS):
+        diff = [(i, a, b) for i, (a, b) in
+                enumerate(zip(BARCODE_WIDTHS, recorded)) if a != b]
+        print(f"[barcode] first differences: {diff[:8]}")
+    print(f"[barcode] parameter block FBB9..FBBC = "
+          f"{bytes(mem[0xFBB9:0xFBBD]).hex()}")
+    ptr = read_word(0xFBB9)
+    count = read_word(0xFBBB)
+    if BARCODE_PROBE:
+        barcode_report_probe(syms)
+    decoded = None
+    if count and count < 256:
+        decoded = bytes(mem[ptr:ptr + count])
+        print(f"[barcode] hook returned {count} byte(s) at {ptr:04X}: "
+              f"{decoded!r}")
+    else:
+        print("[barcode] hook returned count 0: scan rejected, capture re-armed")
+    record = bytes(mem[BARCODE_RECORD_AT:BARCODE_RECORD_AT + 16])
+    print(f"[barcode] delivery record at {BARCODE_RECORD_AT:04X}: {record.hex()}")
+    print(f"[barcode] FBC9 event flags = {mem[0xFBC9]:02X}"
+          f"  F9AB={mem[0xF9AB]:02X} FBB5={mem[0xFBB5]:02X}")
+    if delivered:
+        env_status = mem[BARCODE_RECORD_AT]
+        env_count = read_word(BARCODE_RECORD_AT + 4)
+        env_data = bytes(mem[BARCODE_RECORD_AT + 6:
+                             BARCODE_RECORD_AT + 6 + min(env_count, 26)])
+        print(f"[barcode] envelope: status={env_status:02X} "
+              f"count={env_count} data={env_data!r}")
+        decoded = env_data
+    if BARCODE_EXPECT is not None:
+        want = BARCODE_EXPECT.encode("ascii")
+        if decoded == want:
+            print(f"[barcode] PASS: decoded {decoded!r} == expected {want!r}")
+            return True
+        print(f"[barcode] FAIL: decoded {decoded!r} != expected {want!r}")
+        return False
+    return bool(ok)
 
 
 def perform_upload():
@@ -2526,6 +2937,22 @@ while i < MAX_SLICES and stall < 8000:
             builder_trace_status = "failed"
             print(f"[session-builder] FAILED: {exc}", file=sys.stderr)
         break
+    if (
+        BARCODE_ENABLED
+        and barcode_status == "pending"
+        and "Main Menu" in fb_txt
+        and not pending_keys
+        and (not EXPECT_STEPS or expect_idx >= len(EXPECT_STEPS))
+    ):
+        print(f"[{i}] Main Menu reached; driving barcode capture")
+        try:
+            driver = (perform_barcode_bdos if BARCODE_BDOS
+                      else perform_barcode_capture)
+            barcode_status = "succeeded" if driver() else "failed"
+        except Exception as exc:
+            barcode_status = "failed"
+            print(f"[barcode] FAILED: {exc}", file=sys.stderr)
+        break
     if UPLOAD_PATH and upload_status == "pending" and "Main Menu" in fb_txt:
         if not pending_keys and (not EXPECT_STEPS or expect_idx >= len(EXPECT_STEPS)):
             print(f"[{i}] Main Menu reached; starting host upload")
@@ -2585,6 +3012,8 @@ if UPLOAD_PATH:
     print(f"upload_status={upload_status}")
 if TRACE_SESSION_BUILDER:
     print(f"builder_trace_status={builder_trace_status}")
+if BARCODE_ENABLED:
+    print(f"barcode_status={barcode_status}")
 if TRACE_SESSION_TRANSACTION:
     print(f"transaction_trace_status={transaction_trace_status}")
 if WATCH_PC:

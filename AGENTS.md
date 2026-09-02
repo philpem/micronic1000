@@ -222,8 +222,10 @@ hand:
   re-type them at every call site, and record the convention in the
   callee's plate.
 - **Restart vectors.** All are kernel entries here (see
-  doc/internals/memory-map.md §page zero): 0008 → JP F180 (BDOS dispatch),
-  0010 → JP F5E1 (banked-call dispatcher), 0020 → JP F5EA,
+  doc/reference/memory-map.md §page zero): 0005 → JP F180 (the CP/M BDOS
+  gate), 0008 → JP F5E1, 0010 → the banked-call dispatcher **coded inline,
+  not a jump** (`E1 5E 3A 91 F7 ...`, and it runs through the 0018 slot, so
+  RST 18h is unusable), 0020 → JP F5EA,
   0028 → JP F5ED, 0030 → JP F5F0, 0038 → JP F5F3 (doubles as the
   IM 1 IRQ entry), NMI at 0066 → JP F5F6. Keep them labelled in
   *both* ROM banks (and in ram: BankedRst*Stub labels, byte-verified

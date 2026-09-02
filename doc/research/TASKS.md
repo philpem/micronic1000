@@ -3895,3 +3895,71 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   Note `boot_hw.py` writes `ECD8` itself, so "programs run in bank 2" is a
   harness convention, not an observed device behaviour. **OPEN:** read `ECD8`
   after a genuine device-path load.
+
+## Barcode: wand model, measured hook contract, working Code 39 decoder (2026-09-02)
+
+* **The capture path can now be driven.** `analysis/boot_hw.py` models the
+  wand on port `2Dh` (`--barcode-scan`, `--barcode-widths`,
+  `--barcode-decode`, `--barcode-bdos`, `--barcode-expect`); new modules
+  `analysis/micronic/z80asm.py` (a two-pass Z80 assembler, so injected
+  payloads live as readable source) and `analysis/micronic/barcode.py` (wand,
+  Code 39 encoder, Python reference decoder, the Z80 decode hook, a hook
+  probe). `analysis/test_barcode.py` has 24 tests, all passing including the
+  5 emulator-gated ones.
+* **Capture mechanics, CONFIRMED (`ROM00:13BB`-`1441`):** arm waits for port
+  `2Dh` **bit 0 = 1**; **widths are counts of port polls, not time** (each
+  element pre-increments at `13E8`, so N samples records as N+1; ~15.4 us per
+  count at 3.579545 MHz); minimum element 8 (`13FA`), maximum `1800h` ends
+  the capture without recording the final element (`13DF`/`13EA`); 128-element
+  cap at `140F`.
+  * **The 128 cap is geometric**: the table is `PUSH`ed down from `FBB3` and
+    reverse-copied head-to-tail to `F9B5`, and 128 x 2 bytes is exactly where
+    source and destination meet.
+  * **CORRECTION to a Ghidra comment:** the EOL at `ROM00:13FA` says "first
+    element < 8 loops". The test is in the per-element path and applies to
+    **every** element.
+* **FIRMWARE BUG: the hook is handed an uncapped element count.**
+  `ROM00:1409` stores the raw count in `ram:F9B4`; the cap at `140F` applies
+  only to the copy loop; `1446` reads the raw value back and `1449` gives it
+  to the hook. Fed 140 elements, the hook's block reads count 140 while only
+  128 entries exist. **A decoder must clamp.** The shipped Code 39 decoder
+  rejects counts above 128.
+* **Hook contract, measured rather than inferred:**
+  * Socket `ram:FBC0` is a four-byte `RST 10h` thunk — `FBC0` = `D7`,
+    `FBC1` = bank, `FBC2`/`FBC3` = address. Not a single pointer cell.
+  * Entered with **one stack argument**: `[SP+0]` return, `[SP+2]` = `FBB9`.
+    Identical same-bank and cross-bank; `HL` is not a parameter. Interrupts
+    off, `FBC1`'s bank paged in, every register but `SP` free to clobber.
+  * Parameter block: `FBB9`/`FBBA` = width-table pointer, **`FBBB`/`FBBC` =
+    a 16-bit count**. `ROM00:147E` reads it with `LD BC,(FBBB)` as an `LDIR`
+    length — so the reference page's "status byte" at `FBBC` was wrong and
+    would have copied 256 extra bytes per unit.
+  * Return: repoint `FBB9`, set the count, `RET`. **Count 0 = reject and
+    re-arm.** **Do not write `ram:FBB5`** — a nonzero value there suppresses
+    the completion event and hangs a blocked `BDOS 03h`.
+  * **Delivery capacity is 26 bytes** (`F95E`-`F977`); the `LDIR` at
+    `ROM00:148B` is unbounded, so more overruns the device-table pointer.
+  * `BIT 7,H` at `145B` is a **fast path, not a gate** — both branches reach
+    the hook; the direct jump needs the hook at `>= 8000h` *and* starting
+    with `D7`.
+* **`BDOS 03h` framing CONFIRMED by execution:** `1Bh`, count, bytes. A
+  driven Code 39 `A1` scan returns `1B 02 41 31`.
+* **A working Code 39 decode hook** (494 bytes assembled) thresholds each
+  character at the midpoint of its own nine widths, so it needs no absolute
+  calibration; validates `count = 10k-1` and the `*` delimiters. Driven end
+  to end: wand -> firmware capture -> hook -> `BDOS 03h` -> `A1`.
+* **UPC/EAN is feasible on this hook** — 59 elements fits the 128 cap, the
+  arm and terminator behave, 13 digits fits the envelope. The cost is decoder
+  complexity (delta decoding against a guard-bar module estimate, four-way
+  element classification, parity tables), plus the loss of Code 39's
+  self-checking property.
+* **CORRECTION to `AGENTS.md`:** its restart-vector list said "`0008` ->
+  `JP F180` (BDOS), `0010` -> `JP F5E1`". The bytes: `0005: C3 80 F1`
+  (the CP/M BDOS gate), `0008: C3 E1 F5`, and **`0010` is not a jump at all**
+  — the dispatcher is coded inline, which is also why `RST 18h` is unusable.
+  The stale `doc/internals/memory-map.md` path in that bullet is fixed too.
+* **`analysis/test_barcode.py` imported `z80` at module level**, so it could
+  not be collected by the system interpreter (which has pytest but not `z80`)
+  nor run by the venv (which has `z80` but not pytest). The import is now
+  guarded and the CPU-level test class skips without it, so the suite behaves
+  like the others under both.

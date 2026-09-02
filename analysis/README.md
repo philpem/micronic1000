@@ -30,6 +30,22 @@ scaffold is not sufficient to build an interoperable Commstar adapter:
   grammar.
 * `test_proto.py` covers the raw queue/latch API and the confirmed logical
   header checks.
+* `micronic.barcode` — the barcode/edge-capture side: a `Wand` model of
+  the port-2Dh level source, a Code 39 encoder and reference decoder, and
+  a **Code 39 decode hook written in Z80** for installation at the
+  firmware's `FBC2` hook vector (`decoder_source()` / `assemble_decoder()`),
+  plus a hook **probe** that records the machine state it is entered with.
+  Every width is in the unit the capture loop records; the module carries
+  the firmware limits it enforces (`MIN_WIDTH` 8, `MAX_WIDTH` 0x17FF,
+  `MAX_ELEMENTS` 128) with the instruction that imposes each.
+* `micronic.z80asm` — a small two-pass Z80 assembler, so payloads injected
+  into the emulator live in the repository as readable source rather than
+  hex blobs. It implements the subset those payloads use and raises
+  `AsmError` on anything else rather than emitting something wrong.
+* `test_barcode.py` covers the Code 39 table invariants, the codec, the
+  wand's off-by-one against a Python model of the capture loop, the
+  assembler, the Z80 decoder on a bare CPU, and — under
+  `MICRONIC_RUN_EMULATOR_TESTS=1` — the whole path through the real ROM.
 
 ## Emulator harnesses (Python `z80` module)
 
@@ -84,6 +100,31 @@ timeout 420 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
 ```
 
 See `doc/re-notes/unbanked-ram-map.md` for the results this produced.
+
+**Barcode wand (`--barcode-*`):** a model of whatever the firmware reads on `EXTBUS_EDGE` (port `2Dh`) bit 0, so a scan can be driven end to end. Before this the harness returned a constant `FFh` for that port, the edge-detect loops at `ROM00:13CB`/`13ED` never saw a transition, and nothing on the capture path had ever executed.
+
+- **Width unit.** Widths are the numbers the firmware records. The capture loop starts each element at `HL=1` and pre-increments before every poll (`ROM00:13E5`/`13E8`), so an element held for *N* samples is pushed as *N+1*; the model holds each level for `width-1` samples so that what goes in on the command line is what lands in the table at `F9B5`. Limits, all byte-verified: minimum 8 (`ROM00:13FA` `SUB 8` / `JR C` restarts the whole capture below it), maximum 6143 (`ROM00:13EA` `CP D` with `D=18h` ends the capture — this is what the trailing quiet zone does), and at most 128 elements (`ROM00:140F` `CP 80h`, the point at which the reverse copy from `FBB3` downward would collide with the destination at `F9B5`).
+- **Only the capture loop draws samples.** The wand answers with the quiet line unless the PC is at one of the two `IN A,(2Dh)` sites inside the capture (`13CB` arming, `13ED` timing). The presence probe at `12A3` and the idle polls at `1302`/`1317`/`132E`/`1370` therefore cannot eat samples out of a scan and shift every recorded width.
+- `--barcode-widths W1,W2,...` feeds raw element widths, alternating bar, space, bar, … starting with a bar (the capture arms on the 0→1 edge, so element 0 is always the first dark bar). `--barcode-scan TEXT` encodes TEXT as Code 39 instead, with `--barcode-narrow`/`--barcode-wide` (default 12/30) and `--barcode-idle` for the leading quiet zone.
+- `--barcode-probe` installs a hook that records the registers, stack, bank shadow and parameter block it was entered with, then rejects the scan. `--barcode-decode` installs the Code 39 decoder; `--barcode-hook HEX` installs arbitrary bytes. `--barcode-hook-at` (default `9000`, free upper TPA) and `--barcode-hook-bank` (default 0) control where the `FBC0` thunk points.
+- `--barcode-bdos` reads the scan back the way a program would — `CALL 0005h` with `C=03h`, repeatedly. Without it the capture is driven directly (`DI`, `CALL 13B8`) and the run stops at `ROM00:30BD`, because the delivery tail jumps through the device callback at `FDD2` and never returns to its caller.
+
+Acceptance run — widths in, matching table out:
+
+```sh
+timeout 550 analysis/venv/bin/python3 analysis/boot_hw.py --no-lcd \
+    --max-slices 60000 --expect-timeout 45000 \
+    --expect "To Continue Press>>:\r" \
+    --expect "Enter the,Workstation:\r12345678\r" --expect "Main Menu" \
+    --barcode-scan A1 --barcode-probe --watch-mem f9b5:fbb4
+```
+
+Whole path — Code 39 hook installed, scan read back through BDOS `03h`:
+
+```sh
+    ... --barcode-scan A1 --barcode-decode --barcode-bdos --barcode-expect A1
+# [barcode] fn 03h returned 1b024131  b'\x1b\x02A1'
+```
 
 **Expect DSL:** `match:keys` — wait until `match` substrings appear in LCD text, then inject `keys` via the keyboard ring (paced exactly like the `16C9` HALT wait, `FBC9` bit2, `FFA8==1`). Multiple `--expect` steps run in order.
 

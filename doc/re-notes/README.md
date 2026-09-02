@@ -29,6 +29,9 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 * [Forms and UI](forms-ui.md) — form model, templates, and menus
 * [CP/M comparison](cp-m-comparison.md) — deviation-by-deviation evidence
 * [Interrupts](interrupts.md) — IRQ/NMI and banked-call mechanics
+* [Barcode capture](barcode-capture.md) — the `Ext*` edge-capture front
+  end, the decode-hook dispatch and delivery path, and the uncapped
+  element-count firmware bug.
 * [Unbanked RAM map](unbanked-ram-map.md) — what occupies `8000`-`FFFF`,
   what is genuinely safe for host/test scratch, and the traps
 * [RTC](rtc.md) — HD146818 programming evidence
