@@ -198,3 +198,34 @@ class TestCodabar:
     def test_a_slow_scan_still_decodes(self, decode):
         widths = upc.codabar_widths("A123B", narrow=40, wide=100)
         assert decode(widths) == b"A123B"
+
+
+class TestCode128:
+    @pytest.mark.parametrize("text", ["AB", "HELLO", "Code128!", "a-z",
+                                      "12345678", " "])
+    def test_code_set_b(self, decode, text):
+        assert decode(upc.code128_widths(text)) == text.encode()
+
+    @pytest.mark.parametrize("digits", ["1234", "00", "9999999999"])
+    def test_code_set_c(self, decode, digits):
+        assert decode(upc.code128_widths(digits, codeset="C")) == digits.encode()
+
+    @pytest.mark.parametrize("text", ["AB", "HELLO"])
+    def test_reversed(self, decode, text):
+        assert decode(upc.code128_widths(text, reverse=True)) == text.encode()
+
+    def test_a_slow_scan_still_decodes(self, decode):
+        """Each character is eleven modules, so it calibrates per character."""
+        assert decode(upc.code128_widths("HELLO", module=40)) == b"HELLO"
+
+    def test_a_broken_checksum_is_refused(self, decode):
+        """Code 128 is genuinely self-checking, unlike Codabar or ITF."""
+        vals = upc.code128_values("HELLO")
+        vals[-2] = (vals[-2] + 1) % 103          # corrupt the check character
+        widths = []
+        for v in vals:
+            widths += [int(c) * 12 for c in upc.CODE128_WIDTHS[v]]
+        assert decode(widths) == b""
+
+    def test_a_missing_stop_is_refused(self, decode):
+        assert decode(upc.code128_widths("HELLO")[:-7]) == b""

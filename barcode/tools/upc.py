@@ -242,3 +242,65 @@ def codabar_widths(text, narrow=12, wide=30, gap=None, reverse=False):
         for w in CODABAR_PATTERNS[ch]:
             out.append(wide if w == "W" else narrow)
     return out[::-1] if reverse else out
+
+
+# ---------------------------------------------------------------------------
+# Code 128.  Eleven modules per symbol character in six elements -- three
+# bars, three spaces -- except the stop, which is thirteen modules in seven.
+#
+# A delta code: element widths are 1..4 modules and mean nothing absolutely.
+# Three code sets share the 107 patterns; a checksum mod 103 closes it.
+# ---------------------------------------------------------------------------
+
+# Element widths for symbol values 0..106, bar first.  Every row sums to 11
+# except the stop (value 106), which is the seven-element terminator.
+CODE128_WIDTHS = [
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213",
+    "122312", "132212", "221213", "221312", "231212", "112232", "122132",
+    "122231", "113222", "123122", "123221", "223211", "221132", "221231",
+    "213212", "223112", "312131", "311222", "321122", "321221", "312212",
+    "322112", "322211", "212123", "212321", "232121", "111323", "131123",
+    "131321", "112313", "132113", "132311", "211313", "231113", "231311",
+    "112133", "112331", "132131", "113123", "113321", "133121", "313121",
+    "211331", "231131", "213113", "213311", "213131", "311123", "311321",
+    "331121", "312113", "312311", "332111", "314111", "221411", "431111",
+    "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+    "112412", "122114", "122411", "142112", "142211", "241211", "221114",
+    "413111", "241112", "134111", "111242", "121142", "121241", "114212",
+    "124112", "124211", "411212", "421112", "421211", "212141", "214121",
+    "412121", "111143", "111341", "131141", "114113", "114311", "411113",
+    "411311", "113141", "114131", "311141", "411131", "211412", "211214",
+    "211232", "2331112",
+]
+
+START_A, START_B, START_C, STOP = 103, 104, 105, 106
+
+
+def code128_values(text, codeset="B"):
+    """Symbol values for TEXT: start, data, checksum, stop.
+
+    Code set B covers printable ASCII 32..127, which is what a decoder for
+    this device is most likely to meet.  Code set C, two digits per symbol,
+    is used when the text is an even run of digits.
+    """
+    if codeset == "C":
+        if len(text) % 2 or not text.isdigit():
+            raise ValueError("code set C takes an even number of digits")
+        values = [START_C] + [int(text[i:i + 2]) for i in range(0, len(text), 2)]
+    else:
+        for ch in text:
+            if not 32 <= ord(ch) <= 127:
+                raise ValueError(f"code set B cannot carry {ch!r}")
+        values = [START_B] + [ord(ch) - 32 for ch in text]
+    check = values[0]
+    for i, v in enumerate(values[1:], start=1):
+        check += i * v
+    return values + [check % 103, STOP]
+
+
+def code128_widths(text, codeset="B", module=12, reverse=False):
+    """Element widths for a Code 128 symbol, plus the quiet-zone-free tail."""
+    out = []
+    for v in code128_values(text, codeset):
+        out += [int(c) * module for c in CODE128_WIDTHS[v]]
+    return out[::-1] if reverse else out
