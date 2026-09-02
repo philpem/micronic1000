@@ -174,3 +174,27 @@ class TestItf:
 
     def test_a_clipped_stop_is_refused(self, decode):
         assert decode(upc.itf_widths("1234")[:-3]) == b""
+
+
+class TestCodabar:
+    @pytest.mark.parametrize("text", ["A123B", "A0B", "C1234567890D",
+                                      "A-$:/.+B", "D9999A"])
+    def test_round_trip(self, decode, text):
+        assert decode(upc.codabar_widths(text)) == text.encode()
+
+    @pytest.mark.parametrize("text", ["A123B", "C1234567890D"])
+    def test_reversed(self, decode, text):
+        assert decode(upc.codabar_widths(text, reverse=True)) == text.encode()
+
+    def test_the_delimiters_are_returned(self, decode):
+        """Which pair was used carries meaning in some applications."""
+        assert decode(upc.codabar_widths("A123B")).startswith(b"A")
+        assert decode(upc.codabar_widths("C123D")).endswith(b"D")
+
+    def test_a_missing_delimiter_is_refused(self, decode):
+        """Drop the start character; what remains must not decode."""
+        assert decode(upc.codabar_widths("A123B")[8:]) == b""
+
+    def test_a_slow_scan_still_decodes(self, decode):
+        widths = upc.codabar_widths("A123B", narrow=40, wide=100)
+        assert decode(widths) == b"A123B"
