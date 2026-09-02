@@ -2,7 +2,8 @@
 #
 #   make            build decoder.bin, decoder.dip and decoder.com
 #   make ASM=pasmo  build with pasmo instead of z88dk
-#   make test       assemble, then run it against the firmware in the emulator
+#   make test       unit suite: the decoder on a bare Z80 (fast)
+#   make test-firmware   the whole path through the emulator (slow)
 #   make clean
 #
 # z88dk is used through its Docker image, which needs no local install:
@@ -64,12 +65,19 @@ $(BUILD)/decoder.com: $(BUILD)/decoder.bin
 tables:
 	$(PYTHON) tools/gen_tables.py
 
-# FIRMWARE=1 adds the slow end-to-end run through the emulator.
-test: $(BUILD)/decoder.bin
+# The unit suite: the decoder on a bare Z80, plus the tables' own
+# invariants.  Needs the venv, which has both the z80 module and pytest.
+test:
+	$(VENV) -m pytest tests/ -q
+
+# The slow one: the whole path through the firmware in the emulator --
+# wand, capture loop, hook, then BDOS 03h.  Different thing from `test`:
+# it checks installation and delivery, not the decoding.
+test-firmware: $(BUILD)/decoder.bin
 	$(VENV) tools/run_tests.py --binary $(BUILD)/decoder.bin \
-	    --origin $(ORIGIN) $(if $(FIRMWARE),--firmware,)
+	    --origin $(ORIGIN) --firmware
 
 clean:
-	rm -rf $(BUILD) src/*.o
+	rm -rf $(BUILD) build-test src/*.o
 
-.PHONY: all clean test tables
+.PHONY: all clean test test-firmware tables

@@ -2,3 +2,4 @@ build/
 build-*/
 src/*.o
 src/*.bin
+build-test/

@@ -13,8 +13,8 @@ where it survives program exit, warm boot and power cycling.
 
 ```sh
 make                    # decoder.bin, decoder.dip, decoder.com in build/
-make test               # decoder on a bare CPU: fast, and enough for most changes
-make test FIRMWARE=1    # also drive the whole path in the emulator
+make test               # unit suite, ~3s -- enough for most changes
+make test-firmware      # the whole path through the emulator, ~5 min
 make clean
 ```
 
@@ -165,7 +165,8 @@ tools/gen_tables.py    emits the pattern tables, with self-checks
 tools/mkdip.py         wrap the binary as a .DIP
 tools/mkcom.py         wrap the binary as a .COM
 tools/upc.py           EAN-13 / UPC-A / UPC-E encoder, for test scans
-tools/run_tests.py     the test suite
+tools/run_tests.py     the end-to-end firmware runner
+tests/                 the unit suite (pytest)
 ```
 
 ## Two firmware quirks the decoder works around
