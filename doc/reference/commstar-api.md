@@ -6,12 +6,19 @@ operations is not established.
 
 A loaded COM or DIP program can drive the Commstar session directly. The
 firmware publishes twenty fixed entry points in the transfer-vector table,
-one per protocol command, and they work when called from an application even
-though the firmware's own UI never uses most of them.
+and they work when called from an application even though the firmware's own
+UI reaches only nine of them.
 
-This matters because the firmware alone only ever performs *Program
+This matters because the firmware alone only ever completes *Program
 Reception*. Everything else the protocol can do — including sending collected
 data back to a host — is reachable only this way.
+
+**Start here if you are implementing a host.** The two sequences that are
+demonstrated end to end are
+[receiving a program](#receiving-a-program-the-whole-sequence) and
+[uploading a file of records](#uploading-a-file-of-records) followed by
+[ending the session cleanly](#ending-a-session-cleanly). Both run with the
+session mode at **0**; you do not need to suppress validation for either.
 
 ## Entry points
 
@@ -76,8 +83,10 @@ rather than merely prepare it, so treat it as a session *runner* whose
 contract is not yet established.
 
 Note that `E48D = 2` **suppresses** per-command dispatch:
-`SessionStartDataMode` runs the state machine when `E48D` is *not* 2. See
-the protocol page.
+`SessionStartDataMode` runs the state machine when `E48D` is *not* 2. That is
+not something a working session needs — see
+[the session mode](../protocol/commstar.md#rame48d-the-session-mode) on the
+protocol page, and [Suppressing validation](#suppressing-validation) below.
 
 ## Calling convention
 
@@ -111,23 +120,36 @@ ROM01:1427  JP   Z,143Ah     ; 0 -> continue
   So a multi-step exchange is driven by testing `D0FE` between calls — that
   is the status mechanism, rather than a separate poll entry point. `0` and
   `8` are the two values treated as success; `8` is what the *last* block
-  returns, and the same site still consumes that block's bytes (`ROM01:142A`
-  falls through to the store when the result is 8), so **status 8 can carry
-  data**.
+  returns, and the same site still consumes that block's bytes
+  (`ROM01:142A`–`1433` branches to the store at `143A` when the result is 8),
+  so **status 8 can carry data**.
 
   **Correction.** An earlier revision of this page read the guard backwards
   and said `C-RX-BLK` "is only issued when `D0FE` already holds 8". `ram:E04B`
   sets the zero flag when its operands *differ*, so `JP NZ` means *equal*: the
   loop stops at 8, it does not start there.
 
+!!! warning "Two comparison helpers, opposite conventions"
+    The compiled session code calls two 16-bit comparison helpers that look
+    interchangeable and are not. Both are byte-verified in `ram`:
+
+    * **`ram:E04B` is `==`.** Equal → `HL = 1`, **NZ**. Different → `HL = 0`,
+      **Z**.
+    * **`ram:E05A` is `!=`.** Equal → `HL = 0`, **Z**. Different → `HL = 1`,
+      **NZ**.
+
+    They appear within nine instructions of each other at `ROM01:1414` and
+    `ROM01:1430`, testing the same cell against the same constant, and the
+    two branch senses are opposite. Every polarity error corrected on this
+    page started here.
+
 There is no separate "run" or "get status" entry point in the table. The
 session advances one command at a time, each call returning its own result.
 
 ### An application-driven session, working
 
-A loaded COM can hold a complete Commstar session. This sequence, with the
-argument layout above, gets through five commands and uploads data to the
-host:
+A loaded COM can hold a complete Commstar session. This was the first
+sequence to get data out of a handheld:
 
 ```text
 CALL 0EE20h   ; C-INIT-COMMS, mode 0   -> DISCONNECTED
@@ -147,6 +169,15 @@ things had to be true first, and both were harness bugs rather than protocol
 obstacles: the emulator has to keep the RTC running while a loaded program
 executes, or no periodic interrupt fires and the receive path never runs; and
 the peer has to be pumped from the same loop.
+
+!!! warning "Superseded — do not copy this sequence"
+    The `LD A,2` line was a workaround for a misreading, not a requirement.
+    It skips the `C-COMMAND` that tells the host *what the handheld is
+    doing*, and it leaves the session at `CONNECTED`, from which `C-END-TX`
+    cannot complete — so this sequence can only be abandoned, not closed.
+    The correct sequence keeps the mode at 0 and issues `C-COMMAND` index 2
+    `SEND` first, which is also what tells the host an upload is coming. See
+    [Ending a session cleanly](#ending-a-session-cleanly).
 
 ### Uploading a file of records
 
@@ -359,9 +390,21 @@ decided by the mode gate:
 cannot end cleanly" and concluded that neither disposition was available.
 Both are, and **both end cleanly** — the argument path is not an abort path.
 Its `OK` case, `ROM00:534D`, does exactly what `531C` does: display
-`ram:E516` and commit `ram:E48C`. What produced `Abort pending` was the
-session sitting at `CONNECTED` with `E48D = 2`, where `C-END-TX` is an
-illegal transition, and not the choice of disposition.
+`ram:E516` and commit `ram:E48C`.
+
+What produced `Abort pending` in that demonstration was the **session state**,
+not the disposition, and the two modes failed for different reasons:
+
+* with `E48D = 2` the transition table is not consulted, so `C-END-TX`
+  proceeded to the argument path at `533E` and sent an argument the test never
+  meant to supply;
+* with `E48D = 1` the table *is* consulted, and
+  `table[CONNECTED][C-END-TX]` is `8Dh` — bit 7 set, illegal, next state
+  `CRASHED` (byte-verified at `micron1.bin 0x695B`) — so
+  `SessionStartDataMode` returned non-zero and `ROM00:52F8` exited before the
+  completion path.
+
+The fix is the same either way: be in a state from which `C-END-TX` is legal.
 
 What the completion actually needs is a **session state from which
 `C-END-TX` is legal** — `READY-TX-DATA`, `READY-TX-PROG`, `DATA-SET-TX` or
@@ -390,8 +433,9 @@ of states 4, 5 and 6 is now demonstrated and not merely inferred.
 
 **One catch, and it is a real one for a host.** With `E48D = 1`,
 `C-COMMAND` never transmits: `ROM00:4B40` tests the mode and, when it is 1,
-jumps to `4B4F`, which sets the state from `ram:E491` and returns 0 without
-building or sending the 54-byte record. So mode 1 buys a clean teardown at
+falls through to `4B4F`, which sets the state from `ram:E491` and returns 0
+without building or sending the 54-byte record. `C-SHUT-DOWN` (`ROM00:4D92`)
+short-circuits the same way. So mode 1 buys a clean teardown at
 the price of the host never learning what the handheld is doing. Mode 0
 sends the command record *and* still finishes cleanly, so **mode 0 is what a
 real session should use**; mode 1 is useful when there is no host to tell.
@@ -500,10 +544,11 @@ table copied to `ram:E22F`, `{char name[2]; u8 code}` at stride 4:
 | `DM` | 2 | 5 | back to `CONNECTED` |
 | anything else | 3 | 6 | error `0x1F75` (8053), `Invalid reply` |
 
-Byte-verified at `micron1.bin` `0x7301`: `00 00 | 4F 4B 00 00 | 4E 4F 00 01 |
-44 4D 00 02` — `OK`→0, `NO`→1, `DM`→2. The firmware's own call site passes
-`ram:D422` as the buffer (`ROM01:1343`). **A host that never answers a
-command record cannot advance the session**, and it must send the answer with
+Byte-verified at `micron1.bin` `0x7303` (the source of `ram:E22F`):
+`4F 4B 00 00 | 4E 4F 00 01 | 44 4D 00 02` — `OK`→0, `NO`→1, `DM`→2. The
+firmware's own call site passes `ram:D422` as the buffer (`ROM01:1343`).
+**A host that never answers a command record cannot advance the session**,
+and it must send the answer with
 marker 1, because `3FEC` only reaches this comparison on read status 8.
 
 The firmware never inspects the bytes after the first two, so `OK` alone is
@@ -521,7 +566,7 @@ Ten arguments, all 16-bit slots. **CONFIRMED**: the firmware's own call site,
 | `SP+0` | a local | → `ROM00:5669` | — |
 | `SP+2` | low byte of `(ram:D467)` | → `ROM00:5669` | — |
 | `SP+4` | **0** | **`ram:E48D`**, the session mode | — |
-| `SP+6` | conditional, from the Mode field | → `ROM00:5669` | — |
+| `SP+6` | the encoded line speed — the Linespeed field's table entry (`ram:D102 + index`), or the selected mode record's default when Linespeed holds its `FFh` sentinel | → `ROM00:5669` | — |
 | `SP+8` | the constant **60** | → `ROM00:5669` | — |
 | `SP+10` | `ram:ECAB` | `E6D0`, max 8 | `+0` |
 | `SP+12` | `ram:D120` (a zero byte) | `E6E8`, max 6 | `+8`, always blank |
@@ -628,13 +673,18 @@ place, `C_ABORT` from `NOT-STARTED` raises no message box and leaves
 `ram:E512 = 0`, the early-return marker; the identical call without it raises
 the illegal-transition box.
 
-This is not a trick — it is how the firmware itself reaches operations the
-table cannot: only the `RECORD-RX` path is legally reachable, so Program
-Reception and everything on the transmit side must run with validation off.
+**This is a debugging escape hatch, not part of a session.** Nothing in
+either ROM sets `E48D = 2`: its only writer is the session initialiser
+`EE24`, which no image calls. Both demonstrated sequences on this page —
+program download and record upload — run with the mode at **0**, with the
+transition table validating every command. Use mode 2 only to reach a
+command out of order deliberately, and expect the host to be told nothing
+about it.
 
-**A call still does not return, and now the reason is visible.** With
-validation suppressed, `SessionStartDataMode` returns 0, and the operation
-wrapper reads 0 as *proceed*:
+### Why a command blocks
+
+Every command wrapper has the same shape: call `SessionStartDataMode`, treat
+a **zero** result as *proceed*, and only then do the work.
 
 ```text
 ROM00:5473  CALL 452Dh       ; SessionStartDataMode(C_ABORT)
@@ -642,6 +692,9 @@ ROM00:547A  LD   A,H / OR L
 ROM00:547C  JP   NZ,54E1h    ; non-zero -> exit
 ROM00:547F  CALL 593Ah       ; zero -> do the work
 ```
+
+(Note the polarity: a rejected transition returns *non-zero*, and mode 2
+returns *zero* — so suppressing validation makes every command proceed.)
 
 `593A` reaches `SessionTxRunState65`, which prepares a frame header, sets the
 session parameters with wire state `0x65`, sends the frame through service 33
@@ -653,15 +706,13 @@ call made with no peer attached cannot return, and that is the protocol
 working, not a fault.
 
 The practical consequence: exercising the API needs a responding peer, which
-is exactly what a Commstar server is. The emulator's synthetic peer already
-does this for the Load/Run path; pointing it at an application-driven session
-is the next step.
+is exactly what a Commstar server is. `micronic.peer.CommstarPeer` is that
+peer, and every sequence on this page runs against it.
 
-In the bare-COM test the link transmit counter never fired, so it blocks
-somewhere between entering `SessionTxRunState65` and reaching the link
-driver — plausibly because no session was ever opened. `C-INIT-COMMS` is the
-legal first command from `NOT-STARTED`, and driving that first is the
-obvious next experiment.
+In the original bare-COM test the link transmit counter never fired, so the
+call blocked somewhere between entering `SessionTxRunState65` and reaching
+the link driver — because no session had been opened. Opening one with
+`C-INIT-COMMS` first, as the sequences above do, removes the problem.
 
 ## Worked example
 
@@ -685,12 +736,19 @@ Regression: `CommstarApplicationApiTest` in `analysis/test_boot_upload.py`.
 
 ## What this does not tell you
 
-* The per-operation argument and result contract.
-* How an application receives data back, or hands over a buffer.
+* The full result vocabulary. `0` and `8` are success and are the only two
+  values a caller must handle to complete a transfer. `5` (`C-COMMAND` got
+  `NO` or `DM`) and `6` (`Invalid reply`) are decoded here; `4` and `9` are
+  seen on error paths and are not. `ROM00:4E4E` gives explicit arms to
+  `0`, `4`, `6`, `8` and `9` only, everything else falling to a
+  `Line failure`.
+* What the `C-INIT-COMMS` slots `SP+0`, `SP+2` and `SP+6` mean beyond where
+  they are stored, and whether the constant 60 at `SP+8` is a timeout.
 * Whether a real Commstar application used these entry points, or reached the
-  same routines another way. Nothing in the firmware calls fifteen of the
-  twenty, which is the evidence for an application-facing API, but no
-  historical application has been examined.
+  same routines another way. Eleven of the twenty have no caller anywhere in
+  ROM00, ROM01 or the dumped RAM — including every transmit primitive — which
+  is the evidence for an application-facing API, but no historical
+  application has been examined.
 
 For the firmware evidence behind this page — the ROM source table, the
 per-slot derivation, and the measurements — see

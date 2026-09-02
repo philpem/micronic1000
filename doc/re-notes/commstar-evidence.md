@@ -32,9 +32,10 @@ sequence (byte-verified):
    states; which state is V24 ADAPTOR versus PLINTH remains **OPEN**.
 2. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
    `B=0x80` DJNZ delay.
-3. `LinkPresent` then `LinkWaitReady`: each polls `LINK_STATUS` bit 7 with
-   timeout `DE=0x02DA`; the first successful wait writes `0x81` to
-   `LINK_CMD` (4Ch).
+3. `LinkPresent` (ROM00:34EC) then `LinkWaitReady` (ROM00:34F8). `34F8` is
+   the poll — `LINK_STATUS` bit 7 with timeout `DE=0x02DA`; `34EC` calls it
+   and, on success, writes `0x81` to `LINK_CMD` (4Ch). Either wait timing out
+   returns `EBh` (`ROM00:335A`).
 4. Write low five bits of input `A` (held in `C`, `link_id & 1Fh`) to
    `LINK_TXD` (4Dh) as a controller prelude. This byte is not part of the
    in-memory frame descriptor payload.
@@ -106,6 +107,25 @@ implementation.
 `LINK_PROBE` (4Fh) then executes a `LINK_CTRL` latch sequence. The
 physical or reset effect remains **OPEN**.
 
+It does not load `0x1F` directly — it **computes** it:
+
+```text
+348A  3E 7F     LD A,7Fh
+348C  E6 1F     AND 1Fh        ; -> 1Fh
+348E  32 99 F7  LD (0F799h),A  ; shadowed
+3491  D3 4F     OUT (4Fh),A
+```
+
+`7Fh AND 1Fh` is exactly the masking `LinkBlockTx` applies to form a prelude
+from a link id (transmit step 4), so the probe addresses id `7Fh` — the same
+constant the TX builder writes at frame offset +4. **CONFIRMED** that `0x7F`
+is used *as an id* in at least one place; whether it means "broadcast" or
+"unassigned" remains **OPEN**.
+
+Both callers of `LinkProbe` — `ROM00:0202` and `ROM00:0229` — discard its
+return value, so it is a cold-boot reset of the link controller and not a
+detection primitive.
+
 ## Validated frame envelope {#validated-frame-envelope}
 
 The following is established by `LinkValidateFrameHeader` (ROM00:30DC) and
@@ -129,15 +149,16 @@ equality test implemented with XOR; it is an address filter, not a
 checksum. `LinkValidateFrameHeader` does not inspect byte +5.
 
 `LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as
-`{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. The
-TX offset-4 constant `0x7F` is **SUSPECTED**; do not call it an id or
-broadcast. `+5` is untouched by that path.
+`{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. `0x7F` is
+**CONFIRMED** to be used as a link id elsewhere (`LinkProbe`, above), but its
+*meaning* at offset +4 — broadcast, unassigned, or "no target" — is
+**SUSPECTED** only. `+5` is untouched by that path.
 
 **Direction asymmetry (CONFIRMED):** a received logical frame must have its
 offset +4 equal to the active link id. The corresponding M1000 TX builder
 writes `0x7F` at offset +4 instead. A server must not copy this TX `0x7F` into
-an RX queue as the target-id field; the server-side meaning of the M1000's
-`0x7F` remains **SUSPECTED**.
+an RX queue as the target-id field — it must send the handheld's own id
+there. The server-side meaning of the M1000's `0x7F` remains **SUSPECTED**.
 
 `LinkProcessCommandFrame` reads byte 3, compares it with the per-link
 byte at `FE43h + (fdd4 & 3Fh)` (initialised to 1), and accepts either
@@ -576,10 +597,14 @@ control exchanges, then supplies the validated COM/DIP file as raw inner
 program-data payloads. The harness has an opt-in
 regression using a 50-byte DIP file and a 200-byte COM file which reaches the
 explicit end-of-stream boundary in two chunks (126 bytes with marker 0, then
-74 bytes with marker 1). A 128-byte synthetic object fails (`0x1FAE`), while
-126 bytes succeeds, so the maximum lies at 126 or 127 and the envelope
-overhead is at most 8 bytes against the `ROM00:6230` capacity of `0x86` (134).
-Bisecting 127 would close this.
+74 bytes with marker 1). **The maximum is 126 data bytes, measured.** 126 succeeds; 127 is silently
+dropped (no acknowledgement, the handheld re-requests, and the session ends
+`Session aborted` with `C-RX-BLK` returning 4); 128 fails with `0x1FAE`. The
+envelope overhead is therefore 8 bytes against the `ROM00:6230` capacity of
+`0x86` (134) — arithmetically consistent, but the RX frame struct at
+`ram:E5BA` is 138 bytes with its data area at `+0Ah`, which implies a
+different budget. The two readings are unreconciled: treat 126 as a measured
+limit, not a derived one.
 
 This is **not** a claim that the historical Commstar peer used this command
 ordering or envelope. The control-path and raw-payload copies are
@@ -756,8 +781,8 @@ analysis/venv/bin/python3 analysis/boot_hw.py \
 
 `item-list.dip` may instead be a COM image. The harness validates the file,
 serves the current single-payload regression, and uses the real loader
-finalizer. It also has a two-payload regression using the tested 126-byte
-chunk size; the maximum permitted payload remains OPEN. Scan-record encoding, the
+finalizer. It also has a two-payload regression using the 126-byte
+chunk size, which is the measured maximum (see above). Scan-record encoding, the
 database/list schema, software-update decision, final user feedback, and
 safe-removal signal are adapter policy, not claims about a historical deployed
 system.
@@ -815,7 +840,10 @@ The next work should prioritize server blockers:
    counterpart, or whether a real peer must retry.
 4. Capture one physical IR exchange to establish modulation, byte framing,
    timing, and whether controller-queue sync/trailer bytes exist on the wire.
-5. Capture one handheld-to-host RECORD/BLOCK transfer.
+5. Capture a **historical** handheld-to-host RECORD/BLOCK transfer. This
+   project's own peer now receives one (`CommstarRecordUploadTest`), which
+   establishes the ROM's acceptance conditions but not what a real server
+   sent.
 
 A complete valid session trace should include the prelude, received-count
 boundary, every transmitted reply byte, and the RAM frame buffer before and
@@ -864,8 +892,9 @@ register-select model. Distinguishing observations (mechanical, byte-verified):
 (probe). Multidrop addressing is done in software: the frame's byte
 at offset +4 is XOR-matched against the unit's link id `fdd4`
 (`LinkValidateFrameHeader` ROM00:30DC, does not inspect +5). TX
-offset +4 constant `0x7F` (via `LinkFramePrefixWrite` 316B) is
-**SUSPECTED**; offset +5 is never read by the examined ROM link
+offset +4 constant `0x7F` (via `LinkFramePrefixWrite` 316B) is a link id
+`LinkProbe` also uses, but its meaning at offset +4 is **SUSPECTED**;
+offset +5 is never read by the examined ROM link
 code and may be writable by loaded code — the examined ROM
 transport/header path has no checksum; integrity inside unresolved
 loaded-session payloads remains **OPEN**.

@@ -39,6 +39,19 @@ object. Your `on_request` callback returns `None` for a control
 acknowledgement, or `(marker, data)` to answer with an object — which is the
 whole of the application policy.
 
+Two rules the callback must obey, both measured against real firmware:
+
+* **`data` may be at most 126 bytes.** `micronic.peer.MAX_OBJECT_DATA` is
+  that limit. At 127 the handheld silently drops every object, re-requests,
+  and ends the session `Session aborted`. The handheld *asks* for 128 in the
+  `size` field of its `0044` request; do not believe it.
+* **`marker` 0 means "more follows", `marker` 1 ends the stream** — and a
+  command reply must carry marker 1, because the firmware's reply classifier
+  is only reached on read status 8.
+
+`micronic.peer.ProgramDownloadPolicy` is a ready-made callback that serves a
+COM or DIP image under both rules.
+
 ## Verification
 
 The peer runs in **shadow mode** inside the emulator harness: alongside the
@@ -56,6 +69,13 @@ checks the framing and decode against captured bytes with no emulator at all.
 The counts also report *unsolicited* feeds — queues the script pushes without
 a preceding request. Those are peer-initiated type-2 frames, a real protocol
 feature, and the peer correctly does not generate them as replies.
+
+Beyond shadow mode, the peer drives real firmware through complete sessions
+in both directions: `CommstarProgramDownloadTest` (a 300-byte image in three
+objects, ending on `Program received`), `CommstarRecordUploadTest` (a
+multi-record file collected from the handheld) and `CommstarCleanTeardownTest`
+(the same upload ending on `Data transmitted` with the session back at
+`CONNECTED`).
 
 ## Using it against real hardware
 
@@ -75,8 +95,13 @@ Two things the wire cannot tell you, so supply them:
 
 * Interpret `size`. It is the object length for some states and a capacity for
   others, so the peer reports it and leaves the meaning to you.
-* Validate transitions. The handheld's own table is a partial validator that
-  the firmware bypasses; the peer does not second-guess it.
-* Drive an upload. The command sequence is known
-  (`C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`) but no capture of
-  one exists yet.
+* Validate transitions. The handheld validates its own command order against
+  a transition table in ROM; the peer does not duplicate or second-guess it.
+* Drive an upload. Uploads are **initiated by the handheld** — the peer
+  receives the record stream and reassembles it, but nothing on the host side
+  can ask for one. See
+  [Who starts a session](../protocol/commstar.md#who-starts-a-session).
+* Segment a record stream. It hands you the concatenated bytes; splitting
+  `[u8 namelen][name] (1Eh [record])* 1Ch` into records is the caller's job,
+  and the firmware never escapes a `1Eh` or `1Ch` inside a record.
+* Model the latch handshake, or anything below the frame envelope.

@@ -35,9 +35,11 @@ source tree (not published here).
 ## Link identity and port selection
 
 * **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH (back)?**
-  — Firmware does `AND 0x20` and drives `LINK_CTRL` bit 1 via
-  `LinkPortSelect`; which polarity maps to which physical connector is
-  open.
+  — Firmware does `AND 0x20` and drives `LINK_CTRL` bit 1 (and port `2Ch`
+  bit 5, which moves with it) via `LinkPortSelect`; which polarity maps to
+  which physical port is open. Both are IR ports on the case, not electrical
+  connectors. The Load/Run source picker does **not** select between them:
+  driving it both ways yields link id `43h` either way.
   *Resolve:* hardware test with two known link ids differing only in bit 5.
 
 * **Where does the EXT STORAGE ADAPTER attach?** — All `C:`+ storage I/O
@@ -79,11 +81,16 @@ source tree (not published here).
   then `01` is not a proven increment rule.
   *Resolve:* a multi-frame capture with sequence values logged per link.
 
-* **Complete session command table and payload formats** — No historical
-  Commstar command dictionary, RECORD/BLOCK formats, reply envelope, or
-  abort/retry/completion transitions are normative. State identifiers
-  `61`, `64`, `45`, `44` are observed progression values, not command
-  names. Payload grammar for `RECORD`/`BLOCK`/`C-COMMAND` remains open.
+* **Historical fidelity of the recovered session grammar** — Narrowed, not
+  closed. What *is* established from the ROM and from firmware-driving
+  traces: the ten wire states `SessionSetParams` can send, the type-1
+  request header, the type-2 response object, the `C-COMMAND` record layout,
+  the RECORD stream format `[u8 namelen][name] (1Eh [record])* 1Ch`, and the
+  BLOCK stream's marker-0/1 delimiting. What is **not** established is that
+  a historical Commstar server behaved this way: every trace is this
+  project's own peer answering the handheld in the way the ROM accepts, and
+  a different-but-also-acceptable server is possible. Abort, retry and
+  completion grammar above the transport is also still open.
   *Resolve:* one synchronised capture of a genuine server login and small
   COM/DIP transfer, with `fdd4` and `E530-E5C8` / `FDE4-FE42` snapshots
   at each send/dispatch/completion.
@@ -93,13 +100,17 @@ source tree (not published here).
   at +18 (right-justified, space-padded), and the program name at +42
   (left-justified, NUL-padded). See the layout table in
   [Protocol reference](../protocol/commstar.md#state-45-object-layout).
-  What remains open is the 34 bytes that are zero in every capture, what
-  `arg`=1 selects, and whether `LOAD` is an operation name that other
-  Commstar operations replace.
+  Two sub-questions have since closed. `LOAD` **is** an operation name that
+  other operations replace: `C-COMMAND` copies it from `*(ram:E48F)`, which
+  points into `tbl_sess_operations` at `ram:E247 + 6 x index`, so the seven
+  names `RCV1 RCV2 SEND LOAD PROG TIME ENDC` all reach object `+14`. And
+  `arg` at state `0045` is the **last-block marker** (0 from the automatic
+  128-byte flush at `ROM00:6187`, 1 from the end-of-transmission flush at
+  `ROM00:61F9`), measured on a 200-byte record that segments into two frames.
+  What remains open is the 34 bytes that are zero in every capture.
   *Resolve:* the remaining zero runs are sized like the V24 logon fields
   (User id, Password, Group id are 9 bytes each); populate those form fields
-  and re-capture to see whether they land in the object. `LOAD` needs a
-  second reachable Commstar operation to vary.
+  and re-capture to confirm which buffer lands at which object offset.
 
 * **Wire values versus the named states and commands** — `ROM00:6A4A` names
   16 session states (`NOT-STARTED` … `REPLY-END`) and `ROM00:6B67` names 17
@@ -123,29 +134,22 @@ source tree (not published here).
   *Resolve:* vary the solicited object size and see whether either value
   tracks it.
 
-* **What selects the Commstar operation** — Narrowed. The state machine at
-  `ROM00:692A` shows that `READY-RX-PROG`, `READY-TX-DATA` and
-  `READY-TX-PROG` have no incoming legal transition: the only exit from
-  `CONNECTED` is `C-COMMAND`, which leads to `READY-RX-DATA`. So the
-  operation is chosen by whatever moves the session into one of those three
-  states, not by the handheld walking the table.
-  Narrowed to one question. `Session_SetState` holds the only write
-  instruction for `g_bSessionState`, but it has **46 callers** — an earlier
-  note wrongly inferred from the single instruction that the state could only
-  be set through the transition table. 26 callers pass a literal (only `0`,
-  `2` or `13`); 17 pass `(ram:E48C)`, the cell the dispatcher stages the next
-  state into. No literal site sets `READY-RX-PROG`, `READY-TX-DATA` or
-  `READY-TX-PROG`, so those are reachable only when the table actually runs —
-  which needs the mode gate `ram:E48D` to be 2. A full V24 mode-1 trace ends
-  with `E48D = 0`, so Load/Run never arms it. `E48D` has two writers, both
-  runtime-stub slots: `ROM00:4563` (slot 65) and `Session_EnableStateMachine`
-  (`ROM00:46E9`, slot 66, stores the literal 2).
-  *Resolve:* find what makes the loaded session module call stub slot 66
-  (`ram:EE24`, `Session_InitState`). That single call arms the state machine,
-  and with it the three ready states and the handheld-to-host operations. An
-  application can make the call itself (see
-  [Commstar application API](../reference/commstar-api.md)), but cannot yet
-  issue a *sequence* of commands — see the next item.
+* **CLOSED — what selects the Commstar operation.** It is `C-COMMAND`'s first
+  argument. `ROM00:4B22`–`4B3D` indexes `tbl_sess_operations` (`ROM00:731B`,
+  copied to `ram:E247`) by six, stages the operation-name pointer in
+  `ram:E48F` and the record's target state in `ram:E491`; on a successful
+  logon `ROM00:4C62` writes `E491` into `Session_SetState` with **no gate of
+  any kind**. `SEND` -> `READY-TX-DATA`, `LOAD` -> `READY-RX-PROG`,
+  `PROG` -> `READY-TX-PROG` — the three states the transition table cannot
+  reach. All three are demonstrated: the firmware itself passes index 3 or 4
+  at `ROM01:135F`/`1365`, and a loaded COM passing index 2 reads back the
+  state sequence `1 2 5 9 9 10 2`.
+  **Two earlier readings here were wrong and are retracted:** that these
+  states were unreachable, and that reaching them required the mode gate
+  `ram:E48D = 2`. Mode 2 *disables* the transition table; it is not needed,
+  nothing in either ROM sets it, and every demonstrated session runs at mode
+  0 with the table live. See
+  [the protocol page](../protocol/commstar.md#how-states-4-5-and-6-are-entered).
 
 * **Answered — why a bare COM does not resume.** Not a calling-convention
   problem. `ram:D837` is an ordinary stack-frame prologue (saves `IX`/`IY`,
@@ -155,34 +159,44 @@ source tree (not published here).
   message box and waits in `SessionWaitContinue` for a keypress that a
   headless caller never sends. `Session_InitState` likewise displays
   `Comms in progress` and does not return.
-  *Resolved as far as static work can take it.* There is no legal command
-  order reaching `RECORD-TX` — breadth-first search shows states 4, 5, 6, 8,
-  9, 10 and 11 unreachable, and no cell anywhere yields 4, 5 or 6 — so
-  validation must be suppressed (`ram:E48D = 2`), which is confirmed to
-  remove the message box. A call does not return because the operation is a
-  **link transaction**: it transmits and waits for the host. An application
-  driving `C-INIT-COMMS` with the correct argument layout reaches
-  `Comms in progress` and waits there.
-  *What remains is an emulator task, not an analysis one:* attach a
-  responding peer to an application-driven session. The harness has one for
-  the Load/Run route but it is wired to that trace's phases; generalising it
-  would let the whole upload sequence be exercised.
+  *Resolved.* A call does not return because the operation is a **link
+  transaction**: it transmits and waits for the host. Attach a responding
+  peer and it returns. `micronic.peer.CommstarPeer` is that peer, and
+  application-driven sessions now run to completion in both directions.
+  **Retracted:** an earlier version of this entry said suppressing validation
+  (`ram:E48D = 2`) was necessary to reach `RECORD-TX`. It is not —
+  `C-COMMAND` index 2 `SEND` reaches `READY-TX-DATA` through the ordinary
+  path, and `C-BEGIN-FILE` then reaches `RECORD-TX` as a legal transition.
 
-* **Watch: anything that writes `ram:E48D`** — The mode gate decides whether a
-  command is validated against the transition table (`!= 2`) or bypasses it
-  entirely (`== 2`), so any writer changes the meaning of every subsequent
-  command. Only two are known — `Session_InitCommsCmd` (`ROM00:4563`, from
-  its stack argument) and `Session_InitState` (`ROM00:46E9`, the literal 2) —
-  and both are reachable only as runtime-stub slots, so a loaded application
-  can set it too, as this project's own test COMs do.
+* **Watch: anything that writes `ram:E48D`** — The session mode is three
+  valued and is read by four sites that do **not** all test it the same way
+  (byte-verified): `SessionStartDataMode` (`ROM00:4533`) compares against
+  **2** and skips the transition table when it matches; `C-COMMAND`
+  (`4B40`), `C-SHUT-DOWN` (`4D92`) and `C-END-TX` (`530D`) each compare
+  against **1** and short-circuit without transmitting. So mode 0 is the
+  normal session, mode 1 is a silent local mode, and mode 2 disables
+  validation. Any writer changes the meaning of every subsequent command.
+  Only two are known — `Session_InitCommsCmd` (`ROM00:4563`, from its stack
+  argument) and `Session_InitState` (`ROM00:46E9`, the literal 2) — and both
+  are reachable only as runtime-stub slots, so a loaded application can set
+  it too, as this project's own test COMs do.
   *Watch for:* any further writer found in RAM-resident module code, a loaded
   application, or a banked page not yet dumped; and any path that leaves it
   at 2 across a session boundary, which would silently disable validation for
   everything that follows.
 
-* **State-44 payload maximum** — 126 bytes succeeds, 128 bytes reaches
-  `0x1FAE` Line failure; whether 127 succeeds is open.
-  *Resolve:* bisect 127 and pin as a regression.
+* **CLOSED — state-44 payload maximum is 126 bytes.** Measured: 126 completes
+  a download and displays `Program received`; **127 is silently dropped** —
+  no acknowledgement, the handheld re-requests, and the session ends
+  `Session aborted` with `C-RX-BLK` returning 4. 128 reaches `0x1FAE (8110),
+  "Line failure"`. `micronic.peer.MAX_OBJECT_DATA` enforces the limit.
+  **Still open: why 126 and not 128.** `ROM00:620B` sets the `0044` frame
+  length to `86h` = 134, and 134 − 8 = 126 fits an eight-byte preamble ahead
+  of the object body at `ram:E5C4`; but the RX frame struct at `ram:E5BA` is
+  138 bytes with its data area at `+0Ah`, which implies a different budget.
+  The two readings are unreconciled — treat 126 as measured, not derived.
+  *Resolve:* account for the eight bytes between the frame length and the
+  object body on the state-44 receive path.
 
 * **`5C1F`/`5D05` builder preflight** — Every current Load/Run builder
   trace forces its return to success; the condition a real peer must

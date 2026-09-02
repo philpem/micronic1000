@@ -20,12 +20,17 @@ FRAME = 0x0C            # SP+0Ch is the caller's last-pushed word
 PUSH = {0xE5, 0xD5, 0xC5, 0xF5}
 POP = {0xE1, 0xD1, 0xC1, 0xF1}
 
+# Slot -> what the routine actually dispatches. Derived, not assumed: each of
+# the fifteen SessionStartDataMode (ROM00:452D) call sites pushes a distinct
+# literal command index, so the mapping is one-to-one. Five slots dispatch no
+# command at all -- an earlier version of this table wrongly labelled them as
+# duplicate C_ABORT / C-SHUT-DOWN wrappers.
 NAMES = {57: "C_ABORT", 58: "C-ANSWER", 59: "C-BEGIN-FILE", 60: "C-COMMAND",
          61: "C-DIAL", 62: "C-DROP-LINE", 63: "C-END-FILE", 64: "C-END-TX",
          65: "C-INIT-COMMS", 66: "(init session)", 67: "C-MANUAL",
-         68: "C-RX-BLK", 69: "C-SHUT-DOWN", 70: "C-RX-REC", 71: "C_ABORT",
-         72: "C-SHUT-DOWN", 73: "C-TX-BLK", 74: "C-TX-REC", 75: "C-SHUT-DOWN",
-         76: "C_ABORT"}
+         68: "C-RX-BLK", 69: "(message box)", 70: "C-RX-REC",
+         71: "(solicit data block)", 72: "C-SHUT-DOWN", 73: "C-TX-BLK",
+         74: "C-TX-REC", 75: "(message box)", 76: "(send data block)"}
 
 
 def prologues(lo=0x3000, hi=0x7000):

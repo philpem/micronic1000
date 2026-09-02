@@ -3465,3 +3465,103 @@ at 1087 functions.
   `C-INIT-COMMS` push at `ROM01:12B9`, and **nothing writes it**. The pointer
   therefore addresses a zero byte, the bounded copy yields an empty string,
   and record `+8` is blank in every trace. A vestigial slot.
+
+## Documentation review pass: Commstar pages reconciled (2026-09-01)
+
+A read-only-to-the-ROM review of the Commstar documentation after a long
+editing session. No new firmware analysis was commissioned; everything below
+was byte-verified against `micron1.bin` / `micron2.bin` before the doc was
+changed. Files touched: `doc/protocol/commstar.md`,
+`doc/reference/commstar-api.md`, `doc/reference/commstar-peer.md`,
+`doc/re-notes/open-questions.md`, `doc/re-notes/commstar-evidence.md`,
+`doc/re-notes/os-diposb.md`, and the four index pages.
+
+* **Contradiction, now resolved: "the transition table is never consulted by
+  the firmware at runtime."** That sentence in `protocol/commstar.md` was the
+  exact inverse of the truth and sat forty lines below a paragraph saying the
+  opposite. `SessionStartDataMode` (`ROM00:4533`) skips the table only when
+  `E48D == 2`; `E48D` measures **0** in every session, so the table is
+  consulted on **every** command the firmware issues. Both the offending
+  sentence and the "the table is gated off on the traced path" claim in
+  *What selects the operation* are replaced.
+* **The real mechanism for states 4/5/6.** `C-COMMAND` is validated by the
+  matrix like everything else (`ROM00:4AEA` calls `SessionStartDataMode(5)`
+  and bails at `4AF3`); what it does differently is discard the staged
+  `ram:E48C` and write `ram:E491` instead at `ROM00:4C62`. So the table is a
+  complete validator of command *order* and an incomplete description of
+  *states*. Documented that way now, in place of "partial validator … bypassed
+  for everything else".
+* **`ram:E48D` is three-valued, and this was nowhere stated.** Byte-verified,
+  four readers, two different comparison constants: `SessionStartDataMode`
+  (`4533`) tests **2**; `C-COMMAND` (`4B40`), `C-SHUT-DOWN` (`4D92`) and
+  `C-END-TX` (`530D`) each test **1**. Mode 0 = normal, mode 1 = advances
+  state without transmitting, mode 2 = validation off. Added as its own
+  section on the protocol page and to the `E48D` watch item.
+* **Entry-point call scan redone across all images.** The old table claimed
+  "only two of the six invoked". A full scan for `CALL`/`JP` to each of the
+  twenty slots finds **six** direct callers — `EE00` `C_ABORT` (`ROM01:11A4`),
+  `EE0C` (`1369`), `EE14` `C-DROP-LINE` (`11A7`, `152B`), `EE20` (`1304`),
+  `EE2C` (`141E`), `EE3C` `C-SHUT-DOWN` (`151C`) — plus three reached
+  indirectly through the link-method callback (`EE04`, `EE10`, `EE28`). So
+  **eleven** slots have no caller, not fifteen. The API page's "fifteen of the
+  twenty" is corrected.
+* **Slot indices were wrong in one table.** Index is `(addr − ED1C) / 4`:
+  `EE00` = 57, `EE14` = 62, `EE3C` = 72.
+* **Stale claims removed.** `protocol/commstar.md`'s scope paragraph still
+  said the missing pieces included "any handheld-to-host transfer" ten lines
+  above a table row describing one working; the RECORD-transfer row still said
+  the session "ends in an abort" and that `C-END-TX` is legal only from
+  unreachable states; `reference/commstar-peer.md` still said "no capture of
+  an upload exists yet"; `reference/commstar-api.md`'s *Suppressing
+  validation* section still justified `E48D = 2` as "how the firmware itself
+  reaches operations the table cannot" (the firmware never sets it, and no
+  demonstrated sequence needs it). All corrected, with the superseded
+  application-driven sequence kept and flagged rather than deleted.
+* **`open-questions.md` was the worst-drifted page.** *What selects the
+  Commstar operation* and *why a bare COM does not resume* both still asserted
+  that states 4/5/6 needed `E48D = 2`; *state-44 payload maximum* still asked
+  for the 127 bisection that has since been done; the state-45 item still
+  listed `LOAD`-varies and the `arg` marker as open. All four updated, with
+  the retractions stated explicitly.
+* **Byte-verifications performed for this pass** (all fresh reads, none from
+  recall): `452D`, `4533`-`4562`, `4563`-`4572`, `46E9`-`470D`, `4AE0`-`4B3D`,
+  `4B40`-`4B5A`, `4C05`-`4C7E`, `4D29`-`4D74` (the two message-box helpers),
+  `4D75`-`4DB5`, `4F9A`-`4FC3`, `5179`-`51EB`, `51EC`/`523F`, `52A5`-`537D`,
+  `5428`/`5444`, `58F9`/`5915`, `332E`-`3377` (`EBh`/`ECh`/`EEh` + carry),
+  `348A`, `34EC`/`34F8`, `3508`, `31FF`-`321F`, `ram:E04B`, `ram:E05A`,
+  `ROM01:1280`-`1369`, `ROM01:140E`-`14C7`, `micron1.bin 0x7301`-`0x7345`
+  (`OK`/`NO`/`DM` + `tbl_sess_operations`), `micron2.bin 0x7C52` (the four
+  link-method records), and `ram:FE83`/`FE93` in the battery-RAM dump.
+* **`ram:E04B` and `ram:E05A` are opposite.** `E04B` is `==` (equal → `HL=1`,
+  **NZ**); `E05A` is `!=` (equal → `HL=0`, **Z**). They appear nine
+  instructions apart at `ROM01:1414` and `ROM01:1430` testing the same cell
+  against the same constant. Every polarity error corrected on the API page
+  started here, so it is now called out explicitly in an admonition.
+* **Discriminating observation recorded for the port question.** `ram:FE83`
+  is byte-verified in a live dump as `80 AB 63 43 80 2B 63 43 80 67 63 43 80
+  67 63 43`; device 3 is `63h` and device 4 is `43h`, and the `LOCAL LINK`
+  mode record's selector is 4 — which is why every IR trace carries `43h`.
+  The test is therefore "which device number does the two-entry comms picker
+  (`micron2.bin 0x7663`) select?", not "which label does the storage picker
+  show?". **No mapping to PLINTH/V24 is asserted**; that stays OPEN.
+* **OPEN and unfixed by this pass:** `analysis/commstar_args.py` still prints
+  the retracted slot labels (`EE30`/`EE48` as `C-SHUT-DOWN`, `EE38`/`EE4C` as
+  `C_ABORT`). Its *argument* output is correct and agrees with the API page;
+  only the names are stale. Left alone because `analysis/` was out of scope
+  for this pass.
+* **Also unresolved:** the protocol page and the evidence page disagree in
+  emphasis about whether `0x7F` at frame offset +4 is an id. `LinkProbe`
+  computing `7Fh AND 1Fh` proves `7Fh` is used *as an id* somewhere; what it
+  means at offset +4 is still SUSPECTED. Both pages now say that, in those
+  words.
+* **One more compressed-into-wrong correction, fixed.** The API page's
+  `C-END-TX` correction said `Abort pending` came from "the session sitting at
+  `CONNECTED` with `E48D = 2`, where `C-END-TX` is an illegal transition".
+  With `E48D = 2` the table is *not* consulted, so illegality cannot be the
+  trigger in that case. The earlier TASKS note (2026-09-01, "Why the
+  demonstration aborts") had it right and the summary lost it: mode 2 fails by
+  taking the argument path with an argument the test never supplied, and mode 1
+  fails because `table[CONNECTED][C-END-TX] = 8Dh` (byte-verified at
+  `micron1.bin 0x695B`; bit 7 set, next state `CRASHED`) makes
+  `SessionStartDataMode` return non-zero and `ROM00:52F8` exit. Both halves are
+  now on the page.

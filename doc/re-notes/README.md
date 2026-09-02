@@ -23,6 +23,8 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
   pass that keeps the database honest, and what auto-analysis gets wrong
 * [Commstar evidence and traces](commstar-evidence.md) — full transport, emulator
   peer, and captured requests with ROM addresses and trace bytes
+* [InlineTableDispatch tables](inline-dispatch.md) — the inline switch idiom
+  and every decoded table
 * [OS internals](os-diposb.md) — kernel, BDOS dispatch, and boot chains
 * [Forms and UI](forms-ui.md) — form model, templates, and menus
 * [CP/M comparison](cp-m-comparison.md) — deviation-by-deviation evidence

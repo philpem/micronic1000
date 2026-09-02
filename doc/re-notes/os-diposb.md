@@ -409,8 +409,9 @@ TWO roles:
 * Session states (separate transport layer): `NOT-STARTED / DISCONNECTED /
   CONNECTED / READY-RX-DATA / READY-RX-PROG / READY-TX-* / RECORD-*
   / BLOCK-* …`
-* Transports named in UI strings: PLINTH (IR, back connector),
-  V24 ADAPTOR (IR strap, top), EXT STORAGE ADAPTOR, LOCAL LINK,
+* Transports named in UI strings: PLINTH (IR port, back of the unit),
+  V24 ADAPTOR (IR port, top of the unit where the strap attaches),
+  EXT STORAGE ADAPTOR, LOCAL LINK,
   modem (auto-answer / dial / manual).
 * Menu: `Load/Run Program`. Reception messages: `Receiving prog`,
   `Program received`, `Invalid data stream`.

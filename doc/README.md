@@ -17,14 +17,20 @@ reverse-engineering questions.
 * [Barcode reader](reference/barcode.md) — scanner hook and RDR: byte-stream API.
 * [Program file formats](reference/program-formats.md) — COM and DIP grammars.
 * [Memory and I/O map](reference/memory-io.md) — banks, RAM, vectors, and ports.
-* [Commstar transport](protocol/commstar.md) — controller mechanics and the
-  explicit blockers for a physical server implementation.
+* [Commstar transport](protocol/commstar.md) — controller mechanics, the
+  session state machine, and the explicit blockers for a physical server.
+* [Commstar application API](reference/commstar-api.md) — the session entry
+  points a loaded COM or DIP program calls.
+* [Commstar peer library](reference/commstar-peer.md) — the host half of a
+  session, transport independent.
 
-The Commstar session and file-transfer format is not yet sufficiently decoded
-for an interoperable host implementation. In particular, no documented exchange
-transfers data from a handheld to a host, and the physical IR wire layer remains
-uncaptured. The protocol document distinguishes the emulator-only synthetic
-peer from the requirements of a physical server.
+**Where Commstar stands.** Both directions now run end to end against real
+firmware in the emulator: a program download to the handheld, and a record
+upload from it. What blocks an interoperable *physical* host is the IR wire
+layer — modulation, byte framing and timing are uncaptured — plus a
+wire-visible equivalent of the receive arm the emulator peer reads out of
+RAM. The protocol document says which parts of the synthetic peer a physical
+server could reproduce and which it could not.
 
 ## Reference
 
@@ -40,6 +46,8 @@ addresses, trace bytes, and confidence tags:
 
 * [Method and evidence rules](re-notes/method.md)
 * [Commstar evidence and traces](re-notes/commstar-evidence.md)
+* [InlineTableDispatch tables](re-notes/inline-dispatch.md)
+* [Listing-repair script](re-notes/ghidra-repair-script.md)
 * [OS internals](re-notes/os-diposb.md)
 * [Forms and UI](re-notes/forms-ui.md)
 * [CP/M comparison](re-notes/cp-m-comparison.md)
