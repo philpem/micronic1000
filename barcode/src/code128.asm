@@ -26,7 +26,7 @@
 
     public  code128_decode
     extern  width_table, element_count, out_buffer
-    extern  scratch, reverse_elements
+    extern  scratch, reverse_elements, symbology
 
 C128_ELEMS      equ 6              ; per symbol character
 C128_STOP_ELEMS equ 7
@@ -183,6 +183,8 @@ c128_stop_loop:
     pop     bc
     djnz    c128_stop_loop
 
+    ld      a,SYM_CODE128
+    ld      (symbology),a
     ld      a,(c128_len)
     ld      l,a
     ld      h,0

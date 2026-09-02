@@ -28,7 +28,7 @@
 
     public  itf_decode
     extern  width_table, element_count, out_buffer
-    extern  scratch, reverse_elements
+    extern  scratch, reverse_elements, symbology
 
 ITF_OVERHEAD    equ 7              ; four start elements plus three stop
 ITF_PER_PAIR    equ 10
@@ -133,6 +133,8 @@ itf_stop_loop:
     jp      c,itf_reject
     djnz    itf_stop_loop
 
+    ld      a,SYM_ITF
+    ld      (symbology),a
     ld      a,(itf_count)
     ld      l,a
     ld      h,0

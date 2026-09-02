@@ -71,6 +71,33 @@ hk_publish:
     ld      a,h
     or      a
     jr      nz,hk_toolong             ; a count that large is a bug in us
+
+    IF SYMBOLOGY_ID
+;; Shift the result up one byte and put the symbology letter in front.
+;; Doing it here keeps every decoder unaware of the option: they write
+;; plain data and set `symbology`, and nothing else changes.
+    ld      a,l
+    or      a
+    jr      z,hk_no_prefix            ; a zero count is a rejection, not data
+    cp      MAX_OUTPUT                ; one byte must remain for the prefix
+    jr      nc,hk_toolong
+    push    hl                        ; the count, across the move
+    ld      c,l
+    ld      b,0
+    ld      hl,out_buffer
+    add     hl,bc
+    dec     hl                        ; -> the last byte written
+    ld      d,h
+    ld      e,l
+    inc     de                        ; -> one byte higher
+    lddr                              ; move BC bytes up, back to front
+    pop     hl
+    ld      a,(symbology)
+    ld      (out_buffer),a
+    inc     hl                        ; one more byte to deliver
+hk_no_prefix:
+    ENDIF
+
     ld      a,l
     cp      MAX_OUTPUT+1
     jr      nc,hk_toolong
@@ -92,7 +119,7 @@ hk_toolong:
 ;; Shared state.  Set up by decoder_entry, read by each symbology.
 ;; ---------------------------------------------------------------------------
     public  width_table, element_count, out_buffer
-    public  scratch, reverse_elements
+    public  scratch, reverse_elements, symbology
 
 ;; ---------------------------------------------------------------------------
 ;; reverse_elements -- copy B 16-bit elements from (HL) to (DE), back to
@@ -115,10 +142,10 @@ reverse_elements:
     djnz    reverse_elements
     ret
 
+symbology:      defb 0              ; letter for the decode that won
 width_table:    defw 0              ; -> the captured widths (16-bit each)
 element_count:  defw 0              ; clamped element count
 
-;; Decoded output.  MAX_OUTPUT is the firmware's hard limit; see dipos.inc.
 ;; Room to reverse the longest capture the firmware can hand us.  Shared by
 ;; every symbology: a reversed scan is decoded by restoring the original
 ;; element order here and running the ordinary forward decode over it.

@@ -28,6 +28,19 @@ make DOCKER=docker          # if your user is in the docker group
 make ASM=pasmo              # or build with pasmo instead
 ```
 
+`SYMBOLOGY_ID=1` prefixes every result with one letter naming the
+symbology that produced it:
+
+| | | | |
+|---|---|---|---|
+| `C` Code 39 | `U` UPC-A | `E` EAN-13 | `e` UPC-E |
+| `I` Interleaved 2 of 5 | `K` Codabar | `B` Code 128 | |
+
+It is **off by default**, because turning it on changes the bytes an
+existing application receives. The letters are AIM-flavoured but not the
+AIM standard, which uses a three-character `]Cn` form — one byte is the
+better trade when the delivery envelope holds only 26.
+
 `ORIGIN` sets the link address (default `0xC000`). It is a build
 dependency, so changing it rebuilds — the address is baked into the binary
 and a stale one fails in confusing ways.

@@ -12,6 +12,9 @@
 
 ASM     ?= z88dk
 ORIGIN  ?= 0xC000
+# Prefix each result with a letter naming the symbology.  Off by default:
+# it changes the bytes an existing application receives.
+SYMBOLOGY_ID ?= 0
 BUILD   ?= build
 DOCKER  ?= sudo docker
 IMAGE   ?= z88dk/z88dk
@@ -21,7 +24,7 @@ TABLES  := src/code39_table.inc src/upc_table.inc src/ean_parity.inc \
            src/upce_parity.inc src/itf_table.inc \
            src/codabar_table.inc \
            src/code128_table.inc
-DEPS    := $(SOURCES) src/dipos.inc $(TABLES) \
+DEPS    := $(SOURCES) src/dipos.inc $(TABLES) src/config.inc \
            $(BUILD)/origin.stamp
 
 PYTHON  ?= python3
@@ -35,6 +38,15 @@ $(BUILD):
 # The link address is baked into the binary, so a change of ORIGIN has to
 # force a rebuild.  Without this, `make ORIGIN=...` silently keeps the old
 # binary and everything downstream is linked for the wrong address.
+# Generated rather than passed with -D, because z88dk and pasmo spell that
+# differently.  Regenerated whenever the value changes.
+src/config.inc: FORCE
+	@printf 'SYMBOLOGY_ID    equ %s\n' '$(SYMBOLOGY_ID)' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+
+FORCE:
+
 $(BUILD)/origin.stamp: | $(BUILD)
 	@echo "$(ORIGIN)" | cmp -s - $@ || echo "$(ORIGIN)" > $@
 
@@ -51,7 +63,8 @@ else
 # fallback for anyone who would rather not run a container.
 $(BUILD)/decoder.bin: $(DEPS) | $(BUILD)
 	@printf '    org %s\n' $(ORIGIN) > $(BUILD)/all.asm
-	@cat src/dipos.inc >> $(BUILD)/all.asm
+	@cat src/config.inc >> $(BUILD)/all.asm
+	@grep -v '^[[:space:]]*include' src/dipos.inc >> $(BUILD)/all.asm
 	@cat $(SOURCES) | grep -v '^[[:space:]]*\(public\|extern\|include\)' \
 	    >> $(BUILD)/all.asm
 	@cat $(TABLES) >> $(BUILD)/all.asm
@@ -82,4 +95,4 @@ test-firmware: $(BUILD)/decoder.bin
 clean:
 	rm -rf $(BUILD) build-test src/*.o
 
-.PHONY: all clean test test-firmware tables
+.PHONY: all clean test test-firmware tables FORCE

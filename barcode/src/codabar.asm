@@ -24,7 +24,7 @@
 
     public  codabar_decode
     extern  width_table, element_count, out_buffer
-    extern  scratch, reverse_elements
+    extern  scratch, reverse_elements, symbology
 
 CODABAR_ELEMS   equ 7              ; per character
 CODABAR_STRIDE  equ 8              ; with the inter-character gap
@@ -116,6 +116,8 @@ cbr_data_loop:
     jp      c,cbr_reject
     call    cbr_emit
 
+    ld      a,SYM_CODABAR
+    ld      (symbology),a
     ld      a,(cbr_chars)
     ld      l,a
     ld      h,0

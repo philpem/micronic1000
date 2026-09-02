@@ -3,3 +3,5 @@ build-*/
 src/*.o
 src/*.bin
 build-test/
+src/config.inc
+build-symid/

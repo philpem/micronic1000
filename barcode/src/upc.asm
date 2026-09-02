@@ -38,7 +38,7 @@
 
     public  upc_decode
     extern  width_table, element_count, out_buffer
-    extern  scratch, reverse_elements
+    extern  scratch, reverse_elements, symbology
 
 UPC_ELEMENTS    equ 59
 EAN_DIGITS      equ 13
@@ -206,9 +206,13 @@ upc_parity_hit:
     ld      a,(hl)
     or      a
     ld      b,EAN_DIGITS
-    jr      nz,upc_emit
+    ld      a,SYM_EAN13
+    jr      nz,upc_have_sym
     inc     hl                     ; skip the implied zero
     ld      b,EAN_DIGITS-1
+    ld      a,SYM_UPCA             ; all-L parity: this is a UPC-A
+upc_have_sym:
+    ld      (symbology),a
 upc_emit:
     ld      c,b                    ; keep the count
     ld      de,out_buffer
@@ -602,6 +606,8 @@ upce_emit:
     add     a,'0'
     ld      (de),a
 
+    ld      a,SYM_UPCE
+    ld      (symbology),a
     ld      hl,UPCE_DIGITS+2
     or      a
     ret

@@ -20,7 +20,7 @@
 
     public  code39_decode
     extern  width_table, element_count, out_buffer
-    extern  scratch, reverse_elements
+    extern  scratch, reverse_elements, symbology
 
 ;; Shortest possible symbol is '*X*': three characters, 29 elements.
 C39_MIN_ELEMENTS    equ 29
@@ -124,6 +124,8 @@ c39_data_loop:
     cp      '*'
     jp      nz,c39_reject
 
+    ld      a,SYM_CODE39
+    ld      (symbology),a
     ld      a,(outlen)
     ld      l,a
     ld      h,0

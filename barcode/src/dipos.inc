@@ -64,3 +64,29 @@ HOOK_ADDR       equ 0FBC2h      ; word: the hook's address
 ;; HL*64 at 0F9B0h).  HL is easy to miss and is not optional.
 BIOS_TABLE_PTR  equ 0001h       ; CP/M convention: jump-table base + 3
 BIOS_INSTALL_OFF equ 0045h      ; entry 24, install decode hook
+
+;; --- build options ---------------------------------------------------------
+;; SYMBOLOGY_ID: when 1, each result is prefixed with one character naming
+;; the symbology that produced it.  Off by default, because it changes the
+;; bytes an existing application receives.
+;;
+;;      C  Code 39        E  EAN-13        U  UPC-A
+;;      e  UPC-E          I  Interleaved 2 of 5
+;;      K  Codabar        B  Code 128
+;;
+;; The letters are AIM-ish but not the AIM standard, which uses a three-
+;; character "]Cn" form; one byte is a better trade here, where the
+;; delivery envelope holds only 26.
+;;
+;; Build with:   make SYMBOLOGY_ID=1
+;; SYMBOLOGY_ID itself is set in config.inc, which the Makefile generates,
+;; so the two assemblers need no conditional-syntax differences.
+    include "config.inc"
+
+SYM_CODE39      equ 'C'
+SYM_EAN13       equ 'E'
+SYM_UPCA        equ 'U'
+SYM_UPCE        equ 'e'
+SYM_ITF         equ 'I'
+SYM_CODABAR     equ 'K'
+SYM_CODE128     equ 'B'
