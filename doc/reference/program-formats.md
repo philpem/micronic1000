@@ -88,4 +88,4 @@ contract.
 * [Programmer guide](../manual/programmer-guide.md) — usage
 * [Supported profile](../manual/supported-profile.md) — packaging guidance
 * [RE notes: OS internals](../re-notes/os-diposb.md)
-* [Reference: Memory and I/O map](memory-io.md) — resident module layout
+* [Reference: Memory and I/O map](memory-map.md) — resident module layout

@@ -22,12 +22,24 @@ every region of `8000`-`FFFF`, what lives there, and how we know.
 2. **Raw opcode scan** of both ROM images for `01/11/21/22/2A/31/32/3A
    lo hi` and `ED 43/4B/53/5B/63/6B/73/7B lo hi`, independent of
    disassembly, to cover the ROM bytes Ghidra has not yet classified
-   (`ROM00` is 61% disassembled, `ROM01` 37%).
+   (`ROM00` is 61% disassembled, `ROM01` 37%). For the four originally
+   unidentified spans this was re-run with an **alignment filter** —
+   linear-sweep from each of the preceding 64 offsets, keep the hit only
+   if a majority of sweeps land on it — plus `DD/FD 21/22/2A` and the
+   conditional `JP`/`CALL` forms. Without that filter roughly half the
+   raw hits are misalignment artefacts (`CD 92 2A / 21 F7 2D` reads as
+   `LD HL,(F721)` if you start one byte early), and two of the four
+   spans were "solved" by an artefact before it was applied.
 3. **The boot-load chains** (`analysis/decode_chains.py`, and the
    pre-chain copies in `AnalyseMicronicRom.java` pass 2), which give
    the large occupied blocks with exact destinations and lengths.
 4. **Existing repo findings** — Ghidra labels, [OS
    internals](os-diposb.md), `doc/research/TASKS.md`.
+5. **Emulator snapshots.** `analysis/boot_hw.py --dump-mem ADDR:LEN`
+   over a boot to the Main Menu and over a synthetic Load/Run. The
+   harness skips the destructive RAM test, so a region reading zero in
+   its dumps really was never written during the run — unlike
+   `analysis/battery_ram.bin`, below.
 
 !!! warning "`analysis/battery_ram.bin` is not a hardware dump"
     It is a **dump of the Ghidra `ram` block after
@@ -69,7 +81,7 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `EC6D`-`ED1B` | 175 | **Not written by any boot chain, but live at runtime**: `EC71` `g_acRequestedProgramName`, `EC97`/`EC98` logon indices, `EC99`/`ECA2`/`ECAB`/`ECB4` logon user/password/group/phone, `ECC9` `g_wProgramLoadState`, `ECCB` `g_acLoadedProgramName`, `ECD8`/`ECDA` program bank base/limit, `ECDC` program header, `ECEA` block descriptors | CONFIRMED | reads/writes from `ROM01:0A1D`, `0D54`, `0F90`, `0E05` and the `C-INIT-COMMS` string arguments |
 | `ED1C`-`F17F` | 1124 | Deferred-call / far-call stub arena: 281 × 4-byte `{RST10h, bank, target}` stubs, also used as UI vtable targets | CONFIRMED | fn=2 chain records in both banks; see [OS internals](os-diposb.md#queue-purpose-the-fn2-records) |
 | `F180`-`F68C` | 1293 | Resident kernel (BDOS gate, syscall envelopes, RST/NMI stubs, bank helpers) | CONFIRMED | `InstallKernelToRam` `ROM00:02FE`: `ROM00:369D → F180`, `0x50D` |
-| `F68D`-`F77F` | 243 | **Unidentified.** No reference from either ROM or any RAM module. Sits between the kernel image end and the port shadows. | OPEN | absence of references only — see caveat below |
+| `F68D`-`F77F` | 243 | **Unclaimed tail of the kernel arena.** No reference of any kind from either ROM or any RAM module; not filled, walked or `PUSH`ed into by anything found. `F180`+`0x600` = `F780`, so the arena reserved for the resident kernel is a round 1536 bytes and the current `0x50D`-byte image leaves these 243 spare. Also the last 243 bytes the system stack would reach if it blew past the port shadows. | LIKELY (spare arena) / OPEN (any use) | see "the two spans still open" below |
 | `F780`-`F799` | 26 | I/O port shadows: `F780` p02, `F782` p02-cfg, `F784` p04, `F786` p07, `F78B` p2A, `F78D` p2C, `F791` `g_bBankShadowP47`, `F794` `g_bLinkCtrlShadow` | CONFIRMED | named, heavily read/written |
 | `F79A`-`F819` | 128 | **System stack**, grows down from `F81A` | CONFIRMED | `31 1A F8` = `LD SP,F81A` at `ROM00:0175`, `01A6`, `01D4`, `024D`; 54 call-pushes recorded at `ram:F818` |
 | `F81A`-`F8B7` | 158 | System variables: `F81C` `g_bWarmbootSig`, `F81D` `g_bBootmodeFlag`, `F81E`-`F82F`, `F8AE`-`F8B6` RAM-disk geometry (`F8B0`=`0100`, `F8B6`=`8000`, set at `ROM00:05A1`) | CONFIRMED | `ROM00:05A1`-`05BB` |
@@ -80,11 +92,11 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FBB5`-`FC05` | 81 | Barcode/system state: `FBB5` sample-loop counter and capture SP base, `FBBD` saved SP, `FBC0`-`FBC2` ext decode hook, `FBC5` `g_bActiveDevice`, `FBC6` `g_bActiveDrive`, `FBC9` `g_bEventFlags`, `FBD0` `g_wSysSavedSp`, `FC05` power-latch value | CONFIRMED | named, referenced |
 | `FC06`-`FCA5` | 160 | **LCD framebuffer** (20 cols × 8 rows ASCII) | CONFIRMED | `ROM00:1D9F` `LD HL,FC06`; `1DE3`, `1DEE` |
 | `FCA6`-`FD45` | 160 | **LCD shadow/compare buffer** (paired with the above) | CONFIRMED | `ROM00:1DA4` `LD HL,FCA6` immediately after `FC06`, compared byte-for-byte |
-| `FD46`-`FD63` | 30 | RTC working area: `FD4A`-`FD4C` alarm fields, `FD50` `g_abRtcRegisterSnapshot` (10 B), `FD5C` `comm_work_table` | CONFIRMED | [RTC notes](rtc.md) |
-| `FD64`-`FD83` | 32 | **Unidentified** (tail of the RTC/comms working area) | OPEN | absence of references only |
+| `FD46`-`FD5B` | 22 | RTC working area: `FD4A`-`FD4C` alarm fields, `FD4D` `RTC_AlarmSleep` countdown, `FD4F` RTC Reg C/B wake-reason latch, `FD50` `g_abRtcRegisterSnapshot` (10 B), `FD57`/`FD58` alarm date compare, `FD5B` sweep slot index | CONFIRMED | [RTC notes](rtc.md); `ROM00:2214` `LD (FD4F),A`, `ROM00:2250` `LD (FD5B),A` |
+| `FD5C`-`FD83` | 40 | **Countdown-timer / work-item table** (`comm_work_table`) — **10 slots × 4 bytes**, `{+0..+1 = pointer to a 16-bit down-counter, +2..+3 = callback}`. Slot 0 is `FD5C`, slot 9 ends at `FD83`; the whole of the former "unidentified" `FD64`-`FD83` is slots 2-9. | CONFIRMED | see below |
 | `FD84`-`FD96` | 19 | Comms config table | CONFIRMED | `ROM00:22E9`/`2306` copy `ROM00:2352`, 19 bytes |
-| `FD97`-`FE44` | 174 | Link/device state: `FDCA` `g_bWireId`, `FDD5` `g_bLinkState`, `FDEA` TX `{count, ptr}` descriptor, `FE0E`-`FE44` | CONFIRMED | named, referenced |
-| `FE45`-`FE82` | 62 | **Unidentified** | OPEN | absence of references only |
+| `FD97`-`FE42` | 172 | Link/device state: `FDCA` `g_bWireId`, `FDD4` wire-id copy used as the sequence-table index, `FDD5` `g_bLinkState`, `FDDE`-`FDE2` outgoing frame header, `FDE7` received sequence byte, `FDEA` TX `{count, ptr}` descriptor, `FE0E`-`FE42` | CONFIRMED | named, referenced |
+| `FE43`-`FE82` | 64 | **Per-link frame-sequence table** — one byte per remote unit address, indexed `FE43 + (FDD4 & 3Fh)`, initialised to `01` for all 64 entries at link reset. The former "unidentified" `FE45`-`FE82` is entries 2-63 of it. | CONFIRMED | see below; already CONFIRMED in [Commstar evidence](commstar-evidence.md) |
 | `FE83`-`FE92` | 16 | Device config copy A; `FE86` `g_bDeviceWireId4` | CONFIRMED | `ROM00:3237` `LD HL,FE83` ← `ROM00:3267`, 16 bytes |
 | `FE93`-`FEA2` | 16 | Device config copy B (storage wires `C:`=`73`, `D:`=`72`) | CONFIRMED | `ROM00:3205`/`3223`/`3229` LDIR ← `ROM00:3257`, 16 bytes |
 | `FEA3`-`FEAF` | 13 | Boot/sizing variables: `FEA7`/`FEA8` bank range, `FEA9`/`FEAA` page counts, `FEAB` RAM-size word (`FEA9`×`20h`), `FEAF` `g_bRamBankBitmap`. Owner-supplied: the user-entered serial number lives in this area. | CONFIRMED (cells) / LIKELY (serial) | `ROM00:2739` `LD (FEAB),HL`, `2598`/`25B5` `LD (FEAF),A`; serial per AGENTS.md owner statement |
@@ -95,7 +107,164 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FFA3`-`FFA4` | 2 | DMA / transfer address (CP/M-style) | CONFIRMED | `ram:F510`, `F523`, `F535`, `F543` all `LD HL,(FFA3)` |
 | `FFA5`-`FFA7` | 3 | Current FCB pointer (+1 spare byte) | CONFIRMED | `ram:F4EC` `LD (FFA5),HL`, `F501`/`F508` read it |
 | `FFA8` | 1 | Interrupt-enable shadow, tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` `LD A,(FFA8); OR A; JP Z,…; EI` |
-| `FFA9`-`FFFF` | 87 | **Unidentified** — top of RAM, immediately above the BDOS variable block | OPEN | absence of references only |
+| `FFA9`-`FFFF` | 87 | **Unclaimed remainder above the BDOS variable block** — top of RAM. No reference of any kind; every `FFxx` literal in either ROM that survives an alignment check is a small negative constant (`-1`, `-4`, `-5`, `-8`, `-10`, `-20`, `-24`, `-32`, `-48`) feeding an `ADD HL,rr` subtraction, not an address. | LIKELY (unclaimed) / OPEN (any use) | see "the two spans still open" below |
+
+### The two spans that turned out to be structure tails
+
+Both were "unidentified" only because this page stopped the neighbouring
+structure one entry short. Neither is free.
+
+**`FD5C`-`FD83` — the 10-slot countdown-timer table.** Two independent
+walkers fix the geometry, and both are byte-verified:
+
+```
+ROM00:2189 CommsWorkItemRegister
+  21 5C FD    LD HL,FD5C     ; slot 0
+  0E 0A       LD C,0Ah       ; 10 slots
+  7E 23 B6    LD A,(HL); INC HL; OR (HL)   ; free if both bytes zero
+  28 09       JR Z,21A3      ; -> claim it
+  0D 28 12    DEC C; JR Z,21AF             ; table full -> CY
+  11 03 00 19 LD DE,3; ADD HL,DE           ; +1 already done -> stride 4
+  18 F2       JR 2195
+
+ROM00:21BA CommsWorkItemCancel
+  DD 21 5C FD LD IX,FD5C
+  DD 6E 00 / DD 66 01    ; key = entry.+0/+1
+  DD 23 ×4               ; stride 4 (the listing shows 3; the bytes are 4)
+  79 FE 0A 28 0C         ; C == 10 -> not found
+```
+
+`FD5C + 10 × 4 = FD84`, which is exactly where the comms config table
+starts — the table ends flush against its neighbour with no padding.
+Entry layout is `{+0..+1 = pointer to a 16-bit down-counter,
++2..+3 = callback}`; `Comms_WorkItemSweep` (`ROM00:224C`) walks the same
+10 slots, decrements `*(entry.+0)` and, on reaching zero, zeroes
+`entry.+0..+1` and `JP (HL)`s the callback via `ROM00:2275`. The sweep
+runs off the **RTC periodic interrupt**: `ROM00:2214` latches RTC Reg C
+into `FD4F` and `ROM00:221F` `E6 40 / C4 4C 22` = `AND 40h; CALL NZ,224C`
+— Reg C bit 6 is `PF`.
+
+Empirically live, too: booting to the Main Menu under
+`analysis/boot_hw.py` leaves `FD5C:40` =
+`9F FD B0 24 | 00 00 11 17 | 00 00 11 17 | 00 …`. Slot 0 matches its
+registration site byte for byte — `ROM00:2489`
+`21 00 0F / 22 9F FD / 11 9F FD / 21 B0 24 / CD 89 21` =
+`LD HL,0F00; LD (FD9F),HL; LD DE,FD9F; LD HL,24B0; CALL 2189`, i.e.
+"count `0F00` ticks down at `FD9F`, then call `24B0`" — which is an
+independent confirmation of the `{counter pointer, callback}` layout.
+Slots 1 and 2 have fired: zeroed pointer, residual callback, exactly as
+`ROM00:2275` leaves them. **Slot 2 is `FD64`**, the first byte this page
+used to call unidentified. Under a synthetic Load/Run the same dump
+reads `… | 00 00 86 2F | 00 00 11 17 |`, slot 1 now carrying
+`ROM00:2F86`, the routine the link setup at `ROM00:3053` calls.
+
+This was already established in the repo — `doc/research/TASKS.md`
+records the FD5C queue as a 10-slot countdown-timer/callback table with
+the Ghidra names applied — and simply never reached this page.
+
+**`FE43`-`FE82` — the per-link frame-sequence table.** 64 bytes, one per
+remote unit address:
+
+```
+ROM00:317B  (link reset)
+  21 43 FE   LD HL,FE43
+  06 40      LD B,40h        ; 64 entries
+  36 01      LD (HL),1       ; every entry starts at 1
+  23 10 FB   INC HL; DJNZ
+  3E 04 32 D5 FD   LD A,4; LD (FDD5),A     ; g_bLinkState = 4
+
+ROM00:3192  (address helper)
+  3A D4 FD   LD A,(FDD4)     ; copy of g_bWireId for this transaction
+  E6 3F      AND 3Fh         ; 6-bit unit address
+  6F 26 00   LD L,A; LD H,0
+  11 43 FE   LD DE,FE43
+  19         ADD HL,DE       ; -> FE43 + (FDD4 & 3Fh)
+```
+
+with three one-line accessors on top: `31A1` get (`CALL 3192; LD A,(HL)`),
+`31A6` set, `31AB` increment. `FE43 + 3Fh = FE82`, matching the `B=40h`
+fill exactly. The use is a sequence number: `ROM00:3084`
+`3A E7 FD / 47 / CD A1 31 / B8` reads the received sequence byte
+`FDE7`, fetches `tbl[wire]` and compares; equal → `CALL 31AB`
+(increment); otherwise, and only when `FDCB` = 2, `79 3D B8 28 09`
+(`LD A,C; DEC A; CP B; JR Z,30A4`) takes a second branch when the
+received byte is one *less* than the stored one — a repeat of the
+previous frame, LIKELY the duplicate-retransmission case; anything else
+falls through to `01 EF 01` = error `01EF`. On transmit, `ROM00:316B` stitches
+`tbl[wire]` into the outgoing header at `FDE1` while building a frame at
+`FDDE`. Every emulator snapshot shows all 64 bytes reading `01`, the
+`317B` init value.
+
+This one was *also* already CONFIRMED in the repo — see [Commstar
+evidence](commstar-evidence.md), which has used `FE43h + (fdd4 & 3Fh)`
+for months — so the row is a straight import, not a new finding. What is
+new here is only the **extent**: the table is 64 bytes wide, so `FE43`
+and `FE44` belong to it and not to the link-state block below.
+
+### The two spans still open
+
+`F68D`-`F77F` and `FFA9`-`FFFF` survived the same treatment and stayed
+empty. What was ruled out, and how:
+
+* **No static reference of any kind.** A raw-opcode scan of both full
+  ROM images and all five RAM-resident modules for every 16-bit-operand
+  form (`01/11/21/22/2A/31/32/3A`, `ED 43/4B/53/5B/63/6B/73/7B`,
+  `DD/FD 21/22/2A`, and all `JP`/`CALL` forms), filtered by a
+  linear-sweep alignment check, returns **nothing** in either span. The
+  one literal that names `F68D` is `ROM00:0308` `01 8D F6` =
+  `LD BC,F68D` — the *terminator* of `InstallKernelToRam`'s copy loop
+  (`ROM00:0305` `11 80 F1` `LD DE,F180`, then
+  `7E 12 23 13 7B B9 20 F8 7A B8 20 F4 C9`, copy until `DE == BC`), so
+  `F68D` is the exclusive end of the kernel image, not a use of it. In
+  `FFA9`-`FFFF` every surviving `FFxx` literal is a small negative
+  constant — `LD HL,FFFF` (−1), `LD DE,FFFC/FFFB/FFF8/FFF6/FFEC`,
+  `LD BC,FFE8` (−24), `LD HL,FFE0` (−32), `LD DE,FFD0` (−48) — feeding
+  an `ADD HL,rr` subtraction.
+* **No `SP`-filled buffer.** The same scan turns up 17 candidate
+  `LD SP,nn` sites in the whole firmware. Only three of them are real
+  code targeting fixed RAM — `F81A` (system stack), `FBB5` (barcode
+  capture) and `D681` (program stack) — and none is in either span. The
+  rest decode as `LD SP` only when read mid-table: `ROM00:1B80`
+  `31 7F ED` (`LD SP,ED7F`) sits inside a keyboard table, `ROM00:235A`
+  inside the comms config table copied by `ROM00:22E9`.
+* **`FFA9`-`FFFF` is not reached by the Z80's power-on `SP = FFFF`
+  either.** `reset_entry` sets the stack before it can push anything:
+  `ROM00:014B` `F3 / 2A D0 FB / F9` = `DI; LD HL,(FBD0); LD SP,HL` are
+  the first three instructions executed after `0000` `JP 0103` →
+  `JP 014B`. No `CALL` or `PUSH` precedes them.
+* **Not an overrun of the neighbouring buffers.** `ram:F4F4`/`F50B` walk
+  `FF7F` with `BC = 24h`, last byte `FFA2`; `ram:F510`/`F523` walk
+  `FEFF` with `BC = 80h`, last byte `FF7E`. Both stop exactly where this
+  page says they do.
+* **Empirically untouched.** Under `analysis/boot_hw.py` (which skips
+  the destructive RAM test, so zero means "nothing wrote here"), both
+  spans read all-zero at every snapshot of a boot to the Main Menu
+  *and* of a synthetic Load/Run that loads and runs a COM image:
+  `--dump-mem f68d:243 --dump-mem ffa9:87`.
+
+What that leaves. For `F68D`-`F77F`, the arithmetic is the strongest
+hint: `F180 + 0x600 = F780`, so the kernel's arena is a round 1536 bytes
+and the `0x50D`-byte image leaves 243 spare — and `ROM00:0318`
+`11 80 F1 / 21 E8 35 / 01 35 F2 / 18 E8` is a *second, shorter* install
+that re-enters the same copy loop at `030B` with a terminator of
+`F235`, copying only `F180`-`F234`. Two different images, one arena:
+direct evidence that the arena is sized larger than whichever image goes
+into it. The image
+itself ends on a real `RET` at `F68C` (`ROM00:3BA9` `C9`) with no
+trailing buffer. For `FFA9`-`FFFF`, 87 bytes is simply what is left
+between the last BDOS variable and the top of memory; 87 = 3 × 29
+matches no stride anywhere nearby.
+
+**Next experiment for both** (the pattern-fill recipe below, sharpened):
+fill `F68D`-`F799` — deliberately including the port shadows — with an
+address-derived pattern, drive a full session, and read back the
+low-water mark. That answers the only question that matters for
+`F68D`-`F77F`: whether the system stack, which has just 128 bytes of
+headroom below `F81A`, ever descends past `F79A` in normal use. For
+`FFA9`-`FFFF`, fill it and run a **disk-heavy** workflow (directory
+enumeration plus several file writes, which is the path that exercises
+`ram:F4EB`-`F54D` hardest) rather than the Commstar path, since its only
+plausible claimant is a BDOS bounce-buffer off-by-one.
 
 ### The one thing that touches everything
 
@@ -160,22 +329,32 @@ sooner.
 
 Unreferenced, at the very top of RAM, above the BDOS variable block
 (`FEFF`-`FFA8`). Big enough for a signature word or a small counter,
-nothing more. **Falsified by:** it is immediately adjacent to a densely
-packed, exactly-sized BIOS variable block — a single off-by-one in
-`ram:F4EB`-`F54D` (the bounce-buffer helpers) lands here. Treat a
-corrupted marker as a signal, not a nuisance.
+nothing more. The negative is now stronger than "no disassembled
+reference": no aligned 16-bit-operand instruction anywhere in either
+full ROM image or any RAM module names an address in it, no `LD SP`
+targets it, and the power-on `SP = FFFF` is overwritten before the first
+push (`ROM00:014B`). It stayed all-zero through a boot to the Main Menu
+and through a synthetic Load/Run. **Falsified by:** it is immediately
+adjacent to a densely packed, exactly-sized BIOS variable block — a
+single off-by-one in `ram:F4EB`-`F54D` (the bounce-buffer helpers) lands
+here, and those helpers have not been exercised hard. Treat a corrupted
+marker as a signal, not a nuisance.
 
 ### Not recommended, despite looking free
 
-* **`F68E`-`F77F` (242 B).** Unreferenced, but the system stack top is
-  `F81A` and only 128 bytes of headroom sit between it and the port
-  shadows at `F780`. A stack excursion past `F79A` runs into the shadows
-  first and this region next. Anything you put here is a stack-depth
-  canary, not scratch.
-* **`FD64`-`FD83`, `FE45`-`FE82`.** Unidentified, but wedged between
-  live RTC, comms-config and link-state cells in the most densely packed
-  part of the map. The prior that they are structure padding of their
-  neighbours is much stronger than the prior that they are free.
+* **`F68D`-`F77F` (243 B).** Unreferenced and empirically untouched, but
+  the system stack top is `F81A` and only 128 bytes of headroom sit
+  between it and the port shadows at `F780`. A stack excursion past
+  `F79A` runs into the shadows first and this region next. Anything you
+  put here is a stack-depth canary, not scratch.
+* **`FD64`-`FD83`, `FE45`-`FE82`. Now identified — do not use them.**
+  The prior that they were structure padding of their neighbours was
+  right, and stronger than stated: they are not padding but *live
+  entries*. `FD64`-`FD83` is slots 2-9 of the 10-slot countdown-timer
+  table based at `FD5C`, and `FE45`-`FE82` is entries 2-63 of the
+  64-byte per-link sequence table based at `FE43`. Both were found by
+  the base-literal-plus-stride idiom this page warns about, and both
+  were already documented elsewhere in the repo.
 
 !!! note "\"Nothing references it\" is not \"it is free\""
     The instruction scan is bounded by disassembly coverage: `ROM00` is
@@ -357,13 +536,39 @@ symptom, not a timing one.
   the loaded program's stack, and `EC6D`-`ED1B` holds the logon
   credentials and the loaded-program header and block descriptors. The
   sentence is easy to read as "these are free".
+* **This page's own boundaries at `FD64`, `FE45` and `FD97`-`FE44` were
+  wrong, and two of its four "unidentified" spans were already solved
+  elsewhere in the repo.** `doc/research/TASKS.md` has recorded the
+  `FD5C` queue as a 10-slot countdown-timer/callback table since
+  2026-08-25 (with `CommsWorkItemRegister` / `Comms_WorkItemSweep` named
+  in Ghidra, and an explicit warning that the stride is 4 even though
+  the listing shows three `INC IX`), and [Commstar
+  evidence](commstar-evidence.md) has treated `FE43h + (fdd4 & 3Fh)` as
+  a CONFIRMED per-link sequence slot throughout. Neither reached this
+  page, and both row boundaries were drawn two entries into the
+  structure rather than at its end — which is exactly the failure mode
+  the "base literal plus walked pointer" note warns about, committed by
+  the map itself.
+  Corrected above: `FD46`-`FD5B` / `FD5C`-`FD83`, and `FD97`-`FE42` /
+  `FE43`-`FE82`.
 
 ## Open
 
-* `F68D`-`F77F` (243 B), `FD64`-`FD83` (32 B), `FE45`-`FE82` (62 B) and
-  `FFA9`-`FFFF` (87 B) are unidentified. Discriminating test: the
-  pattern-fill procedure above, run across a full session including a
-  barcode read, a file write and a Commstar exchange.
+* `FD64`-`FD83` and `FE45`-`FE82` are **closed**: they are the tails of
+  the `FD5C` countdown-timer table (10 × 4 B) and the `FE43` per-link
+  sequence table (64 × 1 B) respectively. See "the two spans that turned
+  out to be structure tails".
+* `F68D`-`F77F` (243 B) and `FFA9`-`FFFF` (87 B) remain unidentified,
+  but the negative is now much stronger than "no disassembled
+  reference" — see "the two spans still open" for what was ruled out and
+  the sharpened experiment. Best current reading: `F68D`-`F77F` is spare
+  room in a 1536-byte kernel arena (`F180 + 0x600 = F780`) and
+  `FFA9`-`FFFF` is the unclaimed remainder above the last BDOS variable.
+  Neither is safe to *assume* free without the pattern-fill run.
+* Ghidra still labels `FD5C` `comm_work_table`, which reads as a comms
+  buffer rather than a timer table. The name is grandfathered and this
+  page does not rename it, but a reader following the label alone will
+  mis-size the structure.
 * The negative result for `8006`-`D080` is bounded by 61%/37% ROM
   disassembly coverage. Extending coverage of `ROM01` would tighten it.
 
@@ -373,7 +578,7 @@ symptom, not a timing one.
   stub arena
 * [Commstar evidence and traces](commstar-evidence.md) — the session
   objects at `E5BC`/`E5C2`
-* [Memory and I/O map](../reference/memory-io.md) — the stable
+* [Memory and I/O map](../reference/memory-map.md) — the stable
   bank-window contract
 * [Program file formats](../reference/program-formats.md) — the `0xCF81`
   COM limit and the `D081` ceiling

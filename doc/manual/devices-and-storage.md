@@ -48,4 +48,4 @@ volatile or persistent without testing the configured machine.
 
 For filesystem implementation details, see
 [the CP/M comparison](../re-notes/cp-m-comparison.md) and
-[the memory map](../reference/memory-io.md).
+[the memory map](../reference/memory-map.md).

@@ -16,10 +16,14 @@ Reference pages carry no ROM addresses, no `CONFIRMED`/`SUSPECTED`/`OPEN`
 evidence tags, and no trace bytes. Every claim links to the RE-notes anchor
 that carries the underlying evidence.
 
-**The two Commstar pages are a deliberate exception.** They describe an
-interface nobody has a manual for, so they carry their addresses, byte
-quotes and evidence tags inline: an implementer needs to see what a claim
-rests on before building hardware against it.
+**Three pages are a deliberate exception.** The two Commstar pages
+describe an interface nobody has a manual for, so they carry their
+addresses, byte quotes and evidence tags inline: an implementer needs to
+see what a claim rests on before building hardware against it.
+[System memory map](memory-map.md) is an exception for the opposite
+reason — its whole subject *is* addresses, and a reader placing resident
+code needs to know which of them are structural and which are artefacts
+of this ROM build.
 
 ## Pages
 
@@ -31,7 +35,13 @@ rests on before building hardware against it.
   points a loaded COM or DIP can call, their arguments and results
 * [Commstar peer library](commstar-peer.md) — `micronic.peer.CommstarPeer`,
   the host half of a session
-* [Memory and I/O map](memory-io.md) — bank window, fixed RAM, and port assignments
+* [Memory and I/O map](memory-map.md) — the short stability-classified
+  summary: bank window, fixed RAM, vectors, and port assignments
+* [System memory map](memory-map.md) — the full programmer's reference:
+  the banked memory model, the `RST 10h` inter-bank call and the
+  unbanked-pointer rule it imposes, region tables, the stacks (and why
+  there is no heap), the derived I/O port map, and what it takes to write
+  resident code — a barcode decoder module or an OS function patch
 
 ## Building a Commstar host
 

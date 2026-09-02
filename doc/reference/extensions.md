@@ -66,7 +66,7 @@ clears its counter.
 An application that changes the selector should save and restore the prior
 value before exit. For the selector windows that choose FE83 entries, see
 [Devices and storage](../manual/devices-and-storage.md) and
-[Memory and I/O map](memory-io.md).
+[Memory and I/O map](memory-map.md).
 
 ### F8h / FAh / FBh — table access
 
@@ -113,7 +113,7 @@ Both use an eight-byte record at `DE`. The canonical layout is:
   `+1..+7` from the RTC and `+0` from stored metadata. Permanent flag
   blocks return.
 
-For the register mapping and alarm details, see [Memory and I/O map](memory-io.md)
+For the register mapping and alarm details, see [Memory and I/O map](memory-map.md)
 and [RE notes: RTC](../re-notes/rtc.md).
 
 ### FFh — RTC alarm control
@@ -149,5 +149,5 @@ registers.
 
 * [BDOS calls](bdos.md) — standard services and calling convention
 * [Devices and storage](../manual/devices-and-storage.md)
-* [Memory and I/O map](memory-io.md)
+* [Memory and I/O map](memory-map.md)
 * [RE notes: OS internals](../re-notes/os-diposb.md)

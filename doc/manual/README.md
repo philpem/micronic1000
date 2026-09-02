@@ -22,5 +22,5 @@ Contract pages live under `reference/` and `protocol/`:
   (stable contracts; the old `bdos-reference.md` path redirects)
 - [Barcode reader](../reference/barcode.md)
 - [Program file formats](../reference/program-formats.md)
-- [Memory and I/O map](../reference/memory-io.md)
+- [Memory and I/O map](../reference/memory-map.md)
 - [Commstar transport](../protocol/commstar.md)

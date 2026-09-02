@@ -490,7 +490,7 @@ This guide is based on static analysis of the `micron1.bin` ROM
 - The device/link layer (drive letters → FE83/FE93 config, IR link,
   session ring) in [the Commstar protocol](../protocol/commstar.md).
 - Memory map (battery RAM layout, system variables) in
-  [the memory map](../reference/memory-io.md).
+  [the memory map](../reference/memory-map.md).
 
 All `Bdos*` handlers are named and commented in the Ghidra program.
 

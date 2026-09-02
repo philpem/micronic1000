@@ -32,8 +32,9 @@ plugins:
         'manual/bdos-reference.md': 'reference/bdos.md'
         'manual/barcode-reader.md': 'reference/barcode.md'
         'manual/program-formats.md': 'reference/program-formats.md'
-        'internals/memory-map.md': 'reference/memory-io.md'
-        'internals/io-map.md': 'reference/memory-io.md'
+        'internals/memory-map.md': 'reference/memory-map.md'
+        'reference/memory-io.md': 'reference/memory-map.md'
+        'internals/io-map.md': 'reference/memory-map.md'
         'internals/os-diposb.md': 're-notes/os-diposb.md'
         'internals/forms-ui.md': 're-notes/forms-ui.md'
         'internals/cp-m-comparison.md': 're-notes/cp-m-comparison.md'
@@ -85,7 +86,7 @@ nav:
       - Program file formats: reference/program-formats.md
       - Commstar application API: reference/commstar-api.md
       - Commstar peer library: reference/commstar-peer.md
-      - Memory and I/O map: reference/memory-io.md
+      - Memory and I/O map: reference/memory-map.md
   - Protocol reference:
       - protocol/README.md
       - Commstar transport: protocol/commstar.md

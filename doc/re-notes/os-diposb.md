@@ -140,7 +140,7 @@ and require ROM bank 0 mapped during service — which is exactly what
 
 UI objects are built from chained descriptor blocks in ROM01
 (first at 75EB, `ui_object_descriptor_1`; see also the descriptor
-tables section in [Memory and I/O map](../reference/memory-io.md)):
+tables section in [Memory and I/O map](../reference/memory-map.md)):
 
 * header: two name-string pointers + word
 * 4-word **vtable of kernel-side methods** (e.g. EFEC/F0F8/EF98/EFD8)

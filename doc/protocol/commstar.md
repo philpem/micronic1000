@@ -95,7 +95,7 @@ Firmware writes outgoing data at `LINK_TXD` (`4Dh`), reads incoming data
 at `LINK_RXD` (`4Eh`), polls `LINK_STATUS` (`4Bh`), and drives
 `LINK_CTRL` (`4Ah`). `LINK_CMD` receives `81h` during the ready
 handshake. The exact port catalogue is in
-[Memory and I/O map](../reference/memory-io.md).
+[Memory and I/O map](../reference/memory-map.md).
 
 ## Controller transaction
 

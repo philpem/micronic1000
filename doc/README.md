@@ -16,7 +16,7 @@ reverse-engineering questions.
 * [DIPOS-B extensions](reference/extensions.md) — device, storage, RTC, and timing.
 * [Barcode reader](reference/barcode.md) — scanner hook and RDR: byte-stream API.
 * [Program file formats](reference/program-formats.md) — COM and DIP grammars.
-* [Memory and I/O map](reference/memory-io.md) — banks, RAM, vectors, and ports.
+* [Memory and I/O map](reference/memory-map.md) — banks, RAM, vectors, and ports.
 * [Commstar transport](protocol/commstar.md) — controller mechanics, the
   session state machine, and the explicit blockers for a physical server.
 * [Commstar application API](reference/commstar-api.md) — the session entry

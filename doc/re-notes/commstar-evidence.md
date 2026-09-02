@@ -854,7 +854,7 @@ assertion-based regression test.
 
 *This section preserves the I/O-map evidence that underpins the latch
 contract. The stable port table lives in
-[Memory and I/O map](../reference/memory-io.md).*
+[Memory and I/O map](../reference/memory-map.md).*
 
 The firmware accesses the 4x block with **distinct latch addresses** and
 status-gated byte pumps, which does not match a Z80 SCC/SIO/ADLC

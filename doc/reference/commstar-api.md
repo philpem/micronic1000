@@ -166,11 +166,27 @@ ROM00:0015  CP   E
 ROM00:0016  JP   NZ,0D74Bh     ; different -> the cross-bank path
 ```
 
-`ram:D74B` **switches the lower-32K bank and jumps**. Nothing maps the
-caller's page while the callee runs, so the Commstar routine executing in
-ROM00 sees ROM at `0x0000`-`0x7FFF`, not your data. The design is explicit
-about this: the cross-bank path maintains a **shadow stack** at `ram:E36F`,
-precisely because the ordinary stack would otherwise be unreachable too.
+`ram:D74B` saves the caller's context, switches the bank, calls, and puts
+everything back:
+
+```text
+ram:D74D  LD   HL,(0E36Fh)   ; the shadow stack pointer
+ram:D750  DEC HL / LD (HL),A ;   push the CALLER'S BANK
+ram:D752  DEC HL / LD (HL),D
+ram:D754  DEC HL / LD (HL),E ;   push the return address
+ram:D756  LD   (0E36Fh),HL
+ram:D75F  CALL 0D770h        ; switch bank and run the target
+ram:D763  LD   HL,(0E36Fh)   ; on return, pop the frame back --
+ram:D766  LD   E,(HL) / INC HL / LD D,(HL) / INC HL
+ram:D76A  LD   A,(HL) / INC HL   ;   including the caller's bank
+ram:D76C  LD   (0E36Fh),HL
+```
+
+**So the caller's bank is saved and restored** — a `RST 10h` call returns with
+the paging exactly as it left it. What does *not* happen is the caller's page
+being mapped **while the callee runs**: the lower 32K holds ROM00 for the
+duration. That is what makes a banked buffer useless here, and it is a
+separate matter from the paging being restored afterwards.
 
 The firmware's own practice confirms it — **every buffer it passes is
 unbanked**:
@@ -184,7 +200,10 @@ unbanked**:
 Not one of them is below `0x8000`.
 
 **So a driver COM must place its buffers in the upper 32K** — which means
-finding space that the firmware is not already using. That is not obvious by
+finding space that the firmware is not already using. The loader's own limit
+is a useful landmark: `ROM00:7052` (`21 81 D0 / 22 BD E3`) sets
+`g_pProgramLoadCeiling = ram:D081`, and module B begins exactly there, so
+`D081` is the top of the space a loaded program may occupy. That is not obvious by
 inspection, and picking an address by guesswork has already caused one real
 bug: the emulator harness staged upload chunks at `ram:E5C2` and ran over
 live session state. See

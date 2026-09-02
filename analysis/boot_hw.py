@@ -1172,6 +1172,15 @@ UPLOAD_NAME_ADDR = 0xC000
 # Input chunks deliberately impersonate the service-33 receive payload object,
 # so this address is correct for that path specifically and is not general
 # scratch.
+#
+# VERSION-FRAGILE. E5C2h is where *this* ROM image puts the receive object;
+# it is not an architectural constant. Another ROM version may lay its OS
+# structures out differently, and nothing here would detect that -- the
+# symptom would be the same silent corruption of whatever occupies the
+# address instead. Anything that has to survive a ROM change should locate
+# the object from the firmware rather than hard-coding it, or at minimum
+# assert the surrounding structure looks as expected before writing. The
+# same caveat applies to every other absolute address in this file.
 UPLOAD_BUFFER_ADDR = 0xE5C2
 # Cap a staged chunk at what a real receive can hold. The service-33 receive
 # object is 134 bytes at ram:E5BC with its body 8 bytes in, so the firmware

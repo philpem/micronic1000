@@ -3676,3 +3676,106 @@ changed. Files touched: `doc/protocol/commstar.md`,
     script bug is real; the dump does not show it.
 * **Still unidentified, not invented:** `F68D`-`F77F`, `FD64`-`FD83`,
   `FE45`-`FE82`, `FFA9`-`FFFF`.
+
+## Unbanked RAM: two of the four unknown spans identified (2026-09-02)
+
+* **`FD64`-`FD83` CLOSED — slots 2-9 of a 10-slot countdown-timer table based
+  at `ram:FD5C`**, stride 4, entry `{u16 ptr to a down-counter, u16 callback}`.
+  Two independent walkers: `ROM00:2189` (`21 5C FD` / `0E 0A` = 10 slots /
+  `11 03 00 19` after an `INC HL` = stride 4) and `ROM00:21BA`
+  (`DD 21 5C FD`, four `DD 23`, `79 FE 0A`). `FD5C + 10*4 = FD84`, flush
+  against the comms config table — the fit is exact. Swept from the RTC
+  periodic interrupt (`ROM00:2214` latches Reg C to `FD4F`; `221F`
+  `E6 40 / C4 4C 22`, Reg C bit 6 = `PF`).
+* **`FE45`-`FE82` CLOSED — entries 2-63 of a 64-byte per-link frame-sequence
+  table based at `ram:FE43`.** `ROM00:317B` `21 43 FE / 06 40 / 36 01 / 23 /
+  10 FB` fills 64 entries with `01`; `ROM00:3192` computes
+  `FE43 + (FDD4 & 3Fh)`; accessors at `31A1` / `31A6` / `31AB`; `ROM00:3084`
+  compares against the received byte at `FDE7`. `FE43 + 64 = FE83`, flush
+  against the device wire-id table — again exact.
+* **Both were already solved elsewhere in this repo and never reached the
+  map.** The `FD5C` timer table was recorded in this log on 2026-08-25 with
+  Ghidra names applied, and `FE43h + (fdd4 & 3Fh)` has been CONFIRMED in
+  `commstar-evidence.md` throughout. The map drew both row boundaries **two
+  entries into** the structure — precisely the "base literal plus walked
+  pointer" failure its own methodology note warns about. **Lesson: harvest
+  existing documentation before deriving, and treat a region boundary that
+  does not abut its neighbour as a smell.**
+* **`F68D`-`F77F` (243 B) — OPEN, characterised.** Ruled out: any static
+  reference (the only literal naming `F68D` is `ROM00:0308` `01 8D F6`, the
+  *terminator* of `InstallKernelToRam`'s copy loop), any `SP`-fill, and any
+  write through boot-to-Main-Menu or a synthetic Load/Run. **LIKELY** spare
+  room in a round 1536-byte kernel arena: `F180 + 0x600 = F780` while the
+  image is `0x50D`, and `ROM00:0318` re-enters the same copy loop with
+  terminator `F235`, a second shorter install — so the arena is deliberately
+  larger than its image. Next experiment: fill `F68D`-`F799` and read the
+  stack low-water mark.
+* **`FFA9`-`FFFF` (87 B) — OPEN, characterised.** Every surviving `FFxx`
+  literal in either ROM is a small negative constant (`-1`, `-4`, `-8`, `-32`,
+  `-48`, ...) feeding `ADD HL,rr`, not an address. Power-on `SP = FFFF` never
+  pushes — `ROM00:014B` `F3 / 2A D0 FB / F9` is the first thing executed.
+  Neither bounce buffer overruns into it (`FF7F`+`24h` -> `FFA2`;
+  `FEFF`+`80h` -> `FF7E`). Next experiment: a disk-heavy workflow, not
+  Commstar.
+* **Methodological, and it matches what I hit independently:** a naive
+  raw-opcode scan of these images yields roughly **50% false positives**.
+  `ROM00:31CC` decodes as `LD SP,FE7E` mid-stream but is really
+  `LD HL,31F2 / LD A,(HL)` — that artefact alone would have "identified"
+  `FE45`-`FE82` as an SP-filled buffer. An alignment-consensus filter is
+  required, and a scan that ignores instruction boundaries proves nothing.
+
+## New reference page: memory and I/O map (2026-09-02)
+
+`doc/reference/memory-map.md` is now the programmer-facing reference for the
+memory and I/O contract, written for three jobs the owner named: Commstar
+host work, a barcode decoder module, and OS function hooks that patch the
+ROM. The evidence trail stays in `doc/re-notes/unbanked-ram-map.md`; the
+reference page summarises and cross-links rather than duplicating.
+
+**Merged two pages into one.** `doc/reference/memory-io.md` already existed
+covering thin versions of the same ground, and the two had begun to
+*disagree* — the old page called port `04h` an "output/power latch", which
+the byte evidence contradicts. `memory-io.md` is retired, its ten inbound
+links repointed, and a `redirect_maps` entry added so old URLs still resolve.
+
+Established and byte-verified this pass:
+
+* **Port `04h` is an active-low interrupt-enable mask, `05h` the matching
+  active-low status.** `ROM00:22E9` = `3E 1F / F3 / ED 56 / 2F / 32 84 F7 /
+  D3 04` — load `1Fh`, `DI`, `IM 1`, **`CPL`**, shadow to `ram:F784`, then
+  `OUT (04h)`. `ROM00:230A` = `DB 05 / 32 85 F7 / 2F / E6 08` — read `05h`,
+  snapshot to `ram:F785` (a shadow not previously listed), complement, test.
+  This **corrects** the old page's "output/power latch" reading.
+* **`RST 18h` is unusable.** The `RST 10h` dispatcher occupies `0010`-`001E`,
+  fifteen bytes, so it runs straight through the `0018` slot: the byte there
+  is `D7`, the high half of the `JP NZ,D74B` operand. An `RST 18h` executes
+  that as a nested `RST 10h` and falls into garbage. Relevant to anyone
+  looking for a spare restart vector to hook.
+* **There is no heap.** No allocator-shaped routine exists; `ram:E3BD`
+  (`g_pProgramLoadCeiling`) has one writer storing the constant `D081` and two
+  readers, both in the loader and both subtracting — a fence, not a break.
+  Every buffer in the firmware is at a literal address.
+* **The shadow stack has a hard limit of 21 nested cross-bank calls** and no
+  check; frame 22 overwrites the cursor at `ram:E36F` itself.
+* **The `(0006)` trap:** two writers (`F180` at `ram:F456`, `D681` at
+  `ram:D7BE`), neither of them the load ceiling. A CP/M program trusting
+  `(0006)-1` believes it owns 1536 bytes it does not.
+* **An uninstalled stub slot is not a stub.** The arena is seeded by smearing
+  one template, and the template is `21 01 00 C9` — `LD HL,1 / RET`.
+* **A BDOS handler is entered with bank 0 selected** (`ram:F382`-`F396`), so a
+  patched handler in the banked window must be in bank 0 or above `8000`.
+* **The firmware writes the unbanked rule into its own decode hook:**
+  `ROM00:145B` `BIT 7,H` tests whether the hook address is `>= 8000` before
+  deciding whether to route through the `FBC0` stub.
+* **`ROM01` performs essentially no port I/O** — its only genuine access is
+  `OUT (47h),A` at `ROM01:0042`. Four apparent I/O sites in the database
+  (`ROM01:0D07`, `ROM01:0F00`, `ROM00:6FFD`, `ROM00:7021`) are misalignment
+  artefacts, not instructions.
+* **New port `33h`**, read once at `ROM00:1ED9`, alignment sound, containing
+  stub unreferenced. Left **unknown** with candidates listed and no pick.
+* **`48h` is a 2-bit output echoed in `49h` bits 0-1** (`ROM00:24F2`-`251B`).
+  All its call sites are IR/link diagnostics, so the existing `LCD_STROBE`
+  label is **not supported**; flagged rather than renamed.
+
+**OPEN:** port `33h`'s identity and the `2Ah`/`2Ch` bit assignments both need
+hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
