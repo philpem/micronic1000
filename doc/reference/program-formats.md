@@ -67,6 +67,74 @@ Each block header is expanded with an additive checksum over its payload;
 a mismatch before execution reports `Program corrupt.` — meaning resident
 memory changed, not “file header checksum failed”.
 
+## Placing code in unbanked RAM
+
+**This is how a program leaves resident code behind**, and it is the single
+most useful thing about the DIP format for anyone writing a decode hook or a
+patch that has to outlive the program that installed it.
+
+The loader's block-acceptance test compares the block's **end address**
+against the program load ceiling:
+
+```text
+ROM01:0E9C  ADD  HL,DE          ; dest + payload count
+ROM01:0E9E  LD   HL,(0E3BDh)    ; g_pProgramLoadCeiling = D081h
+ROM01:0EA1  CALL 0E0E8h         ; Z iff ceiling >= end
+ROM01:0EA4  JP   Z,0EB0h        ; accept
+ROM01:0EA7  LD   HL,232Ah       ; else error 9002, "DIP file too big."
+```
+
+so the rule is **`destAddr + count <= 0xD081`**. Because `D081` is far above
+`8000`, **a type-0 block may name a destination anywhere in `8000`-`D080`,
+which is fixed battery-backed RAM outside the bank window.**
+
+**CONFIRMED by experiment**, not just by reading the check. A two-block DIP
+whose second block targets `C000` places its payload exactly there:
+
+```text
+--fill-mem c000:c03f --dump-mem c000:64
+
+[mem] final C000:64  44 49 50 44 45 53 54 2D 4C 41 4E 44 45 44 2D 41 54 2D 43 30 30 30 ...
+                     D  I  P  D  E  S  T  -  L  A  N  D  E  D  -  A  T  -  C  0  0  0
+```
+
+The marker pattern seeded across `C000`-`C03F` beforehand is overwritten for
+exactly the 32 payload bytes and survives untouched from `C020` on, so the
+copy is precisely placed and does not overrun.
+
+### A COM can do the same thing
+
+A DIP is not the only route, and often not the simplest. A COM is a flat
+image loaded at `0100h` in a bank, but **unbanked RAM is mapped the whole
+time**, so a COM can simply copy its payload up when it runs:
+
+```text
+        LD   HL,payload      ; in the COM's own image
+        LD   DE,0C000h       ; unbanked, bank-independent
+        LD   BC,payload_len
+        LDIR
+        ; ... then install the hook
+```
+
+The trade-off is only in tooling and timing:
+
+| | DIP | COM |
+|---|---|---|
+| Placement | done by the loader, before entry | done by your own copy loop |
+| Toolchain | needs a DIP header and block table | a flat binary |
+| Size limit | `destAddr + count <= D081` per block, 5 blocks | image `<= 0xCF81`, which is exactly `D081 - 0100` |
+| Payload cost | payload only | payload is carried inside the image as well |
+
+Either way the code ends up in the same place and behaves identically once
+there. Use a DIP when you want the loader to do the placement or need several
+scattered destinations; use a COM when a copy loop is easier than building a
+header.
+
+**What neither can do:** write the decode-hook socket at `ram:FBC0`-`FBC3`
+directly from a DIP block, because `FBC0` is above the `D081` ceiling and the
+loader would reject it. The socket must be written by running code — see
+[Barcode reader](barcode.md).
+
 ## Error catalogue
 
 The loader shows decimal IDs; hexadecimal IDs are included for tooling:
@@ -76,8 +144,8 @@ The loader shows decimal IDs; hexadecimal IDs are included for tooling:
 | `0x232B` (9003) Bad DIP file | truncated header or payload |
 | `0x2331` (9009) Program not built for this system | system ID not `0` or `0x00E5` |
 | `0x2334` (9012) DIP file has too many blocks | block count `>5` |
-| `0x232A` (9002) DIP file too big | block destination + payload exceeds boundary |
-| `0x232C` (9004) COM file too big | raw COM exceeds `0xCF81` |
+| `0x232A` (9002) DIP file too big | `destAddr + count` exceeds the load ceiling `ram:E3BD` = `D081h` (`ROM01:0E9E`) |
+| `0x232C` (9004) COM file too big | raw COM exceeds `0xCF81`, which is `D081h - 0100h` |
 | `0x2332` (9010) Program corrupt | post-load checksum mismatch |
 
 No executable-extension comparison beyond the fallback rule is part of the

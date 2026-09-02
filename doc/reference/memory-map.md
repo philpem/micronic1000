@@ -461,11 +461,16 @@ It is the authority; this is the programmer-facing summary.
 
 `ram_page_test_4banks` (`ROM00:2530`) destructively pattern-tests the
 whole of `8000`-`FFFF` — four 8K pages from `8000` with a `2000` stride,
-four fill/verify passes each — and is called unconditionally from
-`reset_entry` at `ROM00:01BB`. CONFIRMED. That is *why* the kernel is
-reinstalled from ROM and the boot chains re-run on every boot: their
-destinations have just been erased. Battery backing preserves fixed RAM
-across power-*off*; it does not preserve it across a cold *reset*.
+four fill/verify passes each — and is reached from `reset_entry` at
+`ROM00:01BB` (`C3 30 25`). CONFIRMED.
+
+**It is not unconditional.** `ROM00:01A3` `JP Z,024Dh` takes the warm path
+whenever `ram:F81C` holds `55h`, jumping clean over `01A6`-`024C` — which
+contains the RAM test at `01BB`, the decode-hook install at `022F` and the
+kernel recopy at `023E` alike. That is why the kernel is reinstalled and the
+boot chains re-run **on a cold start**: their destinations have just been
+erased. Battery backing preserves fixed RAM across power-*off* and across a
+warm reset; only a cold start erases it.
 
 ---
 
@@ -902,11 +907,25 @@ Both are inside the resident kernel image, so:
   CONFIRMED, byte-verified `ram:F382`-`F396`. So a handler in the banked
   window must be in **bank 0**, and a handler at `C000`+ works
   unconditionally, which is the reason to put it there.
-* **The patch does not survive a reset.** `ROM00:02FE` copies the kernel
-  image `ROM00:369D` → `ram:F180` up to end address `F68D` on every boot
-  (`11 B5 00 / 21 E8 35 / 19 / 11 80 F1 / 01 8D F6` then a byte-copy
-  loop), and `F1D1`/`F1EB` are inside that range. Reinstall your patch
-  from your own startup path.
+* **The patch survives a warm boot, and dies on a cold one.**
+  `ROM00:02FE` copies the kernel image `ROM00:369D` → `ram:F180` up to end
+  address `F68D`, and `F1D1`/`F1EB` are inside that range — but it runs
+  **only on a cold start**. `CALL 02FE` has exactly one call site in the
+  whole ROM, `ROM00:023E`, which sits inside `ColdStartSelfTestBanner`
+  *after* the warm-boot entry point:
+
+  ```text
+  ROM00:019E  LD   A,(0F81Ch)
+  ROM00:01A1  CP   55h
+  ROM00:01A3  JP   Z,024Dh      ; warm -> skips 01A6..024C entirely
+  ROM00:0232  LD   A,55h / LD (0F81Ch),A   ; cold start stamps the flag
+  ```
+
+  So a `F1EB`/`F1D1` patch persists across a warm boot and a power cycle,
+  and is undone only by a cold start — which also RAM-tests all of
+  `8000`-`FFFF` and would have destroyed your patch anyway. **Correction:**
+  an earlier revision of this page said the recopy happens on every boot
+  and the patch never survives.
 * **Special-cased functions bypass the table.** Functions `2Dh`, `2Eh`,
   `30h`, `62h`, `68h` and `69h` are dispatched by an explicit compare
   chain at `ram:F19A`-`F1C2` *before* the table lookup is reached

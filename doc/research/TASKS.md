@@ -3838,3 +3838,60 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   `2Dh` transitions. Static bound recorded instead: the capture pushes from
   `SP = FBB5` with a single-byte counter capped at `ROM00:140F` (`FE 80`), so
   at worst 256 pushes fill exactly `F9B5`-`FBB4` and neither span is reachable.
+
+## Resident code: the install API, and DIP destinations verified (2026-09-02)
+
+* **The decode-hook install call is BIOS jump-table entry 24, not a BDOS
+  function.** Reachable portably as `CALL (0001h)+45h` -> `ram:F27D` ->
+  `ROM00:1587`. `ROM00:0100`-`014A` is a 25-entry CP/M-style BIOS jump table
+  mirrored in unbanked RAM at `ram:F235`-`F27F`; entries 0-16 are stock CP/M
+  2.2, 17-24 are DIPOS-B extensions.
+* **It takes TWO arguments and the docs stopped four instructions early.**
+  Byte-verified `ROM00:1587`-`159F` =
+  `ED 53 C2 FB / 3A FE FE / 32 C1 FB / 3E D7 / 32 C0 FB / 29 x6 / 22 B0 F9 / C9`:
+  * `DE` = hook address -> `ram:FBC2`
+  * caller's bank (from `ram:FEFE`) -> `ram:FBC1`
+  * `D7` -> `ram:FBC0`, making the socket a four-byte `RST 10h` thunk
+  * **`HL` = re-arm budget -> `ram:F9B0`, shifted left six times (x64)**
+  A caller that sets only `DE` silently writes garbage into the budget.
+* **`BIT 7,H` at `ROM00:145B` is a fast path, not a gate on banked hooks.**
+  Byte-verified `ROM00:1450`-`146E`: both branches converge on
+  `LD HL,FBC0 / JP (HL)`; the direct jump is taken only for a hook at
+  `>= 8000h` **whose first byte is already `D7`**. So `FBC1` matters for
+  essentially every hook, and a banked hook is fully supported.
+* **The hook is entered with ONE stack word**, `[SP+2] = 0FBB9h` — the address
+  of the parameter block, not registers. `FBB9`/`FBBA` = width-table pointer
+  (init `F9B5`), `FBBB` = element count. Zero `FBBB` to reject and re-arm;
+  that is the entire body of the ROM's discard hook at `ROM00:1567`.
+* **The socket survives program exit, warm boot and power cycling.**
+  `FBC1`/`FBC2` have exactly two writers in the whole firmware, both
+  installers. It is reset only by a cold start.
+* **CONFIRMED by experiment: a DIP type-0 block honours a destination in
+  unbanked RAM.** The acceptance rule is `destAddr + count <= (ram:E3BD)`
+  = `D081h` (`ROM01:0E9C`-`0EA7`), which permits `8000`-`D080`. A two-block
+  DIP targeting `C000` placed its 32-byte payload exactly there — verified
+  with `--fill-mem c000:c03f --dump-mem c000:64`: the seeded markers are
+  overwritten for exactly 32 bytes and survive from `C020` on, so the copy is
+  precisely placed with no overrun, and the load reported success rather than
+  error 9002. This was checked *before* the documentation promised it.
+* **A COM can do the same with a run-time copy loop** — unbanked RAM is mapped
+  throughout, so `LD HL,payload / LD DE,0C000h / LDIR` reaches it. DIP versus
+  COM is a tooling and timing choice, not a capability one; both are now
+  documented in `program-formats.md`. Neither can write the socket at
+  `FBC0`-`FBC3` from a block, since that is above the ceiling — running code
+  must do it.
+* **CORRECTION to `doc/reference/memory-map.md`:** it said the kernel recopy
+  `ROM00:02FE` runs "on every boot" and concluded a BDOS-table patch never
+  survives a reset. Wrong on both counts. `CALL 02FE` has **exactly one call
+  site**, `ROM00:023E`, inside `ColdStartSelfTestBanner` *after* the warm entry
+  at `024D`; and `ROM00:01A3` `JP Z,024Dh` skips `01A6`-`024C` whenever
+  `ram:F81C` holds `55h`, so the RAM test at `01BB` is not unconditional
+  either. A `F1EB`/`F1D1` patch persists across warm boot and power cycle,
+  exactly like the barcode hook.
+* **`ram:ECD8`, the program bank base, has one writer** (`ROM01:0A98`, from a
+  storage-geometry byte) and there is **no allocator, bitmap or free list** —
+  every Load/Run reuses the same bank. That is why a hook pointing into a
+  program bank is unsafe even though the call mechanism supports it.
+  Note `boot_hw.py` writes `ECD8` itself, so "programs run in bank 2" is a
+  harness convention, not an observed device behaviour. **OPEN:** read `ECD8`
+  after a genuine device-path load.
