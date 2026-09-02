@@ -148,3 +148,29 @@ class TestRejection:
     @pytest.mark.parametrize("n", [1, 2, 28, 34, 58, 60])
     def test_implausible_element_counts(self, decode, n):
         assert decode([12] * n) == b""
+
+
+class TestItf:
+    @pytest.mark.parametrize("digits", ["1234", "0000", "9999",
+                                        "1234567890", "42"])
+    def test_round_trip(self, decode, digits):
+        assert decode(upc.itf_widths(digits)) == digits.encode()
+
+    @pytest.mark.parametrize("digits", ["1234", "1234567890"])
+    def test_reversed(self, decode, digits):
+        assert decode(upc.itf_widths(digits, reverse=True)) == digits.encode()
+
+    def test_a_slow_scan_still_decodes(self, decode):
+        widths = upc.itf_widths("1234", narrow=40, wide=100)
+        assert decode(widths) == b"1234"
+
+    def test_a_clipped_start_is_refused(self, decode):
+        """ITF's real hazard: a clipped symbol can look like a shorter one.
+
+        Dropping the start pattern leaves something that still divides into
+        whole pairs, so only checking the start and stop refuses it.
+        """
+        assert decode(upc.itf_widths("1234")[4:]) == b""
+
+    def test_a_clipped_stop_is_refused(self, decode):
+        assert decode(upc.itf_widths("1234")[:-3]) == b""

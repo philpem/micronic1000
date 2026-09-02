@@ -15,7 +15,7 @@
     include "dipos.inc"
 
     public  decoder_entry
-    extern  code39_decode, upc_decode
+    extern  code39_decode, upc_decode, itf_decode
 
 ;; ---------------------------------------------------------------------------
 ;; decoder_entry -- the address installed in the hook socket.
@@ -48,6 +48,8 @@ hk_counted:
     call    code39_decode
     jr      nc,hk_publish             ; carry clear = decoded
     call    upc_decode
+    jr      nc,hk_publish
+    call    itf_decode
     jr      nc,hk_publish
 
 ;; --- nothing decoded: reject and re-arm ------------------------------------

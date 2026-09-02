@@ -16,9 +16,9 @@ BUILD   ?= build
 DOCKER  ?= sudo docker
 IMAGE   ?= z88dk/z88dk
 
-SOURCES := src/hook.asm src/code39.asm src/upc.asm
+SOURCES := src/hook.asm src/code39.asm src/upc.asm src/itf.asm
 TABLES  := src/code39_table.inc src/upc_table.inc src/ean_parity.inc \
-           src/upce_parity.inc
+           src/upce_parity.inc src/itf_table.inc
 DEPS    := $(SOURCES) src/dipos.inc $(TABLES) \
            $(BUILD)/origin.stamp
 

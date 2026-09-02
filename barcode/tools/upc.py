@@ -179,3 +179,66 @@ def upce_widths(ns, six, module=12, check=None, validate=True, reverse=False):
             last, n = b, 1
     out.append(n * module)
     return out[::-1] if reverse else out
+
+
+# ---------------------------------------------------------------------------
+# Interleaved 2 of 5.  Digits in pairs: five bars carry the first, five
+# spaces the second, woven together.  Two of each five are wide.
+# ---------------------------------------------------------------------------
+
+ITF_PATTERNS = {
+    0: "NNWWN", 1: "WNNNW", 2: "NWNNW", 3: "WWNNN", 4: "NNWNW",
+    5: "WNWNN", 6: "NWWNN", 7: "NNNWW", 8: "WNNWN", 9: "NWNWN",
+}
+
+
+def itf_widths(digits, narrow=12, wide=30, reverse=False):
+    """Element widths for an ITF symbol.
+
+    Start is four narrow elements, stop is wide-narrow-narrow, and every
+    pair of digits contributes ten interleaved elements.  An odd number of
+    digits cannot be encoded -- that is a property of the symbology, not a
+    limitation here.
+    """
+    d = [int(c) for c in digits] if isinstance(digits, str) else list(digits)
+    if len(d) % 2:
+        raise ValueError("ITF encodes digits in pairs")
+    out = [narrow, narrow, narrow, narrow]              # start
+    for i in range(0, len(d), 2):
+        bars, spaces = ITF_PATTERNS[d[i]], ITF_PATTERNS[d[i + 1]]
+        for b, s in zip(bars, spaces):
+            out.append(wide if b == "W" else narrow)
+            out.append(wide if s == "W" else narrow)
+    out += [wide, narrow, narrow]                       # stop
+    return out[::-1] if reverse else out
+
+
+# ---------------------------------------------------------------------------
+# Codabar.  Seven elements per character -- four bars, three spaces -- with
+# a narrow gap between characters.  Start and stop are drawn from A-D.
+# ---------------------------------------------------------------------------
+
+CODABAR_PATTERNS = {
+    "0": "NNNNNWW", "1": "NNNNWWN", "2": "NNNWNNW", "3": "WWNNNNN",
+    "4": "NNWNNWN", "5": "WNNNNWN", "6": "NWNNNNW", "7": "NWNNWNN",
+    "8": "NWWNNNN", "9": "WNNWNNN", "-": "NNNWNWN", "$": "NNWWNNN",
+    ":": "WNNNWNW", "/": "WNWNNNW", ".": "WNWNWNN", "+": "NNWNWNW",
+    "A": "NNWWNWN", "B": "NWNWNNW", "C": "NNNWWNW", "D": "NNNWWWN",
+}
+
+
+def codabar_widths(text, narrow=12, wide=30, gap=None, reverse=False):
+    """Element widths for a Codabar symbol.
+
+    `text` must begin and end with a start/stop character, A to D.
+    """
+    if len(text) < 3 or text[0] not in "ABCD" or text[-1] not in "ABCD":
+        raise ValueError("Codabar needs an A-D start and stop character")
+    gap = narrow if gap is None else gap
+    out = []
+    for i, ch in enumerate(text):
+        if i:
+            out.append(gap)                             # inter-character gap
+        for w in CODABAR_PATTERNS[ch]:
+            out.append(wide if w == "W" else narrow)
+    return out[::-1] if reverse else out
