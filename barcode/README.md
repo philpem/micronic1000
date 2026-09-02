@@ -75,6 +75,13 @@ standard characters plus `*` as the delimiter). Self-checking: an element
 pattern with no table entry simply fails, so a misread rejects rather than
 producing wrong data.
 
+One sharp edge worth knowing: **every Code 39 pattern is another valid
+pattern read backwards** — `0` reverses to `F`, `A` to `1`. So a reversed
+scan decoded in place would give a plausible, entirely wrong string. What
+prevents that is the delimiter: `*` reverses to `P`, so the start-character
+check refuses a mirrored read, and the reversed pass restores the element
+order before decoding. Do not remove the `*` checks.
+
 **EAN-13 and UPC-A** — one decoder, because UPC-A *is* EAN-13 with a
 leading zero and the two check-digit rules agree under that reading. A
 UPC-A is reported as twelve digits (the implied zero is not printed), an
@@ -106,10 +113,10 @@ parity pattern that is not in that table is not an EAN-13.
 
 #### Either direction
 
-A wand can be drawn right-to-left. Reversing the captured elements
-restores the original order, so the decoder tries forward and, on failure,
-reverses into a scratch buffer and decodes that as an ordinary forward
-symbol. The cost is one extra pass on symbols that fail forward — every
+**Every symbology here reads in either direction.** A wand can be drawn
+right-to-left; reversing the captured elements restores the original
+order, so each decoder tries forward and, on failure, reverses into a
+shared scratch buffer and decodes that as an ordinary forward symbol. The cost is one extra pass on symbols that fail forward — every
 genuinely reversed scan, and every piece of noise.
 
 This works even for UPC-E, whose guards are different sizes at each end

@@ -20,6 +20,7 @@
 
     public  code39_decode
     extern  width_table, element_count, out_buffer
+    extern  scratch, reverse_elements
 
 ;; Shortest possible symbol is '*X*': three characters, 29 elements.
 C39_MIN_ELEMENTS    equ 29
@@ -32,7 +33,32 @@ C39_CHAR_STRIDE     equ 10         ; nine elements plus the gap
 ;; Out: carry clear and HL = decoded byte count, with the bytes in
 ;;      out_buffer; carry set if this is not a valid Code 39 symbol.
 ;; ---------------------------------------------------------------------------
+;; Every Code 39 pattern is another valid pattern when read backwards --
+;; '0' reverses to 'F', 'A' to '1' -- so a reversed scan would decode to a
+;; plausible but wrong string were it not for the delimiters.  '*' reverses
+;; to 'P', so the start-character check refuses it, and the reversed pass
+;; below is what actually reads it.
 code39_decode:
+    ld      hl,(width_table)
+    call    c39_attempt
+    ret     nc
+
+    ld      hl,(element_count)     ; reverse the capture and try once more
+    ld      a,l
+    or      a
+    ret     z
+    ld      b,a
+    dec     hl
+    add     hl,hl                  ; (count-1) * 2 = offset of the last element
+    ld      de,(width_table)
+    add     hl,de
+    ld      de,scratch
+    call    reverse_elements
+    ld      hl,scratch
+    jp      c39_attempt
+
+c39_attempt:
+    ld      (c39_base),hl
     ld      hl,(element_count)
     ld      a,h
     or      a
@@ -60,7 +86,7 @@ c39_divided:
     ld      a,b
     ld      (nchars),a
 
-    ld      hl,(width_table)
+    ld      hl,(c39_base)
     ld      (c39_cursor),hl
     ld      hl,out_buffer
     ld      (c39_outptr),hl
@@ -223,7 +249,8 @@ c39_next_width:
     ret
 
 ;; --- workspace -------------------------------------------------------------
-c39_cursor:     defw 0                 ; walking pointer into the width table
+c39_base:       defw 0                 ; the elements being decoded
+c39_cursor:     defw 0                 ; walking pointer into them
 wmin:       defw 0
 wmax:       defw 0
 thresh:     defw 0

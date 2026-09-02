@@ -88,6 +88,12 @@ def bare_suite(code, origin):
     cases = []
     for text in ("A1", "HELLO", "12345", "CODE-39", "$100.00"):
         cases.append((f"Code 39 {text!r}", encode_code39(text), text.encode()))
+    # Reversed.  Every Code 39 pattern is another valid pattern backwards,
+    # so this only works because the reversed pass restores the order --
+    # decoding the mirrored elements in place would give a wrong string.
+    for text in ("A1", "HELLO"):
+        cases.append((f"Code 39 {text!r} reversed",
+                      encode_code39(text)[::-1], text.encode()))
     for eleven in ("03600029145", "01234567890", "72527273070"):
         w, expect = upc_widths(eleven)
         cases.append((f"UPC-A {expect.decode()}", w, expect))

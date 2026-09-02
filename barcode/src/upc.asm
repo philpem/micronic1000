@@ -38,6 +38,7 @@
 
     public  upc_decode
     extern  width_table, element_count, out_buffer
+    extern  scratch, reverse_elements
 
 UPC_ELEMENTS    equ 59
 EAN_DIGITS      equ 13
@@ -96,20 +97,7 @@ upc_reverse:
     add     hl,de                  ; -> the last element
     ld      de,scratch
     ld      b,UPC_ELEMENTS
-upc_rev_loop:
-    ld      a,(hl)
-    inc     hl
-    ld      c,(hl)                 ; a 16-bit width, still little-endian
-    ld      (de),a
-    inc     de
-    ld      a,c
-    ld      (de),a
-    inc     de
-    dec     hl
-    dec     hl
-    dec     hl                     ; back up one whole element
-    djnz    upc_rev_loop
-    ret
+    jp      reverse_elements
 
 ;; ---------------------------------------------------------------------------
 ;; upc_attempt -- decode the 59 elements starting at HL.
@@ -429,7 +417,6 @@ thr7:       defw 0
 upc_outptr: defw 0
 parity:     defb 0                 ; one bit per left digit, G = 1
 digits:     defs EAN_DIGITS        ; decoded values, leading digit first
-scratch:    defs UPC_ELEMENTS*2    ; the reversed scan
 
 ;; ---------------------------------------------------------------------------
 ;; checksum13 -- HL points at thirteen digit values.
@@ -511,23 +498,10 @@ upce_entry:
 upce_reverse:
     ld      hl,(width_table)
     ld      de,UPCE_ELEMENTS*2-2
-    add     hl,de
+    add     hl,de                  ; -> the last element
     ld      de,scratch
     ld      b,UPCE_ELEMENTS
-upce_rev_loop:
-    ld      a,(hl)
-    inc     hl
-    ld      c,(hl)
-    ld      (de),a
-    inc     de
-    ld      a,c
-    ld      (de),a
-    inc     de
-    dec     hl
-    dec     hl
-    dec     hl
-    djnz    upce_rev_loop
-    ret
+    jp      reverse_elements
 
 ;; ---------------------------------------------------------------------------
 ;; upce_attempt -- HL = the elements, A = 0 forward or 1 reversed.

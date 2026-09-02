@@ -85,9 +85,37 @@ hk_toolong:
 ;; Shared state.  Set up by decoder_entry, read by each symbology.
 ;; ---------------------------------------------------------------------------
     public  width_table, element_count, out_buffer
+    public  scratch, reverse_elements
+
+;; ---------------------------------------------------------------------------
+;; reverse_elements -- copy B 16-bit elements from (HL) to (DE), back to
+;; front, so the last element read is written first.
+;;
+;; HL must point at the LAST element, not the first.
+;; ---------------------------------------------------------------------------
+reverse_elements:
+    ld      a,(hl)
+    inc     hl
+    ld      c,(hl)                 ; a 16-bit width, still little-endian
+    ld      (de),a
+    inc     de
+    ld      a,c
+    ld      (de),a
+    inc     de
+    dec     hl
+    dec     hl
+    dec     hl                     ; back up one whole element
+    djnz    reverse_elements
+    ret
 
 width_table:    defw 0              ; -> the captured widths (16-bit each)
 element_count:  defw 0              ; clamped element count
+
+;; Decoded output.  MAX_OUTPUT is the firmware's hard limit; see dipos.inc.
+;; Room to reverse the longest capture the firmware can hand us.  Shared by
+;; every symbology: a reversed scan is decoded by restoring the original
+;; element order here and running the ordinary forward decode over it.
+scratch:        defs MAX_ELEMENTS*2
 
 ;; Decoded output.  MAX_OUTPUT is the firmware's hard limit; see dipos.inc.
 out_buffer:     defs MAX_OUTPUT
