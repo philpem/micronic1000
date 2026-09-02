@@ -105,6 +105,37 @@ def bare_suite(code, origin):
         if lead == 0:
             expect = expect[1:]
         cases.append((f"EAN-13 leading {lead}", w, expect))
+    # UPC-E: 33 elements, no R codes, and neither the number system nor the
+    # check digit is drawn -- both come out of the parity pattern.
+    for ns, six in ((0, "123456"), (0, "421005"), (1, "987653"),
+                    (0, "000000"), (0, "999995")):
+        d = [int(c) for c in six]
+        chk = upcmod.upce_check(ns, d)
+        w = upcmod.upce_widths(ns, d)
+        expect = f"{ns}{six}{chk}".encode()
+        cases.append((f"UPC-E {expect.decode()}", w, expect))
+    # Every X6, since it selects the expansion layout.
+    for last in range(10):
+        d = [1, 2, 3, 4, 5, last]
+        chk = upcmod.upce_check(0, d)
+        w = upcmod.upce_widths(0, d)
+        expect = f"0{''.join(map(str, d))}{chk}".encode()
+        cases.append((f"UPC-E X6={last}", w, expect))
+    # And reversed -- UPC-E is not symmetric, so this is a separate layout
+    # rather than the same one read backwards.
+    for ns, six in ((0, "123456"), (1, "987653")):
+        d = [int(c) for c in six]
+        chk = upcmod.upce_check(ns, d)
+        w = upcmod.upce_widths(ns, d, reverse=True)
+        expect = f"{ns}{six}{chk}".encode()
+        cases.append((f"UPC-E {expect.decode()} reversed", w, expect))
+    # A UPC-E whose parity says one check digit while the expansion implies
+    # another must be refused.
+    d = [1, 2, 3, 4, 5, 6]
+    bad = (upcmod.upce_check(0, d) + 5) % 10
+    w = upcmod.upce_widths(0, d, check=bad, validate=False)
+    cases.append(("UPC-E with a bad check digit", w, b""))
+
     # Drawn right to left.  The symbol is structurally symmetric, so the
     # decoder should recover the same digits from the reversed elements.
     w, expect = upc_widths("03600029145", reverse=True)
@@ -196,6 +227,15 @@ def main():
         w, expect = upc_widths("590123412345", reverse=True)
         print(f"  EAN-13 {expect.decode()} scanned in reverse:")
         bad += firmware_suite(args.binary, expect.decode(), widths=w)
+        six = [1, 2, 3, 4, 5, 6]
+        chk = upcmod.upce_check(0, six)
+        text = f"0{''.join(map(str, six))}{chk}"
+        print(f"  UPC-E {text}:")
+        bad += firmware_suite(args.binary, text,
+                              widths=upcmod.upce_widths(0, six))
+        print(f"  UPC-E {text} scanned in reverse:")
+        bad += firmware_suite(args.binary, text,
+                              widths=upcmod.upce_widths(0, six, reverse=True))
 
     print("FAILED" if bad else "all passed")
     return 1 if bad else 0

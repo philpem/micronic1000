@@ -104,3 +104,78 @@ if __name__ == "__main__":
     print("parity:  ", PARITY[d[0]] if len(d) == 13 else "(UPC-A)")
     print("elements:", len(w))
     print("widths:  ", ",".join(str(x) for x in w))
+
+
+# ---------------------------------------------------------------------------
+# UPC-E.  Six digits in 51 modules, which the capture sees as 33 elements:
+# left guard (3), six digits (24), and a six-module end guard (6).
+#
+# There are no R codes: every digit is L or G, and the *parity pattern*
+# carries both the number system and the check digit -- neither is drawn.
+# ---------------------------------------------------------------------------
+
+# Parity for number system 0, indexed by check digit.  E = even = G code.
+# Number system 1 is the same table complemented, which is why the decoder
+# needs only these ten.
+UPCE_PARITY = {
+    0: "EEEOOO", 1: "EEOEOO", 2: "EEOOEO", 3: "EEOOOE", 4: "EOEEOO",
+    5: "EOOEEO", 6: "EOOOEE", 7: "EOEOEO", 8: "EOEOOE", 9: "EOOEOE",
+}
+
+
+def upce_expand(ns, six, check):
+    """Expand a UPC-E to its twelve-digit UPC-A.
+
+    The last data digit says where the suppressed zeros go -- that is the
+    whole trick of the format.
+    """
+    x = list(six)
+    if len(x) != 6:
+        raise ValueError("UPC-E carries six data digits")
+    last = x[5]
+    if last in (0, 1, 2):
+        body = [x[0], x[1], last, 0, 0, 0, 0, x[2], x[3], x[4]]
+    elif last == 3:
+        body = [x[0], x[1], x[2], 0, 0, 0, 0, 0, x[3], x[4]]
+    elif last == 4:
+        body = [x[0], x[1], x[2], x[3], 0, 0, 0, 0, 0, x[4]]
+    else:
+        body = [x[0], x[1], x[2], x[3], x[4], 0, 0, 0, 0, last]
+    return [ns] + body + [check]
+
+
+def upce_check(ns, six):
+    """The check digit of a UPC-E: that of the UPC-A it expands to."""
+    return check_digit(upce_expand(ns, six, 0)[:11])
+
+
+def upce_modules(ns, six, check=None, validate=True):
+    """The 51-module bit string for a UPC-E."""
+    if ns not in (0, 1):
+        raise ValueError("UPC-E number system is 0 or 1")
+    real = upce_check(ns, six)
+    if check is None:
+        check = real
+    elif validate and check != real:
+        raise ValueError("check digit does not agree")
+    parity = UPCE_PARITY[check]
+    if ns == 1:                                  # complement for system 1
+        parity = "".join("O" if c == "E" else "E" for c in parity)
+    bits = "101"                                 # left guard
+    for code, digit in zip(parity, six):
+        bits += (G_CODE if code == "E" else L_CODE)[digit]
+    return bits + "010101"                       # end guard
+
+
+def upce_widths(ns, six, module=12, check=None, validate=True, reverse=False):
+    """Element widths for a UPC-E scan."""
+    bits = upce_modules(ns, six, check, validate)
+    out, last, n = [], bits[0], 0
+    for b in bits:
+        if b == last:
+            n += 1
+        else:
+            out.append(n * module)
+            last, n = b, 1
+    out.append(n * module)
+    return out[::-1] if reverse else out

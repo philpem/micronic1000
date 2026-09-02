@@ -16,8 +16,9 @@ DOCKER  ?= sudo docker
 IMAGE   ?= z88dk/z88dk
 
 SOURCES := src/hook.asm src/code39.asm src/upc.asm
-DEPS    := $(SOURCES) src/dipos.inc src/code39_table.inc \
-           src/upc_table.inc src/ean_parity.inc \
+TABLES  := src/code39_table.inc src/upc_table.inc src/ean_parity.inc \
+           src/upce_parity.inc
+DEPS    := $(SOURCES) src/dipos.inc $(TABLES) \
            $(BUILD)/origin.stamp
 
 PYTHON  ?= python3
@@ -50,8 +51,7 @@ $(BUILD)/decoder.bin: $(DEPS) | $(BUILD)
 	@cat src/dipos.inc >> $(BUILD)/all.asm
 	@cat $(SOURCES) | grep -v '^[[:space:]]*\(public\|extern\|include\)' \
 	    >> $(BUILD)/all.asm
-	@cat src/code39_table.inc src/upc_table.inc src/ean_parity.inc \
-	    >> $(BUILD)/all.asm
+	@cat $(TABLES) >> $(BUILD)/all.asm
 	pasmo --bin $(BUILD)/all.asm $(BUILD)/decoder.bin
 endif
 
