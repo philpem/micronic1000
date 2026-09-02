@@ -3565,3 +3565,55 @@ changed. Files touched: `doc/protocol/commstar.md`,
   `micron1.bin 0x695B`; bit 7 set, next state `CRASHED`) makes
   `SessionStartDataMode` return non-zero and `ROM00:52F8` exit. Both halves are
   now on the page.
+
+## Commstar: the 561-byte anomaly was a harness bug (2026-09-01)
+
+* **CLOSED, and it was memory corruption, not timing.** `analysis/boot_hw.py`
+  staged each upload chunk as up to **256 bytes at `ram:E5C2`**, reaching
+  `E6C1`. A real service-33 receive is a 134-byte object at `ram:E5BC` with
+  its body 8 bytes in, so the firmware never writes past `ram:E641`. The extra
+  128 bytes buried **live Commstar session state** — including `ram:E69F`-`E6B3`,
+  the buffer `SessionRxByteGet` (`ROM00:65C2`) reads and the 16-bit count at
+  `ram:E6A9` it tests and decrements, called from `SessionRxByteLoop` at
+  `ROM00:5A21`.
+  * **Why it depended on length:** chunks run 14, then 256-byte chunks, then a
+    short remainder. The remainder overwrites only the low end of the window,
+    so bytes from the *previous* chunk survive above it — making the residue a
+    direct function of image length. A loaded program opening a session then
+    read it back.
+  * **The `--slice-ticks` observation was a red herring** and is consistent
+    with corruption: it changes *where* the bad reader state surfaces, not
+    whether it exists. Timing is ruled out as a cause.
+  * **Bisected to a single byte. CONFIRMED:** restoring `ram:E6AA` alone fixes
+    a 561-byte driver; forcing `ram:E6AA` to `01h` or `06h` reproduces the
+    symptom verbatim in an otherwise-passing 560-byte driver (first `0064`
+    after `C-DIAL` returns 4, states `0000 0006 0062 0064 0065`), while
+    thirteen other values pass.
+  * **Fix:** `UPLOAD_BUFFER_MAX = 126` caps every staged chunk to the real
+    receive-object size, and the window is restored after finalize. Note 126
+    is the same limit the object-size work reached independently.
+  * **Regression:** `CommstarCleanTeardownTest.test_the_image_length_does_not_change_the_outcome`
+    runs one driver at six lengths (556-561). Verified to **fail on the
+    pre-fix harness at exactly 561** and pass after — established as a fix,
+    not merely observed green.
+* **Still open, narrowed:** `ram:E6AA` alone is not the whole rule — 569- and
+  577-byte drivers carry the identical `E6A9`/`E6AA` pair and passed even
+  pre-fix, so other residue in the window participates. The natural 560-byte
+  residue `0xC306` (a nominally huge count) survives a whole session while
+  `0x0608` does not, which a plain "count > 0 means read buffered garbage"
+  reading cannot explain. Next experiment: single-step `ROM00:65C2`-`65DF` on
+  a poked failing run versus a passing one, logging `(E6A9)` and the byte
+  returned per call. Does not affect the fix, which removes the input.
+* **`ROM00:65C2` `SessionRxByteGet`, byte-verified.** A pushback/lookahead
+  reader: if the 16-bit count at `ram:E6A9` is zero it falls through to `65E0`
+  to fetch (via the `ram:E6AD` / `E6AE` / `E6AC` flag bytes); otherwise it
+  decrements the count and returns `mem[ram:E69F + count]`. Initialiser
+  `ROM00:6526` sets `E69D=0, E6A9=0, E6AB=0, E6AC=6, E6AD=0`. Callers:
+  `ROM00:5A21`, `5FE8`, `57C4`, `57EE`, `7E6E` (computed), `ram:EEE8`. There
+  is **no literal `E6AA` reference anywhere** — it is only ever touched as the
+  high half of the `E6A9` word, which is why an address search finds nothing.
+* **Rule for test authors:** anything the harness writes into fixed RAM
+  (>= `0x8000`) before a loaded program runs is **live session state, not
+  scratch**. Keep host staging within the size a real firmware transfer would
+  use, and restore the window afterwards. **A test whose result changes when
+  you add a NOP is a memory-collision symptom, not a timing one.**

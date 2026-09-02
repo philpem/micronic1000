@@ -508,15 +508,20 @@ def build_clean_teardown_com(name: bytes = b"STOCK", record: bytes = b"REC-ONE",
     After every step it records the session state, the mode byte and the
     result, so a run that diverges says exactly where.
 
-    ``pad`` prepends that many NOPs. It exists because of an artifact worth
-    knowing about: an image of **exactly 561 bytes** fails reproducibly, with
-    the first state-0064 exchange after C-DIAL returning 4 and the session
-    ending "Session aborted". 556, 557, 558, 559, 560 and 562 all succeed, two
-    different 561-byte images both fail, and --slice-ticks only moves *which*
-    0064 fails. Nothing in the ROM explains it and it is almost certainly a
-    harness artifact; the discriminating experiment is to instrument
-    ROM00:60D6's reply classification on a failing run. Until then, if a
-    driver here starts failing after an innocuous edit, check its length.
+    ``pad`` prepends that many NOPs, which is how the length-dependence
+    regression below varies the image length without changing its meaning.
+
+    A 561-byte build of this driver used to fail reproducibly -- the first
+    0064 exchange after ``C-DIAL`` returned 4 and the session ended "Session
+    aborted" -- while 556-560 and 562 succeeded. It was a harness bug, not a
+    firmware one: ``boot_hw.py`` staged each upload chunk as 256 bytes at
+    ``ram:E5C2``, which runs to ``ram:E6C1`` and so buries live Commstar
+    session state (``ram:E69F``-``E6B3``, ``SessionRxByteGet``'s pushback
+    buffer and its count word at ``ram:E6A9``) under image bytes that the
+    session then read back. Which bytes survived depended on how much of the
+    window the final short chunk overwrote -- that is, on the image length.
+    Chunks are now capped to the 126-byte real receive object and the window
+    is restored after the upload; see ``UPLOAD_BUFFER_MAX`` in the harness.
     """
     namerec = bytes([len(name)]) + name
     recbuf = bytes([len(record)]) + record
@@ -731,6 +736,24 @@ class CommstarCleanTeardownTest(unittest.TestCase):
         out = self._run(mode=1)
         self.assertIn("[commstar-peer] record from 0x0045 arg=1: "
                       "0553544f434b1e5245432d4f4e451c", out)
+
+    def test_the_image_length_does_not_change_the_outcome(self):
+        """The same driver, padded to six lengths, must finish the same way.
+
+        This is the regression for the harness bug described on
+        build_clean_teardown_com: staging upload chunks over ``ram:E5C2`` in
+        256-byte writes left image bytes in the session's own RAM, and 561
+        bytes was the length at which the residue broke the first 0064
+        exchange. Any length dependence here means the harness is writing
+        somewhere the session can see it.
+        """
+        for pad in range(6):
+            with self.subTest(length=556 + pad):
+                out = self._run(mode=1, pad=pad)
+                self.assertIn("Data transmitted", out)
+                self.assertNotIn("Session aborted", out)
+                self.assertEqual([entry[0] for entry in self._trace(out)],
+                                 [1, 2, 5, 9, 9, 10, 2])
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")

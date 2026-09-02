@@ -1165,6 +1165,25 @@ CALL_SENTINEL = 0xFFFF
 # ceiling. Input chunks use the confirmed service-33 receive payload object.
 UPLOAD_NAME_ADDR = 0xD600
 UPLOAD_BUFFER_ADDR = 0xE5C2
+# Cap a staged chunk at what a real receive can hold. The service-33 receive
+# object is 134 bytes at ram:E5BC with its body 8 bytes in, so the firmware
+# never writes past ram:E641; staging 256 bytes here reached ram:E6C1 and
+# buried live Commstar session state under the host file -- among it
+# ram:E69F-E6B3, the buffer SessionRxByteGet (ROM00:65C2) reads and the
+# 16-bit count at ram:E6A9 it tests and decrements, called from
+# SessionRxByteLoop at ROM00:5A21. What survived in that window was whatever
+# the final short chunk did not overwrite, so it was a function of the image
+# length, and a loaded program opening a session read it back. CONFIRMED by
+# bisection: a 561-byte driver aborted its first 0064 exchange with result 4
+# (SessionRxByteLoop's error, which ROM00:60D6 latches in ram:E681 and aborts
+# on), and restoring ram:E6AA alone -- no other byte of the window -- fixed
+# it; forcing ram:E6AA to 01h or 06h reproduced it in a 560-byte driver that
+# otherwise passed, while thirteen other values did not. E6AA alone is not
+# the whole rule: 569- and 577-byte drivers carry the same ram:E6A9/E6AA pair
+# and pass, so other residue in the window participates. Hence the belt and
+# braces -- cap the writes, then put the window back, so an upload leaves the
+# session nothing to read.
+UPLOAD_BUFFER_MAX = 126
 
 
 def advance_rtc(elapsed_ticks):
@@ -1482,11 +1501,12 @@ def perform_upload():
         )
     offset = 0
     calls = 0
+    staged = bytes(mem[UPLOAD_BUFFER_ADDR:UPLOAD_BUFFER_ADDR + UPLOAD_BUFFER_MAX])
     while offset < len(UPLOAD_DATA):
         requested = read_word(0xD36C)
         if requested == 0:
             raise RuntimeError(f"loader requested zero bytes at offset {offset}")
-        count = min(requested, len(UPLOAD_DATA) - offset, 0x100)
+        count = min(requested, len(UPLOAD_DATA) - offset, UPLOAD_BUFFER_MAX)
         host_write(UPLOAD_BUFFER_ADDR, UPLOAD_DATA[offset : offset + count])
         accepted = call_rom1(0x0BAC, (0, UPLOAD_BUFFER_ADDR, count))
         if accepted == 0xFFFF or accepted > count:
@@ -1505,6 +1525,8 @@ def perform_upload():
     state = read_word(0xECC9)
     if result != 0 or state != 3:
         raise RuntimeError(f"finalize failed: HL={result:04X} state={state:04X}")
+    # Leave the receive object as the boot left it -- see UPLOAD_BUFFER_MAX.
+    host_write(UPLOAD_BUFFER_ADDR, staged)
     if validation.kind == "COM":
         loaded = bank_bytes(UPLOAD_BANK, 0x0100, len(UPLOAD_DATA))
         if loaded != UPLOAD_DATA:
