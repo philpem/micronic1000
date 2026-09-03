@@ -103,4 +103,5 @@ nav:
       - Unbanked RAM map: re-notes/unbanked-ram-map.md
       - Barcode capture: re-notes/barcode-capture.md
       - RTC: re-notes/rtc.md
+      - IR wire protocol: re-notes/ir-wire-protocol.md
       - Open questions: re-notes/open-questions.md
