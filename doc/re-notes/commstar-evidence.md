@@ -202,23 +202,26 @@ without testing returned `A`/carry.
 
 ### Timing boundary
 
-The following are firmware loop counts, **not physical deadlines**. The
-connector-facing serialiser is not recovered, and the instructions executed
-per loop have not been cycle-accounted; a server must not derive an IR response
-deadline from these values. At the owner-supplied 3.579545 MHz Z80 clock, one
-T-state is approximately 0.279 us, but a wall-clock bound needs the verified
-loop path and any controller delay.
+The following are firmware loop counts. At the owner-supplied **3.6864 MHz**
+Z80 clock (corrected 2026-09-03; this page previously said 3.579545 MHz), one
+T-state is 0.271 us. The loop paths have now been cycle-accounted, so the
+deadlines below are real, but they bound **the firmware's patience at the latch
+boundary** — they say nothing about how much of that budget the controller
+itself consumes before an answer reaches the wire.
 
 [The RTC analysis](rtc.md#periodic-interrupt-rate-from-register-a-self-test-math)
 performs this accounting for the clock self-test loop (24 T-states per
 iteration = 6.703 us) and is the method to apply here.
 
-| Use | Loop count | Decimal | Wall-clock deadline |
-|---|---:|---:|---|
-| `LinkPresent` / `LinkWaitReady` bit-7 poll | `0x02DA` | 730 | **OPEN** |
-| TX bit-4 / bit-6 poll | `0x026C` | 620 | **OPEN** |
-| TX/RX per-byte poll | `0x06F9` | 1785 | **OPEN** |
-| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | Units and cadence **OPEN** |
+| Use | Loop count | Decimal | Loop | Wall-clock deadline |
+|---|---:|---:|---:|---|
+| `LinkPresent` / `LinkWaitReady` bit-7 poll | `0x02DA` | 730 | 49 T | **9.70 ms** |
+| TX bit-4 / bit-6 poll | `0x026C` | 620 | 59 T | **9.92 ms** |
+| TX/RX per-byte poll | `0x06F9` | 1785 | 51 T | **24.69 ms** |
+| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | 50 retries observed at **93.75 ms** end-to-end |
+
+The retry cadence is no longer open: a scope capture of a failing connect shows
+exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`.
 
 ## Types, replies, and session state
 

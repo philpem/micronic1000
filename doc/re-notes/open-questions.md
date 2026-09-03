@@ -25,12 +25,13 @@ source tree (not published here).
   *Resolve:* hardware trace correlating latch bits with IR activity and
   the adapter’s response timing.
 
-* **Units and cadence of timeout loops and retry scheduler** — Loop counts
-  `0x02DA`, `0x026C`, `0x06F9` and scheduler cells `fdd6`/`fdd8`
-  (`32h/14h` and `6/3`) are firmware counts, not wall-clock deadlines.
-  Cycle-account the verified loop path and any controller delay.
-  *Resolve:* instruction-level accounting at the owner-supplied
-  3.579545 MHz clock, plus a measured adapter response.
+* **Units and cadence of timeout loops and retry scheduler** — **largely
+  resolved 2026-09-03.** The loop paths are cycle-accounted at the corrected
+  3.6864 MHz clock: `0x02DA` = 9.70 ms, `0x026C` = 9.92 ms, `0x06F9` =
+  24.69 ms. The retry cadence is measured on hardware at 93.75 ms end-to-end
+  for `fdd6=0x32` = 50 attempts. *Still open:* how much of each
+  budget the controller consumes before an answer reaches the wire, which
+  needs a measured adapter response.
 
 ## Link identity and port selection
 

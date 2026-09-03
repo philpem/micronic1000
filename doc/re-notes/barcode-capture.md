@@ -37,9 +37,10 @@ probe time gives type 0, which becomes the `EEh` no-device error at
 `ROM00:13E5` with `LD HL,1` and pre-increments at `13E8` before every poll,
 so an element held for *N* samples is recorded as *N+1*.
 
-The unchanged-level path is 55 T-states, so at 3.579545 MHz one count is
-**≈15.4 µs**. That makes the minimum element ≈108 µs and the capture
-terminator ≈94 ms of still line.
+The unchanged-level path is 55 T-states, so at 3.6864 MHz one count is
+**≈14.9 µs** (corrected 2026-09-03; this passage previously assumed
+3.579545 MHz and read ≈15.4 µs). That makes the minimum element ≈104 µs and
+the capture terminator ≈92 ms of still line.
 
 ### Element limits
 

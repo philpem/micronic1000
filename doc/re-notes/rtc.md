@@ -114,15 +114,23 @@ Register A (0x0A) rate-select bits drive the periodic interrupt:
   | 0x2A (divider restart after set-time) | 010 | 1010 | 64 Hz |
   | 0x7A (write-time freeze) | 111 (reset) | - | none |
 
-The owner supplies the 3.579545 MHz Z80 clock rate. ClockSelftestTickWindow
-verifies the periodic interrupt rate: it arms 130 ticks (fda8), counts
-inner-loop iterations
-(24 T-state each at 3.579545 MHz =
-6.703 us), and requires the elapsed count to land in 0x4502..0x4C46
-(17666..19526). At **1024 Hz** 130 ticks = 126.95 ms = **18935
-iterations** - inside the window. At 64 Hz it would be 302956
-iterations - far outside. So the running periodic rate is
-**1024 Hz** (period ~976.6 us; 32.768 kHz / 32).
+The owner supplies the **3.6864 MHz** Z80 clock rate (corrected 2026-09-03;
+this passage previously said 3.579545 MHz). ClockSelftestTickWindow verifies
+the periodic interrupt rate: it arms 130 ticks (fda8) and counts inner-loop
+iterations at `ROM00:2844` (`INC BC / LD A,B / OR C / JP NZ` = 6+4+4+10 =
+24 T-states, byte-verified), requiring the elapsed count to land in
+0x4502..0x4C46 (17666..19526). At **1024 Hz**, 130 ticks = 126.953 ms =
+**19500 iterations** ignoring interrupt overhead. At 64 Hz it would be 312000
+iterations - far outside. So the running periodic rate is **1024 Hz**
+(period ~976.6 us; 32.768 kHz / 32).
+
+Note that 19500 sits only 26 counts below the window's upper bound, which
+looks tight until the interrupt cost is included: the 1024 Hz handler fires
+130 times during the measured interval, and at a plausible ~150 T-states per
+entry that removes ~810 iterations, putting the expected count near 18700 -
+close to the window's midpoint of 18596. The naive figure is therefore **not**
+a usable cross-check on the clock rate in either direction without accounting
+for the ISR, and none is attempted here.
 
 0x2A (64 Hz) appears only transiently when the time-set routine
 restarts the divider; the active rate the OS measures against is

@@ -218,19 +218,24 @@ line during a transfer settles it immediately.
 #### Timing budget
 
 Three timeout constants, all counted in `DEC DE / LD A,D / OR E` spin loops on
-a 3.579545 MHz Z80:
+a **3.6864 MHz** Z80 (owner-confirmed 2026-09-03; an earlier revision of this
+page said 3.579545 MHz and every deadline below was 3% too long):
 
-| Where | Count | Waiting for |
-|---|---|---|
-| `34F8` (`LinkWaitReady`, called from `32A4`/`32AA`) | `02DAh` = 730 | the controller to report ready (`TXRDY`) |
-| `32B8`, `32F0`, `3333` | `026Ch` = 620 | a handshake response |
-| `3315`, `331F` | `06F9h` = 1785 | readiness for the next payload byte |
+| Where | Count | Loop | Waiting for | Deadline |
+|---|---|---:|---|---:|
+| `34F8` (`LinkWaitReady`, called from `32A4`/`32AA`) | `02DAh` = 730 | 49 T | the controller to report ready (`TXRDY`) | **9.70 ms** |
+| `32B8`, `32F0`, `3333` | `026Ch` = 620 | 59 T | a handshake response | **9.92 ms** |
+| `3315`, `331F` | `06F9h` = 1785 | 51 T | readiness for the next payload byte | **24.69 ms** |
 
 Plus fixed settling delays of 128, 32 and 2 `DJNZ` iterations. These are the
 numbers an adapter has to beat. They are generous for hardware on the same
 board and much less so for anything with a round trip measured in
 milliseconds — **an adapter that bridges to a host over USB should service
 the latch handshake locally rather than round-tripping each byte.**
+
+The corrected clock rate is independently corroborated by the wire: 3.6864 MHz
+divides by exactly 450 to the 8192 bit/s IR bit clock measured on hardware,
+where 3.579545 MHz has no integer divider that reaches it.
 
 ### The receive transaction, decoded
 

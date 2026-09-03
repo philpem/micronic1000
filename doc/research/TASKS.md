@@ -3351,7 +3351,8 @@ at 1087 functions.
   set with `EBh` (controller absent or not ready), `ECh` (status bit 5 error)
   or `EEh` (timed out).
 * **Timing budget for an adapter:** `026Ch` = 620 spin-loop counts for a
-  handshake response, `06F9h` = 1785 per payload byte, on a 3.579545 MHz Z80,
+  handshake response (9.92 ms), `06F9h` = 1785 per payload byte (24.69 ms),
+  on a 3.6864 MHz Z80 (clock corrected 2026-09-03),
   plus fixed settling delays of 128, 32 and 2 `DJNZ` iterations. Generous for
   on-board hardware, much less so across a millisecond round trip — **an
   adapter bridging to a host over USB should service the latch handshake
@@ -3908,8 +3909,8 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   5 emulator-gated ones.
 * **Capture mechanics, CONFIRMED (`ROM00:13BB`-`1441`):** arm waits for port
   `2Dh` **bit 0 = 1**; **widths are counts of port polls, not time** (each
-  element pre-increments at `13E8`, so N samples records as N+1; ~15.4 us per
-  count at 3.579545 MHz); minimum element 8 (`13FA`), maximum `1800h` ends
+  element pre-increments at `13E8`, so N samples records as N+1; ~14.9 us per
+  count at 3.6864 MHz); minimum element 8 (`13FA`), maximum `1800h` ends
   the capture without recording the final element (`13DF`/`13EA`); 128-element
   cap at `140F`.
   * **The 128 cap is geometric**: the table is `PUSH`ed down from `FBB3` and
