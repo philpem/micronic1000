@@ -29,7 +29,8 @@ source tree (not published here).
   resolved 2026-09-03.** The loop paths are cycle-accounted at the corrected
   3.6864 MHz clock: `0x02DA` = 9.70 ms, `0x026C` = 9.92 ms, `0x06F9` =
   24.69 ms. The retry cadence is measured on hardware at 93.75 ms end-to-end
-  for `fdd6=0x32` = 50 attempts. *Still open:* how much of each
+  for `fdd6=0x32` = 50 attempts. See
+  [IR wire protocol](ir-wire-protocol.md). *Still open:* how much of each
   budget the controller consumes before an answer reaches the wire, which
   needs a measured adapter response.
 

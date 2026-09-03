@@ -35,6 +35,9 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 * [Unbanked RAM map](unbanked-ram-map.md) — what occupies `8000`-`FFFF`,
   what is genuinely safe for host/test scratch, and the traps
 * [RTC](rtc.md) — HD146818 programming evidence
+* [IR wire protocol](ir-wire-protocol.md) — the first scope capture of
+  the IR line: bit timing, the bit-stuffed frame layer, where the connect
+  dies, and the ordered test plan for an adapter
 * [Open questions](open-questions.md) — single address for every `OPEN` item
 
 Legacy internals paths redirect to these locations. The worklist that

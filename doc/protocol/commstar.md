@@ -235,7 +235,8 @@ the latch handshake locally rather than round-tripping each byte.**
 
 The corrected clock rate is independently corroborated by the wire: 3.6864 MHz
 divides by exactly 450 to the 8192 bit/s IR bit clock measured on hardware,
-where 3.579545 MHz has no integer divider that reaches it.
+where 3.579545 MHz has no integer divider that reaches it. See
+[IR wire protocol](../re-notes/ir-wire-protocol.md).
 
 ### The receive transaction, decoded
 

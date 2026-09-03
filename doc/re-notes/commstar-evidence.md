@@ -221,7 +221,8 @@ iteration = 6.703 us) and is the method to apply here.
 | Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | 50 retries observed at **93.75 ms** end-to-end |
 
 The retry cadence is no longer open: a scope capture of a failing connect shows
-exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`.
+exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`. See
+[IR wire protocol](ir-wire-protocol.md).
 
 ## Types, replies, and session state
 
