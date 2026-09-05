@@ -48,6 +48,39 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
 When ROM evidence and an owner statement seem to conflict, report the
 contradiction — do not invent a reconciliation.
 
+## The ROM images are the ones in the machine
+
+**CONFIRMED.**  The two mask-programmed DIPs carry handwritten labels
+`DIP1 ACF8` and `DIP2 2E12`.  Both are the low 16 bits of the unsigned sum
+of all 32768 bytes of the corresponding image — the checksum every EPROM
+programmer of the era prints after a read:
+
+| chip   | image         | sum of bytes | low 16 bits | label  |
+|--------|---------------|--------------|-------------|--------|
+| DIP1   | `micron1.bin` | `0037ACF8`   | `ACF8`      | `ACF8` |
+| DIP2   | `micron2.bin` | `00332E12`   | `2E12`      | `2E12` |
+
+Nothing was fitted to make this work: a plain byte sum was the first
+algorithm tried, and it matched both chips.  Twenty-one CRC-16 variants and
+a dozen other sum and XOR forms were also computed; none matched either
+label.  Two independent 16-bit agreements is a coincidence of about one in
+4 billion, so the images in `micronic/` **are** the contents of the labelled
+chips, to a 16-bit sum.
+
+Two consequences:
+
+* every offset in this record is an offset into the firmware that is
+  physically in the unit, not into a similar dump from elsewhere;
+* the label is a live check.  Reading the chips back and summing gives a
+  number comparable against the label without any reference to this repo,
+  which is the check to run before burning anything (see
+  `analysis/rom_exerciser/README.md`).
+
+A byte sum detects any single-byte error and permutes to the same value
+under reordering, so it proves the images are the right *contents*, not that
+no compensating pair of errors exists.  For that, hash the read-back against
+`micronic/` directly.
+
 ## Z80 and Ghidra
 
 * The decompiler is a hint, never evidence. Verify against the listing.

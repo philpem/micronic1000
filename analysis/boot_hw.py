@@ -1056,7 +1056,10 @@ for idx, st in enumerate(EXPECT_STEPS):
     )
 
 # ---------- memory / banking ----------
-B0 = open("/home/philpem/Micronic-1000/micronic/micron1.bin", "rb").read()
+# ROM00 path is overridable so a patched image (analysis/rom_exerciser) can be
+# validated here before anything is burned.  Default is unchanged.
+B0 = open(os.environ.get("MICRONIC_ROM0",
+                         "/home/philpem/Micronic-1000/micronic/micron1.bin"), "rb").read()
 B1 = open("/home/philpem/Micronic-1000/micronic/micron2.bin", "rb").read()
 mem = bytearray(0x10000)
 mem[0:0x8000] = B0
@@ -3067,6 +3070,7 @@ rt = [x for x in log if x[1] in (0x08, 0x28, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F)
 print(
     f"RTC/link transactions: {len(rt)}; RTC rate ={rtc.periodic_hz:.1f} Hz (RS={rtc.rate_select:#x})"
 )
+os.makedirs("/tmp/opencode", exist_ok=True)   # /tmp is not persistent
 with open("/tmp/opencode/micronic_boot_io.txt", "w") as f:
     for seq, (pc, p, v) in enumerate(log):
         f.write(f"{seq:7d} PC={pc:04X} {p:02X} = {v:02X}\n")
