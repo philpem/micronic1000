@@ -461,6 +461,12 @@ is printed by `SessionStateBuild` (`ROM00:4351`) via the helper at
 result 9 or default — i.e. **the peer never answered the link-configure
 request**, whatever is physically attached.
 
+Pressing ENTER at that error runs a **second** batch of 50 attempts that ends
+`8040 "Line failure"`. That is not a retry of the connect: `8040` is the
+default arm of `C-DROP-LINE`'s result switch, so the second batch is the line
+teardown failing the same way. See
+[session-operation error decades](commstar-evidence.md#session-operation-error-decades).
+
 The wire says exactly where the transaction dies. `LinkBlockTx`
 (`ROM00:3277`) gets as far as:
 
@@ -630,7 +636,8 @@ code, which needs a link. See T6 for the way out of that circle.
 | 3 | Is there an FCS, and what polynomial? | **T6**, or **T5** followed by a completed-frame capture |
 | 4 | Is there a closing flag, or does the clock simply stop? | **T6** / **T5** |
 | 5 | What does the return direction look like? | Not observable without a partner — **T4** characterises the front end instead |
-| 6 | What clears `HSBUSY` / `RXBUSY`? | **T2**, then **T5** |
+| ~~5a~~ | ~~Which detector is clock and which is data?~~ | **ANSWERED** (conn10): the wiring as built is correct; swapping the emitters kills the reaction |
+| 6 | What clears `HSBUSY` / `RXBUSY`? | **T6** — T5 was run to exhaustion (conn3-conn13) and cannot reach it |
 | 7 | Does the return clock have to be M1000-locked or may it free-run? | **T5.3** |
 | 8 | Is `4Ch` a flag strobe or an unstuffed byte channel? | **T6** |
 | 9 | Which *link id* drives which port? (the names are settled: PLINTH = back, V24 = top) | **T6** — the one-byte patch answers it by inspection |
@@ -717,7 +724,16 @@ one. Use any IR source — a TV remote will do — to see the response. This
 defines the electrical interface the Arduino has to drive and is the one piece
 of homework T5 cannot skip.
 
-### T5 — Arduino responder, swept — **the primary route**
+### T5 — Arduino responder, swept — **completed, and exhausted**
+
+**Done, conn3-conn13. It did not clear the handshake.** See
+[adapter experiments](#adapter-experiments-conn3-conn13-confirmed) for what
+was learned and what was ruled out. The harness works and the handheld
+demonstrably receives us; what no stimulus reaches is `HSBUSY`. Retained below
+as built, because the apparatus is reusable and the reasoning behind its
+design still holds.
+
+#### As originally planned
 
 `analysis/arduino/m1000_ir_probe/` is the harness. It listens on the
 handheld's outbound pair, decodes the frame, answers on the return pair, and
@@ -767,13 +783,20 @@ two return channels optically separated with a mask or a short opaque tube per
 LED: crosstalk from our clock into the handheld's data detector will look
 exactly like a protocol failure.
 
-### T6 — a patched ROM. The fallback, and it can be one byte
+### T6 — a patched ROM. **Now the primary route**
 
 Every remaining OPEN item is blocked behind "cannot run code, because loading
-code needs the link". A patched `ROM00` breaks that circle. The ROMs are
-socketed, but the unit is awkward to open, so this sits behind T5 — reach for
-it if the sweep comes up empty, or once a working link makes the reburn worth
-the effort. What makes this
+code needs the link". A patched `ROM00` breaks that circle. This was filed
+behind T5 on the grounds that the unit is awkward to open; **T5 has now been
+run to exhaustion and did not clear the handshake**, so the balance has
+changed. A patched ROM is the only route that gets inside the latch boundary,
+and every result from conn3-conn13 says that is where the answer is.
+
+Beyond the one-byte address edit below, the version that matters here is a
+routine that drives `4Ah`-`4Fh` in a chosen sequence and **reads `LINK_STATUS`
+back to the display or the wire**. That turns bit 6 from an unobservable into
+a measurement, and it is the single thing thirteen runs of external probing
+could not do. What makes this
 much cheaper than it sounds is `ROM00:3220`, called at `ROM00:0205` and
 `ROM00:022C` — immediately after each `LinkProbe` — which **restores both
 device tables from ROM on every cold boot**:
@@ -834,9 +857,132 @@ frame that is allowed to close answers OPEN 3 and 4.
   harness `analysis/boot_hw.py` first; a one-byte table edit is verifiable in
   the emulator by reading `FE83` after boot.
 
+### T8 — which way round are the handheld's detectors? — **do this next**
+
+Its two *emitters* identify themselves: one is periodic at 122 µs, the other
+sparse. **Nothing identifies its two detectors.** Our emitters may have been
+feeding them backwards the whole time, in which case the handheld has been
+receiving our data on its clock input and our clock on its data input, and
+every negative result so far is void for that reason alone. It is one bit, and
+it has never been tested.
+
+The retry cadence gives a way to settle it without the handheld ever answering.
+Transmitting stretches the cadence from a flat 93.75 ms to ~109 ms in about
+62% of cycles — the handheld demonstrably notices us. Build with
+`ORIENTATION_TEST 1`: content, delay and clock mode are held still and only the
+orientation alternates, burst by burst. Capture a few hundred cycles and split
+the cadence statistics by orientation.
+
+* **One orientation disturbs the cadence more** → that is the one whose clock
+  is landing on the clock detector. Fix it and re-sweep.
+* **Both disturb it equally** → the disturbance is not clock-driven, which is
+  itself informative: it would suggest the controller reacts to light on either
+  detector rather than to a decodable bit stream.
+
+Either way it costs one run and removes a variable that currently invalidates
+everything else. A phone camera pointed at the port during a burst will also
+show which two devices in the window are the emitters — the other two are the
+detectors — which at least fixes the geometry even if it does not label them.
+
 ### T7 — the plinth, if one can be borrowed
 
 One capture of a successful session supersedes T1-T6 entirely.
+
+## Adapter experiments, conn3-conn13 — CONFIRMED
+
+Eleven instrumented runs against real hardware, roughly 3,500 stimuli, driven
+by `analysis/arduino/m1000_ir_probe`. **The handheld has never transmitted
+anything but its own burst.** What follows is mostly negative, and the
+negatives are the valuable part: they are what stops the next attempt
+repeating the same thirteen runs.
+
+Method: the Arduino answers each of the handheld's ~93.75 ms retry bursts with
+one stimulus and advances one parameter, so a connect attempt is ~50 trials.
+An MSO-X captures four digital channels — the handheld's clock and data, and
+ours — and every trace is classified by **decoding what is actually on the
+wire**, never by reconstructing a sweep index from the segment number (see
+*Method notes* below for why).
+
+### The one rule that explains every result
+
+> Any light on the **data** line that ceases **before ~9.92 ms** after the
+> handheld's burst costs it a fixed **+15.6 ms** on its retry cycle. Light
+> still present when that deadline passes costs nothing. Nothing else matters.
+
+The cutoff is a step function with nothing in between (conn13, sorting every
+stimulus by when our light goes dark):
+
+| our light goes dark | n | reaction |
+|---|---:|---:|
+| 3-7 ms after the burst | 170 | **100.0%** |
+| 10-16 ms | 252 | **3.6%** |
+
+and 9.92 ms is exactly the `HSBUSY` wait at `ROM00:32F3` — `DE=026Ch` = 620
+iterations of a 59 T loop on a 3.6864 MHz Z80.
+
+The +15.6 ms is almost certainly the **receive** path being invoked and timing
+out: the interrupt poll at `ROM00:31B6` sees inbound activity, dispatches
+`LinkBlockRx`, gets no complete block and gives up. It is not a foothold. It
+sits on a different status bit from the one that blocks the session, and
+conn13 shows it cannot be steered by content, so no amount of further content
+work reaches `HSBUSY`.
+
+### What does not matter — all CONFIRMED negatives
+
+| Variable | Range tested | Result |
+|---|---|---|
+| **Address byte** | `00h`-`3Fh` exhaustively, plus `7Fh`, `FFh` (conn11) | Median reaction **100% across all 66**. No value distinguished except `FFh` (1 of 40 pooled), which is also the only one putting eight consecutive pulses on the data line — protocol or AGC, undetermined |
+| **Closing flag** | present/absent at two lengths (conn13) | **No effect.** 17 vs 25 cells both 100%; 81 vs 89 both baseline |
+| **Frame completeness** | bare address → legal 7-byte type-2 body → body + FCS slot (conn13) | **No effect** beyond length |
+| **Frame length** | 17 to 108 cells (conn13) | Matters only through when the light stops |
+| **DC preamble** | 0, 1, 3 ms before the frame (conn9, conn10) | Small consistent gain, 80% → 95%, consistent with lengthening the lit interval |
+| **Free-running clock** | Timer2 clocking continuously vs burst (conn12) | **Identical to three significant figures**, 100.0% both. A running clock with no data is exactly the silent baseline, 3.6% vs 3.6% |
+| **Start time** | 0.5-12 ms (conn10) | Flat 1-9 ms, dies at 11 ms — i.e. only through the same cutoff |
+| **Bit-rate modulation** | 50% duty square wave (conn8) | **Nothing**, 0% — indistinguishable from silence |
+| **Emitter orientation** | clock/data swapped (conn10) | Swapping **kills** the reaction: 95% → 0%. The wiring is correct as built |
+
+### What was established positively
+
+* **The emitter assignment is correct.** conn10: every swapped variant
+  collapses to baseline while every unswapped one runs 90-95%. The reaction
+  follows the signal assignment, not the physical emitter.
+* **Light reaches the handheld and it responds.** conn8 onward, against an
+  interleaved silent control in the same run: 100% versus 1-4%.
+* **The data line does the work.** Steady light on the data emitter alone
+  reproduces the whole effect (37-55%); on the clock emitter alone, exactly
+  nothing (0.0%).
+* **Phase matters where content does not.** Driving clock and data identically
+  and in phase produces 0%, while the same light with the protocol's
+  quarter-cell data lead produces 74-100% (conn8 vs conn7, timing matched).
+  Whatever consumes the data line is sampling it against the clock.
+
+### Method notes — three mistakes worth not repeating
+
+* **Cross-run comparison is worthless here.** Two conclusions were published
+  and retracted from it. The handheld's baseline moves between sessions, so
+  every comparison must be against a **control interleaved in the same run**,
+  a few hundred ms away. conn8 onward all carry a silent control for this
+  reason.
+* **Do not reconstruct sweep state from the segment index.** It assumes the
+  scope caught every burst; conn5 had 13 gaps of >150 ms, which smears every
+  per-parameter breakdown toward the mean. Decode the stimulus from the wire —
+  it is self-documenting, and `scope_ir_decode.py` does it.
+* **Control for duration before reading anything into content.** conn7's
+  apparent content effect was entirely a length confound: the long frames
+  scored 0% because they ended late, not because of what they carried.
+
+### Where this leaves the problem
+
+Content-side exploration is **exhausted**. The handheld's behaviour has only
+ever taken two values — its normal cycle, or that cycle plus 15.6 ms — and
+that single bit is fully explained by when our light stops.
+
+`HSBUSY` is a status bit from a controller ASIC, driven by something the
+firmware never inspects and the ROM therefore cannot describe. The two routes
+that get at it are **T6**, a patched ROM that drives `4Ah`-`4Fh` directly and
+reads `LINK_STATUS` back, turning `HSBUSY` from an unobservable into a
+measurement; and a **real adapter or plinth**, one capture of which would
+settle in seconds what thirteen runs could not infer.
 
 ## Building an adapter — what the M1000 must see
 
