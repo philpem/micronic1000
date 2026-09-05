@@ -224,6 +224,250 @@ The retry cadence is no longer open: a scope capture of a failing connect shows
 exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`. See
 [IR wire protocol](ir-wire-protocol.md).
 
+## The full session error map — CONFIRMED
+
+Byte-verified 2026-09-04 by joining each wrapper's `InlineTableDispatch` table
+to the `LD HL,1Fxx` literal in each case handler and the message builder that
+follows it. Result `0x0000` is always the success arm and `0x0004` is a second
+success arm on the three connect commands.
+
+| Command | Result | Code | Message |
+|---|---:|---:|---|
+| `C-INIT-COMMS` | 9 | 8001 | Plinth not connected |
+| | *default* | **8000** | Plinth not connected |
+| `C-DIAL` | 9 | 8011 | Not available |
+| | 12h | 8012 | Failed to connect |
+| | 13h | 8013 | Failed to connect |
+| | 0Ch | 8014 | Failed to connect |
+| | 0Bh | 8015 | Failed to connect |
+| | 1, 0Fh | 8016 | Modem fault |
+| | *default* | 8010 | Failed to connect |
+| `C-ANSWER` | 9 | 8021 | Not available |
+| | 12h | 8022 | Failed to connect |
+| | 13h | 8023 | Failed to connect |
+| | 1, 0Fh | 8024 | Modem fault |
+| | *default* | 8020 | Failed to connect |
+| `C-MANUAL` | 9 | 8031 | Not available |
+| | 12h | 8032 | Failed to connect |
+| | 13h | 8033 | Failed to connect |
+| | 0Dh | 8034 | Failed to connect |
+| | 1, 0Fh | 8035 | Modem fault |
+| | *default* | 8030 | Failed to connect |
+| `C-DROP-LINE` | 9 | 8041 | Not available |
+| | 1, 0Fh | 8042 | Modem fault |
+| | *default* | **8040** | Line failure |
+
+The result values are a **vocabulary shared across commands**, which is the
+useful part:
+
+| Result | Meaning, read off the message it produces everywhere it appears |
+|---:|---|
+| 0, 4 | success — the command continues |
+| 1, `0Fh` | modem fault |
+| 9 | requested facility not available |
+| `12h`, `13h` | connect refused/failed |
+| `0Bh`, `0Ch`, `0Dh` | connect failures specific to dial and manual |
+| anything else | falls to the command's own default arm |
+
+**The link layer's result codes are outside this vocabulary entirely.**
+`LinkBlockTx`/`LinkBlockRx` return `0EBh`, `0ECh`, `0EDh` or `0EEh`, none of
+which any switch enumerates, so a link failure always lands on the default arm.
+That is the single mechanism behind `8000`, `8010`, `8020`, `8030` and `8040`
+alike — the same underlying event, named after whichever command was running.
+
+Decades `8050`+ belong to `C-COMMAND` and the transfer commands and follow the
+same shape; their switches are not decoded here.
+
+## What else can appear in `RCV1`
+
+`RCV1` is `ram:E5BE` zero-extended. Two families of value reach it:
+
+| Value | Source | Meaning |
+|---:|---|---|
+| 2, 3, 4 | frame type | a frame really was received; type as dispatched by `ROM00:2FBD` |
+| **235** `0EBh` | `ROM00:335A` | controller absent or not ready — `LinkPresent`/`LinkWaitReady`, or the `RXBUSY` wait, timed out |
+| **236** `0ECh` | `335E`, `341C` | controller reported an error: TX status bit 5, or the receive error bit |
+| **237** `0EDh` | `3414` | receive-side descriptor exhausted — the documented case is a 16-byte type-4 queue overrunning a fixed descriptor |
+| **238** `0EEh` | `3356`, `31EE`, `33EB`, `3418` | timed out waiting for completion |
+
+Byte-verified: those are every `LD A,<E0-EFh>` in `ROM00:3100-3600`, i.e. the
+whole link layer. So an operator reading `(238/001)` is being shown a
+**timeout**, and `235` would mean the controller never even reported ready —
+which is the discriminating observation for whether an adapter is being seen at
+all.
+
+## Why 8040 is not a state-machine refusal — CONFIRMED
+
+The session state matrix at `ROM00:692A` was already solved (2026-09-01):
+`table[state * 17 + command]`, a cell under `0x80` being the new state, `0x80`
+meaning ignored, `0x81`/`0x8D` refusal markers. What matters for the `8040`
+question is one column of it, rendered here for the first time in these notes:
+
+| state | INIT | DIAL/ANSW/MANU | DROP | COMM | SHUT | ABRT |
+|---|---|---|---|---|---|---|
+| 0 NOT-STARTED | **1** | - | **0** | - | - | - |
+| 1 DISCONNECTED | 81 | **2** | **0** | 81 | 81 | 13 |
+| 2 CONNECTED | 8D | 8D | **0** | **3** | **12** | 13 |
+| 3-11 (transfer states) | 8D | 8D | **0** | 8D | 8D | 13 |
+| 12 TERMINATED | 8D | 8D | **0** | 8D | 8D | 13 |
+| 13 CRASHED | 8D | 8D | **0** | 8D | 8D | 8D |
+
+**`C-DROP-LINE` is legal from every one of the fourteen states and always
+transitions to 0.** Its column is `0` in all fourteen rows — it is the only
+command that escapes `CRASHED`. So `8040` cannot be a rejected transition: the
+state change succeeds and the failure happens in the work the command then
+does. The same holds for `8000` — `C-INIT-COMMS` from `NOT-STARTED`
+transitions cleanly to `DISCONNECTED`.
+
+That is the useful negative result. Both errors are the *link layer* failing
+underneath a perfectly legal session command, which is why sweeping session
+semantics would never have explained them.
+
+## What `(238/001)` says about where it dies
+
+`E701` = RCV1 is already documented as a zero-extended snapshot of `ram:E5BE`,
+with the note that "transport error may put `EEh` (238) there". The owner's
+hardware now shows exactly that: **every failure, with and without an adapter
+answering, reads `238`**. So the displayed RCV1 is the transport error path,
+not a receive counter, and the value is `0EEh`.
+
+`LinkBlockTx` returns `0EEh` from three sites: the `HSBUSY` wait at
+`ROM00:32F3`, the per-byte `TXRDY` wait at `3315`/`334E`, and the completion
+wait at `3336`. A scope capture of the IR line during the failure shows the
+flag and the prelude and **no payload byte at all**, which excludes the latter
+two. The handheld dies at **`ROM00:32F3`, waiting for `LINK_STATUS` bit 6 to
+go clear**, 9.92 ms after the strobe.
+
+### What the firmware actually waits for
+
+| Step | ROM | Waits on | On the wire |
+|---|---|---|---|
+| 1 | `34F8` | bit 7 `TXRDY` set, 9.70 ms | — |
+| 2 | `34F5` | writes `81h` to `LINK_CMD` | the flag |
+| 3 | `32B3` | writes `id & 1Fh` to `LINK_TXD` | the address |
+| 4 | `32B8` | bit 4 `RXBUSY` **clear**, 9.92 ms | — |
+| 5 | `32CC`-`32E6` | drives `LINK_CTRL` 5 high, 4 high, 32 `DJNZ`, 5 low | — |
+| 6 | `32F3` | bit 6 `HSBUSY` **clear**, 9.92 ms | **fails here** |
+| 7 | `3315` | per byte: bit 7 `TXRDY` set, 24.69 ms | never reached |
+
+**Every one of these is a status bit from the local link controller. The
+firmware never examines the IR line.** No frame content can satisfy step 6
+directly — it can only do so by causing the controller to deassert `HSBUSY`,
+and what makes the controller do that is a property of the controller, not of
+the firmware. That remains **OPEN**.
+
+This bounds the adapter problem usefully. Sweeping reply content is only worth
+doing under the assumption that `HSBUSY` tracks a received frame. That
+`HSBUSY` instead tracks a carrier or presence signal, or needs a complete frame
+including whatever the framer appends, is equally consistent with everything
+observed, and no amount of content sweeping would reach it.
+
+## Session-operation error decades
+
+**CONFIRMED**, byte-verified 2026-09-04, prompted by an owner observation on
+real hardware: a V24 connect attempt ends `8000 (238/001) Plinth not
+connected`, and pressing ENTER runs a second batch of 50 attempts that ends
+`8040 (238/001) Line failure`. **8040 was not in this repository at all** — it
+is not a retry of the connect.
+
+### The mechanism
+
+Every `C-*` session command is a thin wrapper of identical shape. It pushes an
+**operation selector** and calls a common dispatcher at `ROM00:452D`, stores
+the result in `E488`, and routes it through its own `InlineTableDispatch`
+switch. `C-DROP-LINE`:
+
+```text
+4A25  11 00 00     LD DE,0000h
+4A28  CD 37 D8     CALL D837h
+4A2B  21 04 00     LD HL,0004h       ; operation selector 4
+4A2E  E5           PUSH HL
+4A2F  CD 2D 45     CALL 452Dh        ; the common session-op dispatcher
+4A32  D1           POP DE
+4A33  22 88 E4     LD (E488),HL      ; result
+4A36  7C B5        LD A,H / OR L
+4A37  C2 C8 4A     JP NZ,4AC8h
+4A3A  CD 2A 58     CALL 582Ah
+4A3D  22 88 E4     LD (E488),HL
+4A40  2A 88 E4     LD HL,(E488)
+4A43  C3 B1 4A     JP 4AB1h          ; -> the result switch
+```
+
+The selector indexes the `C-*` name table (pointers at `ROM00:6B67`, strings
+from `6B8D`). Every call site of `452D` in the image, with its selector:
+
+| Wrapper | Selector | Command | Result switch | Error decade |
+|---|---:|---|---|---|
+| `4563` | 0 | `C-INIT-COMMS` | `46D6` | 8000, 8001 |
+| `47F6` | 1 | `C-DIAL` | `4890` | 8010-8016 |
+| `48BF` | 2 | `C-ANSWER` | `494D` | 8020-8024 |
+| `4974` | 3 | `C-MANUAL` | `49FA` | 8030-8035 |
+| `4A25` | 4 | **`C-DROP-LINE`** | `4AB1` | **8040, 8041, 8042** |
+| `4AE0` | 5 | `C-COMMAND` | — | 8050-8056 |
+| `4D7B` | 8 | `C-SHUT-DOWN` | — | |
+| `4E73` | 9 | `C-RX-REC` | — | 8090, 8091 |
+| `4F60` | 10 | `C-RX-BLK` | — | 8100-8102 |
+| `503A` | 11 | `C-BEGIN-FILE` | — | 8110, 8111 |
+| `50F3` | 12 | `C-TX-REC` | — | 8120, 8121 |
+| `517F` | 13 | `C-END-FILE` | — | 8130, 8131 |
+| `51F2` | 14 | `C-TX-BLK` | — | 8140, 8141 |
+| `52EB` | 15 | `C-END-TX` | — | |
+| `546F` | 16 | `C_ABORT` | — | |
+
+Selector 0 landing on the wrapper that owns `46D6` independently confirms the
+alignment: `46D6` was already attributed to `C-INIT-COMMS` on separate
+evidence. Selectors 6 and 7 (`C-RX-CMD`, `C-TX-REPLY`) have no `452D` call
+site — **OPEN**. A second block at `46E9`, switch `47E3`, re-uses 8000/8001
+without its own selector push and is probably a later stage of
+`C-INIT-COMMS` — **SUSPECTED**.
+
+### The two switches side by side
+
+```text
+46D6  CALL E0B2  n=2  0000->469C  0009->46AA(8001)                    default->46BD(8000)
+4AB1  CALL E0B2  n=4  0000->4A47  0001->4A85(8042)  0009->4A72(8041)
+                      000F->4A85(8042)                                default->4A98(8040)
+```
+
+So `8000` and `8040` are the **same event in different operations**: a result
+the wrapper's switch does not enumerate. Both write `E488 = 6` first, which is
+why the `e488` code is 6 in both cases and the 8000-series literal is the site,
+not the class.
+
+### Reading the message off the builder
+
+Each error literal is followed by a call to one of seven message builders, and
+each builder corresponds to one string. Every builder is pinned by at least one
+already-documented code, so the mapping is byte-verified rather than inferred:
+
+| Builder | Message | Pinned by |
+|---|---|---|
+| `445D` | Plinth not connected | 8000, 8001 |
+| `4475` | Not available | 8011, 8055, 8056, 8102 |
+| `448D` | Line failure | 8054, 8090, 8110 |
+| `44A5` | Failed to connect | 8010, 8012-8015 |
+| `44BD` | Invalid reply | 8053 |
+| `44D5` | Modem fault | 8016 |
+| `443C` | Invalid data stream | 8101 |
+
+`8040` at `ROM00:4A9E` calls `448D`, so it prints **Line failure** — which is
+exactly what the hardware shows. The same sweep of `LD HL,1Fxx` literals across
+`ROM00:4200-5200` yields the decades in the table above, and adds 8020-8024,
+8030-8035, 8041, 8042, 8091, 8100, 8111, 8120, 8121, 8130, 8131, 8140 and 8141
+to the error list, none of which the emulator had reached.
+
+### What it means operationally
+
+The handheld's second batch of 50 is **the line teardown, not another connect**.
+`C-INIT-COMMS` fails and reports 8000; the operator presses ENTER; the session
+tries to drop the line; `C-DROP-LINE` fails the same way and reports 8040. The
+50-attempt count is the link-layer retry limit (`fdd6=0x32`), which applies to
+any request, so both batches retry equally.
+
+**OPEN:** what result value `C-DROP-LINE` actually returned. The switch handles
+0, 1, 9 and `0Fh`; the observed failure is none of those. Recovering it needs
+`452D` decoded, or `E488` read at the point of failure.
+
 ## Types, replies, and session state
 
 The receiver dispatches type 2, 3, and 4 differently. The state labels

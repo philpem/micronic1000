@@ -127,12 +127,20 @@ Session/commstar errors (byte-verified error-code → message map):
 | code | message |
 |------|---------|
 | 8000, 8001 | Plinth not connected |
-| 8010, 8012–8015 | Failed to connect |
-| 8011, 8055, 8056, 8102, 8151, 8165, 8166 | Not available |
-| 8016 | Modem fault |
-| 8050, 8054, 8090, 8110, 8150, 8160, 8164 | Line failure |
+| 8010, 8012–8015, 8020, 8022–8023, 8030, 8032–8034 | Failed to connect |
+| 8011, 8021, 8031, 8041, 8055, 8056, 8091, 8102, 8111, 8121, 8131, 8141, 8151, 8165, 8166 | Not available |
+| 8016, 8024, 8035, 8042 | Modem fault |
+| 8040, 8050, 8054, 8090, 8100, 8110, 8120, 8130, 8140, 8150, 8160, 8164 | Line failure |
 | 8053, 8163 | Invalid reply |
 | 8101 | Invalid data stream |
+
+The codes come in a **decade per session operation**: the failing `C-*` command
+fixes the tens digit, and the result it returned fixes the units. So `8040` is
+`C-DROP-LINE` — not a second connect attempt — reporting a result its own
+switch does not recognise. The full operation → decade map, and how it was
+byte-verified, is in
+[Commstar evidence](../re-notes/commstar-evidence.md#session-operation-error-decades).
+Codes above 8150 are in a region not yet swept.
 
 The string "Invalid command" exists in ROM but is **unreferenced** (dead) — it
 never appears on screen.
