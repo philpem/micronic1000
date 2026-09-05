@@ -50,7 +50,7 @@ contradiction — do not invent a reconciliation.
 
 ## The ROM images are the ones in the machine
 
-**CONFIRMED.**  The two mask-programmed DIPs carry handwritten labels
+**CONFIRMED.**  The two firmware DIPs carry handwritten labels
 `DIP1 ACF8` and `DIP2 2E12`.  Both are the low 16 bits of the unsigned sum
 of all 32768 bytes of the corresponding image — the checksum every EPROM
 programmer of the era prints after a read:
@@ -76,10 +76,18 @@ Two consequences:
   which is the check to run before burning anything (see
   `analysis/rom_exerciser/README.md`).
 
-A byte sum detects any single-byte error and permutes to the same value
-under reordering, so it proves the images are the right *contents*, not that
-no compensating pair of errors exists.  For that, hash the read-back against
-`micronic/` directly.
+A byte sum detects any single-byte error but is permutation-invariant, so it
+proves the images are the right *contents*, not that no compensating pair of
+errors exists.  For that, compare a read-back against `micronic/` byte for
+byte.
+
+**LIKELY**, from the labels alone: the parts are field-programmed rather than
+masked.  A mask ROM carries a printed vendor part code, not a handwritten
+number, and the number written on these is precisely the one a programmer
+prints after a read.  The device type is **OPEN** — worth reading off the
+package before ordering blanks, since a `27C256` EPROM and a `28C256` EEPROM
+are not pin-compatible (`27C256` pin 1 is `VPP` and pin 27 is `A14`; on the
+`28C256` those are `A14` and `/WE`).
 
 ## Z80 and Ghidra
 
