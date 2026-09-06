@@ -145,6 +145,25 @@ Rules:
   not evidence a feature doesn't exist (features whose support arrives
   in loaded software leave no ROM strings).
 
+### Bitfield notation must identify the owning value
+
+Every statement about a bit must make its owning register, port, RAM cell,
+wire byte, or other value unambiguous. This applies to docs, Ghidra comments,
+source annotations, commit messages, and replies.
+
+- Once a single owner has been clearly introduced, compact wording is fine:
+  “In register `CAh`, bit 4 is `NGSTAR` and bit 2 is `MVSEL`.”
+- When discussing multiple owners, qualify every potentially ambiguous bit:
+  “wire-ID bit 5 is clear; `LINK_CTRL` bit 1 and port `2Ch` bit 5 are set.”
+  Do not shorten this to “bit 5 is clear but bit 5 is set.”
+- If the same bit number occurs in more than one value, repeat the owner even
+  in adjacent sentences or table rows. In tables, put the owner in each
+  column heading.
+- Distinguish a complete byte value from one of its bits: `LINK_CTRL=02h`
+  names the byte value; “`LINK_CTRL` bit 1 is set” names the bit state.
+- Words such as “both”, “it”, “that bit”, and “the clear path” are acceptable
+  only when their antecedents cannot be confused with another value in scope.
+
 ### External ground truth (owner-supplied hardware facts)
 
 The owner has the hardware. Facts they supply are admissible evidence

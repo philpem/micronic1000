@@ -4106,6 +4106,11 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   selection-time values (`02h`/`20h`), active baseline (`03h`), and inverse
   `63h` row (`00h`/`00h`, active baseline `01h`). Matching comments were
   saved in Ghidra; function count remained 1101.
+* **Durable notation rule:** `AGENTS.md` now requires every bit statement to
+  identify its owning value whenever more than one register, port, RAM cell,
+  or wire byte is in scope. Compact wording remains allowed after one owner
+  is unambiguous. `CLAUDE.md` is a relative symlink to `AGENTS.md`, making the
+  neutral file the single authoritative instruction source without drift.
 * **Validation:** guarded rebuild reproduced sum16 `1CBD`; 88 tests passed,
   33 emulator-dependent cases skipped, and 5 subtests passed. A bounded
   30,000-slice emulator run reached the controller, emitted preamble
