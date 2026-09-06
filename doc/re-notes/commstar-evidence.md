@@ -615,7 +615,26 @@ bit5-clear latch path as recorded below — and captured the handheld's own IR
 bursts at the top port, across all of the conn3-conn13 runs
 ([ir-wire-protocol.md](ir-wire-protocol.md)). So **bit 5 clear drives the top
 port**. That the bit5-set path drives the back port is **LIKELY** but
-uncaptured: it follows only from there being two ports and two line states. Where the EXT STORAGE ADAPTER attaches also
+uncaptured: it follows only from there being two ports and two line states.
+
+**An unresolved contradiction sits on the PLINTH side.** The owner states that
+`PLINTH` selects the back port and `V24 ADAPTOR` the top one. But
+[open-questions.md](open-questions.md#link-identity-and-port-selection)
+records that driving the Load/Run source picker both ways yields link id
+`43h` either way — and `43h` is the bit5-*clear*, top-port path. Both cannot
+be true as stated: either the picker does change the id and that trace was
+taken down one mode's path only, or the port is selected by something other
+than the picker's wire id.
+
+The device table constrains but does not settle it. `ROM00:3267` holds exactly
+two ids with prelude `03h` — `63h` (bit 5 set, selectors 3, 7, 11, 15) and
+`43h` (bit 5 clear, selectors 4, 8, 12, 16) — and the owner reports both menu
+entries transmit prelude `03h`, so `PLINTH` is one of those two. Which one is
+the open question, and `43h` is not excluded.
+
+*Resolve:* burn the exerciser twice, `LINK_ID` `43h` and `63h`, and see which
+port each lights. It is the hardware test open-questions asks for, and it needs
+no firmware path at all. Where the EXT STORAGE ADAPTER attaches also
 remains **OPEN**. This does not prove a multidrop physical topology or
 address allocation policy; treat those as open hardware questions.
 
