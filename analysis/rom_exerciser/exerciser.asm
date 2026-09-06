@@ -84,10 +84,13 @@
 ; controller is simply not fed for long enough to drain its shifter and stop
 ; clocking.  Status is still sampled all the way through it.
 ;
-;   preamble   A5 5A VER ID PSTAT STATUS      (6 bytes, sent once)
+;   preamble   A5 5A VER PSTAT STATUS         (5 bytes, sent once)
 ;              PSTAT = LINK_STATUS as LinkProbe left it, STATUS = after the
-;              frame opening
-;   record     COUNT OR AND RXD SIDE CTRL WD KEY   (8 bytes, ~9.8 ms apart)
+;              frame opening.  The link id is not here: CTRL bit 1 in every
+;              record names the live port, and the port alternates anyway.
+;   record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT
+;                                             (10 bytes, ~12 ms apart --
+;                                              exactly one 20-column LCD row)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
 ;             record is visible and the counter doubles as a time base.  Its
@@ -102,6 +105,15 @@
 ;     KEY     the keypad index (col*6 + row) of the first key held, or FFh.
 ;             Press keys and watch this to map the keypad; it is also how
 ;             a future exerciser will be steered, with no wiring at all.
+;     IRQN    rolling count of link interrupts taken.  The firmware's
+;             receive path is interrupt-driven (IRQ source 2, handler
+;             ROM00:31B6), so a controller could signal without ever setting
+;             a bit that a poll catches.  This is the only field that would
+;             notice.
+;     ISTAT   LINK_STATUS OR'd across every interrupt taken so far, sticky
+;             for the whole run -- the status the controller had when it
+;             decided to interrupt, which is not the same as any status a
+;             poll happens to catch.
 ;     WD      rolling count of waitready watchdog trips.  It rises only when
 ;             a LINK_CTRL value stopped the controller accepting bytes, which
 ;             is the one sweep outcome that would otherwise be invisible:
@@ -165,7 +177,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
 ; The port still alternates every cycle, so a wrong guess here costs nothing.
 LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x0B            ; bumped whenever the wire format changes
+VERSION         equ 0x0C            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -180,7 +192,14 @@ V_CTRL          equ 0xC7E7          ; LINK_CTRL the phase asked for (see WD)
 V_WD_N          equ 0xC7E8          ; rolling count of watchdog trips
 V_PSTAT         equ 0xC7E9          ; LINK_STATUS as LinkProbe left it
 V_KEY           equ 0xC7EA          ; key index this record, or FFh
+V_IRQN          equ 0xC7EB          ; link interrupts seen, rolling.  Must stay
+V_ISTAT         equ 0xC7EC          ; directly below V_ISTAT: the ISR walks
+                                    ; from one to the other with DEC HL
 
+ISR_ORG         equ 0x0047          ; fifth free block, 31 bytes, between the
+                                    ; bank-init tail at 0044 and NMI at 0066
+NMI_ORG         equ 0x0069          ; sixth free block, 23 bytes, the gap
+                                    ; after the NMI vector at 0066
 VEC_ORG         equ 0x00A2          ; third free block, 94 bytes, above every
                                     ; reset vector and below the boot vector
 LO_ORG          equ 0x724C          ; second free block, 183 bytes
@@ -221,6 +240,11 @@ CONTRAST        equ 0x40            ; a good way below the stock 70h
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
+IRQ_MASK        equ 0x04            ; interrupt enable, ACTIVE LOW
+IRQ_STATUS      equ 0x05            ; pending, active low; reading acknowledges
+IRQ_LINK_ONLY   equ 0xFB            ; ~04h: bit 2, the link, and nothing else
+RST38_VECTOR    equ 0xF5F3          ; the ROM's 0038 jumps through this RAM
+NMI_VECTOR      equ 0xF5F6          ; cell, and 0066 through this one
 PORTMAP_BITS    equ 0x33            ; which 2Ch bits the pin walk drives:
                                     ; 0, 1, 4 and 5, the ones the firmware
                                     ; itself drives.  FFh also walks 2, 3, 6
@@ -235,6 +259,61 @@ GAP_SAMPLES     equ 0xC0            ; ~4 ms of idle; must exceed the receiver's
 WD_SAMPLES      equ 0xFF            ; ~9 ms before waitready restores the base
 ARM_DELAY       equ 0x20            ; the firmware's own djnz count (32E1, 339B)
 
+
+                org ISR_ORG
+
+; --- The link interrupt.  ROM00:31B6 is the firmware's own handler for it
+; (IRQ source 2, see reference/memory-map.md#link-interrupt): it tests
+; LINK_STATUS bit 4 and enters LinkBlockRx if set.  So the receive path is
+; normally interrupt-driven, and an exerciser that only ever polls would miss
+; a controller that signals but never sets a bit a poll would catch.
+;
+; This one records rather than services: count the interrupts, and OR the
+; status at interrupt time into its own accumulator, which is the value the
+; controller had when it decided to interrupt -- not the same thing as any
+; status a poll happens to catch.
+;
+; It masks everything on the way in and the record loop re-arms once per
+; record, so a source that asserts continuously costs one interrupt per
+; record instead of livelocking the machine.  Reading 05h acknowledges.
+isr:            push af
+                push hl
+                ld a,0xFF
+                out (IRQ_MASK),a
+                in a,(LINK_STAT)
+                ld hl,V_ISTAT
+                or (hl)
+                ld (hl),a
+                dec hl                      ; V_IRQN sits just below V_ISTAT
+                inc (hl)
+                in a,(IRQ_STATUS)
+                pop hl
+                pop af
+                ei
+                ret
+isr_end:
+
+                org NMI_ORG
+
+; Reached only when the controller will not open a frame at all.  Shows DEAD
+; on the glass -- spelled with the hex printer, so it costs no string table
+; -- which is otherwise indistinguishable from every other kind of silence.
+dead:           xor a
+                call lcd_at
+                ld a,0xDE
+                call lcd_hex
+                ld a,0xAD
+                call lcd_hex
+dead_loop:      jr dead_loop
+
+; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  A bare
+; RET there turns a non-maskable interrupt from a jump into whatever RAM holds
+; into a no-op.  It lives in this block because this block is what follows the
+; vector it protects.
+nmi_safe:       ld a,0xC9
+                ld (NMI_VECTOR),a
+                ret
+nmi_end:
 
                 org VEC_ORG
 
@@ -516,6 +595,18 @@ start:          di
                 ld sp,STACK
                 call lcd_init
 
+                ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
+                ; through F5F6, both uninitialised here.  Point the first at
+                ; our handler -- the firmware installs its own the same way at
+                ; ROM00:2893 -- and make the second a bare RET, so a
+                ; non-maskable interrupt cannot land in whatever RAM holds.
+                ld a,0xC3
+                ld (RST38_VECTOR),a
+                ld hl,isr
+                ld (RST38_VECTOR+1),hl
+                call nmi_safe
+                im 1
+
                 ; A key held at power-up selects the pin walk instead of the
                 ; link run.  Checked before anything else touches the
                 ; hardware, and it never returns.
@@ -541,6 +632,8 @@ start:          di
                 ld (V_BASE),a
                 ld (V_CTRL),a
                 ld (V_WD_N),a
+                ld (V_IRQN),a
+                ld (V_ISTAT),a
                 ld a,LINK_ID
                 ld (V_ID),a
 
@@ -598,8 +691,6 @@ opened:         call accreset
                 call putbyte
                 ld a,VERSION
                 call putbyte
-                ld a,LINK_ID
-                call putbyte
                 ld a,(V_PSTAT)              ; status as the reset left it
                 call putbyte
                 in a,(LINK_STAT)
@@ -612,6 +703,10 @@ opened:         call accreset
 stream:         ld a,(V_COUNT)
                 and FRAME_RECS
                 call z,newframe             ; gap, flag, then the phase's state
+
+                ld a,IRQ_LINK_ONLY          ; re-arm: the ISR masks on entry,
+                out (IRQ_MASK),a            ; so this bounds it to one
+                ei                          ; interrupt per record
 
                 call kbd_scan               ; before the snapshot: this
                 ld (V_KEY),a                ; clobbers B, C, D and E
@@ -642,6 +737,10 @@ stream:         ld a,(V_COUNT)
                 call emit                   ; [6] watchdog trips so far
                 ld a,(V_KEY)
                 call emit                   ; [7] key index, or FFh
+                ld a,(V_IRQN)
+                call emit                   ; [8] link interrupts so far
+                ld a,(V_ISTAT)              ; [9] status at interrupt time,
+                call emit                   ;     sticky across the whole run
 
                 ld hl,V_COUNT
                 inc (hl)
@@ -722,16 +821,5 @@ rx_arm:         ld a,0xFE
 rx_wait:        djnz rx_wait
                 ld a,0xDF
                 jp ctrl_and
-
-; Reached only when the controller will not open a frame at all.  Shows DEAD
-; on the glass -- spelled with the hex printer, so it costs no string table
-; -- which is otherwise indistinguishable from every other kind of silence.
-dead:           xor a
-                call lcd_at
-                ld a,0xDE
-                call lcd_hex
-                ld a,0xAD
-                call lcd_hex
-dead_loop:      jr dead_loop
 
 hi_end:

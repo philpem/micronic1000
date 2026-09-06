@@ -27,7 +27,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from micronic.z80asm import assemble
 
-REGIONS = [("vec", 0x00A2, 0x00FF, "vec_end"),
+REGIONS = [("isr", 0x0047, 0x0065, "isr_end"),
+           ("nmi", 0x0069, 0x007F, "nmi_end"),
+           ("vec", 0x00A2, 0x00FF, "vec_end"),
            ("lo",  0x724C, 0x7302, "lo_end"),
            ("mid", 0x7CE0, 0x7D0F, "mid_end"),
            ("hi",  0x7E96, 0x7FF9, "hi_end")]

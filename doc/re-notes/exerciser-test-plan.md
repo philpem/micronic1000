@@ -29,6 +29,7 @@ zero would mean nothing at all, which is why phase 1 replays the arm.
 | Q1 | Does `HSBUSY` ever go clear once armed? | phase 1, `LINK_CTRL` = `11`/`13` |
 | Q2 | Does anything ever arrive? | phase 2, `LINK_STATUS` bit 0 and `LINK_RXD` |
 | Q3 | Does any `LINK_CTRL` state change either answer? | phase 3, 128 values per port |
+| Q3b | Does the controller ever raise its interrupt? | `IRQN` and `ISTAT`, every record |
 | Q4 | Which physical window is which port? | both ports, alternating ~1.9 s |
 | Q5 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
 | Q6 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |

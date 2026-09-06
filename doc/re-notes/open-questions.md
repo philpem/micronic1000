@@ -50,28 +50,47 @@ source tree (not published here).
   and wrong in the direction that matters, since it invited building hardware
   against the back port.
 
-* **Where does the EXT STORAGE ADAPTER attach?** — **Narrowed to the top IR
-  port; the side connector is excluded.** The drive table (`ROM00:3257` →
-  `ram:FE93`) is `A:=00`, `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h`
-  have bit 6 **set**, which is what `ROM00:2F44` (`BIT 6,A; JR Z`) tests to
-  decide a device is on the link at all, and bit 5 **set**, which is the top
-  port ([commstar-evidence](commstar-evidence.md#device-table-ports)). All
-  their I/O then runs through `LinkBlockTx`/`LinkBlockRx` on `4Ah`-`4Fh`.
+* **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
+  Two separate answers, and the second is the surprise.
 
-  The side connector can be ruled out on its own terms: **it has no byte
-  transport.** All eight reads of `2Dh` are in the barcode edge-timing block
-  (`ROM00:1299`-`13ED`), and `2Ch`'s two output bits are a fixed-width strobe
-  and a read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) —
-  there is no shift register, no clock pair and no framing anywhere on it.
+  **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
+  `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
+  `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
+  bit 5 **set**, which is the **top** port
+  ([commstar-evidence](commstar-evidence.md#device-table-ports)). So *if* those
+  ids ever reach `LinkBlockTx`, they select the top connector — the same one
+  the V24 adapter uses.
 
-  Note the Load/Run menu entry called `EXT STORAGE ADAPTOR` is a **different
-  thing** from drives `C:`/`D:`: it resolves to selector 5 = wire id `80h`,
-  whose bit 6 is *clear*, so `2F44` sends it down the non-link path. That is
-  why selecting it transmits no IR and fails with "Can't open or create
-  file" — owner-observed, and predicted by the table.
-  *Resolve:* what remains is only which physical adapter existed and whether
-  it shared the port with the V24 adapter — a hardware and documentation
-  question, not a firmware one.
+  The 8-pin side connector is excluded on its own terms: **it has no byte
+  transport.** All eight reads of `2Dh` are barcode edge timing
+  (`ROM00:1299`-`13ED`), and `2Ch`'s two outputs are a fixed-width strobe and a
+  read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) — no
+  shift register, no clock pair, no framing.
+
+  **How it is reached: not through BDOS.** `ROM00:0824` resolves a drive
+  letter to its `FE93` id, and **every one of its fourteen call sites refuses
+  a non-zero id.** Thirteen are literally `CP 00h; JR NZ,<error>` (`0846`,
+  `087A`, `08A0`, `08C3`, `091D`, `096F`, `09A6`, `0B0C`, `0B92`, `0BF6`,
+  `0C53`, `0CB7`, `0CF4`), and the fourteenth (`0913`, a two-drive rename)
+  compares both ids and then errors at `0961`. The errors are `27h`, `28h`
+  and — via BDOS 2Eh at `ROM00:0DAC` — `2Ch`. **CONFIRMED: this firmware's
+  file system implements local drives only.**
+
+  That contradicts the standing note that "all drive `C:`+ storage I/O runs
+  over the 4-wire byte transport". The byte transport exists and the drive
+  table is populated for it, but no BDOS path reaches it.
+  **SUSPECTED** reconciliation: routed storage is a *loaded-software* feature
+  that drives the Commstar session layer (`C-*`) directly rather than going
+  through BDOS file calls, which would explain a populated table with no
+  firmware consumer. Not established — it is equally possible that a different
+  firmware revision implements the routing.
+
+  Note the Load/Run menu entry named `EXT STORAGE ADAPTOR` is a third thing
+  again: selector 5 = wire id `80h`, bit 6 **clear**, so `2F44` sends it down
+  the non-link path. That is why selecting it transmits no IR and fails with
+  "Can't open or create file" — owner-observed, and predicted by the table.
+  *Resolve:* find a loaded application that uses `C:`/`D:`, or a firmware
+  revision whose `0824` callers route instead of erroring.
 
 * **Full eight-bit link id vs observable five bits** — Only `id & 1Fh`
   (bits 0-4) is wire-observable via the prelude; bits 5-7 are not.

@@ -51,7 +51,12 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
   [commstar-evidence](commstar-evidence.md#device-table-ports).
 * All drive `C:`+ storage I/O runs over the 4-wire byte transport, so the
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
-  `C:=0x73`, `D:=0x72` (both bit 5 = 1).
+  `C:=0x73`, `D:=0x72` (both bit 5 = 1, i.e. the top port).
+  **Contradicted in part by the ROM**, which is worth recording rather than
+  reconciling away: every one of the fourteen call sites of the drive-id
+  lookup at `ROM00:0824` refuses a non-zero id, so *this* firmware's BDOS
+  implements local drives only. See
+  [open questions](open-questions.md#link-identity-and-port-selection).
 
 When ROM evidence and an owner statement seem to conflict, report the
 contradiction — do not invent a reconciliation.

@@ -32,8 +32,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 8
-VER = 10
+RECLEN = 10
+VER = 12
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -105,8 +105,8 @@ def main():
           f"{f', {short} not a whole number of records' if short else ''}")
 
     if preamble:
-        ver, lid, pstat, st = preamble[2:6]
-        print(f"\npreamble  version {ver}  LINK_ID {lid:02X}  "
+        ver, pstat, st = preamble[2:5]
+        print(f"\npreamble  version {ver}  "
               f"LINK_STATUS after reset {pstat:02X}, after frame open {st:02X}")
         if ver != VER:
             print(f"  ! this decoder is written for version {VER}")
@@ -142,6 +142,16 @@ def main():
     sweep_report(records)
     side = sorted({r[4] for r in records})
     print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
+    irq = max(r[8] for r in records) if records else 0
+    istat = max(r[9] for r in records) if records else 0
+    first = min((r[8] for r in records), default=0)
+    took = (irq - first) & 0xFF
+    print(f"\nlink interrupts: {'none taken' if not took and not istat else str(took) + ' during the capture'}"
+          + (f"; LINK_STATUS at interrupt time OR'd = {istat:02X}" if istat else ""))
+    if not took:
+        print("  (the firmware's receive path is interrupt-driven -- IRQ source 2,"
+              " ROM00:31B6 -- so this is a real negative, not a gap)")
+
     keys = sorted({r[7] for r in records} - {0xFF})
     if keys:
         print("keypad indices seen (col*6+row): "

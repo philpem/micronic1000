@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `F2ED` |
+| `micron1_exerciser.bin` | `1782` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `F2ED`** so it
+needs no reference to this repo. **Label the burned exerciser `1782`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -48,13 +48,19 @@ is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `00A2`-`00FC` | keypad scan and the pin walk, in a 94-byte run of `00` filler (3 left) |
+| `0047`-`005B` | the interrupt handler, in a 31-byte run of `00` filler (10 left) |
+| `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
+| `00A2`-`00FC` | keypad scan and the pin walk, in a 94-byte run (3 left) |
 | `724C`-`72FC` | link and LCD helpers, in a 183-byte run (6 left) |
 | `7CE0`-`7D00` | LCD init, in a 48-byte run (15 left) |
 | `7E96`-`7FE4` | the main body, in a 356-byte run (21 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
-All four filler runs must be empty beforehand. `00A2`-`00FF` sits above every
+All six filler runs must be empty beforehand. Two other runs of zeros are
+deliberately **not** used, because they are data rather than filler:
+`325B`-`3266` is the drive table's own `E:`-`P:` entries, and `7D1E`-`7D2F`
+is the zero tail of the table at `7D10`, with another table starting at
+`7D30`. `00A2`-`00FF` sits above every
 reset vector (`RST 38h` at `0038`, NMI at `0066`) and below the boot vector at
 `0100`. Four byte pairs elsewhere in the image look like control transfers
 into it; all four are operand bytes or table entries, checked individually —
@@ -66,7 +72,7 @@ The two code regions are a single assembly — `ORG` pads forward and only the
 two real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**629 bytes differ from the original.** One chip: `ROM01` is untouched.
+**687 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -174,6 +180,35 @@ This supersedes port `2Dh` as the command channel for a steerable follow-up
 burn. It needs no wiring, no pinout, and no case modification, and it is
 already proven by this run's own capture.
 
+## The link interrupt
+
+The firmware's receive path is **interrupt-driven**, not polled: IRQ source 2
+is the link controller, and its handler at `ROM00:31B6` tests `LINK_STATUS`
+bit 4 and enters `LinkBlockRx` if set
+(`doc/reference/memory-map.md#link-interrupt`). An exerciser that only polled
+would miss a controller that signals but never holds a bit long enough for a
+poll to catch.
+
+So this one takes the interrupt too. `RST 38h` at `ROM00:0038` jumps through
+`F5F3`, which is where the firmware installs its own handler at `ROM00:2893`;
+we install ours the same way, set `IM 1`, and unmask **only** bit 2 (`04h` =
+`FBh`, active low). The handler counts, ORs `LINK_STATUS` at interrupt time
+into its own accumulator, and acknowledges by reading `05h`.
+
+It masks everything on the way in and the record loop re-arms once per record,
+so a source that asserts continuously costs one interrupt per record rather
+than livelocking the machine. `IRQN` rising at all is the finding; `ISTAT` is
+the status the controller held when it decided to interrupt, which is not the
+same as any status a poll happens to catch.
+
+NMI at `ROM00:0066` jumps through `F5F6`, equally uninitialised here, so a
+bare `RET` is planted there — a non-maskable interrupt becomes a no-op rather
+than a jump into whatever RAM holds.
+
+The cost is jitter: the ISR runs inside the sampling loop, so a record whose
+interrupt fired has one ~30 µs gap in its coverage. Bounded to one per record,
+against a 122 µs wire cell.
+
 ## The four phases
 
 One phase per frame, cycling forever. The phase is the top two bits of the
@@ -214,7 +249,7 @@ One preamble frame, then record frames, each preceded by a ~4 ms idle gap so
 the Arduino's burst delimiter fires:
 
 ```
-preamble   A5 5A VER ID PSTAT STATUS      once, at power-up
+preamble   A5 5A VER PSTAT STATUS         once, at power-up
 record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 ```
 
@@ -228,6 +263,8 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 | `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |
+| `IRQN` | rolling count of **link interrupts** taken |
+| `ISTAT` | `LINK_STATUS` OR'd across every interrupt, sticky for the run |
 
 `OR` and `AND` are what make the modest record rate sufficient. Waiting for
 `TXRDY` is a tight polling loop — one `LINK_STATUS` sample every ~35 µs — and
@@ -323,7 +360,7 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-45 bytes of filler remain across the four blocks.
+38 bytes of filler remain across the six blocks.
 
 ## Restoring
 
