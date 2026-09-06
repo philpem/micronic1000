@@ -3,22 +3,25 @@
 
 Input is either an MSO CSV (the same four-channel format scope_ir_decode.py
 reads) or, with --hex, a file of whitespace-separated hex bytes such as an
-Arduino serial log.  Every frame the exerciser emits begins on a record
-boundary, so alignment is structural rather than guessed.
+Arduino serial log, one frame per line.  Every frame the exerciser emits
+begins on a record boundary, so alignment is structural rather than guessed.
 
-The headline output is the per-bit summary of LINK_STATUS.  Each record
-carries the OR and the AND of every sample taken during its window, so for
-each bit the three possibilities are distinguishable and exhaustive:
+    record   COUNT OR AND RXD SIDE CTRL
 
-    always 1        OR set and AND set in every record
-    always 0        OR clear in every record
-    changes         some record has OR set and AND clear, or the records
-                    disagree with each other
+OR and AND are the sticky OR and AND of every LINK_STATUS sample taken during
+the record's window, so for each bit the three possibilities are
+distinguishable and exhaustive: always 1, always 0, or changed.  COUNT's top
+two bits are the phase.
 
-Bit 6 (HSBUSY) reading "always 0" is the negative result: the bit the
-firmware waits on at ROM00:32F3 never asserts, and no external stimulus can
-make it.  Anything else is the positive result, and the record counter says
-when.
+The bit that matters is 6, HSBUSY.  The firmware asserts it by arming the
+handshake and then waits at ROM00:32F3 for it to go CLEAR, giving up after
+9.92 ms and reporting 238.  So the reading to look for is phase 1:
+
+    high throughout   the handshake never completes -- exactly the state the
+                      firmware dies in, now directly observed
+    goes low          it completes; if it took longer than 9.92 ms the
+                      firmware's timeout is the whole problem
+    never high        our arm is not what asserts it
 
 Usage:  decode_records.py CAPTURE.csv
         decode_records.py --hex bytes.txt
@@ -29,11 +32,13 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 5
+RECLEN = 6
+VER = 6
 
-# LINK_STATUS bits.  7 and 4 are named from the firmware's own tests
-# (LinkWaitReady polls bit 7; ROM00:34E7 tests bit 4); 6 from ROM00:32F3.
-BITNAMES = {7: "TXRDY", 6: "HSBUSY", 4: "RXBUSY"}
+PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
+
+# LINK_STATUS bits, all named from the firmware's own polls.
+BITNAMES = {7: "TXRDY", 6: "HSBUSY", 0: "RX byte"}
 
 
 def frames_from_csv(path):
@@ -45,14 +50,12 @@ def frames_from_csv(path):
         if r is None:
             continue
         u = unframe(r[0])
-        if u is None:
-            continue
-        out.append(u[1])
+        if u is not None:
+            out.append(u[1])
     return out
 
 
 def frames_from_hex(path):
-    """One frame per line; blank lines and '#' comments ignored."""
     out = []
     for line in pathlib.Path(path).read_text().splitlines():
         line = line.split("#", 1)[0].strip()
@@ -63,6 +66,18 @@ def frames_from_hex(path):
         except ValueError:
             continue                    # a log line that isn't hex
     return out
+
+
+def verdict(recs, bit):
+    """(text, saw_high, saw_low) for one LINK_STATUS bit over some records."""
+    m = 1 << bit
+    high = any(r[1] & m for r in recs)
+    low = any(not (r[2] & m) for r in recs)
+    both = sum(1 for r in recs if (r[1] & m) and not (r[2] & m))
+    text = ("changes" if high and low else "always 1" if high else "always 0")
+    if both:
+        text += f" ({both} record{'s' if both != 1 else ''} saw it both ways)"
+    return text, high, low
 
 
 def main():
@@ -86,11 +101,11 @@ def main():
           f"{f', {short} not a whole number of records' if short else ''}")
 
     if preamble:
-        magic, ver, lid, probe, st = (preamble[:2], *preamble[2:6])
+        ver, lid, probe, st = preamble[2:6]
         print(f"\npreamble  version {ver}  LINK_ID {lid:02X}  "
               f"LINK_PROBE {probe:02X}  LINK_STATUS {st:02X}")
-        if ver != 5:
-            print(f"  ! this decoder is written for version 5")
+        if ver != VER:
+            print(f"  ! this decoder is written for version {VER}")
     else:
         print("\nno preamble frame in this capture "
               "(fine if it started after power-up)")
@@ -98,47 +113,47 @@ def main():
     if not records:
         return
 
-    # --- counter continuity.  A gap means records were lost, not that the
-    # handheld stopped: the counter is the only reliable time base.
     lost = sum(1 for p, c in zip(records, records[1:])
                if (p[0] + 1) & 0xFF != c[0])
-    print(f"counter discontinuities: {lost}")
+    print(f"counter discontinuities: {lost}"
+          + ("   <- a phase stalled the transmitter" if lost else ""))
 
-    # --- per-bit verdict
-    print("\nLINK_STATUS, over every sample in every record:")
-    for bit in range(7, -1, -1):
-        m = 1 << bit
-        ever_high = any(r[1] & m for r in records)
-        ever_low = any(not (r[2] & m) for r in records)
-        within = sum(1 for r in records if (r[1] & m) and not (r[2] & m))
-        verdict = ("changes" if ever_high and ever_low else
-                   "always 1" if ever_high else "always 0")
-        note = (f"  ({within} record{'s' if within != 1 else ''} saw it both ways)" if within else "")
-        print(f"  bit {bit} {BITNAMES.get(bit,''):<7s} {verdict}{note}")
+    # --- LINK_STATUS per phase.  The phase is the top two bits of COUNT.
+    for ph in range(4):
+        recs = [r for r in records if r[0] >> 6 == ph]
+        if not recs:
+            continue
+        ctrls = sorted({r[5] for r in recs})
+        print(f"\nphase {ph}  {PHASES[ph]}  ({len(recs)} records, "
+              f"LINK_CTRL {' '.join(f'{c:02X}' for c in ctrls[:8])}"
+              f"{' ...' if len(ctrls) > 8 else ''})")
+        for bit in range(7, -1, -1):
+            text, high, low = verdict(recs, bit)
+            if text == "always 0" and bit not in BITNAMES:
+                continue                # keep the unknown-and-idle bits quiet
+            print(f"    bit {bit} {BITNAMES.get(bit,''):<8s} {text}")
+        rxd = {r[3] for r in recs}
+        if rxd != {0}:
+            print(f"    LINK_RXD  {' '.join(f'{v:02X}' for v in sorted(rxd))}")
 
-    rxd = {r[3] for r in records}
-    print(f"\nLINK_RXD: {len(rxd)} distinct value(s): "
-          f"{' '.join(f'{v:02X}' for v in sorted(rxd)[:16])}"
-          f"{' ...' if len(rxd) > 16 else ''}")
+    # --- phase 3 wants a per-CTRL-value breakdown, not a per-phase one
+    sweep = [r for r in records if r[0] >> 6 == 3]
+    if sweep:
+        base = {}
+        for r in sweep:
+            base.setdefault(r[5], []).append(r)
+        odd = [(c, rs) for c, rs in sorted(base.items())
+               if verdict(rs, 6)[0] != verdict(sweep, 6)[0]
+               or any(r[3] for r in rs) or verdict(rs, 0)[1]]
+        print(f"\nCTRL sweep: {len(base)} value(s) seen, "
+              f"{len(odd)} that did something")
+        for c, rs in odd[:32]:
+            print(f"    {c:02X}: OR {max(r[1] for r in rs):02X}  "
+                  f"AND {min(r[2] for r in rs):02X}  "
+                  f"RXD {' '.join(f'{v:02X}' for v in sorted({r[3] for r in rs}))}")
 
-    # --- change log.  With a constant controller this is one line, which is
-    # the point: it makes a negative result readable at a glance.
-    side = {r[4] for r in records}
-    print(f"port 2Dh: {len(side)} distinct value(s): "
-          f"{' '.join(f'{v:02X}' for v in sorted(side))}")
-
-    print("\nchanges (count: OR AND RXD SIDE):")
-    prev = None
-    shown = 0
-    for r in records:
-        key = r[1:]
-        if key != prev:
-            print(f"  {r[0]:02X}: {r[1]:02X} {r[2]:02X} {r[3]:02X} {r[4]:02X}")
-            prev = key
-            shown += 1
-            if shown == 200:
-                print("  ... (truncated at 200)")
-                break
+    side = sorted({r[4] for r in records})
+    print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
 
 
 if __name__ == "__main__":
