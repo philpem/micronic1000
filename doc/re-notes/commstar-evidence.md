@@ -608,35 +608,45 @@ The active link id is retained in `fdd4`.
   XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence
   slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
-Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
-(back) is **resolved for the top port**: the owner selected `V24 ADAPTOR` —
-which resolves through selector 4 to `g_bDeviceWireId4` = `0x43`, taking the
-bit5-clear latch path as recorded below — and captured the handheld's own IR
-bursts at the top port, across all of the conn3-conn13 runs
-([ir-wire-protocol.md](ir-wire-protocol.md)). So **bit 5 clear drives the top
-port**. That the bit5-set path drives the back port is **LIKELY** but
-uncaptured: it follows only from there being two ports and two line states.
+### Which wire id is which port {#device-table-ports}
 
-**An unresolved contradiction sits on the PLINTH side.** The owner states that
-`PLINTH` selects the back port and `V24 ADAPTOR` the top one. But
-[open-questions.md](open-questions.md#link-identity-and-port-selection)
-records that driving the Load/Run source picker both ways yields link id
-`43h` either way — and `43h` is the bit5-*clear*, top-port path. Both cannot
-be true as stated: either the picker does change the id and that trace was
-taken down one mode's path only, or the port is selected by something other
-than the picker's wire id.
+**CONFIRMED: `V24 ADAPTOR` (top) is wire id `63h`, bit 5 SET; `PLINTH` (back)
+is `43h`, bit 5 clear.** This is the reverse of what this page previously
+recorded.
 
-The device table constrains but does not settle it. `ROM00:3267` holds exactly
-two ids with prelude `03h` — `63h` (bit 5 set, selectors 3, 7, 11, 15) and
-`43h` (bit 5 clear, selectors 4, 8, 12, 16) — and the owner reports both menu
-entries transmit prelude `03h`, so `PLINTH` is one of those two. Which one is
-the open question, and `43h` is not excluded.
+Established by driving the firmware's own Load/Run form in the emulator, one
+run per choice, identical in every other respect:
 
-*Resolve:* burn the exerciser twice, `LINK_ID` `43h` and `63h`, and see which
-port each lights. It is the hardware test open-questions asks for, and it needs
-no firmware path at all. Where the EXT STORAGE ADAPTER attaches also
-remains **OPEN**. This does not prove a multidrop physical topology or
-address allocation policy; treat those as open hardware questions.
+| From | `fdd4` | `LinkPortSelect` branch | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
+|---|---|---|---|---|
+| `PLINTH` | `43h` | `3473` (bit 5 clear) | set | set (`2C`=`20`) |
+| `V24 ADAPTOR` | `63h` | `3462` (bit 5 set) | clear | clear (`2C`=`00`) |
+
+The static path agrees independently. The two-option list at `ROM01:7663` is
+`{0: PLINTH, 1: V24 ADAPTOR}`; `ROM00:5C04` tests that index against 1 through
+`ram:E04B`, which returns **Z when the operands differ** (byte-verified at
+`E04B`: the unequal path zeroes `HL` via `XOR A`, so the Z flag is the inverse
+of the boolean). So index 1 — `V24 ADAPTOR` — falls through to selector **3**,
+and the device table at `ROM00:3267` gives selector 3 = `FE85` = `63h`. Index
+0, `PLINTH`, takes the jump to selector 4 = `FE86` = `43h`.
+
+Combined with the owner's statement that `V24 ADAPTOR` is the top connector
+and `PLINTH` the back one, and with the conn3-conn13 captures being taken at
+the top port under a `V24 ADAPTOR` selection: **bit 5 set drives the top
+port.**
+
+Two earlier readings were wrong and are superseded:
+
+* that driving the source picker "yields link id `43h` either way"
+  ([open-questions.md](open-questions.md#link-identity-and-port-selection)) —
+  it does not; the two choices give `43h` and `63h`;
+* that `V24 ADAPTOR` reaches the wire through selector 4 and `43h`. The
+  selector-4 statement below concerns the **mode-0 log-on** path, a later and
+  separate selection stage; it is `fdd4`, set from the source picker, that
+  `LinkBlockTx` actually passes to `LinkPortSelect` at `ROM00:3277`.
+
+The trap in both was `E04B`. Read as a conventional "Z means equal", every
+conclusion downstream of `5C0A` inverts.
 
 `E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
 shown on the session status screen (**CONFIRMED provenance**):

@@ -36,13 +36,19 @@ source tree (not published here).
 
 ## Link identity and port selection
 
-* **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH (back)?**
-  — Firmware does `AND 0x20` and drives `LINK_CTRL` bit 1 (and port `2Ch`
-  bit 5, which moves with it) via `LinkPortSelect`; which polarity maps to
-  which physical port is open. Both are IR ports on the case, not electrical
-  connectors. The Load/Run source picker does **not** select between them:
-  driving it both ways yields link id `43h` either way.
-  *Resolve:* hardware test with two known link ids differing only in bit 5.
+* ~~**Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
+  (back)?**~~ — **CLOSED.** Bit 5 **set** is the top port: `V24 ADAPTOR`
+  gives `fdd4` = `63h` and the `3462` branch of `LinkPortSelect`
+  (`LINK_CTRL` bit 1 clear, `2Ch` bit 5 clear); `PLINTH` gives `43h` and the
+  `3473` branch. Shown by driving the real Load/Run form in the emulator, one
+  run per choice, and independently by the static path through `ROM01:7663`
+  and `ROM00:5C04`. See
+  [commstar-evidence](commstar-evidence.md#device-table-ports).
+
+  The earlier note here — that the source picker "does not select between
+  them: driving it both ways yields link id `43h` either way" — was wrong,
+  and wrong in the direction that matters, since it invited building hardware
+  against the back port.
 
 * **Where does the EXT STORAGE ADAPTER attach?** — All `C:`+ storage I/O
   runs over the 4-wire byte transport, so it must use one of the two IR

@@ -33,7 +33,7 @@ sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
 RECLEN = 6
-VER = 6
+VER = 7
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -118,24 +118,44 @@ def main():
     print(f"counter discontinuities: {lost}"
           + ("   <- a phase stalled the transmitter" if lost else ""))
 
-    # --- LINK_STATUS per phase.  The phase is the top two bits of COUNT.
+    # --- LINK_STATUS per port per phase.  The phase is the top two bits of
+    # COUNT; the port is LINK_CTRL bit 1, which LinkPortSelect sets: bit 1 set
+    # means the wire id had bit 5 CLEAR (the 43h path), bit 1 clear means it
+    # had bit 5 SET (the 63h path).  Which physical window each drives is what
+    # the run is measuring -- watch the unit, not this output.
+    for portbit, idname in ((2, "id bit5 clear (43h)"), (0, "id bit5 set (63h)")):
+        pr = [r for r in records if (r[5] & 2) == portbit]
+        if not pr:
+            continue
+        print(f"\n=== LINK_CTRL bit 1 {'set' if portbit else 'clear'}"
+              f" -- {idname}, {len(pr)} records ===")
+        report_phases(pr)
+
+    sweep_report(records)
+    side = sorted({r[4] for r in records})
+    print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
+
+
+def report_phases(records):
     for ph in range(4):
         recs = [r for r in records if r[0] >> 6 == ph]
         if not recs:
             continue
         ctrls = sorted({r[5] for r in recs})
-        print(f"\nphase {ph}  {PHASES[ph]}  ({len(recs)} records, "
+        print(f"  phase {ph}  {PHASES[ph]}  ({len(recs)} records, "
               f"LINK_CTRL {' '.join(f'{c:02X}' for c in ctrls[:8])}"
               f"{' ...' if len(ctrls) > 8 else ''})")
         for bit in range(7, -1, -1):
             text, high, low = verdict(recs, bit)
             if text == "always 0" and bit not in BITNAMES:
                 continue                # keep the unknown-and-idle bits quiet
-            print(f"    bit {bit} {BITNAMES.get(bit,''):<8s} {text}")
+            print(f"      bit {bit} {BITNAMES.get(bit,''):<8s} {text}")
         rxd = {r[3] for r in recs}
         if rxd != {0}:
-            print(f"    LINK_RXD  {' '.join(f'{v:02X}' for v in sorted(rxd))}")
+            print(f"      LINK_RXD  {' '.join(f'{v:02X}' for v in sorted(rxd))}")
 
+
+def sweep_report(records):
     # --- phase 3 wants a per-CTRL-value breakdown, not a per-phase one
     sweep = [r for r in records if r[0] >> 6 == 3]
     if sweep:
@@ -151,9 +171,6 @@ def main():
             print(f"    {c:02X}: OR {max(r[1] for r in rs):02X}  "
                   f"AND {min(r[2] for r in rs):02X}  "
                   f"RXD {' '.join(f'{v:02X}' for v in sorted({r[3] for r in rs}))}")
-
-    side = sorted({r[4] for r in records})
-    print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
 
 
 if __name__ == "__main__":

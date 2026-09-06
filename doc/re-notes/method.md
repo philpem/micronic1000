@@ -39,13 +39,12 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
 * The 5-pin side port was used with a barcode pen; the port-`2Dh`
   edge-timing code is the barcode-reader front end (`Barcode_` prefix).
 * The two IR ports are **V24 ADAPTOR = top, PLINTH = back**. Firmware
-  selects between two line states by wire-id bit 5. **Bit 5 clear drives the
-  top port**: selecting `V24 ADAPTOR` resolves to `g_bDeviceWireId4` = `0x43`,
-  whose `AND 0x20` at `LinkBlockTx` is zero, and the owner captured the
-  handheld's own bursts at the top port under exactly that selection across
-  the conn3-conn13 runs. The complement — bit 5 set driving the back port —
-  is **LIKELY** rather than confirmed: only two ports exist and the firmware
-  picks between two states, but the back port has never been captured.
+  selects between two line states by wire-id bit 5, and **bit 5 set is the
+  top port**: `V24 ADAPTOR` gives `fdd4` = `63h` and the `3462` branch of
+  `LinkPortSelect`; `PLINTH` gives `43h` and the `3473` branch. Established
+  by driving the real Load/Run form in the emulator, one run per choice, and
+  independently by the static path. See
+  [commstar-evidence](commstar-evidence.md#device-table-ports).
 * All drive `C:`+ storage I/O runs over the 4-wire byte transport, so the
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
   `C:=0x73`, `D:=0x72` (both bit 5 = 1).

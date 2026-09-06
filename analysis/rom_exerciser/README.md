@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `739A` |
+| `micron1_exerciser.bin` | `80C7` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `739A`** so it
+needs no reference to this repo. **Label the burned exerciser `80C7`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -49,7 +49,7 @@ is not the one it was written against:
 | Edit | |
 |---|---|
 | `724C`-`72C5` | helpers and the beacon, in a 183-byte run of `00` filler (61 left) |
-| `7E96`-`7F95` | the main body, in a 356-byte run of `00` filler (100 left) |
+| `7E96`-`7FAC` | the main body, in a 356-byte run of `00` filler (77 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 Both filler runs must be empty beforehand. `014B` rather than the reset vector
@@ -60,7 +60,7 @@ The two code regions are a single assembly — `ORG` pads forward and only the
 two real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**379 bytes differ from the original.** One chip: `ROM01` is untouched.
+**403 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The beacon, first
 
@@ -81,6 +81,29 @@ one that does not need another swap.
 
 Bits 0 and 1 of `2Ch` are what the barcode front end drives (`1283`, `1292`,
 `1519`, `1528`), so this stays inside behaviour the firmware already has.
+
+## It drives both ports, deliberately
+
+The port alternates on every counter wrap — roughly 1.9 s on one, 1.9 s on the
+other — and `LINK_CTRL` bit 1 is in every record, so a capture says which was
+live.
+
+It starts on the **top port** — `LINK_ID` is `63h`, the id `V24 ADAPTOR`
+produces — and swaps to `43h` (`PLINTH`, back) for the next cycle.
+
+The alternation stays in even though the mapping is now settled, because it
+costs 20 bytes and it is what settled it. The port was originally wrong here:
+`43h` looked like the top port, and it is the back one. `LinkPortSelect` was
+never in doubt — wire-id bit 5 clear gives `LINK_CTRL` bit 1 = 1 and `2Ch`
+bit 5 = 1, bit 5 set gives both zero — but the chain from the menu choice to
+the wire id runs through compiler-generated forwarding frames, and the trap
+in it is `ram:E04B`, which returns **Z when its operands differ**. Read as a
+conventional "Z means equal", every conclusion downstream inverts.
+
+Driving the real Load/Run form in the emulator settled it, one run per
+choice: `V24 ADAPTOR` leaves `fdd4` = `63h` and takes the bit5-set branch
+(`2Ch` = `00`); `PLINTH` leaves `43h` and the bit5-clear branch (`2Ch` = `20`).
+See `doc/re-notes/commstar-evidence.md`.
 
 ## The four phases
 
@@ -213,10 +236,7 @@ Silence with the beacon running means `TXRDY` never asserts: the controller
 never reports ready even with no firmware competing for it. Silence with no
 beacon means it never ran.
 
-`LINK_ID` is `43h`, the **top port** (`V24 ADAPTOR`) — bit 5 clear, the same
-latch path the firmware takes when you pick `V24 ADAPTOR` from the menu, and
-the port every conn3-conn13 capture was taken on. `63h` is the back port.
-161 bytes of filler remain across the two blocks.
+138 bytes of filler remain across the two blocks.
 
 ## Restoring
 

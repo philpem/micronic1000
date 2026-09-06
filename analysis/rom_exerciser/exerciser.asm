@@ -59,6 +59,11 @@
 ;                  selected port so the sweep cannot switch ports underneath
 ;                  the measurement.
 ;
+; The port alternates on every counter wrap, at phase 0, so one burn exercises
+; both.  Which physical window a given latch state drives is NOT decidable
+; from the ROM -- see port_swap -- so this measures it instead of assuming it.
+; LINK_CTRL bit 1 is in every record, so a capture says which port was live.
+;
 ; A CTRL value that stops the controller accepting bytes would stall the
 ; reporting channel, so waitready has a watchdog: after ~9 ms with no TXRDY it
 ; puts the baseline back and carries on.  No phase can wedge the run.
@@ -138,12 +143,14 @@ LinkProbe       equ 0x348A
 LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
-; Bit 5 clear is the TOP port (V24 ADAPTOR): selecting V24 ADAPTOR resolves to
-; g_bDeviceWireId4 = 43h, whose AND 20h at LinkBlockTx is zero, and the owner
-; captured the handheld's bursts at the top port under that selection.  63h
-; takes the other latch path, which is the back port (PLINTH) by elimination.
-LINK_ID         equ 0x43            ; top port
-VERSION         equ 0x06            ; bumped whenever the wire format changes
+; 63h is the TOP port (V24 ADAPTOR), 43h the back one (PLINTH).  Established
+; by driving the firmware's own menu in the emulator: selecting V24 ADAPTOR
+; leaves FDD4 = 63h and LinkPortSelect takes the bit5-SET branch (2Ch = 00,
+; LINK_CTRL bit 1 clear); PLINTH leaves 43h and the bit5-clear branch
+; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
+; The port still alternates every cycle, so a wrong guess here costs nothing.
+LINK_ID         equ 0x63            ; top port, and the first one exercised
+VERSION         equ 0x07            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -153,6 +160,7 @@ V_COUNT         equ 0xC7E2          ; record counter; top 2 bits are the phase
 V_BASE          equ 0xC7E3          ; LINK_CTRL as the frame opening left it
 V_SWEEP         equ 0xC7E4          ; phase 3's value, +1 each cycle
 V_WD            equ 0xC7E5          ; waitready watchdog
+V_ID            equ 0xC7E6          ; current link id; bit 5 alternates the port
 
 LO_ORG          equ 0x724C          ; the second free block, 183 bytes
 HI_ORG          equ 0x7E96          ; the first, 356 bytes
@@ -301,6 +309,8 @@ start:          di
                 ld (PORT2C_SHADOW),a
                 ld (V_SWEEP),a
                 ld (V_BASE),a
+                ld a,LINK_ID
+                ld (V_ID),a
 
                 call beacon
 
@@ -398,7 +408,7 @@ newframe:       call gap
                                             ; accumulate on one another
                 ld a,(V_COUNT)
                 and 0xC0                    ; the phase
-                jr z,nf_done                ; 0: baseline, nothing more
+                jr z,port_swap              ; 0: baseline, and swap ports
                 cp 0x40
                 jr z,tx_arm                 ; 1: TX handshake armed
                 cp 0x80
@@ -417,8 +427,25 @@ sweep:          ld hl,V_SWEEP
                 ld a,(hl)
                 and 0xFD
                 or c
-                call ctrl_set
-nf_done:        ret
+                jp ctrl_set
+
+; Alternate the port on every counter wrap, so one burn covers both.  Which
+; physical window each latch state drives cannot be settled from the ROM: the
+; chain from the menu choice to the wire id runs through compiler-generated
+; forwarding frames, and the two readings of it disagree.  So do not infer it
+; -- drive both and watch which window lights.  ~1.9 s each, alternating, and
+; LINK_CTRL bit 1 is already in every record, so the capture says which state
+; was live without needing a schedule.
+port_swap:      ld hl,V_ID
+                ld a,(hl)
+                and 0x20
+                call LinkPortSelect         ; select the id we hold now, so
+                ld a,(hl)                   ; the first cycle is LINK_ID
+                xor 0x20                    ; ... then flip for the next
+                ld (hl),a
+                ld a,(CTRL_SHADOW)          ; the swap moved bit 1; rebase
+                ld (V_BASE),a
+                ret
 
 ; ROM00:32CC-32EE, byte for byte.  This is what makes HSBUSY mean anything:
 ; the controller asserts it here, and the firmware's 9.92 ms wait at 32F3 is
