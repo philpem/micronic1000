@@ -994,10 +994,12 @@ Two design points are worth carrying back here. `HSBUSY` is asserted *by* the
 arm and the firmware waits for it to fall, so an unarmed controller reading
 zero means nothing — the arm has to be replayed before the bit is meaningful.
 And each record reports the sticky OR *and* AND of every `LINK_STATUS` sample
-in its window, one every ~35 µs, so no event on the wire's own timescale can
-be aliased away by the ~7 ms record rate.
+in its window, one every ~35 µs while waiting, so no event on the wire's own
+timescale can be aliased away by the record rate. It also records the
+active-low port-`05h` interrupt-source bits directly; keypad bit 0 is the
+control and link bit 2 is the measurement.
 
-The exerciser also holds the handshake armed for ~470 ms against the
+The exerciser also holds the handshake armed for well over 0.5 s against the
 firmware's 9.92 ms. If bit 6 falls late, the timeout is the whole failure and
 the OPEN below is much smaller than it looks.
 

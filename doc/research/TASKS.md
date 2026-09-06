@@ -166,21 +166,26 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Capture a physical IR byte exchange.** Establish modulation, bitrate,
+1. **Run the v13 replacement-ROM exerciser.** Verify stock chips against
+   `ACF8`/`2E12`, burn and label ROM00 sum16 `1CFD`, then follow
+   `doc/re-notes/exerciser-test-plan.md`. The first control is `ISRC` bit 0
+   from N/ENTER/YES; only after it passes are a clear link bit 2 and flat
+   `HSBUSY` meaningful negatives.
+2. **Capture a physical IR byte exchange.** Establish modulation, bitrate,
    byte framing, timing, and whether the controller-queue sync/trailer bytes
    exist at the connector boundary.
-2. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
+3. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-3. **Capture the electrical timing and meanings of the link status/control
+4. **Capture the electrical timing and meanings of the link status/control
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-4. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
+5. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
    selects the top V24 ADAPTOR versus back PLINTH port, and confirm where the
    EXT STORAGE ADAPTER attaches. ROM evidence proves only the shared 4x byte
    transport and the bit5 selector.
-5. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
+6. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
 ### Detailed and historical backlog
@@ -4047,3 +4052,53 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   cannot expose byte 0x0C while the physical exchange stops after 0x03. Open:
   determine the minimal optical acknowledgement that makes the link hardware
   release the next byte; capture `LINK_TXD` and IR together if possible.
+
+## IR link exerciser review and flash-ready ROM (2026-09-06)
+
+* **Replacement ROM00 reviewed and rebuilt as wire format v13.** The burnable
+  image is `analysis/rom_exerciser/micron1_exerciser.bin`, 32768 bytes,
+  sum16 `1CFD`; stock `micron1.bin` remains sum16 `ACF8`, and ROM01 is
+  untouched. The guarded build reports 703 changed bytes and 22 bytes free
+  across the six filler regions.
+* **SHOWSTOPPER FIX — interrupt source attribution is now direct.** The v12
+  plan inferred that an `IRQN` increment with `KEY=FFh` came from the link.
+  That is invalid because `KEY` is sampled only once near the start of a
+  record; a keypad edge can occur later. The ISR now reads active-low port
+  `05h`, complements and ORs it into wire-only `ISRC`: bit 0 is keypad, bit 2
+  is link. Records are 11 bytes:
+  `{COUNT,OR,AND,RXD,SIDE,CTRL,WD,KEY,IRQN,ISTAT,ISRC}`.
+* **SHOWSTOPPER FIX — the keypad positive control is actually armed.** Merely
+  writing IRQ mask `FAh` did not reproduce the paired sleep configuration.
+  After every scan the exerciser now writes `48h` to `ram:F782` and port
+  `02h`, matching `ROM00:1766`-`177F`. This selects column 3; N, ENTER and YES
+  are known positive-control keys.
+* **SHOWSTOPPER FIX — both ports now receive all 128 effective CTRL states.**
+  Alternating the port with the raw sweep counter correlated one port with odd
+  values and the other with even values, so each could cover only 64 states.
+  `RLCA` now moves that parity bit into forced port-select bit 1 first. A
+  regression test proves 128 distinct states on each port.
+* **Safety fix:** the RAM target of the NMI vector receives `RETN` (`ED 45`),
+  not `RET`, and is installed before LCD initialisation. This restores IFF1
+  correctly if a stray NMI occurs.
+* **DISCARDED — physical port polarity was overclaimed.** The branch called
+  `63h`/bit5-set the top port and `43h`/bit5-clear the back port. The emulator
+  proves only menu choice -> wire ID -> latch state and cannot prove physical
+  wiring. Physical polarity remains OPEN per the durable owner-ground-truth
+  rule. The dependent claims were removed from `method.md`,
+  `commstar-evidence.md`, `open-questions.md`, the exerciser source/README,
+  decoder output and test plan. The exerciser alternates both states, so no
+  code-path capability was lost.
+* **Validation:** guarded rebuild reproduced sum16 `1CFD`; 88 tests passed,
+  33 emulator-dependent cases skipped, and 5 subtests passed. A bounded
+  30,000-slice emulator run reached the controller, emitted preamble
+  `A5 5A 0D 80 80`, streamed 11-byte records, and repeatedly wrote the
+  keypad arm value `48h`. The harness does not assert a link INT for this
+  dedicated ROM, so direct `ISRC` behavior remains a hardware test.
+* **Next hardware sequence:** (1) read and `cmp` both fitted ROMs; (2) burn
+  and label `1CFD`; (3) run the pin walk; (4) capture at least 60 seconds in
+  `LISTEN_ONLY`, pressing N/ENTER/YES until `ISRC` bit 0 proves the IRQ path;
+  (5) read `ISRC` bit 2, phase-1 `HSBUSY`, phase-2 `RX byte`/`RXD`, and
+  watchdog count in that order; (6) repeat the same geometry with the
+   `conn3`-`conn13` stimuli; (7) preserve the raw capture, decoder output, and
+   a photo/video of the LCD. Only after that first result should the fixed
+   phases be replaced by a keypad-steered follow-up ROM.

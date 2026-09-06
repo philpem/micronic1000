@@ -608,14 +608,15 @@ The active link id is retained in `fdd4`.
   XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence
   slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
-### Which wire id is which port {#device-table-ports}
+### Wire IDs, latch states, and physical ports {#device-table-ports}
 
-**CONFIRMED: `V24 ADAPTOR` (top) is wire id `63h`, bit 5 SET; `PLINTH` (back)
-is `43h`, bit 5 clear.** This is the reverse of what this page previously
-recorded.
+**CONFIRMED:** the firmware's Load/Run path maps `V24 ADAPTOR` to wire id
+`63h` and `PLINTH` to `43h`, and `LinkPortSelect` maps their bit 5 to two
+different latch states. This corrects the earlier claim that the source picker
+gave `43h` for both choices.
 
-Established by driving the firmware's own Load/Run form in the emulator, one
-run per choice, identical in every other respect:
+Established by driving the form in the emulator, one run per choice, identical
+in every other respect:
 
 | From | `fdd4` | `LinkPortSelect` branch | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
 |---|---|---|---|---|
@@ -630,10 +631,12 @@ of the boolean). So index 1 — `V24 ADAPTOR` — falls through to selector **3*
 and the device table at `ROM00:3267` gives selector 3 = `FE85` = `63h`. Index
 0, `PLINTH`, takes the jump to selector 4 = `FE86` = `43h`.
 
-Combined with the owner's statement that `V24 ADAPTOR` is the top connector
-and `PLINTH` the back one, and with the conn3-conn13 captures being taken at
-the top port under a `V24 ADAPTOR` selection: **bit 5 set drives the top
-port.**
+**OPEN:** which latch state reaches which physical window. Owner-supplied
+ground truth identifies V24 ADAPTOR as the top window and PLINTH as the back
+window, but an emulator trace cannot establish the wiring between a latch bit
+and those windows. The replacement-ROM exerciser alternates both states and
+records `LINK_CTRL` bit 1; watching which window emits is the discriminating
+hardware test.
 
 Two earlier readings were wrong and are superseded:
 
@@ -645,8 +648,9 @@ Two earlier readings were wrong and are superseded:
   separate selection stage; it is `fdd4`, set from the source picker, that
   `LinkBlockTx` actually passes to `LinkPortSelect` at `ROM00:3277`.
 
-The trap in both was `E04B`. Read as a conventional "Z means equal", every
-conclusion downstream of `5C0A` inverts.
+The trap in the earlier menu-to-ID reading was `E04B`. Read as a conventional
+"Z means equal", every conclusion downstream of `5C0A` inverts. That fixes
+the logical mapping above but does not close the physical polarity.
 
 `E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
 shown on the session status screen (**CONFIRMED provenance**):

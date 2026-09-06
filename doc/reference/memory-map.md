@@ -640,7 +640,7 @@ decodes it.
 | `02h` | `KBD_DRIVE` | W | Keyboard drive / configuration latch. `LD A,3Fh` drives all lines (`ROM00:1A42`), `00h` clears them (`ROM00:1A83`); reset writes `FDh` at `ROM00:017B` to select one column. Shadows at `F780` and `F782`. Also written by the NMI and power-down paths. CONFIRMED as the keyboard drive; the non-keyboard uses are **Provisional** |
 | `03h` | `LCD_DATA` | W | HD61830 data byte. CONFIRMED (`ROM00:1F7F`, `1F96`, `1F9E`, `1ED2`) |
 | `04h` | `IRQ_MASK` / `OUT_LATCH` | W | **Interrupt-enable mask, active low.** `ROM00:22E9` does `LD A,1Fh; DI; IM 1; CPL; LD (F784),A; OUT (04h),A` — the mask is complemented before output, so a *set* bit in the argument enables a source. A second entry at `ROM00:2306` passes `A = 2`. Also carries power-latch bits (`PowerLatchSetBit0`/`ClrBit0`, `ROM00:1B36`/`1B41`). Shadow `F784`. CONFIRMED |
-| `05h` | `IRQ_STATUS` / `STATUS_IN` | R | **Interrupt / status byte, active low.** `ROM00:230A` (`IrqWorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` — snapshot to `F785`, complement, test bit 3. Also read at reset (`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it is polled and complemented; the meaning of individual bits beyond bit 3 is **unknown** |
+| `05h` | `IRQ_STATUS` / `STATUS_IN` | R | **Interrupt / status byte, active low.** `ROM00:230A` (`IrqWorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` — snapshot to `F785`, complement, test bit 3. Also read at reset (`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it is polled and complemented; source assignments are byte-verified below |
 | `07h` | `CTRL_07` | W | Control latch, shadow `F786`. Written at power-down (`ROM00:28F2`), by the link watcher (`ROM00:24AD`, `24B8`) and at `ROM00:17A0`, `17B6`, `23CC`. **Only bits 0 and 1 are ever manipulated** ([bit usage](#latch-bit-usage)) — a two-bit output, not an eight-bit one. Function otherwise **unknown** |
 | `08h` | `RTC_ADDR` | W | HD146818 register-address latch. Also reached as `LD C,08h; OUT (C),B` at `ROM00:1801`, `22DD`, `22E4`. CONFIRMED |
 | `23h` | `LCD_REG` | W | HD61830 register/command select. Also `LD C,23h; OUT (C),B` at `ROM00:1F7D`. CONFIRMED |
@@ -730,8 +730,10 @@ is there. `LINK_CTRL` bits 6 and 7 are raised when there is nothing to receive
 and lowered while receiving, which is consistent with an interrupt
 enable/acknowledge pair on the controller.
 
-`analysis/rom_exerciser` runs with interrupts disabled and polls instead, so
-it never exercises this path; it does sample bit 4 in every record.
+`analysis/rom_exerciser` installs its own IM-1 handler, enables sources 0 and
+2, and records both `LINK_STATUS` and the complemented port-`05h` source mask
+at interrupt time. It does not call the firmware receive handler; the point is
+to observe whether the controller raises source 2 without consuming a frame.
 
 ### Which latch bits the firmware ever touches {#latch-bit-usage}
 

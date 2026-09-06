@@ -10,7 +10,7 @@ Everything here has been executed in the emulator, not only read out of the
 ROM — see `analysis/test_barcode.py`.
 
 !!! note "What the device is"
-    The 8-pin side port is the barcode pen, on the project owner's knowledge
+    The 5-pin side port is the barcode pen, on the project owner's knowledge
     of the hardware. **The firmware does not corroborate this**: no string
     names a barcode, pen or symbology, and the default `FE83` wire table
     makes wire `2Bh` the EXT STORAGE ADAPTER. The Ghidra names use a neutral

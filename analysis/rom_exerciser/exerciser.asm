@@ -48,9 +48,9 @@
 ;                  resting value of every status bit, which is the control
 ;                  every other phase is read against.
 ;   1  TX armed    the 32CC sequence, then held for the frame.  THE question:
-;                  does HSBUSY fall?  A frame is ~470 ms, where the firmware
-;                  allows 9.92 ms -- so this is far more patient than the
-;                  firmware, and a late fall would itself explain everything.
+;                  does HSBUSY fall?  A frame is well over 0.5 s, where the
+;                  firmware allows 9.92 ms -- so this is far more patient
+;                  than the firmware; a late fall explains everything.
 ;   2  RX armed    the 3378 sequence, then held.  Does bit 0 ever set, and
 ;                  does LINK_RXD ever come back non-zero?
 ;   3  CTRL sweep  one value per frame, advancing each cycle, covering all
@@ -88,9 +88,8 @@
 ;              PSTAT = LINK_STATUS as LinkProbe left it, STATUS = after the
 ;              frame opening.  The link id is not here: CTRL bit 1 in every
 ;              record names the live port, and the port alternates anyway.
-;   record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT
-;                                             (10 bytes, ~12 ms apart --
-;                                              exactly one 20-column LCD row)
+;   record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
+;                                             (11 bytes; first ten fill LCD row)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
 ;             record is visible and the counter doubles as a time base.  Its
@@ -98,7 +97,7 @@
 ;     OR      every LINK_STATUS sample seen since the last record, OR'd
 ;     AND     every LINK_STATUS sample seen since the last record, AND'd
 ;     RXD     LINK_RXD, read once per record
-;     SIDE    port 2Dh, the 8-pin side port, read once per record
+;     SIDE    port 2Dh, the 5-pin side port, read once per record
 ;     CTRL    the LINK_CTRL value this phase asked for, so a capture is
 ;             self-describing and the sweep needs no schedule shared with
 ;             the decoder
@@ -116,6 +115,9 @@
 ;             for the whole run -- the status the controller had when it
 ;             decided to interrupt, which is not the same as any status a
 ;             poll happens to catch.
+;     ISRC    active-high IRQ_STATUS source bits OR'd across every interrupt.
+;             Bit 0 is the keypad and bit 2 is the link controller, so this
+;             distinguishes them without inferring the source from KEY.
 ;     WD      rolling count of waitready watchdog trips.  It rises only when
 ;             a LINK_CTRL value stopped the controller accepting bytes, which
 ;             is the one sweep outcome that would otherwise be invisible:
@@ -131,9 +133,9 @@
 ; Nothing on the wire's own timescale can be aliased away; only the ordering
 ; of events inside one record is lost.
 ;
-; LINK_PROBE is read once, into the preamble, rather than in the loop: its
-; read side effects are unknown, and the point is to measure HSBUSY without
-; confounds.
+; The first ten fields also occupy exactly one 20-column LCD row.  ISRC is
+; wire-only: its job is source attribution in a recorded capture, while IRQN
+; and ISTAT retain the live interrupt indication on the glass.
 ;
 ; SIDE is here to bootstrap the next burn rather than to measure the link.
 ; The firmware reads bits 0 and 1 of 2Dh (ROM00:1299), the barcode front end
@@ -142,9 +144,6 @@
 ; working.  Holding each side-port pin while watching SIDE identifies the
 ; wiring.  A different peripheral entirely, so it cannot confound the
 ; LINK_STATUS measurement.
-;
-; Before any of that, a ~1.9 s beacon squares the two side-port output bits,
-; so that a silent IR line can be told from a CPU that never ran.
 ;
 ; All loop state lives in memory rather than registers, so every register is
 ; free scratch inside the helpers.  It costs a few microseconds of sample
@@ -158,8 +157,8 @@ LINK_CMD        equ 0x4C
 LINK_TXD        equ 0x4D
 LINK_RXD        equ 0x4E
 LINK_PROBE      equ 0x4F
-SIDE_PORT       equ 0x2D            ; 8-pin side port in;  bits 0,1 read at 1299
-PORT_2C         equ 0x2C            ; 8-pin side port out; bits 0,1 driven at 1283
+SIDE_PORT       equ 0x2D            ; 5-pin side port in;  bits 0,1 read at 1299
+PORT_2C         equ 0x2C            ; 5-pin side port out; bits 0,1 driven at 1283
 PORT_2A         equ 0x2A
 
 CTRL_SHADOW     equ 0xF794          ; the firmware's LINK_CTRL shadow
@@ -172,31 +171,30 @@ LinkProbe       equ 0x348A
 LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
-; 63h is the TOP port (V24 ADAPTOR), 43h the back one (PLINTH).  Established
-; by driving the firmware's own menu in the emulator: selecting V24 ADAPTOR
-; leaves FDD4 = 63h and LinkPortSelect takes the bit5-SET branch (2Ch = 00,
-; LINK_CTRL bit 1 clear); PLINTH leaves 43h and the bit5-clear branch
-; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
-; The port still alternates every cycle, so a wrong guess here costs nothing.
-LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x0C            ; bumped whenever the wire format changes
+; The firmware's Load/Run paths select 63h for V24 ADAPTOR and 43h for PLINTH.
+; LinkPortSelect maps their bit 5 to two latch states, but which state reaches
+; which physical window remains OPEN pending hardware observation.  The run
+; alternates both, so the initial state cannot invalidate the experiment.
+LINK_ID         equ 0x63            ; first wire id; alternates with 43h
+VERSION         equ 0x0D            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
 V_OR            equ 0xC7E0          ; sticky OR of LINK_STATUS, this window
 V_AND           equ 0xC7E1          ; sticky AND of LINK_STATUS, this window
 V_COUNT         equ 0xC7E2          ; record counter; top 2 bits are the phase
-V_BASE          equ 0xC7E3          ; LINK_CTRL as the frame opening left it
-V_SWEEP         equ 0xC7E4          ; phase 3's value, +1 each cycle
-V_WD            equ 0xC7E5          ; waitready watchdog
-V_ID            equ 0xC7E6          ; current link id; bit 5 alternates the port
-V_CTRL          equ 0xC7E7          ; LINK_CTRL the phase asked for (see WD)
-V_WD_N          equ 0xC7E8          ; rolling count of watchdog trips
-V_PSTAT         equ 0xC7E9          ; LINK_STATUS as LinkProbe left it
-V_KEY           equ 0xC7EA          ; key index this record, or FFh
-V_IRQN          equ 0xC7EB          ; link interrupts seen, rolling.  Must stay
-V_ISTAT         equ 0xC7EC          ; directly below V_ISTAT: the ISR walks
+V_SWEEP         equ 0xC7E3          ; phase 3's value, +1 each cycle
+V_WD_N          equ 0xC7E4          ; rolling count of watchdog trips
+V_IRQN          equ 0xC7E5          ; interrupt entries seen, rolling. Must stay
+V_ISTAT         equ 0xC7E6          ; directly below V_ISTAT: the ISR walks
                                     ; from one to the other with DEC HL
+V_ISRC          equ 0xC7E7          ; active-high IRQ sources, sticky for run
+V_WD            equ 0xC7E8          ; waitready watchdog
+V_BASE          equ 0xC7E9          ; LINK_CTRL as the frame opening left it
+V_ID            equ 0xC7EA          ; current link id; bit 5 alternates the port
+V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
+V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
+V_KEY           equ 0xC7ED          ; key index this record, or FFh
 
 ISR_ORG         equ 0x0047          ; fifth free block, 31 bytes, between the
                                     ; bank-init tail at 0044 and NMI at 0066
@@ -242,15 +240,16 @@ CONTRAST        equ 0x40            ; a good way below the stock 70h
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
+KBD_SHADOW      equ 0xF782          ; firmware's port-02h working copy
 IRQ_MASK        equ 0x04            ; interrupt enable, ACTIVE LOW
 IRQ_STATUS      equ 0x05            ; pending, active low; reading acknowledges
 ; ~05h: bit 2, the link, plus bit 0, the keypad.  The keypad is here on
 ; purpose.  With the link alone, a flat IRQN would be ambiguous between "the
 ; controller never interrupts" -- the result we want -- and "the interrupt
 ; setup is broken", which is not a result at all.  The keypad is a genuine
-; interrupt source, so pressing keys proves the path works end to end; KEY
-; disambiguates afterwards, since an interrupt taken while KEY reads FFh had
-; no key down.
+; interrupt source, so pressing keys proves the path works end to end.  ISRC
+; records the source bits from IRQ_STATUS directly; KEY is too far from the
+; interrupt in time to attribute one safely.
 ;
 ; Not a guess: the firmware writes exactly FAh to 04h when it sleeps
 ; (ROM00:1779), and all three of its sleep masks enable bit 0, because the
@@ -302,6 +301,10 @@ isr:            push af
                 dec hl                      ; V_IRQN sits just below V_ISTAT
                 inc (hl)
                 in a,(IRQ_STATUS)
+                cpl                         ; pending bits are active low
+                ld hl,V_ISRC
+                or (hl)
+                ld (hl),a
                 pop hl
                 pop af
                 ei
@@ -321,12 +324,10 @@ dead:           xor a
                 call lcd_hex
 dead_loop:      jr dead_loop
 
-; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  A bare
-; RET there turns a non-maskable interrupt from a jump into whatever RAM holds
-; into a no-op.  It lives in this block because this block is what follows the
-; vector it protects.
-nmi_safe:       ld a,0xC9
-                ld (NMI_VECTOR),a
+; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  Plant a
+; RETN there so a stray NMI returns safely and restores IFF1 from IFF2.
+nmi_safe:       ld hl,0x45ED                ; ED 45 = RETN
+                ld (NMI_VECTOR),hl
                 ret
 nmi_end:
 
@@ -577,6 +578,12 @@ pm_wait:        dec hl
                 ret
 lcd_tab:        db 0x00,0x3C, 0x01,0x75, 0x02,0x13, 0x03,0x3F
                 db 0x04,0x07, 0x08,0x00, 0x09,0x00, 0x0B,0x00
+
+; Reproduce the sleep configuration paired with IRQ mask FAh at ROM00:1766:
+; bit 6 selects the IRQ-wake mode and bit 3 selects keypad column 3.
+kbd_irq_arm:    ld (KBD_SHADOW),a
+                out (PORT_KBD_DRV),a
+                ret
 lo_end:
 
                 org MID_ORG
@@ -608,18 +615,17 @@ mid_end:
 
 start:          di
                 ld sp,STACK
+                call nmi_safe               ; protect the whole LCD init too
                 call lcd_init
 
                 ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
                 ; through F5F6, both uninitialised here.  Point the first at
                 ; our handler -- the firmware installs its own the same way at
-                ; ROM00:2893 -- and make the second a bare RET, so a
-                ; non-maskable interrupt cannot land in whatever RAM holds.
+                ; ROM00:2893.  nmi_safe already protected the NMI path above.
                 ld a,0xC3
                 ld (RST38_VECTOR),a
                 ld hl,isr
                 ld (RST38_VECTOR+1),hl
-                call nmi_safe
                 im 1
 
                 ; A key held at power-up selects the pin walk instead of the
@@ -643,12 +649,11 @@ start:          di
                 xor a
                 ld (CTRL_SHADOW),a
                 ld (PORT2C_SHADOW),a
-                ld (V_SWEEP),a
-                ld (V_BASE),a
-                ld (V_CTRL),a
-                ld (V_WD_N),a
-                ld (V_IRQN),a
-                ld (V_ISTAT),a
+                ld hl,V_SWEEP              ; clear sweep, WD count and the
+                ld b,0x05                  ; three contiguous IRQ fields
+init_clear:     ld (hl),a
+                inc hl
+                djnz init_clear
                 ld a,LINK_ID
                 ld (V_ID),a
 
@@ -725,6 +730,8 @@ stream:         ld a,(V_COUNT)
 
                 call kbd_scan               ; before the snapshot: this
                 ld (V_KEY),a                ; clobbers B, C, D and E
+                ld a,0x48                   ; ROM sleep's source-0 arm state
+                call kbd_irq_arm            ; column 3: N/ENTER/YES are known
 
                 ld a,(V_OR)                 ; snapshot the window just ended --
                 ld b,a                      ; taken after the gap, so windows
@@ -734,7 +741,7 @@ stream:         ld a,(V_COUNT)
                 call accreset
 
                 xor a                       ; the record also goes to the
-                call lcd_at                 ; glass, top row, 16 hex digits
+                call lcd_at                 ; glass, top row, 20 hex digits
 
                 ld a,(V_COUNT)
                 call emit                   ; [0] COUNT
@@ -753,9 +760,12 @@ stream:         ld a,(V_COUNT)
                 ld a,(V_KEY)
                 call emit                   ; [7] key index, or FFh
                 ld a,(V_IRQN)
-                call emit                   ; [8] link interrupts so far
+                call emit                   ; [8] interrupt entries so far
                 ld a,(V_ISTAT)              ; [9] status at interrupt time,
                 call emit                   ;     sticky across the whole run
+                ld a,(V_ISRC)
+                call putbyte                ; [10] source mask; wire-only so
+                                            ; the first ten still fit the LCD
 
                 ld hl,V_COUNT
                 inc (hl)
@@ -780,8 +790,11 @@ newframe:       call gap
                                             ; 3: falls into the sweep
 
 ; Phase 3.  One CTRL value per frame, advancing each cycle so all 256 are
-; covered.  Bit 1 is forced back to the selected port: sweeping it would
-; switch ports underneath the measurement, which is a confound rather than an
+; covered.  Port alternation means each port sees only odd or even raw counter
+; values.  RLCA moves that correlated bit 0 into bit 1 before bit 1 is forced
+; to the selected port; the other seven bits therefore cover all 128 effective
+; states on each port rather than only 64.  Sweeping bit 1 itself would switch
+; ports underneath the measurement, which is a confound rather than an
 ; experiment.
 sweep:          ld hl,V_SWEEP
                 inc (hl)
@@ -789,6 +802,7 @@ sweep:          ld hl,V_SWEEP
                 and 0x02
                 ld c,a
                 ld a,(hl)
+                rlca
                 and 0xFD
                 or c
                 jp ctrl_set
@@ -797,9 +811,9 @@ sweep:          ld hl,V_SWEEP
 ; physical window each latch state drives cannot be settled from the ROM: the
 ; chain from the menu choice to the wire id runs through compiler-generated
 ; forwarding frames, and the two readings of it disagree.  So do not infer it
-; -- drive both and watch which window lights.  ~1.9 s each, alternating, and
-; LINK_CTRL bit 1 is already in every record, so the capture says which state
-; was live without needing a schedule.
+; -- drive both and watch which window lights.  A few seconds each,
+; alternating; LINK_CTRL bit 1 is already in every record, so the capture
+; says which state was live without needing a schedule.
 port_swap:      ld hl,V_ID
                 ld a,(hl)
                 and 0x20

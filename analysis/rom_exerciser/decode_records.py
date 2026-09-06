@@ -6,7 +6,7 @@ reads) or, with --hex, a file of whitespace-separated hex bytes such as an
 Arduino serial log, one frame per line.  Every frame the exerciser emits
 begins on a record boundary, so alignment is structural rather than guessed.
 
-    record   COUNT OR AND RXD SIDE CTRL
+    record   COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
 
 OR and AND are the sticky OR and AND of every LINK_STATUS sample taken during
 the record's window, so for each bit the three possibilities are
@@ -32,8 +32,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 10
-VER = 12
+RECLEN = 11
+VER = 13
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -130,8 +130,8 @@ def main():
     # means the wire id had bit 5 CLEAR (the 43h path), bit 1 clear means it
     # had bit 5 SET (the 63h path).  Which physical window each drives is what
     # the run is measuring -- watch the unit, not this output.
-    for portbit, idname in ((0, "id bit5 SET (63h) = V24 ADAPTOR, top port"),
-                            (2, "id bit5 clear (43h) = PLINTH, back port")):
+    for portbit, idname in ((0, "id bit5 SET (63h); physical port OPEN"),
+                            (2, "id bit5 clear (43h); physical port OPEN")):
         pr = [r for r in records if (r[5] & 2) == portbit]
         if not pr:
             continue
@@ -142,15 +142,28 @@ def main():
     sweep_report(records)
     side = sorted({r[4] for r in records})
     print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
-    irq = max(r[8] for r in records) if records else 0
-    istat = max(r[9] for r in records) if records else 0
-    first = min((r[8] for r in records), default=0)
-    took = (irq - first) & 0xFF
-    print(f"\nlink interrupts: {'none taken' if not took and not istat else str(took) + ' during the capture'}"
-          + (f"; LINK_STATUS at interrupt time OR'd = {istat:02X}" if istat else ""))
-    if not took:
-        print("  (the firmware's receive path is interrupt-driven -- IRQ source 2,"
-              " ROM00:31B6 -- so this is a real negative, not a gap)")
+    took = sum((cur[8] - prev[8]) & 0xFF
+               for prev, cur in zip(records, records[1:]))
+    istat = 0
+    isrc = 0
+    for r in records:
+        istat |= r[9]
+        isrc |= r[10]
+    print(f"\ninterrupt-bearing records: {took}")
+    print(f"IRQ sources observed: {isrc:02X}"
+          f"  keypad(bit0)={'yes' if isrc & 0x01 else 'no'}"
+          f"  link(bit2)={'yes' if isrc & 0x04 else 'no'}")
+    if isrc & 0x04:
+        print(f"  link controller IRQ observed; LINK_STATUS at interrupt time"
+              f" OR'd = {istat:02X}")
+    elif isrc & 0x01:
+        print("  no link IRQ observed; keypad IRQ proves the interrupt path live")
+    else:
+        print("  no IRQ source observed; press a key before treating this as a"
+              " link-controller negative")
+    other = isrc & ~0x05
+    if other:
+        print(f"  other IRQ source bits observed: {other:02X}")
 
     keys = sorted({r[7] for r in records} - {0xFF})
     if keys:

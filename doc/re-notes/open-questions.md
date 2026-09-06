@@ -36,19 +36,15 @@ source tree (not published here).
 
 ## Link identity and port selection
 
-* ~~**Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
-  (back)?**~~ — **CLOSED.** Bit 5 **set** is the top port: `V24 ADAPTOR`
-  gives `fdd4` = `63h` and the `3462` branch of `LinkPortSelect`
-  (`LINK_CTRL` bit 1 clear, `2Ch` bit 5 clear); `PLINTH` gives `43h` and the
-  `3473` branch. Shown by driving the real Load/Run form in the emulator, one
-  run per choice, and independently by the static path through `ROM01:7663`
-  and `ROM00:5C04`. See
+* **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
+  (back)? — OPEN.** Driving the Load/Run form and tracing the static path
+  establishes `V24 ADAPTOR -> 63h -> bit5-set latch state` and
+  `PLINTH -> 43h -> bit5-clear latch state`. It does **not** establish which
+  latch state reaches which physical window; the emulator has no model of
+  that wiring. Resolve by running the replacement-ROM exerciser, which
+  alternates the two states while reporting `LINK_CTRL` bit 1, and observing
+  which window emits. See
   [commstar-evidence](commstar-evidence.md#device-table-ports).
-
-  The earlier note here — that the source picker "does not select between
-  them: driving it both ways yields link id `43h` either way" — was wrong,
-  and wrong in the direction that matters, since it invited building hardware
-  against the back port.
 
 * **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
   Two separate answers, and the second is the surprise.
@@ -56,12 +52,11 @@ source tree (not published here).
   **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
   `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
   `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
-  bit 5 **set**, which is the **top** port
-  ([commstar-evidence](commstar-evidence.md#device-table-ports)). So *if* those
-  ids ever reach `LinkBlockTx`, they select the top connector — the same one
-  the V24 adapter uses.
+  bit 5 **set**, so *if* those ids ever reach `LinkBlockTx`, they select the
+  same still-unmapped connector state. The EXT STORAGE ADAPTER's physical
+  attachment remains unadjudicated.
 
-  The 8-pin side connector is excluded on its own terms: **it has no byte
+  The 5-pin side connector is excluded on its own terms: **it has no byte
   transport.** All eight reads of `2Dh` are barcode edge timing
   (`ROM00:1299`-`13ED`), and `2Ch`'s two outputs are a fixed-width strobe and a
   read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) — no

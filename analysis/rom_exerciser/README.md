@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1781` |
+| `micron1_exerciser.bin` | `1CFD` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1781`** so it
+needs no reference to this repo. **Label the burned exerciser `1CFD`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -42,18 +42,18 @@ is never confused with a stock `ACF8` part.
 analysis/venv/bin/python analysis/rom_exerciser/build.py
 ```
 
-Writes `micron1_exerciser.bin`. The original is never modified. Three edits,
-all guarded — the script refuses rather than clobbering anything if the image
-is not the one it was written against:
+Writes `micron1_exerciser.bin`. The original is never modified. Six filler
+regions and the boot entry are guarded — the script refuses rather than
+clobbering anything if the image is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `0047`-`005B` | the interrupt handler, in a 31-byte run of `00` filler (10 left) |
-| `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
+| `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
+| `0069`-`007F` | `DEAD` display and the NMI guard, exactly filling a 23-byte run |
 | `00A2`-`00FC` | keypad scan and the pin walk, in a 94-byte run (3 left) |
-| `724C`-`72FC` | link and LCD helpers, in a 183-byte run (6 left) |
+| `724C`-`7302` | link, LCD and keypad-arm helpers, exactly filling a 183-byte run |
 | `7CE0`-`7D00` | LCD init, in a 48-byte run (15 left) |
-| `7E96`-`7FE4` | the main body, in a 356-byte run (21 left) |
+| `7E96`-`7FF9` | the main body, exactly filling a 356-byte run |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 All six filler runs must be empty beforehand. Two other runs of zeros are
@@ -68,22 +68,23 @@ and any real one would already be jumping the firmware into 94 bytes of `NOP`. `
 because `0000` → `0103` → `014B`, and the emulator harness starts directly at
 `014B`, so the same patch is exercised on hardware and in the emulator.
 
-The two code regions are a single assembly — `ORG` pads forward and only the
-two real regions are copied out of the blob — so they call each other by name
+The six code regions are a single assembly — `ORG` pads forward and only the
+six real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**687 bytes differ from the original.** One chip: `ROM01` is untouched.
+**703 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
-It initialises the display and **puts every record on the glass as sixteen hex
-digits on the top row**. The headline result is readable with no Arduino, no
-scope and no decode at all — you can watch `OR` and `AND` change while you
-move the Arduino around.
+It initialises the display and **puts the first ten fields of every record on
+the glass as twenty hex digits on the top row**. The headline result is
+readable with no Arduino, no scope and no decode at all — you can watch `OR`
+and `AND` change while you move the Arduino around. The final `ISRC` field is
+wire-only because eleven bytes would wrap the display.
 
 ```
-COUNT OR AND RXD SIDE CTRL WD KEY
-  00  80  80  00   FF   01  00  FF
+COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT
+  00  80  80  00   FF   01  00  FF   00    00
 ```
 
 That display is also the liveness indicator, and a better one than the
@@ -199,9 +200,15 @@ into its own accumulator, and acknowledges by reading `05h`.
 a measurement.** With the link alone, a flat `IRQN` could not be told apart
 from a broken interrupt setup — and the answer to the question this whole
 addition exists to ask would be worthless. The keypad is a genuine interrupt
-source, so pressing keys proves the path end to end. `KEY` separates them
-afterwards: an interrupt taken while `KEY` reads `FFh` had no key down, so it
-was the link's.
+source, so pressing keys proves the path end to end. `ISRC` separates them
+directly from the active-low source bits read from port `05h`: bit 0 is the
+keypad and bit 2 is the link. `KEY` cannot safely attribute an interrupt,
+because it is sampled only once near the start of each record.
+
+The keypad control also mirrors the firmware's sleep configuration after
+every scan: `F782` and port `02h` receive `48h`, paired with the same `FAh`
+IRQ mask at `ROM00:1766`-`177F`. This arms column 3; N, ENTER and YES are
+known keys in that column, so use one of those to prove source 0.
 
 `FAh` is not a guess. The firmware writes exactly that to `04h` when it sleeps
 (`ROM00:1779`), and all three of its sleep masks enable bit 0, because the
@@ -215,13 +222,13 @@ keypad had to be armed as a source rather than merely observed as a field.
 
 It masks everything on the way in and the record loop re-arms once per record,
 so a source that asserts continuously costs one interrupt per record rather
-than livelocking the machine. `IRQN` rising at all is the finding; `ISTAT` is
-the status the controller held when it decided to interrupt, which is not the
-same as any status a poll happens to catch.
+than livelocking the machine. `IRQN` counts those entries, `ISRC` identifies
+their sources, and `ISTAT` is the link status the controller held at interrupt
+time, which is not the same as any status a poll happens to catch.
 
 NMI at `ROM00:0066` jumps through `F5F6`, equally uninitialised here, so a
-bare `RET` is planted there — a non-maskable interrupt becomes a no-op rather
-than a jump into whatever RAM holds.
+`RETN` is planted there before LCD initialisation. A stray NMI returns safely
+and restores the prior interrupt-enable state.
 
 The cost is jitter: the ISR runs inside the sampling loop, so a record whose
 interrupt fired has one ~30 µs gap in its coverage. Bounded to one per record,
@@ -235,26 +242,28 @@ with the frame boundaries.
 
 | | | `LINK_CTRL` | |
 |---|---|---|---|
-| 0 | baseline | `03` | the resting value of every status bit — the control the others are read against |
-| 1 | TX armed | `13` | `ROM00:32CC`-`32EE` byte for byte, then held for the whole frame |
-| 2 | RX armed | `12` | `ROM00:3378`-`33A6` byte for byte, dummy `LINK_RXD` read included |
+| 0 | baseline | `01` / `03` | the resting value for bit5-set / bit5-clear wire IDs — the control the others are read against |
+| 1 | TX armed | `11` / `13` | bit5-set / bit5-clear; `ROM00:32CC`-`32EE` byte for byte, then held for the whole frame |
+| 2 | RX armed | `10` / `12` | bit5-set / bit5-clear; `ROM00:3378`-`33A6` byte for byte, dummy `LINK_RXD` read included |
 | 3 | CTRL sweep | varies | one value per frame, advancing each cycle, all 128 with bit 1 held |
 
 **Phase 1 is the experiment.** `HSBUSY` is asserted *by* the arm and the
 firmware waits for it to fall — merely watching an idle controller says
-nothing, which is why the arm has to be replayed. A frame is ~470 ms where the
-firmware allows 9.92 ms, so this is far more patient than the firmware: if the
-handshake completes late, that alone explains the failure and points at a
-fixable timeout rather than a missing protocol.
+nothing, which is why the arm has to be replayed. A frame is well over 0.5 s,
+where the firmware allows 9.92 ms, so this is far more patient than the
+firmware: if the handshake completes late, that alone explains the failure
+and points at a fixable timeout rather than a missing protocol.
 
 Phase 2 asks whether the receive path ever delivers anything. Bit 0, not bit
 4, is the bit that says a byte arrived — it gates the `INI` loop at
 `ROM00:33CF`.
 
-Phase 3 covers what the firmware never writes. Bits 0, 1, 4 and 5 are the only
-ones it ever touches, so bits 2, 3, 6 and 7 are untried. Bit 1 is forced to the
-selected port: sweeping it would switch ports underneath the measurement,
-which is a confound rather than an experiment.
+Phase 3 covers every combination, including the two bits the firmware never
+writes: bits 2 and 3. Bit 1 is forced to the selected port because sweeping it
+would switch ports underneath the measurement. The raw sweep counter is
+rotated left first: port alternation fixes its original bit 0, and the rotate
+moves that correlated bit into the forced-away bit 1. Thus each port really
+does receive all 128 effective states.
 
 A `LINK_CTRL` value that stops the controller accepting bytes would stall the
 reporting channel, so `waitready` has a watchdog — after ~9 ms with no `TXRDY`
@@ -268,7 +277,8 @@ the Arduino's burst delimiter fires:
 
 ```
 preamble   A5 5A VER PSTAT STATUS         once, at power-up
-record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
+record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
+                                             64 per frame
 ```
 
 | field | |
@@ -277,12 +287,13 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `OR` | every `LINK_STATUS` sample taken during this record's window, OR'd together |
 | `AND` | the same samples, AND'd together |
 | `RXD` | `LINK_RXD`, read once per record, after the status samples |
-| `SIDE` | port `2Dh`, the 8-pin side port, read once per record |
+| `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 | `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |
 | `IRQN` | rolling count of interrupts taken — link **and keypad**, see below |
 | `ISTAT` | `LINK_STATUS` OR'd across every interrupt, sticky for the run |
+| `ISRC` | active-high port-`05h` source bits OR'd across every interrupt; bit 0 is keypad and bit 2 is link. Wire-only; the first ten fields fill the LCD row |
 
 `OR` and `AND` are what make the modest record rate sufficient. Waiting for
 `TXRDY` is a tight polling loop — one `LINK_STATUS` sample every ~35 µs — and
@@ -332,32 +343,34 @@ The port log lands in `/tmp/opencode/micronic_boot_io.txt`. The expected
 opening matches what `LinkBlockTx` does, access for access:
 
 ```
-  0  PC=7E9E  2A = 20     the cold boot's own 2Ah setup, reproduced
-  1  PC=345F  2A = 20     LinkPortSelect
-  2  PC=347D  4A = 02     LINK_CTRL bit 1 set  -- port select, id bit 5 clear
-  3  PC=3489  2C = 20     port 2Ch bit 5 set
-  4  PC=3491  4F = 1F     LinkProbe WRITES LINK_PROBE
-  5  PC=349D  4A = 02     probe: ctrl bit 5 clear
-  6  PC=34A7  4A = 03     probe: ctrl bit 0 set
-  7  PC=34B1  4A = 02     probe: ctrl bit 0 clear
-  8  PC=34B7  2C = 00     probe done, port 2Ch restored
-  9  PC=34DC  4A = 02     LinkPresent
- 10  PC=34E6  4A = 02
- 11           4A = 02     our frame opening: bit 0 low
- 12           4A = 03                        bit 0 high
- 13           4A = 03                        bit 4 low
+  0  PC=7EB8  2A = 20     the cold boot's own 2Ah setup, reproduced
+  1  PC=3493  4F = 1F     LinkProbe WRITES LINK_PROBE
+  2  PC=349D  4A = 00     probe: ctrl bit 5 clear
+  3  PC=34A7  4A = 01     probe: ctrl bit 0 set
+  4  PC=34B1  4A = 00     probe: ctrl bit 0 clear
+  5  PC=34B7  2C = 00     probe done, port 2Ch restored
+  6  PC=34DC  4A = 00     LinkPresent
+  7  PC=34E6  4A = 00
+  8  PC=345F  2A = 20     LinkPortSelect, id bit 5 set
+  9  PC=346C  4A = 00     LINK_CTRL bit 1 clear
+ 10  PC=3489  2C = 00     port 2Ch bit 5 clear
+ 11  PC=72B3  4A = 00     our frame opening: bit 0 low
+ 12  PC=72B3  4A = 01                        bit 0 high
+ 13  PC=72B3  4A = 01                        bit 4 low
  14  PC=34F7  4C = 81     LINK_CMD -- the opening flag
- 15+          4D = ..     the preamble, then records
+ 15+ PC=728A  4D = ..     version-13 preamble, then 11-byte records
 ```
 
-`--max-slices 30000` because the beacon burns ~1.9 s of emulated time before
-the link is touched at all.
+`--max-slices 30000` runs long enough to pass LCD initialisation and emit
+multiple complete record frames.
 
 Piping the `4Ch`/`4Dh` writes into the decoder gives the emulator's own
 version of the result. Its synthetic controller reports a constant `80h` and
 ignores `LINK_CTRL`, so every phase reads the same — only the code path is
-validated here, which is the intent. The values are what the hardware run is
-for.
+validated here, which is the intent. The harness does not raise a link INT for
+this ROM, so `ISRC` remains zero in emulation; the N/ENTER/YES positive control
+and source attribution must be checked on hardware. The values are what the
+hardware run is for.
 
 ## On the hardware
 
@@ -378,11 +391,11 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-38 bytes of filler remain across the six blocks.
+22 bytes of filler remain across the six blocks.
 
 ## Restoring
 
-Put the original chip back. What it touches in RAM: nine variables and a few
+Put the original chip back. What it touches in RAM: fourteen variables and a few
 bytes of stack in the upper TPA (`C7E0`-`C800`, which the RAM map documents as
 free), and the firmware's own I/O shadows at `F78B`, `F78D`, `F794`, `F796`
 and `F799`. Those shadows are volatile working copies that the firmware

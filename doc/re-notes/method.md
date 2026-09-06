@@ -36,22 +36,21 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
 * The `08h/28h` pair **is** the HD146818 RTC; the `4Ah-4Fh` cluster is not.
 * There is no serial EEPROM; the serial number is user-entered and lives in
   battery RAM near `FEAB`.
-* The **8-pin** side port was used with a barcode pen; the port-`2Dh`
+* The **5-pin** side port was used with a barcode pen; the port-`2Dh`
   edge-timing code is the barcode-reader front end (`Barcode_` prefix). The
   owner's reading of it: VCC and GND (determined), one GPIO input nominally
   for the barcode pen, and potentially two GPIO outputs — which matches the
   firmware, where `2Dh` is read-only and `2Ch` bits 0 and 1 are the only
   candidate outputs ([bit usage](../reference/memory-map.md#port-2ch-bits)).
 * The two IR ports are **V24 ADAPTOR = top, PLINTH = back**. Firmware
-  selects between two line states by wire-id bit 5, and **bit 5 set is the
-  top port**: `V24 ADAPTOR` gives `fdd4` = `63h` and the `3462` branch of
-  `LinkPortSelect`; `PLINTH` gives `43h` and the `3473` branch. Established
-  by driving the real Load/Run form in the emulator, one run per choice, and
-  independently by the static path. See
+  selects between two line states by wire-id bit 5. The Load/Run paths select
+  `63h` for V24 ADAPTOR and `43h` for PLINTH, and the latch mapping is
+  byte-verified, but **which bit-5 value reaches which physical window is
+  OPEN** pending a hardware observation. See
   [commstar-evidence](commstar-evidence.md#device-table-ports).
 * All drive `C:`+ storage I/O runs over the 4-wire byte transport, so the
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
-  `C:=0x73`, `D:=0x72` (both bit 5 = 1, i.e. the top port).
+  `C:=0x73`, `D:=0x72` (both bit 5 = 1, hence the same still-unmapped port).
   **Contradicted in part by the ROM**, which is worth recording rather than
   reconciling away: every one of the fourteen call sites of the drive-id
   lookup at `ROM00:0824` refuses a non-zero id, so *this* firmware's BDOS

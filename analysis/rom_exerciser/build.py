@@ -2,20 +2,16 @@
 """Assemble the link exerciser and patch it into a copy of ROM00.
 
 Produces a burnable image; the original micron1.bin is never modified.  The
-code is split across the two runs of 00 filler that ROM00 has room in, and
+code is split across six runs of 00 filler that ROM00 has room in, and
 every edit is checked before it is applied:
 
-  1. 724C-7302 (183 bytes) takes the helpers and the beacon;
-  2. 7E96-7FF9 (356 bytes) takes the main body;
-
-     both must be entirely zero beforehand -- if either is not, this ROM is
-     not the one this script was written against and it refuses rather than
-     clobbering code;
-
-  3. the cold-boot entry at 014B is replaced with a jump to the exerciser,
+  1. 0047-0065, 0069-007F, 00A2-00FF, 724C-7302, 7CE0-7D0F and
+     7E96-7FF9 take the ISR, NMI guard, keypad/pin walk, helpers, LCD init and
+     main body.  Every run must be entirely zero beforehand;
+  2. the cold-boot entry at 014B is replaced with a jump to the exerciser,
      a three-byte edit, after checking it still holds the prologue we expect.
 
-The two sections are one assembly, so they can call each other by name.  ORG
+The six sections are one assembly, so they can call each other by name.  ORG
 pads forward, so the blob spans the firmware that sits between them -- only
 the two real regions are ever copied out of it.
 
