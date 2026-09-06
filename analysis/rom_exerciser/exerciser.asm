@@ -84,7 +84,9 @@
 ; controller is simply not fed for long enough to drain its shifter and stop
 ; clocking.  Status is still sampled all the way through it.
 ;
-;   preamble   A5 5A VER ID PROBE STATUS      (6 bytes, sent once)
+;   preamble   A5 5A VER ID PSTAT STATUS      (6 bytes, sent once)
+;              PSTAT = LINK_STATUS as LinkProbe left it, STATUS = after the
+;              frame opening
 ;   record     COUNT OR AND RXD SIDE CTRL WD  (7 bytes, ~8.5 ms apart)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
@@ -160,7 +162,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
 ; The port still alternates every cycle, so a wrong guess here costs nothing.
 LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x08            ; bumped whenever the wire format changes
+VERSION         equ 0x09            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -173,6 +175,7 @@ V_WD            equ 0xC7E5          ; waitready watchdog
 V_ID            equ 0xC7E6          ; current link id; bit 5 alternates the port
 V_CTRL          equ 0xC7E7          ; LINK_CTRL the phase asked for (see WD)
 V_WD_N          equ 0xC7E8          ; rolling count of watchdog trips
+V_PSTAT         equ 0xC7E9          ; LINK_STATUS as LinkProbe left it
 
 LO_ORG          equ 0x724C          ; the second free block, 183 bytes
 HI_ORG          equ 0x7E96          ; the first, 356 bytes
@@ -227,10 +230,21 @@ wr_loop:        call sample
                 jr nz,wr_loop
                 ld hl,V_WD_N                ; mark the trip in the record
                 inc (hl)
-                ld a,(V_BASE)               ; restore the hardware, but NOT
-                ld (CTRL_SHADOW),a          ; V_CTRL: the record must still
-                out (LINK_CTRL),a           ; name the value that stalled
-                jr waitready
+                call wd_blink               ; ... and on the side port, which
+                ld a,(V_BASE)               ; is the only channel that still
+                ld (CTRL_SHADOW),a          ; works when the wire does not
+                out (LINK_CTRL),a           ; V_CTRL is untouched, so the
+                jr waitready                ; record still names the culprit
+
+; Toggle side-port output bit 0, preserving bit 5 -- which is the port select,
+; so this must go through the shadow.  The IR channel cannot report that the
+; IR channel has stopped; this can.  Side port toggling with no IR traffic
+; means the code is alive and the controller is refusing bytes.
+wd_blink:       ld a,(PORT2C_SHADOW)
+                xor 0x01
+                ld (PORT2C_SHADOW),a
+                out (PORT_2C),a
+                ret
 
 ; A = byte to put on the wire.
 putbyte:        ld c,a
@@ -339,6 +353,10 @@ start:          di
                 ; the selection.  It also calls 34D2, clearing LINK_CTRL bits
                 ; 6 and 7 -- the state LinkBlockTx transmits in.
                 call LinkProbe
+                ld (V_PSTAT),a              ; it returns LINK_STATUS (34BA);
+                                            ; the controller's state straight
+                                            ; out of reset, worth having as a
+                                            ; reference for every later sample
 
                 ; --- select the port exactly as LinkBlockTx does at 3277
                 ld a,LINK_ID
@@ -363,12 +381,16 @@ settle:         djnz settle
                 ; --- open the frame.  If the controller never reports ready
                 ; there is nothing to report with, so silence on the wire is
                 ; itself the result: it would mean TXRDY never asserts.
-                call LinkPresent
-                jr z,dead
-                call LinkWaitReady
-                jr z,dead
-
-                call accreset
+                ; LinkPresent uses the firmware's own 9.7 ms timeout, which
+                ; a slow-starting controller could miss once.  Retry before
+                ; concluding anything; after this, putbyte's watchdog covers
+                ; the wait, so there is no second timeout to fail.
+                ld b,0x10
+open_try:       call LinkPresent            ; preserves BC
+                jr nz,opened
+                djnz open_try
+                jr dead
+opened:         call accreset
 
                 ; --- preamble.  Identifies the image and its wire format, and
                 ; gives the receiver a known 6 bytes to confirm alignment on
@@ -381,10 +403,7 @@ settle:         djnz settle
                 call putbyte
                 ld a,LINK_ID
                 call putbyte
-                in a,(LINK_PROBE)           ; SPECULATIVE: the firmware only
-                                            ; ever WRITES 4Fh (3491), so this
-                                            ; may be floating bus.  Captured
-                                            ; once, never in the loop.
+                ld a,(V_PSTAT)              ; status as the reset left it
                 call putbyte
                 in a,(LINK_STAT)
                 call putbyte
@@ -423,7 +442,13 @@ stream:         ld a,(V_COUNT)
                 inc (hl)
                 jr stream
 
-dead:           jr dead
+; Reached only when the controller will not open a frame at all.  Repeat the
+; beacon rather than spin silently: a beacon that runs once and stops means
+; the stream started and then the transmitter stalled; one that repeats for
+; ever means we never got a frame open.  Silence with no beacon at all means
+; the patch never ran.  Three causes, three signatures.
+dead:           call beacon
+                jr dead
 
 ; ---------------------------------------------------------------------------
 ; Frame boundary: idle, flag, then put the controller into this phase's state.

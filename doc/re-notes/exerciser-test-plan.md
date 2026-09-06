@@ -70,11 +70,22 @@ port. Read them in this order.
 
 ### Is the run valid at all?
 
+| side port | wire | meaning |
+|---|---|---|
+| beacon once, then quiet | streaming | running normally |
+| beacon once, then quiet | silent | the stream started, then the transmitter stalled |
+| beacon **repeating for ever** | silent | never got a frame open — `LinkPresent` failed 16 times running |
+| bit 0 toggling irregularly | silent | the watchdog is tripping: code alive, controller refusing bytes |
+| nothing at all | silent | the patch never ran. Not a result |
+
+The side port carries those distinctions because the IR channel cannot report
+that the IR channel has stopped. Watch a side-port pin on the scope alongside
+the IR line, not instead of it.
+
+In the decode:
+
 | observation | meaning |
 |---|---|
-| beacon on a side-port pin, then wire traffic | running normally |
-| beacon, but the wire stays silent | `TXRDY` never asserts — a real result, see below |
-| no beacon at all | the patch never ran: bad burn, bent pin, wrong socket. Not a result |
 | `counter discontinuities` > 0 | records were lost in capture, not by the handheld |
 | `watchdog trips` > 0 | some `LINK_CTRL` value stopped the controller accepting bytes; the sweep table names it |
 
@@ -127,8 +138,9 @@ everything since `conn3` has been mis-aimed.
 * Optics not aligned — the `conn3`–`conn13` geometry is known good; do not
   change it for this run.
 * Capturing less than one full cycle (~1.9 s), so a phase is missing.
-* Reading `LINK_PROBE` in the preamble as meaningful: the firmware only ever
-  *writes* `4Fh`, so `00h` or `FFh` there is no information.
+* Treating the preamble's `PSTAT` as a controller identity: it is
+  `LINK_STATUS` immediately after `LinkProbe`, i.e. the reset state, and is
+  useful only as the reference the phase readings are compared against.
 
 ## After this run
 

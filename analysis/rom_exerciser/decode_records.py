@@ -33,7 +33,7 @@ sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
 RECLEN = 7
-VER = 8
+VER = 9
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -101,9 +101,9 @@ def main():
           f"{f', {short} not a whole number of records' if short else ''}")
 
     if preamble:
-        ver, lid, probe, st = preamble[2:6]
+        ver, lid, pstat, st = preamble[2:6]
         print(f"\npreamble  version {ver}  LINK_ID {lid:02X}  "
-              f"LINK_PROBE {probe:02X}  LINK_STATUS {st:02X}")
+              f"LINK_STATUS after reset {pstat:02X}, after frame open {st:02X}")
         if ver != VER:
             print(f"  ! this decoder is written for version {VER}")
     else:
