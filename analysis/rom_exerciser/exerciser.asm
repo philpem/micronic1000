@@ -190,14 +190,33 @@ HI_ORG          equ 0x7E96          ; first free block, 356 bytes
 
 LCD_REG         equ 0x23            ; HD61830 register index
 LCD_DAT         equ 0x03            ; ... and its data port
-PORT_DISP       equ 0x2B            ; display drive level (the firmware's
-                                    ; FBC8, applied at ROM00:35C3)
-CONTRAST        equ 0x03            ; The firmware's own default is 07h, which
-                                    ; the owner reports is far too dark on this
-                                    ; unit and reduced significantly.  03h is
-                                    ; the lowest of the three levels the
-                                    ; settings table at ROM00:15E0 offers;
-                                    ; 07h and 0Bh are the others.
+LCD_CONTRAST    equ 0x46            ; contrast DAC; see CONTRAST below
+
+; ---------------------------------------------------------------------------
+; DISPLAY CONTRAST -- change this one number if the screen is unreadable.
+;
+; Port 46h is the contrast DAC.  The firmware keeps its level in ram:FC05 and
+; pushes it out at ROM00:1FD4 (LD A,(FC05) / LD C,46h / OUT (C),A -- an ED 79
+; form, which is why a scan for D3 46 does not find it).
+;
+;   range        00h to FFh
+;   LOWER        lighter.  The firmware's adjust-down key steps DEC A twice
+;                and clamps at 0 (ROM00:1D4A); adjust-up does INC A twice and
+;                clamps at FFh (ROM00:1D60).  So the UI moves in steps of 2.
+;   firmware     70h, set at cold boot (ROM00:0257).  The owner reports this
+;   default      is almost black on this unit and turns it down by hand every
+;                time, which is exactly the thing this constant exists to
+;                avoid -- there is no settings UI here to reach for.
+;
+; If the screen is still too dark, lower it; if it has gone too faint, raise
+; it.  Rebuild and reburn; nothing else depends on the value.
+;
+; Not to be confused with port 2Bh, which an earlier version of this file had
+; wrong: 2Bh is the BEEPER, and writing a contrast value to it would have made
+; the unit sound continuously.  Confirmed against the MAME driver
+; (micronic.cpp): 2Bh beep_w, 46h lcd_contrast_w, 2Ch bit 4 backlight.
+; ---------------------------------------------------------------------------
+CONTRAST        equ 0x40            ; a good way below the stock 70h
 
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
@@ -265,8 +284,14 @@ ks_done:        ld a,c
 ; reference, no second channel, an LED and an eye would do.
 ;
 ; Entered by holding any key at power-up, and never left: it is a different
-; job from measuring the link, and it drives 2Ch bit 5, which is the IR port
-; select.
+; job from measuring the link, and it drives 2Ch bits that are not connector
+; pins at all.
+;
+; Two of the four groups identify themselves without a probe.  2Ch bit 4 is
+; the LCD BACKLIGHT, so its five-pulse group flashes the screen; bit 5 is the
+; IR port select.  That leaves bits 0 and 1 -- the pair the barcode front end
+; drives at ROM00:1283 and 1519 -- as the real side-connector candidates, and
+; the other two groups as a free calibration of the count.
 portmap:        ld d,0x01                   ; bit under test
                 ld c,0x01                   ; ... pulses that many times
 pm_bit:         xor a
@@ -391,14 +416,21 @@ ctrl_put:       ld (hl),a
 ; HD61830 LCD.  Register-indexed: port 23h picks the register, port 03h
 ; carries the byte.  Nothing here is invented -- the init values are the ones
 ; the firmware writes at boot, captured from a stock emulator run, and the
-; drive level comes from its own settings table.  Skipping all of it is why a
-; patched boot comes up dark: nothing has configured the controller, set the
-; drive level, or cleared 160 cells of power-on garbage out of its RAM.
+; contrast value is the firmware's own, turned down.  Skipping all of it is
+; why a patched boot shows nothing usable: nothing has configured the
+; controller, set the contrast DAC, or cleared 160 cells of power-on garbage
+; out of the display RAM.
 ;
 ; This is now the primary liveness indicator, and a better one than the
 ; side-port beacon it replaces: text on the glass cannot be mistaken for
 ; anything else.  The beacon's other job, mapping pins, belongs to the pin
 ; walk.
+;
+; Port map, confirmed against the MAME driver (micronic.cpp) as well as the
+; ROM: 00h keypad read, 02h keypad drive, 03h/23h HD61830 data/control,
+; 08h/28h RTC, 2Bh BEEPER, 2Ch bit 4 backlight, 46h contrast, 47h bank select,
+; 48h/49h status flag.  MAME does not model 4Ah-4Fh at all, which is the whole
+; reason this exerciser exists.
 ; ---------------------------------------------------------------------------
 
 ; A = cell address 0..159.  The controller auto-increments after each data
@@ -467,8 +499,8 @@ li_loop:        ld a,(hl)
                 out (LCD_DAT),a
                 inc hl
                 djnz li_loop
-                ld a,CONTRAST
-                out (PORT_DISP),a
+                ld a,CONTRAST               ; see the CONTRAST block above
+                out (LCD_CONTRAST),a
                 xor a                       ; clear 160 cells of power-on
                 call lcd_at                 ; garbage
                 ld b,0xA0

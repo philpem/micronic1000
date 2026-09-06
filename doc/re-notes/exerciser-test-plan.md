@@ -82,8 +82,9 @@ undocumented and the unit may do something unexpected.
    prints. `ROM01` is untouched.
 2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
    first: a counting hex row means everything downstream is working, and if
-   the contrast is wrong for your unit, change `CONTRAST` (`03`/`07`/`0Bh`)
-   before going further. This is the control run and everything else is read
+   the contrast is wrong for your unit, change `CONTRAST` in `exerciser.asm`
+   — port `46h`, `00h`-`FFh`, lower is lighter, stock firmware boots to `70h`
+   — before going further. This is the control run and everything else is read
    against it. Capture ≥60 s (≈8 full phase cycles, ≈32 sweep values).
 3. **Watch which window blinks** during each ~1.9 s half. Note it.
 4. **Press a few keys** during the capture — `KEY` records the index

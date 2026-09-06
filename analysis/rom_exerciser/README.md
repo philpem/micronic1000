@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `F295` |
+| `micron1_exerciser.bin` | `F2ED` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `F295`** so it
+needs no reference to this repo. **Label the burned exerciser `F2ED`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -102,11 +102,19 @@ Then 160 cells are cleared. Skipping all of this is exactly why a patched boot
 comes up dark: nothing has configured the controller, set the drive level, or
 cleared the power-on garbage out of its RAM.
 
-**Contrast** is port `2Bh` — the firmware's `FBC8`, applied at `ROM00:35C3`.
-`CONTRAST` is set to `03h`, the lowest of the three levels the firmware's own
-settings table at `ROM00:15E0` offers (`03`, `07`, `0B`), because the owner
-reports the stock default of `07h` is far too dark on this unit. Raise it if
-yours differs.
+**Contrast is port `46h`**, and `CONTRAST` in `exerciser.asm` is the one
+number to change if the screen is unreadable. The firmware keeps the level in
+`FC05` and pushes it out at `ROM00:1FD4`; the range is `00h`-`FFh` and **lower
+is lighter**. Stock firmware boots to `70h` — which the owner reports is almost
+black on this unit, and turns down by hand every cold start, since `0257`
+overwrites `FC05` on every boot regardless of what was saved. This build ships
+`40h`.
+
+Not port `2Bh`: **that is the beeper**, and an earlier version of this file had
+it wrong — a contrast value written there would have made the unit sound
+continuously. Both identifications are in `doc/reference/memory-map.md` and are
+corroborated by MAME's driver (`micronic.cpp`: `2Bh` `beep_w`, `46h`
+`lcd_contrast_w`, `2Ch` bit 4 backlight).
 
 **The emulator will not render this.** `boot_hw.py` draws the framebuffer at
 `FC06`, which the firmware maintains as a shadow; the exerciser writes the
@@ -127,6 +135,12 @@ with a countable pulse code: **bit 0 pulses once, bit 1 twice, bit 4 five
 times, bit 5 six times**, each group separated by a long gap, repeating for
 ever. Probe a pin, count the pulses, and you have its bit. No timing
 reference, no second scope channel — an LED and an eye would do.
+
+Two of the four groups identify themselves with no probe at all: `2Ch` bit 4
+is the **LCD backlight**, so its five-pulse group flashes the screen, and bit 5
+is the IR port select. That leaves bits 0 and 1 — the pair the barcode front
+end drives — as the real side-connector candidates, with the other two groups
+as a free calibration of your counting.
 
 Bits it is not driving leave a silent slot, so the count still equals the bit
 number and nothing shifts. `PORTMAP_BITS` in `exerciser.asm` selects the set;
