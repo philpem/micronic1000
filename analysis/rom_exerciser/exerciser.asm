@@ -247,10 +247,16 @@ IRQ_STATUS      equ 0x05            ; pending, active low; reading acknowledges
 ; ~05h: bit 2, the link, plus bit 0, the keypad.  The keypad is here on
 ; purpose.  With the link alone, a flat IRQN would be ambiguous between "the
 ; controller never interrupts" -- the result we want -- and "the interrupt
-; setup is broken", which is not a result at all.  The keypad is a source we
-; can trigger by hand, so pressing keys proves the path works end to end.
-; KEY disambiguates afterwards: interrupts arriving while KEY reads FFh are
-; the link's, because no key was down.
+; setup is broken", which is not a result at all.  The keypad is a genuine
+; interrupt source, so pressing keys proves the path works end to end; KEY
+; disambiguates afterwards, since an interrupt taken while KEY reads FFh had
+; no key down.
+;
+; Not a guess: the firmware writes exactly FAh to 04h when it sleeps
+; (ROM00:1779), and all three of its sleep masks enable bit 0, because the
+; keypad is what wakes the machine.  Note KEY itself does NOT come from the
+; interrupt -- kbd_scan polls the matrix directly through ROM00:1A44 -- which
+; is precisely why KEY alone could never have proved the interrupt path live.
 IRQ_ENABLE      equ 0xFA
 RST38_VECTOR    equ 0xF5F3          ; the ROM's 0038 jumps through this RAM
 NMI_VECTOR      equ 0xF5F6          ; cell, and 0066 through this one

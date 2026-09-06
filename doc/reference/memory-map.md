@@ -683,6 +683,30 @@ Reading `05h` appears to acknowledge: three sites (`ROM00:01B1`, `0238`,
 `288A`) read it and discard the value, and at `288A` the very next action is
 the HD146818's own acknowledge (`LD A,0Ch; OUT (08h); IN A,(28h)`).
 
+#### Sleep confirms bit 0 is the keypad {#sleep-wake}
+
+**CONFIRMED, and it is the cleanest evidence in this table.** Entering sleep
+(`ROM00:1775`-`177F`) selects one of three masks and writes it to `04h`:
+
+| | value | enabled (active low) |
+|---|---|---|
+| `1775` | `F8h` | 0, 1, 2 |
+| `1779` | `FAh` | 0, 2 |
+| `177D` | `D8h` | 0, 1, 2, 5 |
+
+**Bit 0 is enabled in all three**, because it is what wakes the machine. The
+same sequence prepares the matrix for it: `ROM00:1766` writes `48h` to the
+keyboard drive rather than the usual `3Fh` — one column held down plus the
+bit 6 mode flag — so a key in that column pulls a sense line while everything
+else is quiet, and the wake path at `17D5` restores `3Fh` (`AND 3Fh`) on the
+way back out. Sleep itself is a spin loop at `1793`, not a `HALT`.
+
+So the keypad is a genuine interrupt source, not something the firmware
+discovers by polling; `Kbd_ScanMain` at `18F0` is its *handler*. Note the
+`FAh` case is exactly bits 0 and 2 — keypad and link — which is the mask
+`analysis/rom_exerciser` uses, arrived at independently and then found to be
+one the firmware itself uses.
+
 #### The link interrupt {#link-interrupt}
 
 Worth stating separately, because it changes the picture of how the link is

@@ -198,10 +198,20 @@ into its own accumulator, and acknowledges by reading `05h`.
 **The keypad (source 0) is armed on purpose, and it is the control rather than
 a measurement.** With the link alone, a flat `IRQN` could not be told apart
 from a broken interrupt setup — and the answer to the question this whole
-addition exists to ask would be worthless. The keypad is a source that can be
-triggered by hand, so pressing keys proves the path end to end. `KEY`
-separates them afterwards: an interrupt taken while `KEY` reads `FFh` had no
-key down, so it was the link's.
+addition exists to ask would be worthless. The keypad is a genuine interrupt
+source, so pressing keys proves the path end to end. `KEY` separates them
+afterwards: an interrupt taken while `KEY` reads `FFh` had no key down, so it
+was the link's.
+
+`FAh` is not a guess. The firmware writes exactly that to `04h` when it sleeps
+(`ROM00:1779`), and all three of its sleep masks enable bit 0, because the
+keypad is what wakes the machine — see
+[sleep and wake](../../doc/reference/memory-map.md#sleep-wake).
+
+Worth keeping straight: `KEY` does **not** come from the interrupt.
+`kbd_scan` polls the matrix directly through `ROM00:1A44`, which is exactly
+why `KEY` alone could never have proved the interrupt path live, and why the
+keypad had to be armed as a source rather than merely observed as a field.
 
 It masks everything on the way in and the record loop re-arms once per record,
 so a source that asserts continuously costs one interrupt per record rather

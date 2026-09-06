@@ -47,6 +47,13 @@ apart from a broken interrupt setup, and the whole answer to Q3 would be
 worthless. `KEY` separates them afterwards: an interrupt taken while `KEY`
 reads `FFh` had no key down, so it was the link's.
 
+The keypad is a real interrupt source, which is why this works: it is what
+wakes the machine from sleep, and all three of the firmware's sleep masks
+enable it ([sleep and wake](../reference/memory-map.md#sleep-wake)). `KEY`
+itself is polled rather than interrupt-driven, so it reports presses whether
+or not interrupts function — which is the whole reason it cannot serve as the
+control on its own.
+
 Q5 is already settled from the firmware
 ([commstar-evidence](commstar-evidence.md#device-table-ports)) — the run
 re-measures it because it costs 20 bytes and because getting it wrong silently
