@@ -984,6 +984,23 @@ reads `LINK_STATUS` back, turning `HSBUSY` from an unobservable into a
 measurement; and a **real adapter or plinth**, one capture of which would
 settle in seconds what thirteen runs could not infer.
 
+T6 is now built: `analysis/rom_exerciser/`. It replaces the cold-boot entry,
+replays `LinkBlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and
+`LinkBlockRx`'s (`3378`-`33A6`) byte for byte, and reports `LINK_STATUS` back
+over `LINK_TXD` — the same wire, decoded by the same Arduino. The measurement
+it makes is the one this page could not: whether bit 6 falls, and under what.
+
+Two design points are worth carrying back here. `HSBUSY` is asserted *by* the
+arm and the firmware waits for it to fall, so an unarmed controller reading
+zero means nothing — the arm has to be replayed before the bit is meaningful.
+And each record reports the sticky OR *and* AND of every `LINK_STATUS` sample
+in its window, one every ~35 µs, so no event on the wire's own timescale can
+be aliased away by the ~7 ms record rate.
+
+The exerciser also holds the handshake armed for ~470 ms against the
+firmware's 9.92 ms. If bit 6 falls late, the timeout is the whole failure and
+the OPEN below is much smaller than it looks.
+
 ## Building an adapter — what the M1000 must see
 
 Three layers, and only the middle one is unknown.
