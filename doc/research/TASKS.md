@@ -182,10 +182,11 @@ State: continuously updated as work progresses.
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
 5. **Confirm the complementary port state and EXT STORAGE attachment.** The
-   top mapping is closed: V24 Load/Run uses the bit5-clear state and was
-   captured at the top window. Observe the bit5-set exerciser phase at the
-   back PLINTH window directly, then confirm where the EXT STORAGE ADAPTER
-   attaches.
+   top mapping is closed: V24 Load/Run uses wire-ID bit 5 clear, which sets
+   `LINK_CTRL` bit 1 and port `2Ch` bit 5, and was captured at the top window.
+   Observe the wire-ID-bit-5-set exerciser phase, which clears both outputs,
+   at the back PLINTH window directly; then confirm where the EXT STORAGE
+   ADAPTER attaches.
 6. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
@@ -1869,7 +1870,8 @@ current priority order; the concise lists above are authoritative.
     Owner statement preserved: link-id bit 5 selects one of two IR line
     states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; at this
     session the polarity remained OPEN. **SUPERSEDED 2026-09-06:** fresh UI
-    trace plus the owner's top-window capture maps bit5 clear to top V24.
+    trace plus the owner's top-window capture maps wire-ID bit 5 clear to top
+    V24.
    * **Ghidra:** retained the existing `LINK_CTRL`/`LINK_STATUS`/`LINK_CMD`/
      `LINK_PROBE` labels; added plates and EOL comments to `LinkBlockTx`,
      `LinkBlockRx`, `LinkWaitReady`, `LinkPresent`, and `LinkProbe` for the
@@ -2199,8 +2201,9 @@ current priority order; the concise lists above are authoritative.
     semantics remain OPEN.
   * **CONFIRMED V24 mode-0 link chain:** mode record `D108` selects shared
     callback `Session_LogonMode0Or2Callback`, session/device selector 4, and
-    default wire ID `g_bDeviceWireId4=0x43`. Bit5 is clear, so `LinkBlockTx`
-    takes the bit5-clear latch path. This is not a physical-port assignment.
+    default wire ID `g_bDeviceWireId4=0x43`. Wire-ID bit 5 is clear, so
+    `LinkBlockTx` takes the wire-ID-bit-5-clear latch path. This is not a
+    physical-port assignment by itself.
     `0x1F40 (8000)` and `0x1F41 (8001)`, both `"Plinth not connected"`, are
     emitted by earlier connection-result dispatchers, not that callback.
   * **CONFIRMED V24 mode edit:** raw keyboard-ring byte `DBh` invokes
@@ -2742,7 +2745,8 @@ current priority order; the concise lists above are authoritative.
     0,1,2,3 in order — not four separate polls, which the earlier
     "polls bits 0-3" wording implied.
     `LINK_CTRL` (`4Ah`): bit0 transfer active, bit1 port select from
-    link-id bit 5, bit4 direction/enable, bit5 strobe.
+    link-ID bit 5, `LINK_CTRL` bit 4 direction/enable, and `LINK_CTRL` bit 5
+    strobe.
     Still OPEN: what any bit means electrically at the connector, and whether
     a real controller derives them this way. Two things corroborate the
     reading — the turn-taking rule follows from bit 4, and the synthetic peer
@@ -3374,10 +3378,11 @@ at 1087 functions.
   two **IR ports on the handheld** — base and top — and the connector is the
   infrared link itself. `LinkBlockTx` tests link-id bit 5 (`ROM00:3278`,
   `AND 20h`) and hands it to `LinkPortSelect` (`ROM00:3454`), which drives
-  `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: id bit 5 clear -> both
-  set, id bit 5 set -> both clear. The session's inference that bit 5 clear
-  meant Plinth was later **REJECTED**: a reproduced V24 UI run also uses
-  `43h`, and the owner's top-window capture maps that clear-bit state to V24.
+  `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: wire-ID bit 5 clear ->
+  both set, wire-ID bit 5 set -> both clear. The session's inference that
+  wire-ID bit 5 clear meant Plinth was later **REJECTED**: a reproduced V24
+  UI run also uses `43h`, and the owner's top-window capture maps that
+  clear-bit state to V24.
 
 ## Commstar: both directions demonstrated, and the session ends cleanly (2026-09-01)
 
@@ -3462,10 +3467,11 @@ at 1087 functions.
     `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
     what the harness drives; the two-entry picker at `0x7663` sits in the
     comms setup form and **no current trace exercises it**.
-  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on link-id bit 5
+  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on wire-ID bit 5
     (`ROM00:3278`) and `LinkPortSelect` drives `LINK_CTRL` bit 1 and port
-    `2Ch` bit 5 together. **OPEN:** which id selects which physical port.
-    Next experiment: drive the `0x7663` picker and re-read the prelude.
+    `2Ch` bit 5 together. At this session the physical mapping remained OPEN.
+    **SUPERSEDED 2026-09-06:** the V24 trace plus owner capture maps wire-ID
+    bit 5 clear/output bits set to the top port.
 * **CLOSED: `ram:D120` -> `E6E8` -> command record `+8`.** It is not a
   credential buffer. `D120` is the byte immediately after the four 6-byte
   link-method records at `ram:D108` (`D108 + 4*6 = D120`) — the table
@@ -4082,17 +4088,24 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 * **Safety fix:** the RAM target of the NMI vector receives `RETN` (`ED 45`),
   not `RET`, and is installed before LCD initialisation. This restores IFF1
   correctly if a stray NMI occurs.
-* **CORRECTION — bit5-set was not the top-port state.** The September 6
+* **CORRECTION — wire-ID bit 5 set was not the top-port state.** The September 6
   `63h` claim equated `Session_TxBlock4`'s first stack argument at
   `ROM00:5C04` with the unrelated two-option string table index at
   `ROM01:7663`; no xref supports that correlation. Fresh PLINTH and V24
-  Load/Run runs both reach `LinkPortSelect` with `fdd4=43h`, `LINK_CTRL` bit 1
-  set and port `2Ch` bit 5 set. The V24 run enters its distinct Log-on form
-  and emits distinct application data, so the UI choice was genuine. Combined
-  with the owner's capture of that operation at the top V24 window,
-  **bit5-clear is CONFIRMED top**. Bit5-set is LIKELY back by two-port
-  elimination and remains a direct exerciser observation. The harness now
+  Load/Run runs both reach `LinkPortSelect` with `fdd4=43h`: wire-ID bit 5 is
+  clear, while `LINK_CTRL` bit 1 and port `2Ch` bit 5 are set. The V24 run
+  enters its distinct Log-on form and emits distinct application data, so the
+  UI choice was genuine. Combined with the owner's capture of that operation
+  at the top V24 window, **wire-ID bit 5 clear is CONFIRMED top**. Wire-ID bit
+  5 set clears both output bits and is LIKELY back by two-port elimination; it
+  remains a direct exerciser observation. The harness now
   logs and regression-tests `FDD4/CTRL.b1/2C.b5` for both UI routes.
+* **Documentation/Ghidra clarity pass:** the canonical mapping now separates
+  all three signals explicitly: `fdd4=43h` means wire-ID bit 5 clear, which
+  forces `LINK_CTRL` bit 1 set and port `2Ch` bit 5 set. It also records the
+  selection-time values (`02h`/`20h`), active baseline (`03h`), and inverse
+  `63h` row (`00h`/`00h`, active baseline `01h`). Matching comments were
+  saved in Ghidra; function count remained 1101.
 * **Validation:** guarded rebuild reproduced sum16 `1CBD`; 88 tests passed,
   33 emulator-dependent cases skipped, and 5 subtests passed. A bounded
   30,000-slice emulator run reached the controller, emitted preamble

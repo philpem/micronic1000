@@ -547,7 +547,7 @@ by `LinkPortSelect` (`ROM00:3454`), and its only caller is `LinkBlockTx`
 ```text
 3454  F5           PUSH AF
 3455  3A 8B F7     LD A,(F78B) / AND FDh / LD (F78B),A / OUT (2Ah),A
-3460  28 11        JR Z,3473          ; id bit 5 CLEAR -> 3473
+3460  28 11        JR Z,3473          ; wire-ID bit 5 CLEAR -> 3473
 3462  3A 94 F7     LD A,(F794) / AND FDh / LD (F794),A / OUT (4Ah),A   ; CTRL bit 1 CLEAR
 346C  3A 8D F7     LD A,(F78D) / AND DCh
 3471  18 11        JR 3484
@@ -558,8 +558,8 @@ by `LinkPortSelect` (`ROM00:3454`), and its only caller is `LinkBlockTx`
 ```
 
 This confirms the mapping already in
-[protocol/commstar.md](../protocol/commstar.md): id bit 5 **clear** →
-`LINK_CTRL` bit 1 **set** and `2Ch` bit 5 **set**; id bit 5 **set** → both
+[protocol/commstar.md](../protocol/commstar.md): wire-ID bit 5 **clear** →
+`LINK_CTRL` bit 1 **set** and `2Ch` bit 5 **set**; wire-ID bit 5 **set** → both
 clear.
 
 Therefore, during a cold-boot `LinkProbe`, **the port is whatever the latches
@@ -641,7 +641,7 @@ code, which needs a link. See T6 for the way out of that circle.
 | 6 | What clears `HSBUSY` / `RXBUSY`? | **T6** — T5 was run to exhaustion (conn3-conn13) and cannot reach it |
 | 7 | Does the return clock have to be M1000-locked or may it free-run? | **T5.3** |
 | 8 | Is `4Ch` a flag strobe or an unstuffed byte channel? | **T6** |
-| 9 | Which *link id* drives which port? | **TOP ANSWERED:** `43h` / bit 5 clear = V24 top. **T6** directly checks `63h` at the back window. |
+| 9 | Which *link id* drives which port? | **TOP ANSWERED:** `43h`, wire-ID bit 5 clear, `LINK_CTRL` bit 1 set, port `2Ch` bit 5 set = V24 top. **T6** directly checks `63h` at the back window. |
 | 10 | Is a light pulse logical 1 or logical 0? | Cosmetic — the two readings are complements; the idle-dark argument picks `1` |
 
 Nothing on this list is reachable from the user interface. That is the single
@@ -712,11 +712,12 @@ doing before T5 rather than as part of it.
 CONFIRMED (owner, 2026-09-03): **PLINTH is the back port, V24 ADAPTOR is the
 top port.** That fixes the menu-name ↔ physical-port mapping.
 
-The reproduced V24 Load/Run route calls `LinkPortSelect` with `fdd4=43h`,
-`LINK_CTRL` bit 1 set and port `2Ch` bit 5 set. The owner's capture of that
-route at the top window therefore establishes `43h` / bit 5 clear as the top
-state. `63h` / bit 5 set is **LIKELY** the back state by elimination; T6
-observes it directly rather than relying on that inference.
+The reproduced V24 Load/Run route calls `LinkPortSelect` with `fdd4=43h`:
+wire-ID bit 5 is **clear**, while `LINK_CTRL` bit 1 and port `2Ch` bit 5 are
+both **set**. The owner's capture of that route at the top window establishes
+this as the top state. For `fdd4=63h`, wire-ID bit 5 is set and both output
+bits are clear; that state is **LIKELY** back by elimination. T6 observes it
+directly rather than relying on that inference.
 
 ### T4 — characterise the receive front end
 
@@ -832,9 +833,10 @@ unaffected. Then:
 
 That one edit settles three things at once:
 
-* **OPEN 9 remainder** — the top mapping is already fixed: `43h`, id bit 5
-  clear and `LINK_CTRL` bit 1 set. The patched prelude makes direct
-  observation of the complementary back state unambiguous.
+* **OPEN 9 remainder** — the top mapping is already fixed: `43h`, wire-ID bit
+  5 clear, `LINK_CTRL` bit 1 set, and port `2Ch` bit 5 set. The patched
+  prelude makes direct observation of the complementary back state
+  unambiguous.
 * **OPEN 2** — `47h` discriminates bit order by *burst length*, countable
   without decoding anything: 17 cells if MSB-first, 16 if LSB-first.
 * **The stuffing rule** — `6Bh` needs no stuffed bit where `03h` needs one, so

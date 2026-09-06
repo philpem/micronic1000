@@ -62,10 +62,11 @@ scan it writes `48h` to `F782` and port `02h`, exactly as
 and YES are known keys in that column and are the positive-control keys.
 
 Q5 is closed for the top state and remains a direct check for the back state.
-The real V24 Load/Run route uses `fdd4=43h`, `LINK_CTRL` bit 1 set and port
-`2Ch` bit 5 set; the owner captured that route at the top V24 window. The run
-alternates both states and records `LINK_CTRL` bit 1, so observing the
-bit-5-set state at the back PLINTH window will confirm the complementary
+The real V24 Load/Run route uses `fdd4=43h`: **wire-ID bit 5 is clear**, while
+**`LINK_CTRL` bit 1 and port `2Ch` bit 5 are both set**. The owner captured
+that route at the top V24 window. The run alternates both states and records
+`LINK_CTRL` bit 1, so observing the wire-ID-bit-5-set state—where both output
+bits are clear—at the back PLINTH window will confirm the complementary
 mapping without relying on elimination.
 
 Phase 3 really does cover 128 effective values per port. Port alternation

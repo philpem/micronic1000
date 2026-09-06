@@ -63,7 +63,8 @@
 ;                  switch ports underneath the measurement.
 ;
 ; The port alternates on every counter wrap, at phase 0, so one burn exercises
-; both.  The bit5-clear state is the top V24 port; the complementary state is
+; both.  The wire-ID-bit-5-clear state is the top V24 port; it drives
+; LINK_CTRL bit 1 SET and port 2Ch bit 5 SET.  The complementary state is
 ; still worth observing at the back window.  LINK_CTRL bit 1 is in every
 ; record, so a capture says which state was live.
 ;
@@ -171,9 +172,10 @@ LinkProbe       equ 0x348A
 LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
-; A real V24 Load/Run trace uses 43h: LinkPortSelect takes the bit5-clear
-; branch, sets LINK_CTRL bit 1 and port 2Ch bit 5, and the owner observed the
-; transmission at the top V24 window.  The run still alternates both states.
+; A real V24 Load/Run trace uses 43h: LinkPortSelect takes the wire-ID-bit-5-
+; clear branch, sets LINK_CTRL bit 1 and port 2Ch bit 5, and the owner
+; observed the transmission at the top V24 window.  The run still alternates
+; both states.
 LINK_ID         equ 0x43            ; top V24 state first; alternates with 63h
 VERSION         equ 0x0D            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map

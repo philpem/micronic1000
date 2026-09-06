@@ -115,8 +115,9 @@ sequence (byte-verified):
 
 1. `LinkPortSelect` (ROM00:3454) has already driven `LINK_CTRL` bit 1 to
    match active-link-id bit 5. This selects one of two owner-confirmed IR line
-   states. Bit 5 clear is the top V24 state; bit 5 set is **LIKELY** back
-   PLINTH pending direct observation.
+   states. Wire-ID bit 5 clear sets `LINK_CTRL` bit 1 and port `2Ch` bit 5 and
+   is the top V24 state. Wire-ID bit 5 set clears those outputs and is
+   **LIKELY** back PLINTH pending direct observation.
 2. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
    `B=0x80` DJNZ delay.
 3. `LinkPresent` (ROM00:34EC) then `LinkWaitReady` (ROM00:34F8). `34F8` is
@@ -612,15 +613,31 @@ The active link id is retained in `fdd4`.
 ### Wire IDs, latch states, and physical ports {#device-table-ports}
 
 **CONFIRMED:** both tested Load/Run choices use wire ID `43h` when they reach
-`LinkBlockTx`. This is the bit-5-clear branch of `LinkPortSelect`, which sets
-`LINK_CTRL` bit 1 and port `2Ch` bit 5. A September 6 revision incorrectly
-claimed the V24 choice used `63h`; a fresh reproduction with explicit
-port-select instrumentation disproves it.
+`LinkBlockTx`. This is the wire-ID-bit-5-clear branch of `LinkPortSelect`,
+which sets `LINK_CTRL` bit 1 and port `2Ch` bit 5. A September 6 revision
+incorrectly claimed the V24 choice used `63h`; a fresh reproduction with
+explicit port-select instrumentation disproves it.
+
+There are **three distinct bits** in that sentence. “Clear” refers only to
+bit 5 of the wire ID held in `fdd4`; it does not refer to port `2Ch` bit 5.
+The canonical mapping is:
+
+| `fdd4` wire ID | wire-ID bit 5 | forced `LINK_CTRL` bit 1 | forced port `2Ch` bit 5 | selection values with other bits clear | active baseline after `LinkBlockTx` opens |
+|---|---:|---:|---:|---|---|
+| `43h` | **0 (clear)** | **1 (set)** | **1 (set)** | `LINK_CTRL=02h`, `2Ch=20h` | `LINK_CTRL=03h` |
+| `63h` | **1 (set)** | **0 (clear)** | **0 (clear)** | `LINK_CTRL=00h`, `2Ch=00h` | `LINK_CTRL=01h` |
+
+The whole `LINK_CTRL` value can contain other protocol-state bits. The exact
+selection transformations are `old | 02h` for wire ID `43h` and
+`old & FDh` for wire ID `63h`. The corresponding port-`2Ch` transformations
+are `(old & FCh) | 20h` and `old & DCh`.
+
+The two reproduced UI routes were:
 
 | From | `fdd4` | `LinkPortSelect` branch | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
 |---|---|---|---|---|
-| `PLINTH` | `43h` | `3473` (bit 5 clear) | set | set (`2C`=`20`) |
-| `V24 ADAPTOR`, mode 1 | `43h` | `3473` (bit 5 clear) | set | set (`2C`=`20`) |
+| `PLINTH` | `43h` | `3473` (wire-ID bit 5 clear) | set | set (`2C`=`20`) |
+| `V24 ADAPTOR`, mode 1 | `43h` | `3473` (wire-ID bit 5 clear) | set | set (`2C`=`20`) |
 
 The routes are genuinely distinct: the V24 run enters its extra Log-on form,
 accepts mode 1, and emits a different state-6 application object. The new
@@ -637,12 +654,13 @@ string table at `ROM01:7663`. There is no static reference joining the table
 to `ROM00:5C04`, and the runtime result is selector 4 for both tested routes.
 
 **CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
-the handheld transmission at the top V24 window; the reproduced route takes
-the bit-5-clear state. Therefore bit 5 clear (`43h`, `LINK_CTRL` bit 1 set,
-port `2Ch` bit 5 set) drives the top window. Bit 5 set is **LIKELY** the back
-PLINTH state by elimination from two ports and two states, but has not yet
-been observed directly there. The replacement-ROM exerciser alternates both
-states and makes that remaining check self-describing.
+the handheld transmission at the top V24 window; the reproduced route uses
+`fdd4=43h`. Therefore **wire-ID bit 5 clear**, **`LINK_CTRL` bit 1 set**, and
+**port `2Ch` bit 5 set** identify the top state. Wire-ID bit 5 set, which
+clears both output bits, is **LIKELY** the back PLINTH state by elimination
+from two ports and two states, but has not yet been observed directly there.
+The replacement-ROM exerciser alternates both states and makes that remaining
+check self-describing.
 
 `E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
 shown on the session status screen (**CONFIRMED provenance**):
@@ -1027,8 +1045,8 @@ the historical meanings of the text fields.
 stub reaches `Session_LogonMode0Or2Callback` and whose session/device selector
 is 4. Service 33 resolves selector 4 through `g_bDeviceWireId4`; its firmware
 default is `0x43`. The `AND 0x20` at `LinkBlockTx` is therefore zero and takes
-the bit5-clear latch path. This identifies the selected software latch state,
-not the physical V24 or PLINTH connector.
+the wire-ID-bit-5-clear latch path. This identifies the selected software
+latch state, not the physical V24 or PLINTH connector.
 
 The errors `0x1F40 (8000)` and `0x1F41 (8001)` both display `"Plinth not
 connected"`. **CONFIRMED:** they arise in the two connection-result dispatchers

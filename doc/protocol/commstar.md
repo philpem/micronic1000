@@ -143,7 +143,7 @@ It takes the link id in `A`. `ram:F794` shadows the control latch, so every
 control write is read-modify-write against that shadow.
 
 ```text
-3277  LD   C,A / AND 20h / CALL 3454h   ; select the IR port from id bit 5
+3277  LD   C,A / AND 20h / CALL 3454h   ; select the IR port from wire-ID bit 5
 327D  CALL 34D2h                        ; clear RXARM -- stop listening
 3280  (F794) &= FEh -> OUT (4Ah)        ; bit 0 low
 328A  (F794) |= 01h -> OUT (4Ah)        ;   then high: a start-of-transaction edge
@@ -342,7 +342,7 @@ and shifted, not four separate polls.
 | Bit | Inferred name | Role |
 |---:|---|---|
 | 0 | `XFREN` | Transfer active — cleared then set to open, cleared to close |
-| 1 | `PORTSEL` | Port select, driven from active-link-id bit 5 by `LinkPortSelect` |
+| 1 | `PORTSEL` | Port select, driven from active-link-ID bit 5 by `LinkPortSelect` |
 | 4 | `DIREN` | Direction/enable — cleared at open, set during the handshake, cleared at close |
 | 5 | `STROBE` | Strobe — set, short delay, cleared |
 | 6, 7 | `RXARM` | Receive-armed, always driven as a pair. Set when the handheld has nothing to receive, cleared while it services a receive or runs a transfer |
@@ -386,8 +386,9 @@ this table completes real sessions.
 
 **Transmit ordering (stable as latch sequence):**
 
-1. The port-select latch follows active-link-id bit 5. Bit 5 clear is the
-   top V24 state; the complementary back-state mapping awaits direct capture.
+1. The port-select latch follows active-link-ID bit 5. Wire-ID bit 5 clear
+   sets `LINK_CTRL` bit 1 and port `2Ch` bit 5 and is the top V24 state; the
+   complementary back-state mapping awaits direct capture.
 2. Toggle `LINK_CTRL` bits around a short delay.
 3. Poll `LINK_STATUS` bit 7 and write `0x81` to `LINK_CMD` when ready.
 4. Write the low five bits of the link id (`link_id & 1Fh`) to `LINK_TXD`
@@ -769,24 +770,32 @@ hands to `LinkPortSelect` (`ROM00:3454`):
 
 ```text
 ROM00:3277  LD   C,A          ; the link id
-ROM00:3278  AND  20h          ; id bit 5 -> Z set when CLEAR
+ROM00:3278  AND  20h          ; wire-ID bit 5 -> Z set when CLEAR
 ROM00:327A  CALL 3454h
 ```
 
 `LinkPortSelect` drives **two** latches consistently — `LINK_CTRL` (`4Ah`)
-bit 1 and port `2Ch` bit 5 move together:
+bit 1 and port `2Ch` bit 5 move together. These are outputs controlled by
+**wire-ID bit 5**; they are not the same bit:
 
-| id bit 5 | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
-|---|---|---|
-| clear (id `43h`) | **set** | **set** |
-| set (id `63h`) | clear | clear |
+| `fdd4` wire ID | wire-ID bit 5 | `LINK_CTRL` bit 1 | port `2Ch` bit 5 | selection values with other bits clear | active baseline |
+|---|---:|---:|---:|---|---|
+| `43h` | **clear** | **set** | **set** | `LINK_CTRL=02h`, `2Ch=20h` | `LINK_CTRL=03h` |
+| `63h` | **set** | **clear** | **clear** | `LINK_CTRL=00h`, `2Ch=00h` | `LINK_CTRL=01h` |
+
+More generally, the `43h` path applies `LINK_CTRL = old | 02h` and
+`2Ch = (old & FCh) | 20h`; the `63h` path applies
+`LINK_CTRL = old & FDh` and `2Ch = old & DCh`. “Active baseline” is the
+value after `LinkBlockTx` subsequently asserts its bit 0, assuming all other
+protocol-state bits were clear.
 
 **CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
 the resulting transmission at the top window. A fresh emulator reproduction
 of that UI route records every completed `LinkPortSelect` call as
 `fdd4=43h`, `LINK_CTRL` bit 1 set, port `2Ch` bit 5 set. Therefore the
-bit-5-clear state drives the top V24 window. The bit-5-set state is **LIKELY**
-the back PLINTH window by two-port elimination; the replacement-ROM exerciser
+**wire-ID-bit-5-clear** state drives the top V24 window. The
+wire-ID-bit-5-set state, which clears those two output bits, is **LIKELY** the
+back PLINTH window by two-port elimination; the replacement-ROM exerciser
 will observe that complement directly.
 
 Two distinctions prevent this result being confused with the device table or
@@ -816,7 +825,7 @@ the separate comms picker:
   `[80h, variant, 63h, 43h]`, the variant being `ABh`, `2Bh`, `67h`, `67h` —
   so *every* group offers both `63h` and `43h`, at device numbers
   `≡ 3` and `≡ 0 (mod 4)`. And the three modem mode records all select
-  **device 6**, whose id is `2Bh` — **bit 5 set**.
+  **device 6**, whose wire ID is `2Bh` — **wire-ID bit 5 set**.
 
 * **Measured: the Load/Run source picker does not change the active id.** Running the
   harness both ways — `--trace-loadrun-source plinth` and `--trace-loadrun-source
@@ -1307,7 +1316,7 @@ loaded application does with these entry points.
 | V24 form staging | **Provisional** | Buffers reach mode-dependent dispatch | Authentication encoding |
 | Program stream | **Provisional** | Inner bytes reach loader unchanged; marker 0/1 delimits the stream; a host object carries at most **126** data bytes (measured, 127 fails) | Why the limit is 126 rather than 128, and whether a historical EOF frame exists |
 | Errors, aborts, retries | **Provisional** | Timeouts and a few result codes | Application-visible grammar |
-| Physical port | **Provisional** | Bit 5 clear drives top V24; the two latch states are known | Direct observation of the bit-5-set state at back PLINTH; connector-facing modulation/timing |
+| Physical port | **Provisional** | Wire-ID bit 5 clear sets `LINK_CTRL` bit 1 and port `2Ch` bit 5 and drives top V24 | Direct observation of the wire-ID-bit-5-set/output-bits-clear state at back PLINTH; connector-facing modulation/timing |
 
 ## Diagnostic reference
 

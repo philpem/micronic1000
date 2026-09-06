@@ -137,11 +137,13 @@ link exerciser. Release and power-cycle to go back. That is the whole user
 interface, and it needs no knowledge of the keymap — which is the point,
 because the keymap is one of the things being reverse-engineered.
 
-In link mode the first cycle uses `43h`, the bit-5-clear latch state observed
-on the **top V24 ADAPTOR window**, then alternates with `63h` every counter
-wrap. `LINK_CTRL` bit 1 in each record identifies the state: set is `43h`,
-clear is `63h`. The alternation remains useful because the complementary
-state has not yet been observed directly at the back PLINTH window.
+In link mode the first cycle uses `43h`, whose **wire-ID bit 5 is clear**. It
+drives **`LINK_CTRL` bit 1 set** and **port `2Ch` bit 5 set**, and was observed
+on the top V24 ADAPTOR window. The run then alternates with `63h`, whose
+wire-ID bit 5 is set and which clears both output bits. `LINK_CTRL` bit 1 in
+each record identifies the state: set is `43h`, clear is `63h`. The
+alternation remains useful because the complementary state has not yet been
+observed directly at the back PLINTH window.
 
 ### The pin walk
 
@@ -246,12 +248,12 @@ One phase per frame, cycling forever. The phase is the top two bits of the
 record counter, so it costs nothing to encode and cannot drift out of step
 with the frame boundaries.
 
-| | | `LINK_CTRL` | |
-|---|---|---|---|
-| 0 | baseline | `01` / `03` | the resting value for bit5-set / bit5-clear wire IDs — the control the others are read against |
-| 1 | TX armed | `11` / `13` | bit5-set / bit5-clear; `ROM00:32CC`-`32EE` byte for byte, then held for the whole frame |
-| 2 | RX armed | `10` / `12` | bit5-set / bit5-clear; `ROM00:3378`-`33A6` byte for byte, dummy `LINK_RXD` read included |
-| 3 | CTRL sweep | varies | one value per frame, advancing each cycle, all 128 with bit 1 held |
+| Phase | State | `LINK_CTRL`, `63h`: wire-ID b5=1, output b1=0 | `LINK_CTRL`, `43h`: wire-ID b5=0, output b1=1 | Purpose |
+|---|---|---|---|---|
+| 0 | baseline | `01` | `03` | resting control value |
+| 1 | TX armed | `11` | `13` | `ROM00:32CC`-`32EE` byte for byte, then held for the whole frame |
+| 2 | RX armed | `10` | `12` | `ROM00:3378`-`33A6` byte for byte, dummy `LINK_RXD` read included |
+| 3 | CTRL sweep | varies, bit 1 forced clear | varies, bit 1 forced set | one value per frame, advancing each cycle, all 128 per wire-ID state |
 
 **Phase 1 is the experiment.** `HSBUSY` is asserted *by* the arm and the
 firmware waits for it to fall — merely watching an idle controller says
@@ -357,7 +359,7 @@ opening matches what `LinkBlockTx` does, access for access:
   5  PC=34B7  2C = 00     probe done, port 2Ch restored
   6  PC=34DC  4A = 00     LinkPresent
   7  PC=34E6  4A = 00
-  8  PC=345F  2A = 20     LinkPortSelect, id bit 5 clear
+  8  PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
   9  PC=347D  4A = 02     LINK_CTRL bit 1 set
  10  PC=3489  2C = 20     port 2Ch bit 5 set
  11  PC=72B3  4A = 02     our frame opening: bit 0 low

@@ -167,17 +167,20 @@ is silent. Currently on record:
   "bottom/front" wording in `micronic_notes.md` and internals/os-diposb.md,
   both corrected on that date). Firmware selects between the two 4x
   port configurations by wire-id bit5 (LinkBlockTx `AND 0x20` →
-  LinkPortSelect, byte-verified). **Bit5 clear is the top V24 state**:
+  LinkPortSelect, byte-verified). **Wire-ID bit 5 clear is the top V24
+  state**:
   a fresh emulator run of the real V24 Load/Run choice uses wire ID 0x43,
   `LINK_CTRL` bit1 set and port 2Ch bit5 set, while the owner captured that
-  operation at the top window. The complementary bit5-set state is LIKELY
-  the back port by two-port elimination, but has not been observed there.
+  operation at the top window. Do not confuse wire-ID bit 5 with port 2Ch
+  bit 5: for this state the former is clear while the latter is set. The
+  complementary wire-ID-bit-5-set state is LIKELY the back port by two-port
+  elimination, but has not been observed there.
 - The **EXT STORAGE ADAPTER's attachment point is not yet adjudicated**
   — do not bind it to a wire-id or port until the owner confirms.
   What is CONFIRMED: all drive-C:+ storage I/O runs over the 4x byte
   transport (never the 2D edge input), so it must connect via one of
   the two IR ports; default FE93 storage wires are C:=0x73, D:=0x72
-  (both bit5=1, same port, adjacent unit addresses).
+  (wire-ID bit5=1 in both, same port state, adjacent unit addresses).
 - The main power source is 4×AA with a lithium coin cell for RAM
   retention.
 

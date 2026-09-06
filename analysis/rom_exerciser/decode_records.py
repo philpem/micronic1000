@@ -130,8 +130,8 @@ def main():
     # means the wire id had bit 5 CLEAR (the 43h path), bit 1 clear means it
     # had bit 5 SET (the 63h path).  The 43h state is the top V24 window;
     # observing the complementary state at the back remains useful.
-    for portbit, idname in ((0, "id bit5 SET (63h); likely back PLINTH"),
-                            (2, "id bit5 clear (43h); top V24")):
+    for portbit, idname in ((0, "wire-ID bit 5 SET (63h); likely back PLINTH"),
+                            (2, "wire-ID bit 5 clear (43h); top V24")):
         pr = [r for r in records if (r[5] & 2) == portbit]
         if not pr:
             continue
