@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `C9DD` |
+| `micron1_exerciser.bin` | `F295` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `C9DD`** so it
+needs no reference to this repo. **Label the burned exerciser `F295`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -48,12 +48,13 @@ is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `00A2`-`00FD` | keypad scan and the pin walk, in a 94-byte run of `00` filler (2 left) |
-| `724C`-`72DC` | helpers and the beacon, in a 183-byte run (38 left) |
-| `7E96`-`7FD4` | the main body, in a 356-byte run (37 left) |
+| `00A2`-`00FC` | keypad scan and the pin walk, in a 94-byte run of `00` filler (3 left) |
+| `724C`-`72FC` | link and LCD helpers, in a 183-byte run (6 left) |
+| `7CE0`-`7D00` | LCD init, in a 48-byte run (15 left) |
+| `7E96`-`7FE4` | the main body, in a 356-byte run (21 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
-All three filler runs must be empty beforehand. `00A2`-`00FF` sits above every
+All four filler runs must be empty beforehand. `00A2`-`00FF` sits above every
 reset vector (`RST 38h` at `0038`, NMI at `0066`) and below the boot vector at
 `0100`. Four byte pairs elsewhere in the image look like control transfers
 into it; all four are operand bytes or table entries, checked individually —
@@ -65,49 +66,52 @@ The two code regions are a single assembly — `ORG` pads forward and only the
 two real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**546 bytes differ from the original.** One chip: `ROM01` is untouched.
+**629 bytes differ from the original.** One chip: `ROM01` is untouched.
 
-## The beacon, first
+## The LCD, first
 
-For ~1.9 s after power-up, before anything touches the link, it squares the
-two side-port output bits: `2Ch` bit 0 at ~8.7 Hz and bit 1 at ~4.3 Hz.
+It initialises the display and **puts every record on the glass as sixteen hex
+digits on the top row**. The headline result is readable with no Arduino, no
+scope and no decode at all — you can watch `OR` and `AND` change while you
+move the Arduino around.
 
-This is the difference between a diagnosable run and a wasted swap. A silent
-IR line is otherwise ambiguous between *the controller never asserts `TXRDY`*
-— a real and interesting result — and *the CPU never got here*, meaning a bad
-burn, a bent pin, or a wrong socket. Watching one side-port pin settles it in
-a second.
+```
+COUNT OR AND RXD SIDE CTRL WD KEY
+  00  80  80  00   FF   01  00  FF
+```
 
-It also gives a coarse outward map for free: the two bits square at different
-rates, so a probe identifies which external pin carries which. The pin walk
-above does that job properly; the beacon's version is the one you get without
-choosing a mode.
+That display is also the liveness indicator, and a better one than the
+side-port beacon it replaces: text on the glass cannot be mistaken for
+anything else, and it costs no interpretation.
 
-Bits 0 and 1 of `2Ch` are what the barcode front end drives (`1283`, `1292`,
-`1519`, `1528`), so this stays inside behaviour the firmware already has.
+Nothing in the init is invented. The register values are the ones the firmware
+writes at boot, captured from a stock emulator run — it is an **HD61830**,
+register-indexed through port `23h` with data on `03h`:
 
-## It drives both ports, deliberately
+| reg | value | |
+|---|---|---|
+| R0 | `3C` | mode |
+| R1 | `75` | character pitch |
+| R2 | `13` | 20 characters per line |
+| R3 | `3F` | 64 display lines |
+| R4 | `07` | cursor |
+| R8 R9 | `00` | display start |
+| R11 | `00` | address high — always zero for 160 cells, so `lcd_at` only writes R10 |
 
-The port alternates on every counter wrap — roughly 1.9 s on one, 1.9 s on the
-other — and `LINK_CTRL` bit 1 is in every record, so a capture says which was
-live.
+Then 160 cells are cleared. Skipping all of this is exactly why a patched boot
+comes up dark: nothing has configured the controller, set the drive level, or
+cleared the power-on garbage out of its RAM.
 
-It starts on the **top port** — `LINK_ID` is `63h`, the id `V24 ADAPTOR`
-produces — and swaps to `43h` (`PLINTH`, back) for the next cycle.
+**Contrast** is port `2Bh` — the firmware's `FBC8`, applied at `ROM00:35C3`.
+`CONTRAST` is set to `03h`, the lowest of the three levels the firmware's own
+settings table at `ROM00:15E0` offers (`03`, `07`, `0B`), because the owner
+reports the stock default of `07h` is far too dark on this unit. Raise it if
+yours differs.
 
-The alternation stays in even though the mapping is now settled, because it
-costs 20 bytes and it is what settled it. The port was originally wrong here:
-`43h` looked like the top port, and it is the back one. `LinkPortSelect` was
-never in doubt — wire-id bit 5 clear gives `LINK_CTRL` bit 1 = 1 and `2Ch`
-bit 5 = 1, bit 5 set gives both zero — but the chain from the menu choice to
-the wire id runs through compiler-generated forwarding frames, and the trap
-in it is `ram:E04B`, which returns **Z when its operands differ**. Read as a
-conventional "Z means equal", every conclusion downstream inverts.
-
-Driving the real Load/Run form in the emulator settled it, one run per
-choice: `V24 ADAPTOR` leaves `fdd4` = `63h` and takes the bit5-set branch
-(`2Ch` = `00`); `PLINTH` leaves `43h` and the bit5-clear branch (`2Ch` = `20`).
-See `doc/re-notes/commstar-evidence.md`.
+**The emulator will not render this.** `boot_hw.py` draws the framebuffer at
+`FC06`, which the firmware maintains as a shadow; the exerciser writes the
+controller ports directly, which is what actually reaches the glass. Check the
+`23h`/`03h` port log instead — the validation section shows what to expect.
 
 ## Two modes, chosen at power-up
 
@@ -286,21 +290,21 @@ for.
 Decode the wire with the Arduino in `LISTEN_ONLY` mode, then drive its
 stimulus modes and watch whether anything moves — phase 1 bit 6 above all.
 
-Silence has three signatures, and they are distinguishable:
+Silence now reads off the screen:
 
-| side port | wire | meaning |
+| LCD | wire | meaning |
 |---|---|---|
-| beacon once, then quiet | streaming | healthy |
-| beacon once, then quiet | silent | the stream started, then the transmitter stalled |
-| beacon **repeating for ever** | silent | never got a frame open — `LinkPresent` failed 16 times |
-| bit 0 toggling irregularly | silent | watchdog tripping: the code is alive and the controller is refusing bytes |
-| nothing at all | silent | the patch never ran. Not a result — bad burn, bent pin, wrong socket |
+| hex counting up | streaming | healthy |
+| hex frozen | silent | the transmitter stalled — `WD` in the frozen record says how many watchdog trips it took |
+| `DEAD` | silent | never got a frame open; `LinkPresent` failed 16 times running |
+| blank | silent | the patch ran far enough to clear the display, then stopped before the first record |
+| garbage or dark | silent | the patch never ran. Not a result — bad burn, bent pin, wrong socket |
 
-The watchdog blink is the point of that fourth row: the IR channel cannot
-report that the IR channel has stopped, so it reports on the side port
-instead.
+`putbyte` blocks, so a stalled transmitter freezes the record loop and the
+display with it. A frozen count beside a running one is unmistakable, which is
+why the watchdog no longer needs a side-port blink of its own.
 
-77 bytes of filler remain across the three blocks.
+45 bytes of filler remain across the four blocks.
 
 ## Restoring
 

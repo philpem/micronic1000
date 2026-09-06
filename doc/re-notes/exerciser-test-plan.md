@@ -31,7 +31,7 @@ zero would mean nothing at all, which is why phase 1 replays the arm.
 | Q3 | Does any `LINK_CTRL` state change either answer? | phase 3, 128 values per port |
 | Q4 | Which physical window is which port? | both ports, alternating ~1.9 s |
 | Q5 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
-| Q6 | What is the keypad matrix layout? | `KEY` in every record |
+| Q6 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |
 
 Q4 is already settled from the firmware
 ([commstar-evidence](commstar-evidence.md#device-table-ports)) — the run
@@ -80,9 +80,11 @@ undocumented and the unit may do something unexpected.
    it is the check the labels cannot do.
 1. **Burn `micron1_exerciser.bin`** and label it with the sum `build.py`
    prints. `ROM01` is untouched.
-2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. This is the control
-   run and everything else is read against it. Capture ≥60 s (≈8 full phase
-   cycles, ≈32 sweep values).
+2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
+   first: a counting hex row means everything downstream is working, and if
+   the contrast is wrong for your unit, change `CONTRAST` (`03`/`07`/`0Bh`)
+   before going further. This is the control run and everything else is read
+   against it. Capture ≥60 s (≈8 full phase cycles, ≈32 sweep values).
 3. **Watch which window blinks** during each ~1.9 s half. Note it.
 4. **Press a few keys** during the capture — `KEY` records the index
    (`col*6 + row`), which maps the keypad as a free by-product.
@@ -101,17 +103,20 @@ port. Read them in this order.
 
 ### Is the run valid at all?
 
-| side port | wire | meaning |
+| LCD | wire | meaning |
 |---|---|---|
-| beacon once, then quiet | streaming | running normally |
-| beacon once, then quiet | silent | the stream started, then the transmitter stalled |
-| beacon **repeating for ever** | silent | never got a frame open — `LinkPresent` failed 16 times running |
-| bit 0 toggling irregularly | silent | the watchdog is tripping: code alive, controller refusing bytes |
-| nothing at all | silent | the patch never ran. Not a result |
+| hex counting up | streaming | running normally |
+| hex frozen | silent | the transmitter stalled; `WD` in the frozen record says how many watchdog trips it took |
+| `DEAD` | silent | never got a frame open — `LinkPresent` failed 16 times running |
+| blank | silent | ran far enough to clear the display, then stopped before the first record |
+| garbage or dark | silent | the patch never ran. Not a result |
 
-The side port carries those distinctions because the IR channel cannot report
-that the IR channel has stopped. Watch a side-port pin on the scope alongside
-the IR line, not instead of it.
+The screen carries those distinctions, which is the point of initialising it:
+every failure mode now names itself without a scope, an Arduino or a decode.
+The top row is the current record — `COUNT OR AND RXD SIDE CTRL WD KEY` as
+sixteen hex digits — so **`OR` and `AND` can be read live while you move the
+Arduino around**, and the IR capture becomes the recording rather than the
+only instrument.
 
 In the decode:
 

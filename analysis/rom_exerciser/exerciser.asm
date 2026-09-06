@@ -165,7 +165,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
 ; The port still alternates every cycle, so a wrong guess here costs nothing.
 LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x0A            ; bumped whenever the wire format changes
+VERSION         equ 0x0B            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -184,7 +184,20 @@ V_KEY           equ 0xC7EA          ; key index this record, or FFh
 VEC_ORG         equ 0x00A2          ; third free block, 94 bytes, above every
                                     ; reset vector and below the boot vector
 LO_ORG          equ 0x724C          ; second free block, 183 bytes
+MID_ORG         equ 0x7CE0          ; fourth, 48 bytes, past the end of the
+                                    ; module-A copy range (73CE-7C2E)
 HI_ORG          equ 0x7E96          ; first free block, 356 bytes
+
+LCD_REG         equ 0x23            ; HD61830 register index
+LCD_DAT         equ 0x03            ; ... and its data port
+PORT_DISP       equ 0x2B            ; display drive level (the firmware's
+                                    ; FBC8, applied at ROM00:35C3)
+CONTRAST        equ 0x03            ; The firmware's own default is 07h, which
+                                    ; the owner reports is far too dark on this
+                                    ; unit and reduced significantly.  03h is
+                                    ; the lowest of the three levels the
+                                    ; settings table at ROM00:15E0 offers;
+                                    ; 07h and 0Bh are the others.
 
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
@@ -256,7 +269,11 @@ ks_done:        ld a,c
 ; select.
 portmap:        ld d,0x01                   ; bit under test
                 ld c,0x01                   ; ... pulses that many times
-pm_bit:         ld a,PORTMAP_BITS
+pm_bit:         xor a
+                call lcd_at
+                ld a,d
+                call lcd_hex                ; which bit is pulsing now
+                ld a,PORTMAP_BITS
                 and d
                 jr z,pm_gap                 ; not in the set: silent slot, so
                 ld b,c                      ; the count still equals the bit
@@ -276,12 +293,6 @@ pm_gap:         call pm_delay               ; four delays: a gap long enough
                 jr nz,pm_bit
                 jr portmap
 
-pm_delay:       ld hl,0x4000                ; ~115 ms
-pm_wait:        dec hl
-                ld a,h
-                or l
-                jr nz,pm_wait
-                ret
 vec_end:
 
                 org LO_ORG
@@ -327,21 +338,15 @@ wr_loop:        call sample
                 jr nz,wr_loop
                 ld hl,V_WD_N                ; mark the trip in the record
                 inc (hl)
-                call wd_blink               ; ... and on the side port, which
-                ld a,(V_BASE)               ; is the only channel that still
-                ld (CTRL_SHADOW),a          ; works when the wire does not
-                out (LINK_CTRL),a           ; V_CTRL is untouched, so the
-                jr waitready                ; record still names the culprit
+                ld a,(V_BASE)               ; restore the hardware, but NOT
+                ld (CTRL_SHADOW),a          ; V_CTRL: the record must still
+                out (LINK_CTRL),a           ; name the value that stalled
+                jr waitready
 
-; Toggle side-port output bit 0, preserving bit 5 -- which is the port select,
-; so this must go through the shadow.  The IR channel cannot report that the
-; IR channel has stopped; this can.  Side port toggling with no IR traffic
-; means the code is alive and the controller is refusing bytes.
-wd_blink:       ld a,(PORT2C_SHADOW)
-                xor 0x01
-                ld (PORT2C_SHADOW),a
-                out (PORT_2C),a
-                ret
+; A stall needs no separate signal now.  putbyte blocks, so the record loop
+; stops and the LCD stops with it -- and a frozen display beside a counting
+; one is unmistakable.  WD in the last record shown names how many trips it
+; took to get there.
 
 ; A = byte to put on the wire.
 putbyte:        ld c,a
@@ -383,43 +388,101 @@ ctrl_put:       ld (hl),a
                                             ; attributable to its own value
 
 ; ---------------------------------------------------------------------------
-; Waggle the two side-port output bits for ~1.9 s before anything touches the
-; link.  Two jobs, and the second is why it is worth the bytes.
+; HD61830 LCD.  Register-indexed: port 23h picks the register, port 03h
+; carries the byte.  Nothing here is invented -- the init values are the ones
+; the firmware writes at boot, captured from a stock emulator run, and the
+; drive level comes from its own settings table.  Skipping all of it is why a
+; patched boot comes up dark: nothing has configured the controller, set the
+; drive level, or cleared 160 cells of power-on garbage out of its RAM.
 ;
-; It proves the patch is running.  A silent IR line is otherwise ambiguous
-; between "the controller never asserts TXRDY", which is a real result, and
-; "the CPU never got here", which is a bad burn or a bad socket -- and telling
-; those apart afterwards would cost a swap cycle.
-;
-; And it maps the side port outwards.  Bit 0 squares at ~8.7 Hz and bit 1 at
-; ~4.3 Hz, so a probe on any external pin identifies which bit it carries;
-; SIDE in the record stream does the same for the inputs.  Together they give
-; the two-wire command channel the next exerciser needs.
-;
-; Bits 0 and 1 of 2Ch are what the barcode front end itself drives (1283,
-; 1292, 1519, 1528), so this stays inside behaviour the firmware already has.
-; It finishes by writing 0, which is where LinkPortSelect expects to start.
-beacon:         ld b,0x20                   ; 32 half-steps
-bcn_step:       ld a,b
-                and 0x03                    ; bit 0 every step, bit 1 every 2
-                ld (PORT2C_SHADOW),a
-                out (PORT_2C),a
-                ld de,0x2000                ; ~58 ms
-bcn_wait:       dec de
-                ld a,d
-                or e
-                jr nz,bcn_wait
-                djnz bcn_step
-                xor a
-                ld (PORT2C_SHADOW),a
-                out (PORT_2C),a
+; This is now the primary liveness indicator, and a better one than the
+; side-port beacon it replaces: text on the glass cannot be mistaken for
+; anything else.  The beacon's other job, mapping pins, belongs to the pin
+; walk.
+; ---------------------------------------------------------------------------
+
+; A = cell address 0..159.  The controller auto-increments after each data
+; write, so a run of characters needs this once.
+; R11, the address high byte, is always zero for 160 cells, so lcd_init sets
+; it once and this only touches R10.
+lcd_at:         push af
+                ld a,0x0A
+                out (LCD_REG),a
+                pop af
+                out (LCD_DAT),a
                 ret
+
+; A = character.  Clobbers A only, which is why it is not ROM00:1F79 -- that
+; one uses BC, and every caller here is a counting loop.
+lcd_putc:       push af
+                ld a,0x0C
+                out (LCD_REG),a
+                pop af
+                out (LCD_DAT),a
+                ret
+
+; A = byte, shown as two hex digits.  Falls into lcd_nib for the low one.
+lcd_hex:        push af
+                rrca
+                rrca
+                rrca
+                rrca
+                call lcd_nib
+                pop af
+lcd_nib:        and 0x0F
+                add a,0x30
+                cp 0x3A
+                jr c,lh_out
+                add a,0x07                  ; 'A' - '0' - 10
+lh_out:         jp lcd_putc
+
+; A = byte: put it on the wire and on the glass.  The LCD copy is what makes
+; the headline result readable with no Arduino, no scope and no decode.
+emit:           push af
+                call putbyte
+                pop af
+                jp lcd_hex
+
+pm_delay:       ld hl,0x4000                ; ~115 ms
+pm_wait:        dec hl
+                ld a,h
+                or l
+                jr nz,pm_wait
+                ret
+lcd_tab:        db 0x00,0x3C, 0x01,0x75, 0x02,0x13, 0x03,0x3F
+                db 0x04,0x07, 0x08,0x00, 0x09,0x00, 0x0B,0x00
 lo_end:
+
+                org MID_ORG
+
+; The values the firmware writes at boot: R0 mode, R1 character pitch,
+; R2 = 13h = 20 characters, R3 = 3Fh = 64 lines, R4 cursor, R8/R9 display
+; start.  R10/R11 are set by lcd_at, so they are not in the table.
+lcd_init:       ld hl,lcd_tab
+                ld b,0x08
+li_loop:        ld a,(hl)
+                out (LCD_REG),a
+                inc hl
+                ld a,(hl)
+                out (LCD_DAT),a
+                inc hl
+                djnz li_loop
+                ld a,CONTRAST
+                out (PORT_DISP),a
+                xor a                       ; clear 160 cells of power-on
+                call lcd_at                 ; garbage
+                ld b,0xA0
+li_clr:         ld a,0x20
+                call lcd_putc
+                djnz li_clr
+                ret
+mid_end:
 
                 org HI_ORG
 
 start:          di
                 ld sp,STACK
+                call lcd_init
 
                 ; A key held at power-up selects the pin walk instead of the
                 ; link run.  Checked before anything else touches the
@@ -448,8 +511,6 @@ start:          di
                 ld (V_WD_N),a
                 ld a,LINK_ID
                 ld (V_ID),a
-
-                call beacon
 
                 ; --- the cold-boot controller reset.  BEFORE the port
                 ; select, not after: LinkProbe ends with XOR A / OUT (2Ch)
@@ -493,7 +554,7 @@ settle:         djnz settle
 open_try:       call LinkPresent            ; preserves BC
                 jr nz,opened
                 djnz open_try
-                jr dead
+                jp dead
 opened:         call accreset
 
                 ; --- preamble.  Identifies the image and its wire format, and
@@ -530,34 +591,29 @@ stream:         ld a,(V_COUNT)
                                             ; putbyte uses C.
                 call accreset
 
+                xor a                       ; the record also goes to the
+                call lcd_at                 ; glass, top row, 16 hex digits
+
                 ld a,(V_COUNT)
-                call putbyte                ; [0] COUNT
+                call emit                   ; [0] COUNT
                 ld a,b
-                call putbyte                ; [1] OR of LINK_STATUS
+                call emit                   ; [1] OR of LINK_STATUS
                 ld a,e
-                call putbyte                ; [2] AND of LINK_STATUS
+                call emit                   ; [2] AND of LINK_STATUS
                 in a,(LINK_RXD)             ; read after status, so a status
-                call putbyte                ; [3] bit cleared by the read still
+                call emit                   ; [3] bit cleared by the read still
                 in a,(SIDE_PORT)            ;     shows in this record
-                call putbyte                ; [4] SIDE
+                call emit                   ; [4] SIDE
                 ld a,(V_CTRL)
-                call putbyte                ; [5] CTRL this phase asked for
+                call emit                   ; [5] CTRL this phase asked for
                 ld a,(V_WD_N)
-                call putbyte                ; [6] watchdog trips so far
+                call emit                   ; [6] watchdog trips so far
                 ld a,(V_KEY)
-                call putbyte                ; [7] key index, or FFh
+                call emit                   ; [7] key index, or FFh
 
                 ld hl,V_COUNT
                 inc (hl)
                 jr stream
-
-; Reached only when the controller will not open a frame at all.  Repeat the
-; beacon rather than spin silently: a beacon that runs once and stops means
-; the stream started and then the transmitter stalled; one that repeats for
-; ever means we never got a frame open.  Silence with no beacon at all means
-; the patch never ran.  Three causes, three signatures.
-dead:           call beacon
-                jr dead
 
 ; ---------------------------------------------------------------------------
 ; Frame boundary: idle, flag, then put the controller into this phase's state.
@@ -634,4 +690,16 @@ rx_arm:         ld a,0xFE
 rx_wait:        djnz rx_wait
                 ld a,0xDF
                 jp ctrl_and
+
+; Reached only when the controller will not open a frame at all.  Shows DEAD
+; on the glass -- spelled with the hex printer, so it costs no string table
+; -- which is otherwise indistinguishable from every other kind of silence.
+dead:           xor a
+                call lcd_at
+                ld a,0xDE
+                call lcd_hex
+                ld a,0xAD
+                call lcd_hex
+dead_loop:      jr dead_loop
+
 hi_end:
