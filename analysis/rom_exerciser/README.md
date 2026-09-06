@@ -2,8 +2,8 @@
 
 A patched `ROM00` that turns the handheld into a dedicated test rig for the
 link controller. It replaces the cold-boot entry, opens a frame the way
-`LinkBlockTx` does, and then **streams `LINK_STATUS` onto the IR line**, one
-byte per sample, for as long as it is powered.
+`LinkBlockTx` does, and then **streams the controller's own registers onto the
+IR line** for as long as it is powered.
 
 That stream is the point. `LINK_STATUS` bit 6 (`HSBUSY`) is what stops every
 session — the firmware gives up waiting for it at `ROM00:32F3` and reports
@@ -30,11 +30,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `DB30` |
+| `micron1_exerciser.bin` | `1382` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `DB30`** so it
+needs no reference to this repo. **Label the burned exerciser `1382`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -49,14 +49,14 @@ anything if the image is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `7E96`-`7EED` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
+| `7E96`-`7F64` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 `014B` rather than the reset vector because `0000` → `0103` → `014B`, and the
 emulator harness starts directly at `014B`, so the same patch is exercised on
 hardware and in the emulator.
 
-**90 bytes differ from the original.** One chip: `ROM01` is untouched.
+**206 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## Validate before burning
 
@@ -83,29 +83,86 @@ opening, byte for byte, all of it matching what `LinkBlockTx` does:
  11  PC=7EE5  4A = 02     our frame opening: bit 0 low
  12  PC=7EED  4A = 03                        bit 0 high
  13  PC=7EE5  4A = 03                        bit 4 low
- 14  PC=34F7  4C = 81     LINK_CMD -- the flag goes on the wire
- 15+ PC=7EDA  4D = ..     LINK_STATUS, streaming (11476 writes in 400 slices)
+ 14  PC=34F7  4C = 81     LINK_CMD -- the opening flag
+ 15+          4D = ..     the preamble, then records
+```
+
+Piping the `4Ch`/`4Dh` writes into the decoder gives the emulator's own
+version of the hardware result — the negative one, since its synthetic
+controller reports a constant `80h`:
+
+```
+preamble  version 3  LINK_ID 43  LINK_PROBE FF  LINK_STATUS 80
+counter discontinuities: 0
+  bit 7 TXRDY   always 1
+  bit 6 HSBUSY  always 0
 ```
 
 The emulator's synthetic controller always reports `80h` (TXRDY set, nothing
 else), so the *values* mean nothing here — only the path does. The values are
 what the hardware run is for.
 
+## What comes off the wire
+
+One preamble frame, then record frames forever, each preceded by a ~4 ms idle
+gap so the Arduino's burst delimiter fires:
+
+```
+preamble   A5 5A VER ID PROBE STATUS      once, at power-up
+record     COUNT OR AND RXD               64 per frame, ~4.9 ms apart
+```
+
+| field | |
+|---|---|
+| `COUNT` | rolling record number, +1 each record — a lost record is visible, and it is the time base |
+| `OR` | every `LINK_STATUS` sample taken during this record's window, OR'd together |
+| `AND` | the same samples, AND'd together |
+| `RXD` | `LINK_RXD`, read once per record, after the status samples |
+
+`OR` and `AND` are what make the modest record rate sufficient. The wait for
+`TXRDY` between bytes is a tight polling loop — one `LINK_STATUS` sample every
+~21 µs — and every sample folds into both accumulators. A bit that pulses high
+for a single 122 µs wire cell still shows up in `OR`; one that drops for a
+single cell still shows in `AND`; a genuinely constant bit reads the same in
+both. **No event on the wire's own timescale can be aliased away.** Only the
+ordering of events inside one record is lost.
+
+`LINK_PROBE` is read once, into the preamble, never in the loop: its read side
+effects are unknown and the point of this burn is to measure `HSBUSY` without
+confounds. Same reasoning bounds `LINK_RXD` to one read per record.
+
+Every frame begins on a record boundary whose `COUNT` is a multiple of 64, so
+byte alignment is structural, not guessed.
+
+## Decoding
+
+```
+analysis/venv/bin/python analysis/rom_exerciser/decode_records.py capture.csv
+analysis/venv/bin/python analysis/rom_exerciser/decode_records.py --hex log.txt
+```
+
+CSV is the MSO's four-channel format, the same one `scope_ir_decode.py` reads;
+`--hex` takes one frame of whitespace-separated hex per line, for an Arduino
+serial log. The headline is the per-bit verdict:
+
+```
+LINK_STATUS, over every sample in every record:
+  bit 7 TXRDY   always 1
+  bit 6 HSBUSY  always 0
+  ...
+```
+
+`HSBUSY  always 0` is the negative result, and a strong one — the bit the
+firmware waits on at `ROM00:32F3` never asserts under any stimulus. Anything
+else is the positive result, and `COUNT` says when.
+
 ## On the hardware
 
-Decode the wire with the Arduino in `LISTEN_ONLY` mode. The stream is
-`flag` then status bytes back to back, so the existing decoder finds the flag,
-destuffs, and yields one `LINK_STATUS` sample per byte. Watch bit 6 (`HSBUSY`)
-and bit 4 (`RXBUSY`), and drive the Arduino's stimulus modes to see what, if
-anything, moves them.
+Decode the wire with the Arduino in `LISTEN_ONLY` mode, then drive its stimulus
+modes and watch whether anything moves.
 
-Silence on the wire is itself a result: it would mean `TXRDY` never asserts,
-i.e. the controller never reports ready even with no firmware competing for it.
-
-`LINK_ID` in `exerciser.asm` selects the port (`43h` = id bit 5 clear, `63h`
-for the other); 268 bytes of the filler block remain for further experiments —
-sweeping `LINK_CMD` values, driving `LINK_CTRL` in orders the firmware never
-uses, or writing `4Dh` back to back to discriminate the stuffer architectures.
+Silence is itself a result: it would mean `TXRDY` never asserts, i.e. the
+controller never reports ready even with no firmware competing for it.
 
 ## Restoring
 
