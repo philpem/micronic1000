@@ -128,10 +128,10 @@ def main():
     # --- LINK_STATUS per port per phase.  The phase is the top two bits of
     # COUNT; the port is LINK_CTRL bit 1, which LinkPortSelect sets: bit 1 set
     # means the wire id had bit 5 CLEAR (the 43h path), bit 1 clear means it
-    # had bit 5 SET (the 63h path).  Which physical window each drives is what
-    # the run is measuring -- watch the unit, not this output.
-    for portbit, idname in ((0, "id bit5 SET (63h); physical port OPEN"),
-                            (2, "id bit5 clear (43h); physical port OPEN")):
+    # had bit 5 SET (the 63h path).  The 43h state is the top V24 window;
+    # observing the complementary state at the back remains useful.
+    for portbit, idname in ((0, "id bit5 SET (63h); likely back PLINTH"),
+                            (2, "id bit5 clear (43h); top V24")):
         pr = [r for r in records if (r[5] & 2) == portbit]
         if not pr:
             continue

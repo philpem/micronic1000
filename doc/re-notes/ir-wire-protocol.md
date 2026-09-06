@@ -597,8 +597,9 @@ of which is a positive confirmation.
   address byte.
 
 * **T3 is done: PLINTH is the back port, V24 ADAPTOR is the top port.**
-  CONFIRMED (owner). What this does *not* yet fix is which *link id* drives
-  which port — that needs the id to change, i.e. T6.
+  CONFIRMED (owner). Combined with the reproduced V24 UI route's
+  `fdd4=43h` / bit-5-clear latch state, this also fixes the top-port polarity.
+  T6 remains a direct observation of the complementary back state.
 * **No IR from the PLINTH port during a cold boot.** Consistent with the
   `LinkProbe` analysis above.
 * **The receiver is being rebuilt with a 47k pull-down and an NPN buffer**
@@ -640,7 +641,7 @@ code, which needs a link. See T6 for the way out of that circle.
 | 6 | What clears `HSBUSY` / `RXBUSY`? | **T6** — T5 was run to exhaustion (conn3-conn13) and cannot reach it |
 | 7 | Does the return clock have to be M1000-locked or may it free-run? | **T5.3** |
 | 8 | Is `4Ch` a flag strobe or an unstuffed byte channel? | **T6** |
-| 9 | Which *link id* drives which port? (the names are settled: PLINTH = back, V24 = top) | **T6** — the one-byte patch answers it by inspection |
+| 9 | Which *link id* drives which port? | **TOP ANSWERED:** `43h` / bit 5 clear = V24 top. **T6** directly checks `63h` at the back window. |
 | 10 | Is a light pulse logical 1 or logical 0? | Cosmetic — the two readings are complements; the idle-dark argument picks `1` |
 
 Nothing on this list is reachable from the user interface. That is the single
@@ -706,15 +707,16 @@ narrower target.
 T2b is arguably the single best experiment on this page after T6. It is worth
 doing before T5 rather than as part of it.
 
-### T3 — which port is which line state — **DONE, partially**
+### T3 — which port is which line state — **TOP CLOSED, BACK CHECK OPEN**
 
 CONFIRMED (owner, 2026-09-03): **PLINTH is the back port, V24 ADAPTOR is the
 top port.** That fixes the menu-name ↔ physical-port mapping.
 
-What remains is the *id-bit* half: which of `43h`/`63h` (id bit 5 clear/set,
-`LINK_CTRL` bit 1 set/clear) drives which of those two ports. That cannot be
-observed while both ids mask to the same prelude, so it moves to T6, where the
-one-byte patch answers it by inspection.
+The reproduced V24 Load/Run route calls `LinkPortSelect` with `fdd4=43h`,
+`LINK_CTRL` bit 1 set and port `2Ch` bit 5 set. The owner's capture of that
+route at the top window therefore establishes `43h` / bit 5 clear as the top
+state. `63h` / bit 5 set is **LIKELY** the back state by elimination; T6
+observes it directly rather than relying on that inference.
 
 ### T4 — characterise the receive front end
 
@@ -830,9 +832,9 @@ unaffected. Then:
 
 That one edit settles three things at once:
 
-* **OPEN 9** — whichever port's prelude becomes `07h` is the one using id
-  `43h`, i.e. id bit 5 clear, i.e. `LINK_CTRL` bit 1 set. The port ↔ id-bit
-  mapping closes by inspection.
+* **OPEN 9 remainder** — the top mapping is already fixed: `43h`, id bit 5
+  clear and `LINK_CTRL` bit 1 set. The patched prelude makes direct
+  observation of the complementary back state unambiguous.
 * **OPEN 2** — `47h` discriminates bit order by *burst length*, countable
   without decoding anything: 17 cells if MSB-first, 16 if LSB-first.
 * **The stuffing rule** — `6Bh` needs no stuffed bit where `03h` needs one, so

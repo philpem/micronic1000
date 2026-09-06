@@ -167,7 +167,7 @@ State: continuously updated as work progresses.
 ### Hardware-dependent priorities
 
 1. **Run the v13 replacement-ROM exerciser.** Verify stock chips against
-   `ACF8`/`2E12`, burn and label ROM00 sum16 `1CFD`, then follow
+   `ACF8`/`2E12`, burn and label ROM00 sum16 `1CBD`, then follow
    `doc/re-notes/exerciser-test-plan.md`. The first control is `ISRC` bit 0
    from N/ENTER/YES; only after it passes are a clear link bit 2 and flat
    `HSBUSY` meaningful negatives.
@@ -181,10 +181,11 @@ State: continuously updated as work progresses.
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-5. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
-   selects the top V24 ADAPTOR versus back PLINTH port, and confirm where the
-   EXT STORAGE ADAPTER attaches. ROM evidence proves only the shared 4x byte
-   transport and the bit5 selector.
+5. **Confirm the complementary port state and EXT STORAGE attachment.** The
+   top mapping is closed: V24 Load/Run uses the bit5-clear state and was
+   captured at the top window. Observe the bit5-set exerciser phase at the
+   back PLINTH window directly, then confirm where the EXT STORAGE ADAPTER
+   attaches.
 6. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
@@ -1866,8 +1867,9 @@ current priority order; the concise lists above are authoritative.
     `internals/io-map.md` revised (4Ah/4Bh rows, Interface-shape section,
     Ghidra label table) to report only confirmed drive/poll behaviour.
     Owner statement preserved: link-id bit 5 selects one of two IR line
-    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; which
-    `LINK_CTRL` bit 1 value maps to which physical connector remains OPEN.
+    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; at this
+    session the polarity remained OPEN. **SUPERSEDED 2026-09-06:** fresh UI
+    trace plus the owner's top-window capture maps bit5 clear to top V24.
    * **Ghidra:** retained the existing `LINK_CTRL`/`LINK_STATUS`/`LINK_CMD`/
      `LINK_PROBE` labels; added plates and EOL comments to `LinkBlockTx`,
      `LinkBlockRx`, `LinkWaitReady`, `LinkPresent`, and `LinkProbe` for the
@@ -2241,7 +2243,8 @@ current priority order; the concise lists above are authoritative.
     grammar. A new V24 mode-1 trace reaches loader state 3 using the same
     synthetic type-2/type-4 responder and is regression covered. Independent
     byte review confirms its mode-table/runtime-stub mechanics. Historical
-    modem semantics and physical-port polarity remain OPEN.
+    modem semantics remained OPEN; the physical top-port polarity was closed
+    by the later 2026-09-06 correction.
   * **Commstar historical-server readiness (2026-08-31):** cross-provider
     review confirms that controller transport and the bounded type-2/type-3/
     type-4 exchange are implementable, but a real historical server remains
@@ -3367,15 +3370,14 @@ at 1087 functions.
   whether the controller forwards it onto the IR line or consumes it as
   addressing is not determinable from the firmware. It decides whether the
   prelude is a byte an adapter will see. A logic capture settles it.
-* **Port select resolved.** "Connector" was the wrong word: Plinth and V24 are
+* **Port-select mechanics resolved.** "Connector" was the wrong word: Plinth and V24 are
   two **IR ports on the handheld** — base and top — and the connector is the
   infrared link itself. `LinkBlockTx` tests link-id bit 5 (`ROM00:3278`,
   `AND 20h`) and hands it to `LinkPortSelect` (`ROM00:3454`), which drives
   `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: id bit 5 clear -> both
-  set, id bit 5 set -> both clear. **LIKELY** bit 5 clear = Plinth, since the
-  factory default screen reads `PLINTH / LOCAL LINK / 9600` and every
-  default-configuration trace carries link id `43h`. Confirming needs a
-  capture with `V24 ADAPTOR` selected.
+  set, id bit 5 set -> both clear. The session's inference that bit 5 clear
+  meant Plinth was later **REJECTED**: a reproduced V24 UI run also uses
+  `43h`, and the owner's top-window capture maps that clear-bit state to V24.
 
 ## Commstar: both directions demonstrated, and the session ends cleanly (2026-09-01)
 
@@ -4057,7 +4059,7 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 
 * **Replacement ROM00 reviewed and rebuilt as wire format v13.** The burnable
   image is `analysis/rom_exerciser/micron1_exerciser.bin`, 32768 bytes,
-  sum16 `1CFD`; stock `micron1.bin` remains sum16 `ACF8`, and ROM01 is
+  sum16 `1CBD`; stock `micron1.bin` remains sum16 `ACF8`, and ROM01 is
   untouched. The guarded build reports 703 changed bytes and 22 bytes free
   across the six filler regions.
 * **SHOWSTOPPER FIX — interrupt source attribution is now direct.** The v12
@@ -4080,22 +4082,28 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 * **Safety fix:** the RAM target of the NMI vector receives `RETN` (`ED 45`),
   not `RET`, and is installed before LCD initialisation. This restores IFF1
   correctly if a stray NMI occurs.
-* **DISCARDED — physical port polarity was overclaimed.** The branch called
-  `63h`/bit5-set the top port and `43h`/bit5-clear the back port. The emulator
-  proves only menu choice -> wire ID -> latch state and cannot prove physical
-  wiring. Physical polarity remains OPEN per the durable owner-ground-truth
-  rule. The dependent claims were removed from `method.md`,
-  `commstar-evidence.md`, `open-questions.md`, the exerciser source/README,
-  decoder output and test plan. The exerciser alternates both states, so no
-  code-path capability was lost.
-* **Validation:** guarded rebuild reproduced sum16 `1CFD`; 88 tests passed,
+* **CORRECTION — bit5-set was not the top-port state.** The September 6
+  `63h` claim equated `Session_TxBlock4`'s first stack argument at
+  `ROM00:5C04` with the unrelated two-option string table index at
+  `ROM01:7663`; no xref supports that correlation. Fresh PLINTH and V24
+  Load/Run runs both reach `LinkPortSelect` with `fdd4=43h`, `LINK_CTRL` bit 1
+  set and port `2Ch` bit 5 set. The V24 run enters its distinct Log-on form
+  and emits distinct application data, so the UI choice was genuine. Combined
+  with the owner's capture of that operation at the top V24 window,
+  **bit5-clear is CONFIRMED top**. Bit5-set is LIKELY back by two-port
+  elimination and remains a direct exerciser observation. The harness now
+  logs and regression-tests `FDD4/CTRL.b1/2C.b5` for both UI routes.
+* **Validation:** guarded rebuild reproduced sum16 `1CBD`; 88 tests passed,
   33 emulator-dependent cases skipped, and 5 subtests passed. A bounded
   30,000-slice emulator run reached the controller, emitted preamble
   `A5 5A 0D 80 80`, streamed 11-byte records, and repeatedly wrote the
   keypad arm value `48h`. The harness does not assert a link INT for this
-  dedicated ROM, so direct `ISRC` behavior remains a hardware test.
+  dedicated ROM, so direct `ISRC` behavior remains a hardware test. Two
+  targeted emulator integration tests also passed for the PLINTH and V24 UI
+  routes with the new port-select tuple assertions. The rebuilt image SHA-256
+  is `01bd49402645b78413fecc07af31c47ed097ca2379bdff74920857b37157696a`.
 * **Next hardware sequence:** (1) read and `cmp` both fitted ROMs; (2) burn
-  and label `1CFD`; (3) run the pin walk; (4) capture at least 60 seconds in
+  and label `1CBD`; (3) run the pin walk; (4) capture at least 60 seconds in
   `LISTEN_ONLY`, pressing N/ENTER/YES until `ISRC` bit 0 proves the IRQ path;
   (5) read `ISRC` bit 2, phase-1 `HSBUSY`, phase-2 `RX byte`/`RXD`, and
   watchdog count in that order; (6) repeat the same geometry with the

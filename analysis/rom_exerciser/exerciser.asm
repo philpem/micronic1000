@@ -63,9 +63,9 @@
 ;                  switch ports underneath the measurement.
 ;
 ; The port alternates on every counter wrap, at phase 0, so one burn exercises
-; both.  Which physical window a given latch state drives is NOT decidable
-; from the ROM -- see port_swap -- so this measures it instead of assuming it.
-; LINK_CTRL bit 1 is in every record, so a capture says which port was live.
+; both.  The bit5-clear state is the top V24 port; the complementary state is
+; still worth observing at the back window.  LINK_CTRL bit 1 is in every
+; record, so a capture says which state was live.
 ;
 ; A CTRL value that stops the controller accepting bytes would stall the
 ; reporting channel, so waitready has a watchdog: after ~9 ms with no TXRDY it
@@ -171,11 +171,10 @@ LinkProbe       equ 0x348A
 LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
-; The firmware's Load/Run paths select 63h for V24 ADAPTOR and 43h for PLINTH.
-; LinkPortSelect maps their bit 5 to two latch states, but which state reaches
-; which physical window remains OPEN pending hardware observation.  The run
-; alternates both, so the initial state cannot invalidate the experiment.
-LINK_ID         equ 0x63            ; first wire id; alternates with 43h
+; A real V24 Load/Run trace uses 43h: LinkPortSelect takes the bit5-clear
+; branch, sets LINK_CTRL bit 1 and port 2Ch bit 5, and the owner observed the
+; transmission at the top V24 window.  The run still alternates both states.
+LINK_ID         equ 0x43            ; top V24 state first; alternates with 63h
 VERSION         equ 0x0D            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 

@@ -37,13 +37,13 @@ source tree (not published here).
 ## Link identity and port selection
 
 * **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
-  (back)? — OPEN.** Driving the Load/Run form and tracing the static path
-  establishes `V24 ADAPTOR -> 63h -> bit5-set latch state` and
-  `PLINTH -> 43h -> bit5-clear latch state`. It does **not** establish which
-  latch state reaches which physical window; the emulator has no model of
-  that wiring. Resolve by running the replacement-ROM exerciser, which
-  alternates the two states while reporting `LINK_CTRL` bit 1, and observing
-  which window emits. See
+  (back)? — CLOSED for top, OPEN for direct back-port observation.** A fresh
+  emulator run through the real V24 Load/Run UI uses `fdd4=43h` and the
+  bit-5-clear latch state (`LINK_CTRL` bit 1 and port `2Ch` bit 5 set). The
+  owner captured that operation at the top V24 window, so bit 5 clear is the
+  top state. Bit 5 set is **LIKELY** the back state by elimination. Confirm it
+  directly with the replacement-ROM exerciser, which alternates both states
+  while reporting `LINK_CTRL` bit 1. See
   [commstar-evidence](commstar-evidence.md#device-table-ports).
 
 * **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
@@ -53,7 +53,7 @@ source tree (not published here).
   `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
   `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
   bit 5 **set**, so *if* those ids ever reach `LinkBlockTx`, they select the
-  same still-unmapped connector state. The EXT STORAGE ADAPTER's physical
+  same likely back-port state. The EXT STORAGE ADAPTER's physical
   attachment remains unadjudicated.
 
   The 5-pin side connector is excluded on its own terms: **it has no byte

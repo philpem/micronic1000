@@ -386,8 +386,8 @@ this table completes real sessions.
 
 **Transmit ordering (stable as latch sequence):**
 
-1. The port-select latch follows active-link-id bit 5 (one of two IR
-   line states; which state is V24 ADAPTOR vs PLINTH is open).
+1. The port-select latch follows active-link-id bit 5. Bit 5 clear is the
+   top V24 state; the complementary back-state mapping awaits direct capture.
 2. Toggle `LINK_CTRL` bits around a short delay.
 3. Poll `LINK_STATUS` bit 7 and write `0x81` to `LINK_CMD` when ready.
 4. Write the low five bits of the link id (`link_id & 1Fh`) to `LINK_TXD`
@@ -781,10 +781,16 @@ bit 1 and port `2Ch` bit 5 move together:
 | clear (id `43h`) | **set** | **set** |
 | set (id `63h`) | clear | clear |
 
-**Which of those is the back port and which is the top is NOT established.**
-An earlier revision of this page asserted `43h` = Plinth and `63h` = V24 on
-the strength of the factory default screen reading `PLINTH`. That reasoning
-does not hold up, for two reasons found while trying to confirm it:
+**CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
+the resulting transmission at the top window. A fresh emulator reproduction
+of that UI route records every completed `LinkPortSelect` call as
+`fdd4=43h`, `LINK_CTRL` bit 1 set, port `2Ch` bit 5 set. Therefore the
+bit-5-clear state drives the top V24 window. The bit-5-set state is **LIKELY**
+the back PLINTH window by two-port elimination; the replacement-ROM exerciser
+will observe that complement directly.
+
+Two distinctions prevent this result being confused with the device table or
+the separate comms picker:
 
 * **`43h` and `63h` are wire ids in a device table, not a picker output.**
   `ROM00:31FF` is the accessor, and it decodes as a lookup on a device
@@ -804,9 +810,7 @@ does not hold up, for two reasons found while trying to confirm it:
   1-based device number to a wire id, and `43h`/`63h` are the ids of two
   particular devices. Device 3 is `63h` and device 4 is `43h`; the `LOCAL
   LINK` mode record's selector is 4, which is why every IR trace so far
-  carries `43h`. **The discriminating observation** is which device number
-  the two-entry comms picker selects — not which label the storage picker
-  shows.
+  carries `43h`.
 
   Two further details worth having. The array is really four repeats of
   `[80h, variant, 63h, 43h]`, the variant being `ABh`, `2Bh`, `67h`, `67h` —
@@ -814,21 +818,14 @@ does not hold up, for two reasons found while trying to confirm it:
   `≡ 3` and `≡ 0 (mod 4)`. And the three modem mode records all select
   **device 6**, whose id is `2Bh` — **bit 5 set**.
 
-  That last point cuts against the simplest reading. If bit 5 merely chose
-  between two IR ports, the modem methods would not sit on the opposite side
-  of it from `LOCAL LINK`. So `LinkPortSelect` may be switching something
-  broader than "base port versus top port" — a signal path that happens to
-  differ between the IR link and the modem — and the Plinth/V24 framing may
-  be the wrong question entirely. **SUSPECTED**; the same comms-picker
-  experiment distinguishes it.
-
-* **Measured: the Load/Run source picker does not change the id.** Running the
+* **Measured: the Load/Run source picker does not change the active id.** Running the
   harness both ways — `--trace-loadrun-source plinth` and `--trace-loadrun-source
   v24` — the two traces genuinely diverge (13 agreed / 1 unsolicited versus 12
-  agreed / 2 unsolicited) and yet **both carry prelude `03` and link id
-  `43h`**. So whatever selects the IR port, it is not that picker.
+  agreed / 2 unsolicited in the original bounded run) and yet **both call
+  `LinkPortSelect` with `fdd4=43h`**. This is now regression asserted together
+  with the two latch bits, rather than inferred from the common prelude `03h`.
 
-There are two separate pickers, and this is probably the confusion: the
+There are two separate pickers. The
 five-entry storage picker at `micron2.bin 0x757F` (`WORKSTATION MEMORY`,
 `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
 what the harness drives, while the two-entry picker at `0x7663` (`PLINTH`,
@@ -842,8 +839,10 @@ named physical connectors. It does not expose the wire id or the
 `LinkPortSelect` bit-5 branch, so the bit-5-to-connector mapping remains
 open.
 
-What would settle it: drive the `0x7663` picker and re-read the prelude, or
-watch which IR port goes active on real hardware.
+`Session_TxBlock4` at `ROM00:5BF7` maps its first stack argument to device 3
+or 4 at `ROM00:5C04`; the earlier `63h` claim incorrectly identified that
+argument with the `0x7663` table index. No static reference supports that
+correlation, and the runtime trace contradicts it.
 
 ### `ram:E520`, the link type
 
@@ -1308,7 +1307,7 @@ loaded application does with these entry points.
 | V24 form staging | **Provisional** | Buffers reach mode-dependent dispatch | Authentication encoding |
 | Program stream | **Provisional** | Inner bytes reach loader unchanged; marker 0/1 delimits the stream; a host object carries at most **126** data bytes (measured, 127 fails) | Why the limit is 126 rather than 128, and whether a historical EOF frame exists |
 | Errors, aborts, retries | **Provisional** | Timeouts and a few result codes | Application-visible grammar |
-| Physical port | **Not implementable** | Bit 5 selects a line state | Which state is V24 ADAPTOR vs PLINTH |
+| Physical port | **Provisional** | Bit 5 clear drives top V24; the two latch states are known | Direct observation of the bit-5-set state at back PLINTH; connector-facing modulation/timing |
 
 ## Diagnostic reference
 

@@ -43,14 +43,16 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
   firmware, where `2Dh` is read-only and `2Ch` bits 0 and 1 are the only
   candidate outputs ([bit usage](../reference/memory-map.md#port-2ch-bits)).
 * The two IR ports are **V24 ADAPTOR = top, PLINTH = back**. Firmware
-  selects between two line states by wire-id bit 5. The Load/Run paths select
-  `63h` for V24 ADAPTOR and `43h` for PLINTH, and the latch mapping is
-  byte-verified, but **which bit-5 value reaches which physical window is
-  OPEN** pending a hardware observation. See
+  selects between two line states by wire-id bit 5. A fresh trace of the real
+  V24 Load/Run choice uses `fdd4=43h`, the bit-5-clear branch
+  (`LINK_CTRL` bit 1 and port `2Ch` bit 5 both set), and the owner observed
+  that operation at the top window. **CONFIRMED: bit 5 clear is top V24.**
+  Bit 5 set is **LIKELY** the back PLINTH state by two-port elimination, but
+  has not yet been observed at that window. See
   [commstar-evidence](commstar-evidence.md#device-table-ports).
 * All drive `C:`+ storage I/O runs over the 4-wire byte transport, so the
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
-  `C:=0x73`, `D:=0x72` (both bit 5 = 1, hence the same still-unmapped port).
+  `C:=0x73`, `D:=0x72` (both bit 5 = 1, hence the likely back-port state).
   **Contradicted in part by the ROM**, which is worth recording rather than
   reconciling away: every one of the fourteen call sites of the drive-id
   lookup at `ROM00:0824` refuses a non-zero id, so *this* firmware's BDOS

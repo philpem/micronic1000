@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1CFD` |
+| `micron1_exerciser.bin` | `1CBD` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1CFD`** so it
+needs no reference to this repo. **Label the burned exerciser `1CBD`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -136,6 +136,12 @@ controller ports directly, which is what actually reaches the glass. Check the
 link exerciser. Release and power-cycle to go back. That is the whole user
 interface, and it needs no knowledge of the keymap — which is the point,
 because the keymap is one of the things being reverse-engineered.
+
+In link mode the first cycle uses `43h`, the bit-5-clear latch state observed
+on the **top V24 ADAPTOR window**, then alternates with `63h` every counter
+wrap. `LINK_CTRL` bit 1 in each record identifies the state: set is `43h`,
+clear is `63h`. The alternation remains useful because the complementary
+state has not yet been observed directly at the back PLINTH window.
 
 ### The pin walk
 
@@ -351,12 +357,12 @@ opening matches what `LinkBlockTx` does, access for access:
   5  PC=34B7  2C = 00     probe done, port 2Ch restored
   6  PC=34DC  4A = 00     LinkPresent
   7  PC=34E6  4A = 00
-  8  PC=345F  2A = 20     LinkPortSelect, id bit 5 set
-  9  PC=346C  4A = 00     LINK_CTRL bit 1 clear
- 10  PC=3489  2C = 00     port 2Ch bit 5 clear
- 11  PC=72B3  4A = 00     our frame opening: bit 0 low
- 12  PC=72B3  4A = 01                        bit 0 high
- 13  PC=72B3  4A = 01                        bit 4 low
+  8  PC=345F  2A = 20     LinkPortSelect, id bit 5 clear
+  9  PC=347D  4A = 02     LINK_CTRL bit 1 set
+ 10  PC=3489  2C = 20     port 2Ch bit 5 set
+ 11  PC=72B3  4A = 02     our frame opening: bit 0 low
+ 12  PC=72B3  4A = 03                        bit 0 high
+ 13  PC=72B3  4A = 03                        bit 4 low
  14  PC=34F7  4C = 81     LINK_CMD -- the opening flag
  15+ PC=728A  4D = ..     version-13 preamble, then 11-byte records
 ```

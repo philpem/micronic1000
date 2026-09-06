@@ -167,8 +167,11 @@ is silent. Currently on record:
   "bottom/front" wording in `micronic_notes.md` and internals/os-diposb.md,
   both corrected on that date). Firmware selects between the two 4x
   port configurations by wire-id bit5 (LinkBlockTx `AND 0x20` →
-  LinkPortSelect, byte-verified); which bit5 value is which physical
-  port is still OPEN — needs a hardware test.
+  LinkPortSelect, byte-verified). **Bit5 clear is the top V24 state**:
+  a fresh emulator run of the real V24 Load/Run choice uses wire ID 0x43,
+  `LINK_CTRL` bit1 set and port 2Ch bit5 set, while the owner captured that
+  operation at the top window. The complementary bit5-set state is LIKELY
+  the back port by two-port elimination, but has not been observed there.
 - The **EXT STORAGE ADAPTER's attachment point is not yet adjudicated**
   — do not bind it to a wire-id or port until the owner confirms.
   What is CONFIRMED: all drive-C:+ storage I/O runs over the 4x byte

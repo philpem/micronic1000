@@ -796,11 +796,19 @@ class CommstarShadowPeerTest(unittest.TestCase):
                                   "--trace-loadrun-v24-mode", "1")
         self.assertEqual(counts["differed"], 0, out)
         self.assertGreaterEqual(counts["agreed"], 12)
+        self.assertIn(
+            "[loadrun-source] port-select FDD4=43/CTRL.b1=1/2C.b5=1",
+            out,
+        )
 
     def test_agrees_on_the_plinth_route(self):
         counts, out = self._trace("--trace-loadrun-source", "plinth")
         self.assertEqual(counts["differed"], 0, out)
         self.assertGreaterEqual(counts["agreed"], 13)
+        self.assertIn(
+            "[loadrun-source] port-select FDD4=43/CTRL.b1=1/2C.b5=1",
+            out,
+        )
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")

@@ -1075,6 +1075,10 @@ mem[0xFC05] = 0x70
 RAM = {}
 cb = 0
 log = []
+# Snapshot each completed LinkPortSelect invocation.  The normal I/O log has
+# the latch writes but not the active link id, which made it too easy to
+# mis-correlate a UI choice with Session_TxBlock4's selector argument.
+link_port_select_events = []
 # Unmapped bank window: reads return 0xFF, writes discarded. This is critical
 # for RAM sizing. Boot_BankWalkInit sweeps banks 0x41..0x01 (64 slots) regardless
 # of installed RAM, but only banks 2..BANK_MAX are backed by physical RAM
@@ -1467,6 +1471,10 @@ def och(*a):
     v &= 0xFF
     if len(log) < 200000:
         log.append((mach.pc & 0xFFFF, p, v))
+    if p == 0x2C and (mach.pc & 0xFFFF) == 0x3489:
+        link_port_select_events.append(
+            (mem[0xFDD4], mem[0xF794] & 0x02, v & 0x20)
+        )
     if p == 0x47:
         select_bank(v)
     elif p == 0x08:
@@ -3054,6 +3062,14 @@ if COMMSTAR_PEER_MODE:
     print(f"[commstar-peer] request states seen: {seq}")
 if TRACE_LOADRUN_SOURCE:
     print(f"loadrun_source_trace_status={loadrun_source_trace_status}")
+    observed_selects = sorted(set(link_port_select_events))
+    print(
+        "[loadrun-source] port-select "
+        + ",".join(
+            f"FDD4={link_id:02X}/CTRL.b1={ctrl_bit >> 1}/2C.b5={latch_bit >> 5}"
+            for link_id, ctrl_bit, latch_bit in observed_selects
+        )
+    )
 if TRACE_LOADRUN_SOURCE:
     print(
         f"[shadow-peer] agreed={shadow_agree} differed={len(shadow_differ)} "

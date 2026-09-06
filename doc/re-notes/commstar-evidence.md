@@ -115,7 +115,8 @@ sequence (byte-verified):
 
 1. `LinkPortSelect` (ROM00:3454) has already driven `LINK_CTRL` bit 1 to
    match active-link-id bit 5. This selects one of two owner-confirmed IR line
-   states; which state is V24 ADAPTOR versus PLINTH remains **OPEN**.
+   states. Bit 5 clear is the top V24 state; bit 5 set is **LIKELY** back
+   PLINTH pending direct observation.
 2. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
    `B=0x80` DJNZ delay.
 3. `LinkPresent` (ROM00:34EC) then `LinkWaitReady` (ROM00:34F8). `34F8` is
@@ -610,47 +611,38 @@ The active link id is retained in `fdd4`.
 
 ### Wire IDs, latch states, and physical ports {#device-table-ports}
 
-**CONFIRMED:** the firmware's Load/Run path maps `V24 ADAPTOR` to wire id
-`63h` and `PLINTH` to `43h`, and `LinkPortSelect` maps their bit 5 to two
-different latch states. This corrects the earlier claim that the source picker
-gave `43h` for both choices.
-
-Established by driving the form in the emulator, one run per choice, identical
-in every other respect:
+**CONFIRMED:** both tested Load/Run choices use wire ID `43h` when they reach
+`LinkBlockTx`. This is the bit-5-clear branch of `LinkPortSelect`, which sets
+`LINK_CTRL` bit 1 and port `2Ch` bit 5. A September 6 revision incorrectly
+claimed the V24 choice used `63h`; a fresh reproduction with explicit
+port-select instrumentation disproves it.
 
 | From | `fdd4` | `LinkPortSelect` branch | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
 |---|---|---|---|---|
 | `PLINTH` | `43h` | `3473` (bit 5 clear) | set | set (`2C`=`20`) |
-| `V24 ADAPTOR` | `63h` | `3462` (bit 5 set) | clear | clear (`2C`=`00`) |
+| `V24 ADAPTOR`, mode 1 | `43h` | `3473` (bit 5 clear) | set | set (`2C`=`20`) |
 
-The static path agrees independently. The two-option list at `ROM01:7663` is
-`{0: PLINTH, 1: V24 ADAPTOR}`; `ROM00:5C04` tests that index against 1 through
-`ram:E04B`, which returns **Z when the operands differ** (byte-verified at
-`E04B`: the unequal path zeroes `HL` via `XOR A`, so the Z flag is the inverse
-of the boolean). So index 1 — `V24 ADAPTOR` — falls through to selector **3**,
-and the device table at `ROM00:3267` gives selector 3 = `FE85` = `63h`. Index
-0, `PLINTH`, takes the jump to selector 4 = `FE86` = `43h`.
+The routes are genuinely distinct: the V24 run enters its extra Log-on form,
+accepts mode 1, and emits a different state-6 application object. The new
+harness regression records each completed `LinkPortSelect` invocation as
+`FDD4/CTRL.b1/2C.b5`; both runs report `43/1/1`.
 
-**OPEN:** which latch state reaches which physical window. Owner-supplied
-ground truth identifies V24 ADAPTOR as the top window and PLINTH as the back
-window, but an emulator trace cannot establish the wiring between a latch bit
-and those windows. The replacement-ROM exerciser alternates both states and
-records `LINK_CTRL` bit 1; watching which window emits is the discriminating
-hardware test.
+The false `63h` result came from a static correlation that the bytes do not
+support. `Session_TxBlock4` at `ROM00:5BF7` does test its **first stack
+argument** against 1 at `ROM00:5C04`: equality selects device 3 (`63h`) and
+inequality selects device 4 (`43h`). `ram:E04B` returns a boolean in `HL` and
+sets Z for false, so that local branch reading is correct. What was not
+correct was identifying that stack argument with the index of the two-option
+string table at `ROM01:7663`. There is no static reference joining the table
+to `ROM00:5C04`, and the runtime result is selector 4 for both tested routes.
 
-Two earlier readings were wrong and are superseded:
-
-* that driving the source picker "yields link id `43h` either way"
-  ([open-questions.md](open-questions.md#link-identity-and-port-selection)) —
-  it does not; the two choices give `43h` and `63h`;
-* that `V24 ADAPTOR` reaches the wire through selector 4 and `43h`. The
-  selector-4 statement below concerns the **mode-0 log-on** path, a later and
-  separate selection stage; it is `fdd4`, set from the source picker, that
-  `LinkBlockTx` actually passes to `LinkPortSelect` at `ROM00:3277`.
-
-The trap in the earlier menu-to-ID reading was `E04B`. Read as a conventional
-"Z means equal", every conclusion downstream of `5C0A` inverts. That fixes
-the logical mapping above but does not close the physical polarity.
+**CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
+the handheld transmission at the top V24 window; the reproduced route takes
+the bit-5-clear state. Therefore bit 5 clear (`43h`, `LINK_CTRL` bit 1 set,
+port `2Ch` bit 5 set) drives the top window. Bit 5 set is **LIKELY** the back
+PLINTH state by elimination from two ports and two states, but has not yet
+been observed directly there. The replacement-ROM exerciser alternates both
+states and makes that remaining check self-describing.
 
 `E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
 shown on the session status screen (**CONFIRMED provenance**):
@@ -797,7 +789,7 @@ only confirmed rule for delimiting a captured M1000 transmission.
 | Link id bits | Server-observable? | Source |
 |---|---|---|
 | 0-4 | Yes | Controller prelude (`LinkBlockTx` transmit step 4). |
-| 5 | No | Port select via `LinkPortSelect`; polarity is **OPEN**. |
+| 5 | No | Port select via `LinkPortSelect`; clear is top V24, set is LIKELY back PLINTH. |
 | 6-7 | No | Never transmitted. Both observed ids (`0x43`, `0x63`) have bit 6 set and bit 7 clear; two samples are not a rule. |
 
 Recovering the remaining three bits by capture, probing, or a fixed convention
