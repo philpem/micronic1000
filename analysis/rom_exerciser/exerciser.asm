@@ -36,13 +36,22 @@
 ; coverage -- only 1.6% of the wire.
 ;
 ;   preamble   A5 5A VER ID PROBE STATUS      (6 bytes, sent once)
-;   record     COUNT OR AND RXD               (4 bytes, ~4.9 ms apart)
+;   record     COUNT OR AND RXD SIDE          (5 bytes, ~6.1 ms apart)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
 ;             record is visible and the counter doubles as a time base
 ;     OR      every LINK_STATUS sample seen since the last record, OR'd
 ;     AND     every LINK_STATUS sample seen since the last record, AND'd
 ;     RXD     LINK_RXD, read once per record
+;     SIDE    port 2Dh, the 5-pin side port, read once per record
+;
+; SIDE is here to bootstrap the next burn rather than to measure the link.
+; The firmware reads bits 0 and 1 of 2Dh (ROM00:1299), the barcode front end
+; uses the port, and it is reachable from outside the case -- so it is a
+; command channel into a future exerciser that does not depend on the IR link
+; working.  Holding each side-port pin while watching SIDE identifies the
+; wiring, which is all this burn needs it for.  A different peripheral
+; entirely, so it cannot confound the LINK_STATUS measurement.
 ;
 ; OR and AND are the reason a slow record rate costs nothing.  The wait for
 ; TXRDY between bytes is a tight polling loop -- roughly one LINK_STATUS
@@ -64,6 +73,7 @@ LINK_CMD        equ 0x4C
 LINK_TXD        equ 0x4D
 LINK_RXD        equ 0x4E
 LINK_PROBE      equ 0x4F
+SIDE_PORT       equ 0x2D            ; 5-pin side port; bits 0,1 read at 1299
 
 CTRL_SHADOW     equ 0xF794          ; the firmware's LINK_CTRL shadow
 CMD_SHADOW      equ 0xF796          ; ... and its LINK_CMD shadow (see 34F2)
@@ -76,7 +86,7 @@ LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
 LINK_ID         equ 0x43            ; id bit 5 clear; use 63h for the other port
-VERSION         equ 0x03            ; bumped whenever the wire format changes
+VERSION         equ 0x04            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 V_OR            equ 0xC7E0          ; accumulator snapshot, well clear of the
 V_AND           equ 0xC7E1          ; stack, which never goes more than 2 deep
@@ -176,6 +186,9 @@ stream:         ld a,b                      ; new frame every 64 records
                 in a,(LINK_RXD)             ; read after status, so a status
                 ld c,a                      ; bit cleared by the read still
                 call putbyte                ; [3] RXD -- shows in this record
+                in a,(SIDE_PORT)
+                ld c,a
+                call putbyte                ; [4] SIDE
 
                 inc b
                 jr stream

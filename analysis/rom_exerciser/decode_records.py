@@ -29,7 +29,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 4
+RECLEN = 5
 
 # LINK_STATUS bits.  7 and 4 are named from the firmware's own tests
 # (LinkWaitReady polls bit 7; ROM00:34E7 tests bit 4); 6 from ROM00:32F3.
@@ -89,8 +89,8 @@ def main():
         magic, ver, lid, probe, st = (preamble[:2], *preamble[2:6])
         print(f"\npreamble  version {ver}  LINK_ID {lid:02X}  "
               f"LINK_PROBE {probe:02X}  LINK_STATUS {st:02X}")
-        if ver != 3:
-            print(f"  ! this decoder is written for version 3")
+        if ver != 4:
+            print(f"  ! this decoder is written for version 4")
     else:
         print("\nno preamble frame in this capture "
               "(fine if it started after power-up)")
@@ -123,13 +123,17 @@ def main():
 
     # --- change log.  With a constant controller this is one line, which is
     # the point: it makes a negative result readable at a glance.
-    print("\nchanges (count: OR AND RXD):")
+    side = {r[4] for r in records}
+    print(f"port 2Dh: {len(side)} distinct value(s): "
+          f"{' '.join(f'{v:02X}' for v in sorted(side))}")
+
+    print("\nchanges (count: OR AND RXD SIDE):")
     prev = None
     shown = 0
     for r in records:
         key = r[1:]
         if key != prev:
-            print(f"  {r[0]:02X}: {r[1]:02X} {r[2]:02X} {r[3]:02X}")
+            print(f"  {r[0]:02X}: {r[1]:02X} {r[2]:02X} {r[3]:02X} {r[4]:02X}")
             prev = key
             shown += 1
             if shown == 200:

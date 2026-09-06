@@ -30,11 +30,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1382` |
+| `micron1_exerciser.bin` | `16ED` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1382`** so it
+needs no reference to this repo. **Label the burned exerciser `16ED`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -49,14 +49,14 @@ anything if the image is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `7E96`-`7F64` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
+| `7E96`-`7F6A` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 `014B` rather than the reset vector because `0000` → `0103` → `014B`, and the
 emulator harness starts directly at `014B`, so the same patch is exercised on
 hardware and in the emulator.
 
-**206 bytes differ from the original.** One chip: `ROM01` is untouched.
+**212 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## Validate before burning
 
@@ -92,7 +92,7 @@ version of the hardware result — the negative one, since its synthetic
 controller reports a constant `80h`:
 
 ```
-preamble  version 3  LINK_ID 43  LINK_PROBE FF  LINK_STATUS 80
+preamble  version 4  LINK_ID 43  LINK_PROBE FF  LINK_STATUS 80
 counter discontinuities: 0
   bit 7 TXRDY   always 1
   bit 6 HSBUSY  always 0
@@ -109,7 +109,7 @@ gap so the Arduino's burst delimiter fires:
 
 ```
 preamble   A5 5A VER ID PROBE STATUS      once, at power-up
-record     COUNT OR AND RXD               64 per frame, ~4.9 ms apart
+record     COUNT OR AND RXD SIDE          64 per frame, ~6.1 ms apart
 ```
 
 | field | |
@@ -118,6 +118,7 @@ record     COUNT OR AND RXD               64 per frame, ~4.9 ms apart
 | `OR` | every `LINK_STATUS` sample taken during this record's window, OR'd together |
 | `AND` | the same samples, AND'd together |
 | `RXD` | `LINK_RXD`, read once per record, after the status samples |
+| `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
 
 `OR` and `AND` are what make the modest record rate sufficient. The wait for
 `TXRDY` between bytes is a tight polling loop — one `LINK_STATUS` sample every
@@ -130,6 +131,14 @@ ordering of events inside one record is lost.
 `LINK_PROBE` is read once, into the preamble, never in the loop: its read side
 effects are unknown and the point of this burn is to measure `HSBUSY` without
 confounds. Same reasoning bounds `LINK_RXD` to one read per record.
+
+`SIDE` is not a link measurement — it is here to make the *next* burn
+steerable. The firmware reads bits 0 and 1 of `2Dh` (`ROM00:1299`), it is the
+barcode front end's port, and it is reachable from outside the case, so it is
+a command channel into a future exerciser that does not depend on the IR link
+working. Hold each side-port pin in turn and watch `SIDE` to map the wiring;
+that is all this burn needs from it. Being a different peripheral entirely, it
+cannot confound the `LINK_STATUS` measurement.
 
 Every frame begins on a record boundary whose `COUNT` is a multiple of 64, so
 byte alignment is structural, not guessed.
