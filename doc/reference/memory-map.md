@@ -647,10 +647,32 @@ decodes it.
 | `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. Register-indirect reads at `ROM00:2104` (`LD C,28h; IN B,(C)`) and `ROM00:246E`/`2477` (`LD C,28h`, after selecting RTC registers 07h and 08h). CONFIRMED. Register map: [RE notes: RTC](../re-notes/rtc.md) |
 | `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Used by the barcode front end (`ROM00:123B`, `124A`, `14F2`, `1541`, `1550`) and by `LinkPortSelect` (`ROM00:345D`). CONFIRMED as a shared latch; individual bits **Provisional** |
 | `2Bh` | `SOUND` | W | Beeper. `Port2bWrite` (`ROM00:35C6`) / `Sound_Off` (`ROM00:35CB`). CONFIRMED |
-| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Barcode arm/disable (`ROM00:1231`, `1283`, `1292`, `14E6`, `150F`-`1528`), link port select and probe (`ROM00:3487`, `34B5`), power-down (`ROM00:1786`). CONFIRMED as a shared latch. **Bit 4 is the LCD backlight** — MAME's `port_2c_w` keeps exactly `BIT(data, 4)` as `m_lcd_backlight` (`micronic.cpp`) — which also identifies the five-pulse group in the exerciser's pin walk. Bit 5 is the IR port select (`LinkPortSelect`); remaining bits **Provisional** |
+| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. CONFIRMED as a shared latch; per-bit assignments in [the table below](#port-2ch-bits) |
 | `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end (`ROM00:1299`-`13ED`). CONFIRMED |
 | `33h` | *unknown* | R | **One access in the whole firmware**: `ROM00:1ED9` `DB 33` (`IN A,(33h); RET`), the tail of a four-instruction stub at `ROM00:1ED0` that first does `LD A,0Dh; OUT (03h),A`. Alignment is sound (the stub follows a `RET` at `1ECF`), but nothing references `1ED0` directly. **Purpose unknown.** Candidates worth discriminating on hardware: an LCD status/busy read (it sits inside the LCD driver block and follows an `LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Do not assume it is either |
-| `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `LcdInit` (`ROM00:1F2B`) and from `PowerLatchIncr`/`PowerLatchDecr` (`ROM00:1D73`/`1D57`), which adjust the battery-RAM byte `FC05`. **CONFIRMED**: MAME's driver maps it as `lcd_contrast_w` (`micronic.cpp`, `map(0x46, 0x46)`), independently of this project's reading. The step is **±2, not ±1** — `1D4A` does `DEC A` twice with a floor at `00h`, `1D60` does `INC A` twice with a ceiling at `FFh` — and although `FC05` lives in battery RAM, cold boot overwrites it with `70h` at `ROM00:0257`, which is why a user-chosen level does not survive a cold start. Lower is lighter. The Ghidra name `WritePowerLatchPort46` is a grandfathered misnomer |
+| `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `LcdInit` (`ROM00:1F2B`) and from `PowerLatchIncr`/`PowerLatchDecr` (`ROM00:1D73`/`1D57`). **LIKELY**, and stronger than it was. Observed: the adjusters step `FC05` by **±2, not ±1** (`1D4A` does `DEC A` twice with a floor at `00h`, `1D60` `INC A` twice with a ceiling at `FFh`), and although `FC05` lives in battery RAM, cold boot overwrites it with `70h` at `ROM00:0257`. Owner-supplied: the stock `70h` is almost black on this unit, a Sun-modified key lightens it, and a cold boot puts it back — which matches that overwrite exactly. Corroborating but **not** primary: MAME maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and seeing the screen legibility change. The Ghidra name `WritePowerLatchPort46` is a grandfathered misnomer |
+
+### Port `2Ch` bits {#port-2ch-bits}
+
+Every write is a read-modify-write through the shadow at `F78D`, so a bit is
+only ever touched by the routine that owns it. **No ROM instruction ever sets
+bits 2, 3, 6 or 7** — every write masks them off or leaves them at the zero
+`LinkProbe` establishes at `ROM00:34B5` (`XOR A`).
+
+| bit | evidence in the ROM | reading |
+|---|---|---|
+| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **an output strobe on the external port.** Width and placement are CONFIRMED; what it strobes is **OPEN** |
+| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **an enable asserted around reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is a drive enable, a wand power line or a direction control is **OPEN** |
+| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+| 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **LIKELY the LCD backlight.** A user-toggleable output that is switched off on power-down fits nothing else here, and MAME's `port_2c_w` keeps exactly `BIT(data, 4)` as `m_lcd_backlight` — corroborating, but itself an inference from this same ROM, not independent measurement. *Confirmed by:* pressing the toggling key and watching the panel |
+| 5 | `LinkPortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `LinkProbe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](../re-notes/commstar-evidence.md#device-table-ports) |
+| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+
+Bits 0 and 1 are the only candidates for the 5-pin side connector's outputs:
+bit 4 flashes the panel and bit 5 switches the IR port, so neither leaves the
+case. `analysis/rom_exerciser`'s pin walk drives all four with a countable
+pulse code to settle which physical pin is which.
+
 | `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791`. 37 write sites in `ROM00`, 24 in the resident kernel. CONFIRMED |
 | `48h` | `IR_STROBE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by `IrSenseDiagEcho` (`ROM00:24F7`-`252D`) and by `LinkSelftestRun` (`ROM00:28AE`-`28E4`), also `SessionSystemInit` (`ROM00:0359`, value `03h`) and power-down (`ROM00:178D`). CONFIRMED as a strobe/select output paired with `49h`; the project's older `LCD_STROBE` label is **not supported by the call sites**, which are all IR/link diagnostics |
 | `49h` | `IR_SENSE` / `BOOTKEYS` | R | Low 2 bits read back after each `48h` write and compared against the value written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3; CP …`) — a loopback/presence test. Also read twice at reset: `IN A,(49h); AND 1; JR Z` selects the cold path, `AND 2; JP NZ` selects a second boot mode (`ROM00:0168`-`0172`). CONFIRMED |

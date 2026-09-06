@@ -112,9 +112,11 @@ overwrites `FC05` on every boot regardless of what was saved. This build ships
 
 Not port `2Bh`: **that is the beeper**, and an earlier version of this file had
 it wrong — a contrast value written there would have made the unit sound
-continuously. Both identifications are in `doc/reference/memory-map.md` and are
-corroborated by MAME's driver (`micronic.cpp`: `2Bh` `beep_w`, `46h`
-`lcd_contrast_w`, `2Ch` bit 4 backlight).
+continuously. Both identifications are in `doc/reference/memory-map.md`, from
+the ROM. MAME's driver agrees, but it is another reverse-engineering effort
+working from the same bytes, so treat it as corroboration rather than
+measurement: this build being legible at `40h` is what will actually confirm
+`46h`.
 
 **The emulator will not render this.** `boot_hw.py` draws the framebuffer at
 `FC06`, which the firmware maintains as a shadow; the exerciser writes the
@@ -136,9 +138,12 @@ times, bit 5 six times**, each group separated by a long gap, repeating for
 ever. Probe a pin, count the pulses, and you have its bit. No timing
 reference, no second scope channel — an LED and an eye would do.
 
-Two of the four groups identify themselves with no probe at all: `2Ch` bit 4
-is the **LCD backlight**, so its five-pulse group flashes the screen, and bit 5
-is the IR port select. That leaves bits 0 and 1 — the pair the barcode front
+Two of the four groups should identify themselves with no probe at all: `2Ch`
+bit 4 is **probably the LCD backlight** (a keyboard-toggled output that
+power-down switches off — see the bit table in
+`doc/reference/memory-map.md`), so its five-pulse group ought to flash the
+screen, and bit 5 is the IR port select. If bit 4's group does *not* flash the
+panel, that is a real finding and the backlight reading is wrong. That leaves bits 0 and 1 — the pair the barcode front
 end drives — as the real side-connector candidates, with the other two groups
 as a free calibration of your counting.
 

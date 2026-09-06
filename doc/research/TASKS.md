@@ -3778,7 +3778,11 @@ Established and byte-verified this pass:
   All its call sites are IR/link diagnostics, so the existing `LCD_STROBE`
   label is **not supported**; flagged rather than renamed.
 
-**OPEN:** port `33h`'s identity and the `2Ah`/`2Ch` bit assignments both need
+**PARTLY CLOSED (2026-09-06):** port `2Ch`'s bits are now tabulated in
+`reference/memory-map.md#port-2ch-bits` — bit 5 IR port select CONFIRMED,
+bit 4 backlight LIKELY, bits 0/1 external-port strobe and read-enable with
+their mechanisms CONFIRMED and their loads OPEN, bits 2/3/6/7 never written.
+**Still OPEN:** port `33h`'s identity and the `2Ah` bit assignments need
 hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 
 ## Unbanked RAM: the last two spans, and a memory write-watch (2026-09-02)
