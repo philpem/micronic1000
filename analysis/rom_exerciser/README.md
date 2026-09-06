@@ -224,7 +224,7 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `OR` | every `LINK_STATUS` sample taken during this record's window, OR'd together |
 | `AND` | the same samples, AND'd together |
 | `RXD` | `LINK_RXD`, read once per record, after the status samples |
-| `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
+| `SIDE` | port `2Dh`, the 8-pin side port, read once per record |
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 | `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |

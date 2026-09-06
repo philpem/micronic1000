@@ -38,7 +38,11 @@ VER = 10
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
 # LINK_STATUS bits, all named from the firmware's own polls.
-BITNAMES = {7: "TXRDY", 6: "HSBUSY", 0: "RX byte"}
+# All named from the firmware's own tests: bit 7 is polled high by
+# LinkWaitReady (34FB); bit 6 is waited CLEAR at 32F3; bit 4 is what the link
+# interrupt handler tests before entering LinkBlockRx (31B9 -> 34E7), i.e.
+# "a frame is waiting"; bit 0 gates the INI loop inside a block read (33CF).
+BITNAMES = {7: "TXRDY", 6: "HSBUSY", 4: "RX pend", 0: "RX byte"}
 
 
 def frames_from_csv(path):

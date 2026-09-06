@@ -73,7 +73,7 @@ attaches)** and **PLINTH (back of the unit)** — owner-confirmed. Neither is
 an electrical connector: both are infrared emitter/detector pairs on the
 handheld's case. Firmware selects one of two line states using bit 5 of
 the active link id; which bit value maps to which port is open. The
-5-pin side port is the barcode-reader front end and is not part of this
+8-pin side port is the barcode-reader front end and is not part of this
 transport — see [Barcode reader](../reference/barcode.md).
 
 ## Layer model

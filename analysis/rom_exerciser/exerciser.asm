@@ -95,7 +95,7 @@
 ;     OR      every LINK_STATUS sample seen since the last record, OR'd
 ;     AND     every LINK_STATUS sample seen since the last record, AND'd
 ;     RXD     LINK_RXD, read once per record
-;     SIDE    port 2Dh, the 5-pin side port, read once per record
+;     SIDE    port 2Dh, the 8-pin side port, read once per record
 ;     CTRL    the LINK_CTRL value this phase asked for, so a capture is
 ;             self-describing and the sweep needs no schedule shared with
 ;             the decoder
@@ -144,8 +144,8 @@ LINK_CMD        equ 0x4C
 LINK_TXD        equ 0x4D
 LINK_RXD        equ 0x4E
 LINK_PROBE      equ 0x4F
-SIDE_PORT       equ 0x2D            ; 5-pin side port in;  bits 0,1 read at 1299
-PORT_2C         equ 0x2C            ; 5-pin side port out; bits 0,1 driven at 1283
+SIDE_PORT       equ 0x2D            ; 8-pin side port in;  bits 0,1 read at 1299
+PORT_2C         equ 0x2C            ; 8-pin side port out; bits 0,1 driven at 1283
 PORT_2A         equ 0x2A
 
 CTRL_SHADOW     equ 0xF794          ; the firmware's LINK_CTRL shadow

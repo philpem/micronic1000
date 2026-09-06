@@ -652,6 +652,63 @@ decodes it.
 | `33h` | *unknown* | R | **One access in the whole firmware**: `ROM00:1ED9` `DB 33` (`IN A,(33h); RET`), the tail of a four-instruction stub at `ROM00:1ED0` that first does `LD A,0Dh; OUT (03h),A`. Alignment is sound (the stub follows a `RET` at `1ECF`), but nothing references `1ED0` directly. **Purpose unknown.** Candidates worth discriminating on hardware: an LCD status/busy read (it sits inside the LCD driver block and follows an `LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Do not assume it is either |
 | `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `LcdInit` (`ROM00:1F2B`) and from `PowerLatchIncr`/`PowerLatchDecr` (`ROM00:1D73`/`1D57`). **LIKELY**, and stronger than it was. Observed: the adjusters step `FC05` by **±2, not ±1** (`1D4A` does `DEC A` twice with a floor at `00h`, `1D60` `INC A` twice with a ceiling at `FFh`), and although `FC05` lives in battery RAM, cold boot overwrites it with `70h` at `ROM00:0257`. Owner-supplied: the stock `70h` is almost black on this unit, a Sun-modified key lightens it, and a cold boot puts it back — which matches that overwrite exactly. Corroborating but **not** primary: MAME maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and seeing the screen legibility change. The Ghidra name `WritePowerLatchPort46` is a grandfathered misnomer |
 
+### Interrupt sources {#interrupt-sources}
+
+**CONFIRMED.** `04h` is the enable mask and `05h` the pending register, both
+**active low**, and both are only six bits wide in practice — because the
+dispatcher has six slots and one of them is blank.
+
+`IrqWorkerPollPort5` (`ROM00:230A`) reads `05h`, ORs it with the mask from
+`F784`, complements the result to get *pending and enabled*, and walks a table
+of `{bitmask, handler}` triples at `ram:FD84`, copied from `ROM00:2352` at
+boot and terminated by `80h`:
+
+| bit | mask | handler | source |
+|---|---|---|---|
+| 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
+| 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
+| 2 | `04h` | `ROM00:31B6` | **the link controller** — see below |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery |
+| 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
+| 5 | `00h` | none | **blank in ROM**, filled in at run time by `ROM00:2349` (`LD A,20h; LD (FD93),A; LD (FD94),HL`), whose sole caller is `ROM00:138F` in the barcode block |
+| 6, 7 | — | — | no slot exists |
+
+That is the answer to "why are so few mask bits enabled". `ROM00:22E9` writes
+`CPL 1Fh` = `E0h`, enabling exactly bits 0-4, because those are the five
+populated slots. Bit 5 is enabled only while the barcode front end has
+installed its handler (`ROM00:139C` clears the mask bit, `149E` sets it back),
+and bits 6 and 7 are masked permanently because nothing dispatches them.
+
+Reading `05h` appears to acknowledge: three sites (`ROM00:01B1`, `0238`,
+`288A`) read it and discard the value, and at `288A` the very next action is
+the HD146818's own acknowledge (`LD A,0Ch; OUT (08h); IN A,(28h)`).
+
+#### The link interrupt {#link-interrupt}
+
+Worth stating separately, because it changes the picture of how the link is
+meant to be driven. `ROM00:31B6` is:
+
+```
+31B6  CALL 34D2      ; LINK_CTRL bits 6 and 7 low
+31B9  CALL 34E7      ; IN A,(4Bh); AND 10h  -- LINK_STATUS bit 4
+31BC  JR Z,31C2
+31BE  CALL 2FBD      ; -> LinkBlockRx (ROM00:3378)
+31C1  RET
+31C2  CALL 34BD      ; LINK_CTRL bits 6 and 7 high
+```
+
+So **`LINK_STATUS` bit 4 is "receive pending"**: it is the bit that decides
+whether the interrupt enters `LinkBlockRx` at all. That is a different job
+from bit 0, which gates the `INI` loop *inside* a block read (`ROM00:33CF`),
+and it means the receive path is normally **interrupt-driven**, not polled —
+the polling in `LinkBlockRx` only runs once the interrupt has decided a frame
+is there. `LINK_CTRL` bits 6 and 7 are raised when there is nothing to receive
+and lowered while receiving, which is consistent with an interrupt
+enable/acknowledge pair on the controller.
+
+`analysis/rom_exerciser` runs with interrupts disabled and polls instead, so
+it never exercises this path; it does sample bit 4 in every record.
+
 ### Which latch bits the firmware ever touches {#latch-bit-usage}
 
 Every output latch is read-modify-written through a RAM shadow, so a bit is

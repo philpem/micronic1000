@@ -50,12 +50,28 @@ source tree (not published here).
   and wrong in the direction that matters, since it invited building hardware
   against the back port.
 
-* **Where does the EXT STORAGE ADAPTER attach?** — All `C:`+ storage I/O
-  runs over the 4-wire byte transport, so it must use one of the two IR
-  ports; defaults are `C:=0x73`, `D:=0x72` (both bit 5 = 1). The attachment
-  point is not yet adjudicated.
-  *Resolve:* owner confirmation or a captured storage transaction that
-  identifies its link id and port.
+* **Where does the EXT STORAGE ADAPTER attach?** — **Narrowed to the top IR
+  port; the side connector is excluded.** The drive table (`ROM00:3257` →
+  `ram:FE93`) is `A:=00`, `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h`
+  have bit 6 **set**, which is what `ROM00:2F44` (`BIT 6,A; JR Z`) tests to
+  decide a device is on the link at all, and bit 5 **set**, which is the top
+  port ([commstar-evidence](commstar-evidence.md#device-table-ports)). All
+  their I/O then runs through `LinkBlockTx`/`LinkBlockRx` on `4Ah`-`4Fh`.
+
+  The side connector can be ruled out on its own terms: **it has no byte
+  transport.** All eight reads of `2Dh` are in the barcode edge-timing block
+  (`ROM00:1299`-`13ED`), and `2Ch`'s two output bits are a fixed-width strobe
+  and a read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) —
+  there is no shift register, no clock pair and no framing anywhere on it.
+
+  Note the Load/Run menu entry called `EXT STORAGE ADAPTOR` is a **different
+  thing** from drives `C:`/`D:`: it resolves to selector 5 = wire id `80h`,
+  whose bit 6 is *clear*, so `2F44` sends it down the non-link path. That is
+  why selecting it transmits no IR and fails with "Can't open or create
+  file" — owner-observed, and predicted by the table.
+  *Resolve:* what remains is only which physical adapter existed and whether
+  it shared the port with the V24 adapter — a hardware and documentation
+  question, not a firmware one.
 
 * **Full eight-bit link id vs observable five bits** — Only `id & 1Fh`
   (bits 0-4) is wire-observable via the prelude; bits 5-7 are not.
