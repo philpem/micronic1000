@@ -30,11 +30,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `16ED` |
+| `micron1_exerciser.bin` | `26D6` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `16ED`** so it
+needs no reference to this repo. **Label the burned exerciser `26D6`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -49,14 +49,14 @@ anything if the image is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `7E96`-`7F6A` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
+| `7E96`-`7F88` | the exerciser, in a 356-byte run of `00` filler that must be empty beforehand |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 `014B` rather than the reset vector because `0000` → `0103` → `014B`, and the
 emulator harness starts directly at `014B`, so the same patch is exercised on
 hardware and in the emulator.
 
-**212 bytes differ from the original.** One chip: `ROM01` is untouched.
+**241 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## Validate before burning
 
@@ -92,7 +92,7 @@ version of the hardware result — the negative one, since its synthetic
 controller reports a constant `80h`:
 
 ```
-preamble  version 4  LINK_ID 43  LINK_PROBE FF  LINK_STATUS 80
+preamble  version 5  LINK_ID 43  LINK_PROBE FF  LINK_STATUS 80
 counter discontinuities: 0
   bit 7 TXRDY   always 1
   bit 6 HSBUSY  always 0
@@ -101,6 +101,26 @@ counter discontinuities: 0
 The emulator's synthetic controller always reports `80h` (TXRDY set, nothing
 else), so the *values* mean nothing here — only the path does. The values are
 what the hardware run is for.
+
+## The beacon, first
+
+For ~1.9 s after power-up, before anything touches the link, it squares the
+two side-port output bits: `2Ch` bit 0 at ~8.7 Hz and bit 1 at ~4.3 Hz.
+
+This is the difference between a diagnosable run and a wasted swap. A silent
+IR line is otherwise ambiguous between *the controller never asserts `TXRDY`*
+— a real and interesting result — and *the CPU never got here*, meaning a bad
+burn, a bent pin, or a wrong socket. Watching one side-port pin settles it in
+a second.
+
+It also maps the port outwards: the two bits square at different rates, so a
+probe identifies which external pin carries which. `SIDE` in the record stream
+does the same for the inputs. Together they are the two-wire command channel
+the next exerciser needs — which is the point, since a steerable exerciser is
+one that does not need another swap.
+
+Bits 0 and 1 of `2Ch` are what the barcode front end drives (`1283`, `1292`,
+`1519`, `1528`), so this stays inside behaviour the firmware already has.
 
 ## What comes off the wire
 

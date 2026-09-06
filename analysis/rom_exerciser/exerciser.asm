@@ -65,6 +65,10 @@
 ; LINK_PROBE is read once, into the preamble, rather than in the loop: its
 ; read side effects are unknown, and the point of this burn is to measure
 ; HSBUSY without confounds.
+;
+; Before any of that, a ~1.9 s beacon squares the two side-port output bits,
+; so that a silent IR line can be told from a CPU that never ran.  See the
+; beacon routine.
 ; ---------------------------------------------------------------------------
 
 LINK_CTRL       equ 0x4A
@@ -73,7 +77,8 @@ LINK_CMD        equ 0x4C
 LINK_TXD        equ 0x4D
 LINK_RXD        equ 0x4E
 LINK_PROBE      equ 0x4F
-SIDE_PORT       equ 0x2D            ; 5-pin side port; bits 0,1 read at 1299
+SIDE_PORT       equ 0x2D            ; 5-pin side port in;  bits 0,1 read at 1299
+PORT_2C         equ 0x2C            ; 5-pin side port out; bits 0,1 driven at 1283-1528
 
 CTRL_SHADOW     equ 0xF794          ; the firmware's LINK_CTRL shadow
 CMD_SHADOW      equ 0xF796          ; ... and its LINK_CMD shadow (see 34F2)
@@ -86,7 +91,7 @@ LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
 LINK_ID         equ 0x43            ; id bit 5 clear; use 63h for the other port
-VERSION         equ 0x04            ; bumped whenever the wire format changes
+VERSION         equ 0x05            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 V_OR            equ 0xC7E0          ; accumulator snapshot, well clear of the
 V_AND           equ 0xC7E1          ; stack, which never goes more than 2 deep
@@ -116,6 +121,8 @@ start:          di
                 xor a
                 ld (CTRL_SHADOW),a
                 ld (PORT2C_SHADOW),a
+
+                call beacon
 
                 ; --- select the port exactly as LinkBlockTx does at 3277
                 ld a,LINK_ID
@@ -194,6 +201,38 @@ stream:         ld a,b                      ; new frame every 64 records
                 jr stream
 
 dead:           jr dead
+
+; --- Waggle the two side-port output bits for ~1.9 s before anything touches
+; the link.  Two jobs, and the second is why it is worth 30 bytes.
+;
+; It proves the patch is running.  A silent IR line is otherwise ambiguous
+; between "the controller never asserts TXRDY", which is a real result, and
+; "the CPU never got here", which is a bad burn or a bad socket -- and telling
+; those apart afterwards would cost a swap cycle.
+;
+; And it maps the side port outwards.  Bit 0 squares at ~8.7 Hz and bit 1 at
+; ~4.3 Hz, so a probe on any external pin identifies which bit it carries;
+; SIDE in the record stream does the same for the inputs.  Together they give
+; the two-wire command channel the next exerciser needs.
+;
+; Bits 0 and 1 of 2Ch are what the barcode front end itself drives (1283,
+; 1292, 1519, 1528), so this stays inside behaviour the firmware already has.
+; It finishes by writing 0, which is where LinkPortSelect expects to start.
+beacon:         ld b,0x20                   ; 32 half-steps
+bcn_step:       ld a,b
+                and 0x03                    ; bit 0 every step, bit 1 every 2
+                ld (PORT2C_SHADOW),a
+                out (PORT_2C),a
+                ld de,0x2000                ; ~58 ms
+bcn_wait:       dec de
+                ld a,d
+                or e
+                jr nz,bcn_wait
+                djnz bcn_step
+                xor a
+                ld (PORT2C_SHADOW),a
+                out (PORT_2C),a
+                ret
 
 ; --- Take one LINK_STATUS sample and fold it into the sticky accumulators:
 ; H accumulates the OR of every sample, L the AND.  The raw sample is left in

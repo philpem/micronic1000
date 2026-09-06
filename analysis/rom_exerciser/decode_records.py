@@ -89,8 +89,8 @@ def main():
         magic, ver, lid, probe, st = (preamble[:2], *preamble[2:6])
         print(f"\npreamble  version {ver}  LINK_ID {lid:02X}  "
               f"LINK_PROBE {probe:02X}  LINK_STATUS {st:02X}")
-        if ver != 4:
-            print(f"  ! this decoder is written for version 4")
+        if ver != 5:
+            print(f"  ! this decoder is written for version 5")
     else:
         print("\nno preamble frame in this capture "
               "(fine if it started after power-up)")
