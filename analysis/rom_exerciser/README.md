@@ -213,8 +213,10 @@ Silence with the beacon running means `TXRDY` never asserts: the controller
 never reports ready even with no firmware competing for it. Silence with no
 beacon means it never ran.
 
-`LINK_ID` in `exerciser.asm` selects the port (`43h` = id bit 5 clear, `63h`
-for the other). 161 bytes of filler remain across the two blocks.
+`LINK_ID` is `43h`, the **top port** (`V24 ADAPTOR`) — bit 5 clear, the same
+latch path the firmware takes when you pick `V24 ADAPTOR` from the menu, and
+the port every conn3-conn13 capture was taken on. `63h` is the back port.
+161 bytes of filler remain across the two blocks.
 
 ## Restoring
 

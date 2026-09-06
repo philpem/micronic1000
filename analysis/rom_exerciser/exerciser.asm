@@ -138,7 +138,11 @@ LinkProbe       equ 0x348A
 LinkPresent     equ 0x34EC          ; polls TXRDY, then writes 81h to LINK_CMD
 LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeout
 
-LINK_ID         equ 0x43            ; id bit 5 clear; use 63h for the other port
+; Bit 5 clear is the TOP port (V24 ADAPTOR): selecting V24 ADAPTOR resolves to
+; g_bDeviceWireId4 = 43h, whose AND 20h at LinkBlockTx is zero, and the owner
+; captured the handheld's bursts at the top port under that selection.  63h
+; takes the other latch path, which is the back port (PLINTH) by elimination.
+LINK_ID         equ 0x43            ; top port
 VERSION         equ 0x06            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 

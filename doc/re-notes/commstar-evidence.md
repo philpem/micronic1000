@@ -609,7 +609,13 @@ The active link id is retained in `fdd4`.
   slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
 Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
-(back) remains **OPEN**. Where the EXT STORAGE ADAPTER attaches also
+(back) is **resolved for the top port**: the owner selected `V24 ADAPTOR` —
+which resolves through selector 4 to `g_bDeviceWireId4` = `0x43`, taking the
+bit5-clear latch path as recorded below — and captured the handheld's own IR
+bursts at the top port, across all of the conn3-conn13 runs
+([ir-wire-protocol.md](ir-wire-protocol.md)). So **bit 5 clear drives the top
+port**. That the bit5-set path drives the back port is **LIKELY** but
+uncaptured: it follows only from there being two ports and two line states. Where the EXT STORAGE ADAPTER attaches also
 remains **OPEN**. This does not prove a multidrop physical topology or
 address allocation policy; treat those as open hardware questions.
 
