@@ -104,4 +104,5 @@ nav:
       - Barcode capture: re-notes/barcode-capture.md
       - RTC: re-notes/rtc.md
       - IR wire protocol: re-notes/ir-wire-protocol.md
+      - ROM exerciser test plan: re-notes/exerciser-test-plan.md
       - Open questions: re-notes/open-questions.md

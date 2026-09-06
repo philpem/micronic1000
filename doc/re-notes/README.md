@@ -38,6 +38,9 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 * [IR wire protocol](ir-wire-protocol.md) — the first scope capture of
   the IR line: bit timing, the bit-stuffed frame layer, where the connect
   dies, and the ordered test plan for an adapter
+* [ROM exerciser test plan](exerciser-test-plan.md) — the patched-ROM run
+  that reads `HSBUSY` from inside the latch boundary: what it measures, and
+  what to do on the happy and sad paths
 * [Open questions](open-questions.md) — single address for every `OPEN` item
 
 Legacy internals paths redirect to these locations. The worklist that

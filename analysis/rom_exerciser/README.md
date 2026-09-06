@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `80C7` |
+| `micron1_exerciser.bin` | `8DE3` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `80C7`** so it
+needs no reference to this repo. **Label the burned exerciser `8DE3`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -48,8 +48,8 @@ is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `724C`-`72C5` | helpers and the beacon, in a 183-byte run of `00` filler (61 left) |
-| `7E96`-`7FAC` | the main body, in a 356-byte run of `00` filler (77 left) |
+| `724C`-`72CE` | helpers and the beacon, in a 183-byte run of `00` filler (52 left) |
+| `7E96`-`7FB9` | the main body, in a 356-byte run of `00` filler (64 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 Both filler runs must be empty beforehand. `014B` rather than the reset vector
@@ -60,7 +60,7 @@ The two code regions are a single assembly — `ORG` pads forward and only the
 two real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**403 bytes differ from the original.** One chip: `ROM01` is untouched.
+**424 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The beacon, first
 
@@ -156,7 +156,8 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `AND` | the same samples, AND'd together |
 | `RXD` | `LINK_RXD`, read once per record, after the status samples |
 | `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
-| `CTRL` | the `LINK_CTRL` value in force, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
+| `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
+| `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 
 `OR` and `AND` are what make the modest record rate sufficient. Waiting for
 `TXRDY` is a tight polling loop — one `LINK_STATUS` sample every ~35 µs — and
@@ -166,8 +167,9 @@ shows in `AND`; a genuinely constant bit reads the same in both. **No event on
 the wire's own timescale can be aliased away.** Only the ordering of events
 inside one record is lost.
 
-`LINK_PROBE` is read once, into the preamble, never in the loop: its read side
-effects are unknown and the point is to measure `HSBUSY` without confounds.
+`LINK_PROBE` is sampled once, into the preamble, never in the loop. The
+firmware only ever *writes* `4Fh` (`ROM00:3491`), so reading it is speculative
+and may be floating bus — treat `00h` or `FFh` there as no information.
 
 Every frame begins on a record boundary whose `COUNT` is a multiple of 64, so
 byte alignment is structural, not guessed.
@@ -204,7 +206,7 @@ opening matches what `LinkBlockTx` does, access for access:
   1  PC=345F  2A = 20     LinkPortSelect
   2  PC=347D  4A = 02     LINK_CTRL bit 1 set  -- port select, id bit 5 clear
   3  PC=3489  2C = 20     port 2Ch bit 5 set
-  4  PC=3493  4F = 1F     LinkProbe reads LINK_PROBE
+  4  PC=3491  4F = 1F     LinkProbe WRITES LINK_PROBE
   5  PC=349D  4A = 02     probe: ctrl bit 5 clear
   6  PC=34A7  4A = 03     probe: ctrl bit 0 set
   7  PC=34B1  4A = 02     probe: ctrl bit 0 clear
@@ -236,10 +238,15 @@ Silence with the beacon running means `TXRDY` never asserts: the controller
 never reports ready even with no firmware competing for it. Silence with no
 beacon means it never ran.
 
-138 bytes of filler remain across the two blocks.
+116 bytes of filler remain across the two blocks.
 
 ## Restoring
 
-Put the original chip back. Nothing else is required: no battery-RAM state is
-changed beyond a few bytes of stack and six variables in the upper TPA
-(`C7E0`-`C800`), which the RAM map documents as free.
+Put the original chip back. What it touches in RAM: nine variables and a few
+bytes of stack in the upper TPA (`C7E0`-`C800`, which the RAM map documents as
+free), and the firmware's own I/O shadows at `F78B`, `F78D`, `F794`, `F796`
+and `F799`. Those shadows are volatile working copies that the firmware
+re-seeds on its own cold boot, so nothing user-visible survives. No user data
+area is written.
+
+The test plan for the run itself is `doc/re-notes/exerciser-test-plan.md`.

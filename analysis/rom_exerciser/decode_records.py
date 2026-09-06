@@ -32,8 +32,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 6
-VER = 7
+RECLEN = 7
+VER = 8
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -115,15 +115,19 @@ def main():
 
     lost = sum(1 for p, c in zip(records, records[1:])
                if (p[0] + 1) & 0xFF != c[0])
-    print(f"counter discontinuities: {lost}"
-          + ("   <- a phase stalled the transmitter" if lost else ""))
+    print(f"counter discontinuities: {lost}")
+    trips = sum(1 for p, c in zip(records, records[1:]) if p[6] != c[6])
+    print(f"watchdog trips: {trips}"
+          + ("   <- some LINK_CTRL value stalled the transmitter"
+             if trips else "   (no LINK_CTRL value stopped the controller)"))
 
     # --- LINK_STATUS per port per phase.  The phase is the top two bits of
     # COUNT; the port is LINK_CTRL bit 1, which LinkPortSelect sets: bit 1 set
     # means the wire id had bit 5 CLEAR (the 43h path), bit 1 clear means it
     # had bit 5 SET (the 63h path).  Which physical window each drives is what
     # the run is measuring -- watch the unit, not this output.
-    for portbit, idname in ((2, "id bit5 clear (43h)"), (0, "id bit5 set (63h)")):
+    for portbit, idname in ((0, "id bit5 SET (63h) = V24 ADAPTOR, top port"),
+                            (2, "id bit5 clear (43h) = PLINTH, back port")):
         pr = [r for r in records if (r[5] & 2) == portbit]
         if not pr:
             continue
@@ -153,6 +157,9 @@ def report_phases(records):
         rxd = {r[3] for r in recs}
         if rxd != {0}:
             print(f"      LINK_RXD  {' '.join(f'{v:02X}' for v in sorted(rxd))}")
+        wd = sum(1 for a, b in zip(recs, recs[1:]) if a[6] != b[6])
+        if wd:
+            print(f"      watchdog  {wd} trip(s) in this phase")
 
 
 def sweep_report(records):
@@ -164,13 +171,16 @@ def sweep_report(records):
             base.setdefault(r[5], []).append(r)
         odd = [(c, rs) for c, rs in sorted(base.items())
                if verdict(rs, 6)[0] != verdict(sweep, 6)[0]
-               or any(r[3] for r in rs) or verdict(rs, 0)[1]]
+               or any(r[3] for r in rs) or verdict(rs, 0)[1]
+               or any(a[6] != b[6] for a, b in zip(rs, rs[1:]))]
         print(f"\nCTRL sweep: {len(base)} value(s) seen, "
               f"{len(odd)} that did something")
         for c, rs in odd[:32]:
+            wd = sum(1 for a, b in zip(rs, rs[1:]) if a[6] != b[6])
             print(f"    {c:02X}: OR {max(r[1] for r in rs):02X}  "
                   f"AND {min(r[2] for r in rs):02X}  "
-                  f"RXD {' '.join(f'{v:02X}' for v in sorted({r[3] for r in rs}))}")
+                  f"RXD {' '.join(f'{v:02X}' for v in sorted({r[3] for r in rs}))}"
+                  f"{f'  STALLED ({wd} watchdog trips)' if wd else ''}")
 
 
 if __name__ == "__main__":

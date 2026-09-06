@@ -54,10 +54,13 @@
 ;   2  RX armed    the 3378 sequence, then held.  Does bit 0 ever set, and
 ;                  does LINK_RXD ever come back non-zero?
 ;   3  CTRL sweep  one value per frame, advancing each cycle, covering all
-;                  256.  The firmware only ever writes bits 0, 1, 4 and 5, so
-;                  bits 2, 3, 6 and 7 are untried.  Bit 1 is forced to the
-;                  selected port so the sweep cannot switch ports underneath
-;                  the measurement.
+;                  256.  The firmware writes bits 0, 1, 4 and 5 directly, and
+;                  bits 6 and 7 through the pair 34BD (sets both) and 34D2
+;                  (clears both, called from LinkProbe and from LinkBlockTx's
+;                  entry), so only bits 2 and 3 are genuinely untried -- but
+;                  the *combinations* are not, and that is what this covers.
+;                  Bit 1 is forced to the selected port so the sweep cannot
+;                  switch ports underneath the measurement.
 ;
 ; The port alternates on every counter wrap, at phase 0, so one burn exercises
 ; both.  Which physical window a given latch state drives is NOT decidable
@@ -82,7 +85,7 @@
 ; clocking.  Status is still sampled all the way through it.
 ;
 ;   preamble   A5 5A VER ID PROBE STATUS      (6 bytes, sent once)
-;   record     COUNT OR AND RXD SIDE CTRL     (6 bytes, ~7.3 ms apart)
+;   record     COUNT OR AND RXD SIDE CTRL WD  (7 bytes, ~8.5 ms apart)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
 ;             record is visible and the counter doubles as a time base.  Its
@@ -91,8 +94,15 @@
 ;     AND     every LINK_STATUS sample seen since the last record, AND'd
 ;     RXD     LINK_RXD, read once per record
 ;     SIDE    port 2Dh, the 5-pin side port, read once per record
-;     CTRL    the LINK_CTRL value in force, so a capture is self-describing
-;             and the sweep needs no schedule shared with the decoder
+;     CTRL    the LINK_CTRL value this phase asked for, so a capture is
+;             self-describing and the sweep needs no schedule shared with
+;             the decoder
+;     WD      rolling count of waitready watchdog trips.  It rises only when
+;             a LINK_CTRL value stopped the controller accepting bytes, which
+;             is the one sweep outcome that would otherwise be invisible:
+;             the value that stalls the reporting channel cannot report
+;             itself.  CTRL still names it because the watchdog restores the
+;             hardware without touching V_CTRL.
 ;
 ; OR and AND are why a slow record rate costs nothing.  Waiting for TXRDY is a
 ; tight polling loop -- one LINK_STATUS sample every ~35 us -- and every
@@ -150,7 +160,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
 ; The port still alternates every cycle, so a wrong guess here costs nothing.
 LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x07            ; bumped whenever the wire format changes
+VERSION         equ 0x08            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -161,6 +171,8 @@ V_BASE          equ 0xC7E3          ; LINK_CTRL as the frame opening left it
 V_SWEEP         equ 0xC7E4          ; phase 3's value, +1 each cycle
 V_WD            equ 0xC7E5          ; waitready watchdog
 V_ID            equ 0xC7E6          ; current link id; bit 5 alternates the port
+V_CTRL          equ 0xC7E7          ; LINK_CTRL the phase asked for (see WD)
+V_WD_N          equ 0xC7E8          ; rolling count of watchdog trips
 
 LO_ORG          equ 0x724C          ; the second free block, 183 bytes
 HI_ORG          equ 0x7E96          ; the first, 356 bytes
@@ -213,8 +225,11 @@ wr_loop:        call sample
                 ld hl,V_WD
                 dec (hl)
                 jr nz,wr_loop
-                ld a,(V_BASE)
-                call ctrl_set
+                ld hl,V_WD_N                ; mark the trip in the record
+                inc (hl)
+                ld a,(V_BASE)               ; restore the hardware, but NOT
+                ld (CTRL_SHADOW),a          ; V_CTRL: the record must still
+                out (LINK_CTRL),a           ; name the value that stalled
                 jr waitready
 
 ; A = byte to put on the wire.
@@ -251,8 +266,10 @@ ctrl_or:        ld hl,CTRL_SHADOW
                 jr ctrl_put
 ctrl_set:       ld hl,CTRL_SHADOW
 ctrl_put:       ld (hl),a
-                out (LINK_CTRL),a
-                ret
+                ld (V_CTRL),a               ; what was asked for -- the
+                out (LINK_CTRL),a           ; watchdog restores without
+                ret                         ; touching this, so a stall stays
+                                            ; attributable to its own value
 
 ; ---------------------------------------------------------------------------
 ; Waggle the two side-port output bits for ~1.9 s before anything touches the
@@ -309,18 +326,24 @@ start:          di
                 ld (PORT2C_SHADOW),a
                 ld (V_SWEEP),a
                 ld (V_BASE),a
+                ld (V_CTRL),a
+                ld (V_WD_N),a
                 ld a,LINK_ID
                 ld (V_ID),a
 
                 call beacon
 
+                ; --- the cold-boot controller reset.  BEFORE the port
+                ; select, not after: LinkProbe ends with XOR A / OUT (2Ch)
+                ; at ROM00:34B1, which zeroes the port latch and would undo
+                ; the selection.  It also calls 34D2, clearing LINK_CTRL bits
+                ; 6 and 7 -- the state LinkBlockTx transmits in.
+                call LinkProbe
+
                 ; --- select the port exactly as LinkBlockTx does at 3277
                 ld a,LINK_ID
                 and 0x20
                 call LinkPortSelect
-
-                ; --- the cold-boot controller reset
-                call LinkProbe
 
                 ; --- LinkBlockTx's opening: bit 0 low, bit 0 high, bit 4 low
                 ld a,0xFE
@@ -358,7 +381,10 @@ settle:         djnz settle
                 call putbyte
                 ld a,LINK_ID
                 call putbyte
-                in a,(LINK_PROBE)           ; read once, never in the loop
+                in a,(LINK_PROBE)           ; SPECULATIVE: the firmware only
+                                            ; ever WRITES 4Fh (3491), so this
+                                            ; may be floating bus.  Captured
+                                            ; once, never in the loop.
                 call putbyte
                 in a,(LINK_STAT)
                 call putbyte
@@ -388,8 +414,10 @@ stream:         ld a,(V_COUNT)
                 call putbyte                ; [3] bit cleared by the read still
                 in a,(SIDE_PORT)            ;     shows in this record
                 call putbyte                ; [4] SIDE
-                ld a,(CTRL_SHADOW)
-                call putbyte                ; [5] CTRL in force
+                ld a,(V_CTRL)
+                call putbyte                ; [5] CTRL this phase asked for
+                ld a,(V_WD_N)
+                call putbyte                ; [6] watchdog trips so far
 
                 ld hl,V_COUNT
                 inc (hl)
