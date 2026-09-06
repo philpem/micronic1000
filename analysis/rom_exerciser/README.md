@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1782` |
+| `micron1_exerciser.bin` | `1781` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1782`** so it
+needs no reference to this repo. **Label the burned exerciser `1781`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -191,9 +191,17 @@ poll to catch.
 
 So this one takes the interrupt too. `RST 38h` at `ROM00:0038` jumps through
 `F5F3`, which is where the firmware installs its own handler at `ROM00:2893`;
-we install ours the same way, set `IM 1`, and unmask **only** bit 2 (`04h` =
-`FBh`, active low). The handler counts, ORs `LINK_STATUS` at interrupt time
+we install ours the same way, set `IM 1`, and unmask bits 2 and 0 (`04h` =
+`FAh`, active low). The handler counts, ORs `LINK_STATUS` at interrupt time
 into its own accumulator, and acknowledges by reading `05h`.
+
+**The keypad (source 0) is armed on purpose, and it is the control rather than
+a measurement.** With the link alone, a flat `IRQN` could not be told apart
+from a broken interrupt setup — and the answer to the question this whole
+addition exists to ask would be worthless. The keypad is a source that can be
+triggered by hand, so pressing keys proves the path end to end. `KEY`
+separates them afterwards: an interrupt taken while `KEY` reads `FFh` had no
+key down, so it was the link's.
 
 It masks everything on the way in and the record loop re-arms once per record,
 so a source that asserts continuously costs one interrupt per record rather
@@ -263,7 +271,7 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 | `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |
-| `IRQN` | rolling count of **link interrupts** taken |
+| `IRQN` | rolling count of interrupts taken — link **and keypad**, see below |
 | `ISTAT` | `LINK_STATUS` OR'd across every interrupt, sticky for the run |
 
 `OR` and `AND` are what make the modest record rate sufficient. Waiting for

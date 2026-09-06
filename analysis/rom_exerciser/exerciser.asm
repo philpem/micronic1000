@@ -105,7 +105,9 @@
 ;     KEY     the keypad index (col*6 + row) of the first key held, or FFh.
 ;             Press keys and watch this to map the keypad; it is also how
 ;             a future exerciser will be steered, with no wiring at all.
-;     IRQN    rolling count of link interrupts taken.  The firmware's
+;     IRQN    rolling count of interrupts taken -- link (source 2) and
+;             keypad (source 0), the latter only so the path can be proved
+;             live by hand; see IRQ_ENABLE.  The firmware's
 ;             receive path is interrupt-driven (IRQ source 2, handler
 ;             ROM00:31B6), so a controller could signal without ever setting
 ;             a bit that a poll catches.  This is the only field that would
@@ -242,7 +244,14 @@ KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
 IRQ_MASK        equ 0x04            ; interrupt enable, ACTIVE LOW
 IRQ_STATUS      equ 0x05            ; pending, active low; reading acknowledges
-IRQ_LINK_ONLY   equ 0xFB            ; ~04h: bit 2, the link, and nothing else
+; ~05h: bit 2, the link, plus bit 0, the keypad.  The keypad is here on
+; purpose.  With the link alone, a flat IRQN would be ambiguous between "the
+; controller never interrupts" -- the result we want -- and "the interrupt
+; setup is broken", which is not a result at all.  The keypad is a source we
+; can trigger by hand, so pressing keys proves the path works end to end.
+; KEY disambiguates afterwards: interrupts arriving while KEY reads FFh are
+; the link's, because no key was down.
+IRQ_ENABLE      equ 0xFA
 RST38_VECTOR    equ 0xF5F3          ; the ROM's 0038 jumps through this RAM
 NMI_VECTOR      equ 0xF5F6          ; cell, and 0066 through this one
 PORTMAP_BITS    equ 0x33            ; which 2Ch bits the pin walk drives:
@@ -704,7 +713,7 @@ stream:         ld a,(V_COUNT)
                 and FRAME_RECS
                 call z,newframe             ; gap, flag, then the phase's state
 
-                ld a,IRQ_LINK_ONLY          ; re-arm: the ISR masks on entry,
+                ld a,IRQ_ENABLE          ; re-arm: the ISR masks on entry,
                 out (IRQ_MASK),a            ; so this bounds it to one
                 ei                          ; interrupt per record
 

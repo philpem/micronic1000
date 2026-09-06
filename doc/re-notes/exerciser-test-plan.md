@@ -28,13 +28,26 @@ zero would mean nothing at all, which is why phase 1 replays the arm.
 |---|---|---|
 | Q1 | Does `HSBUSY` ever go clear once armed? | phase 1, `LINK_CTRL` = `11`/`13` |
 | Q2 | Does anything ever arrive? | phase 2, `LINK_STATUS` bit 0 and `LINK_RXD` |
-| Q3 | Does any `LINK_CTRL` state change either answer? | phase 3, 128 values per port |
-| Q3b | Does the controller ever raise its interrupt? | `IRQN` and `ISTAT`, every record |
-| Q4 | Which physical window is which port? | both ports, alternating ~1.9 s |
-| Q5 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
-| Q6 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |
+| Q3 | **Does the controller ever raise its interrupt?** | `IRQN` and `ISTAT`, every record |
+| Q4 | Does any `LINK_CTRL` state change any of the above? | phase 3, 128 values per port |
+| Q5 | Which physical window is which port? | both ports, alternating ~1.9 s |
+| Q6 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
+| Q7 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |
 
-Q4 is already settled from the firmware
+**Q3 is the one no external experiment could have asked.** The firmware's
+receive path is interrupt-driven — IRQ source 2 is the link controller, and
+its handler at `ROM00:31B6` tests `LINK_STATUS` bit 4 and enters
+`LinkBlockRx` ([interrupt map](../reference/memory-map.md#link-interrupt)).
+A controller that signals without holding a bit long enough for a poll to
+catch would be invisible to every previous run and to the polled fields here.
+
+The keypad interrupt (source 0) is armed alongside it. That is not a
+measurement — it is the control. Without it a flat `IRQN` could not be told
+apart from a broken interrupt setup, and the whole answer to Q3 would be
+worthless. `KEY` separates them afterwards: an interrupt taken while `KEY`
+reads `FFh` had no key down, so it was the link's.
+
+Q5 is already settled from the firmware
 ([commstar-evidence](commstar-evidence.md#device-table-ports)) — the run
 re-measures it because it costs 20 bytes and because getting it wrong silently
 invalidates everything else.
@@ -88,8 +101,12 @@ undocumented and the unit may do something unexpected.
    — before going further. This is the control run and everything else is read
    against it. Capture ≥60 s (≈8 full phase cycles, ≈32 sweep values).
 3. **Watch which window blinks** during each ~1.9 s half. Note it.
-4. **Press a few keys** during the capture — `KEY` records the index
-   (`col*6 + row`), which maps the keypad as a free by-product.
+4. **Press a few keys** during the capture. Two jobs: `KEY` records the index
+   (`col*6 + row`), which maps the keypad as a free by-product, and `IRQN`
+   should rise while you do it, because the keypad IRQ is armed alongside the
+   link's precisely so the interrupt path can be proved live by hand. **If
+   `IRQN` never moves even while pressing keys, the interrupt setup is broken
+   and a flat `IRQN` is not a result about the link.**
 5. **Repeat with stimulus**, replaying the `conn3`–`conn13` modes. The
    exerciser does not care what the Arduino does.
 6. **Decode** each capture with `decode_records.py`.
@@ -126,10 +143,38 @@ In the decode:
 |---|---|
 | `counter discontinuities` > 0 | records were lost in capture, not by the handheld |
 | `watchdog trips` > 0 | some `LINK_CTRL` value stopped the controller accepting bytes; the sweep table names it |
+| `link interrupts: none taken`, **and none while keys were pressed** | the interrupt setup is broken. Not a result — fix before concluding anything about Q3 |
+| `link interrupts: none taken`, but they rise on keypress | a real negative: the path works and the controller never raised one |
+| interrupts rise while `KEY` reads `FFh` | **the link raised one.** Go to happy path A before reading anything else |
 
-### The happy path
+### The happy paths
 
-**`phase 1 · bit 6 HSBUSY · changes`.**
+There are two now, and they are independent — either alone is a result.
+
+#### A. `IRQN` rises with no key down
+
+**The controller signalled.** Read this first, because it needs no phase and
+no stimulus to be meaningful, and because `IRQN` climbing while every polled
+bit stays flat is the single most informative thing this burn can produce: it
+would mean the controller has been signalling all along, on a channel nothing
+before this could observe.
+
+Check `KEY` for the same records first. The keypad shares the interrupt, so
+only increments with `KEY` at `FFh` are the link's.
+
+`ISTAT` then says what `LINK_STATUS` held at interrupt time. Compare it with
+the polled `OR` for the same phase — **if they differ, the polls have been
+missing state**, and every negative from `conn3` onward is re-opened.
+
+Three reading caveats. `IRQN` counts *records in which at least one interrupt
+fired*, not interrupts: the handler masks on entry and the record loop re-arms
+once per record, which is what stops a continuously asserting source
+livelocking the run. `ISTAT` is sticky for the whole run, so it answers
+"ever", not "when" — use `IRQN`'s first increment for timing. And `ISTAT` is
+sampled on *every* interrupt including the keypad's, so it is `LINK_STATUS`
+at interrupt time, not at *link*-interrupt time.
+
+#### B. `phase 1 · bit 6 HSBUSY · changes`
 
 The handshake completed. This is the finding the whole project has been
 blocked on, and it converts the problem from "unknown protocol" into a search
@@ -153,19 +198,25 @@ become the build order for the adapter, and
 
 ### The sad paths
 
-These are more likely on the evidence, and none is a dead end — **bit 0 is
-what splits them**.
+More likely on the evidence, and none is a dead end. Three observables split
+them: `HSBUSY` under arm, the receive bits, and `IRQN`.
 
-| phase 1 bit 6 | phase 2 bit 0 | reading | next |
-|---|---|---|---|
-| `always 1` | `always 0` | armed, never completes, nothing received | the peer must supply something we have never produced. The sweep table is the next lead; then a real adapter or plinth capture |
-| `always 1` | `changes` | **light is getting in** — the receiver works, the handshake criterion is specific | the search space collapses to content and timing, with a live indicator. Best of the sad paths |
-| `always 0` | `always 0` | the arm does not assert it — the model is wrong | re-read `ROM00:32CC`; `HSBUSY` may not be controller-generated at all |
-| n/a | n/a | wire silent, beacon present | `TXRDY` never asserts even with no firmware competing. Indicts our init sequence, not the link |
+| bit 6, phase 1 | phase 2 bit 0 / `RXD` | `IRQN` | reading | next |
+|---|---|---|---|---|
+| `always 1` | flat | 0 | armed, never completes, nothing received, nothing signalled | the peer must supply something we have never produced. The sweep table is the next lead, then a real adapter or plinth capture |
+| `always 1` | flat | **rises** | the controller is signalling but no polled bit moves | read `ISTAT`. The interrupt is reaching us and the state it carries is not in any poll — a new channel, and the most promising of the sad paths |
+| `always 1` | **moves** | either | **light is getting in** — the receiver works, the handshake criterion is specific | the search space collapses to content and timing, with a live indicator |
+| `always 0` | flat | 0 | the arm does not assert it — the model is wrong | re-read `ROM00:32CC`; `HSBUSY` may not be controller-generated at all |
 
-A sweep value that changes any bit is a result regardless of the rest — it
-would be the first evidence that the controller has a mode the firmware never
-uses.
+A sweep value that changes any of the three is a result regardless of the
+rest — it would be the first evidence that the controller has a mode the
+firmware never uses. Watch `IRQN` across the sweep especially: `LINK_CTRL`
+bits 6 and 7 are what `ROM00:34BD`/`34D2` raise and lower around receiving,
+and they look like an interrupt enable pair, so a sweep value that starts the
+interrupts is a plausible outcome.
+
+Silence is not in this table because it is not a phase reading — the screen
+signatures above cover it.
 
 **`LINK_RXD` non-zero anywhere** is the single most valuable observation
 available, whatever else happens. It would mean the return path works and
@@ -179,6 +230,15 @@ everything since `conn3` has been mis-aimed.
 * Treating the preamble's `PSTAT` as a controller identity: it is
   `LINK_STATUS` immediately after `LinkProbe`, i.e. the reset state, and is
   useful only as the reference the phase readings are compared against.
+* Reading `IRQN` as an interrupt count. It is a count of *records in which an
+  interrupt fired*, capped at one per record by design, and it counts keypad
+  interrupts too.
+* Expecting `ISTAT` to localise anything. It is sticky for the whole run.
+* Forgetting that taking interrupts costs coverage: the handler runs inside
+  the sampling loop, so a record whose interrupt fired has one ~30 µs hole in
+  its `OR`/`AND` window. Against a 122 µs wire cell, and at most once per
+  record, that cannot hide an event — but it is why `ISTAT` is sampled in the
+  handler rather than inferred from the polled accumulators.
 
 ## After this run
 
