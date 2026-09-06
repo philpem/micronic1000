@@ -30,7 +30,8 @@ zero would mean nothing at all, which is why phase 1 replays the arm.
 | Q2 | Does anything ever arrive? | phase 2, `LINK_STATUS` bit 0 and `LINK_RXD` |
 | Q3 | Does any `LINK_CTRL` state change either answer? | phase 3, 128 values per port |
 | Q4 | Which physical window is which port? | both ports, alternating ~1.9 s |
-| Q5 | Which side-port pin carries which bit? | beacon out, `SIDE` in |
+| Q5 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
+| Q6 | What is the keypad matrix layout? | `KEY` in every record |
 
 Q4 is already settled from the firmware
 ([commstar-evidence](commstar-evidence.md#device-table-ports)) — the run
@@ -42,22 +43,52 @@ invalidates everything else.
 firmware's timeout is the whole failure and the problem is far smaller than it
 looks.
 
-## Procedure
+## Two modes
 
-1. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
+**Hold any key while powering on** for the pin walk; otherwise the link run.
+That is the entire interface, and it deliberately needs no keymap knowledge,
+since the keymap is itself unknown.
+
+## Procedure — A, the pin walk
+
+Do this first: it is quick, it needs no IR alignment, and its result makes
+every later side-port observation interpretable.
+
+1. Power on **with any key held**. Port `2Ch` now pulses a countable code:
+   bit 0 once, bit 1 twice, bit 4 five times, bit 5 six times, long gap,
+   repeat. Bits not being driven leave a silent slot, so the count always
+   equals the bit number.
+2. Probe each pin of the 5-pin side connector in turn — a scope, a meter on
+   a slow range, or an LED and a resistor. Count pulses. Record which pin
+   gives which count.
+3. Expect one or more pins not to move at all. Those are inputs, ground, or
+   power.
+4. Bit 5 is the IR port select, so its six-pulse group may not reach the
+   connector. Its absence is information, not a fault.
+5. For the **inputs**, power-cycle without a key held (mode B) and short each
+   remaining pin to ground and to supply in turn, watching the `SIDE` byte in
+   the decoded records. `2Dh` bits 0 and 1 are the ones the firmware reads.
+
+If nothing at all pulses on any pin, the outputs do not reach this connector;
+set `PORTMAP_BITS` to `FFh` and repeat, accepting that bits 2, 3, 6 and 7 are
+undocumented and the unit may do something unexpected.
+
+## Procedure — B, the link run
+
+0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-2. **Burn `micron1_exerciser.bin`** and label it with the sum `build.py`
+1. **Burn `micron1_exerciser.bin`** and label it with the sum `build.py`
    prints. `ROM01` is untouched.
-3. **Wire the side port** while the case is open — two in, two out. It is the
-   command channel for any follow-up burn.
-4. **Power up with the Arduino idle**, in `LISTEN_ONLY`. This is the control
+2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. This is the control
    run and everything else is read against it. Capture ≥60 s (≈8 full phase
    cycles, ≈32 sweep values).
-5. **Watch which window blinks** during each ~1.9 s half. Note it.
-6. **Repeat with stimulus**, replaying the `conn3`–`conn13` modes. The
+3. **Watch which window blinks** during each ~1.9 s half. Note it.
+4. **Press a few keys** during the capture — `KEY` records the index
+   (`col*6 + row`), which maps the keypad as a free by-product.
+5. **Repeat with stimulus**, replaying the `conn3`–`conn13` modes. The
    exerciser does not care what the Arduino does.
-7. **Decode** each capture with `decode_records.py`.
+6. **Decode** each capture with `decode_records.py`.
 
 Expect a blank screen and a dead keyboard: interrupts are off and it never
 powers down. Power-cycling is the only exit, and it drives the IR LED
@@ -144,12 +175,18 @@ everything since `conn3` has been mis-aimed.
 
 ## After this run
 
-The follow-up burn should be **steerable** rather than fixed. Port `2Dh`
-gives two input bits that do not depend on the IR link — the circularity that
-has blocked every approach — so the Arduino can select experiments live and
-one chip covers the whole space. That is why `SIDE` and the beacon are in this
-run: they map the channel in both directions.
+The follow-up burn should be **steerable** rather than fixed, and the keypad
+is the channel — not port `2Dh`. It needs no wiring, no pinout and no case
+modification, it is independent of the IR link (the circularity that has
+blocked every approach), and this run already proves it works by reporting
+`KEY` in every record.
 
-Remaining space after this build: 52 bytes at `724C`, 64 at `7E96`. Enough for
-a command decoder and one experiment; a steerable version wants the sweep and
-phase logic replaced by a dispatch on `2Dh`, which frees more than it costs.
+The shape: replace the fixed four-phase cycle with a dispatch on the held key,
+so one chip covers the whole experiment space and the operator drives it by
+hand while watching the wire. That frees more space than it costs, because the
+phase sequencing and the sweep counter both go away.
+
+Remaining space after this build: 2 bytes at `00A2`, 38 at `724C`, 37 at
+`7E96` — 77 in all. Enough for a key dispatch, not for a key dispatch plus
+everything currently there, which is the right trade once this run has told us
+which phases are worth keeping.

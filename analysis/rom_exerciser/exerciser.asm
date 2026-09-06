@@ -87,7 +87,7 @@
 ;   preamble   A5 5A VER ID PSTAT STATUS      (6 bytes, sent once)
 ;              PSTAT = LINK_STATUS as LinkProbe left it, STATUS = after the
 ;              frame opening
-;   record     COUNT OR AND RXD SIDE CTRL WD  (7 bytes, ~8.5 ms apart)
+;   record     COUNT OR AND RXD SIDE CTRL WD KEY   (8 bytes, ~9.8 ms apart)
 ;
 ;     COUNT   rolling record number; +1 per record, so a dropped or garbled
 ;             record is visible and the counter doubles as a time base.  Its
@@ -99,6 +99,9 @@
 ;     CTRL    the LINK_CTRL value this phase asked for, so a capture is
 ;             self-describing and the sweep needs no schedule shared with
 ;             the decoder
+;     KEY     the keypad index (col*6 + row) of the first key held, or FFh.
+;             Press keys and watch this to map the keypad; it is also how
+;             a future exerciser will be steered, with no wiring at all.
 ;     WD      rolling count of waitready watchdog trips.  It rises only when
 ;             a LINK_CTRL value stopped the controller accepting bytes, which
 ;             is the one sweep outcome that would otherwise be invisible:
@@ -162,7 +165,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; (2Ch = 20, bit 1 set).  The static trace agrees -- see the exerciser README.
 ; The port still alternates every cycle, so a wrong guess here costs nothing.
 LINK_ID         equ 0x63            ; top port, and the first one exercised
-VERSION         equ 0x09            ; bumped whenever the wire format changes
+VERSION         equ 0x0A            ; bumped whenever the wire format changes
 STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  Well clear of the stack, which never goes more than 3 deep.
@@ -176,9 +179,23 @@ V_ID            equ 0xC7E6          ; current link id; bit 5 alternates the port
 V_CTRL          equ 0xC7E7          ; LINK_CTRL the phase asked for (see WD)
 V_WD_N          equ 0xC7E8          ; rolling count of watchdog trips
 V_PSTAT         equ 0xC7E9          ; LINK_STATUS as LinkProbe left it
+V_KEY           equ 0xC7EA          ; key index this record, or FFh
 
-LO_ORG          equ 0x724C          ; the second free block, 183 bytes
-HI_ORG          equ 0x7E96          ; the first, 356 bytes
+VEC_ORG         equ 0x00A2          ; third free block, 94 bytes, above every
+                                    ; reset vector and below the boot vector
+LO_ORG          equ 0x724C          ; second free block, 183 bytes
+HI_ORG          equ 0x7E96          ; first free block, 356 bytes
+
+KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
+KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
+PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
+PORTMAP_BITS    equ 0x33            ; which 2Ch bits the pin walk drives:
+                                    ; 0, 1, 4 and 5, the ones the firmware
+                                    ; itself drives.  FFh also walks 2, 3, 6
+                                    ; and 7, which no ROM instruction ever
+                                    ; sets -- unknown territory, and the unit
+                                    ; powering off mid-walk would be the
+                                    ; first thing you learn about them.
 
 FRAME_RECS      equ 0x3F            ; mask: new frame when (COUNT and this) = 0
 GAP_SAMPLES     equ 0xC0            ; ~4 ms of idle; must exceed the receiver's
@@ -186,6 +203,86 @@ GAP_SAMPLES     equ 0xC0            ; ~4 ms of idle; must exceed the receiver's
 WD_SAMPLES      equ 0xFF            ; ~9 ms before waitready restores the base
 ARM_DELAY       equ 0x20            ; the firmware's own djnz count (32E1, 339B)
 
+
+                org VEC_ORG
+
+; --- Scan the 6x6 keypad the way Kbd_ScanMain does at ROM00:190D: drive one
+; column at a time through the firmware's own strobe helper, which writes
+; port 02h, settles with two PUSH/POP pairs, and returns port 00h masked to
+; the six row bits.  Returns the first key found as col*6 + row -- the same
+; index tbl_kbd_map is built on -- or FFh for none.
+;
+; This is the input channel the exerciser was missing.  It needs no wiring,
+; unlike port 2Dh, and it is reported in every record, so pressing keys and
+; watching the KEY field maps the keypad without knowing the keymap first.
+;
+; KbdStrobe preserves BC, DE and HL (it saves HL with PUSH/POP), so the scan
+; needs no spills.
+kbd_scan:       ld b,0x06                   ; six columns
+                ld c,0x00                   ; column index
+                ld d,0x01                   ; column drive bit
+ks_col:         ld a,d
+                call KbdStrobe
+                or a
+                jr nz,ks_hit
+                inc c
+                sla d
+                djnz ks_col
+                ld a,0xFF                   ; nothing pressed
+                ret
+ks_hit:         ld e,a                      ; row bits
+                ld a,c
+                add a,a                     ; 2*col
+                ld c,a
+                add a,a                     ; 4*col
+                add a,c                     ; 6*col
+                ld c,a
+                ld b,0x00
+ks_row:         rr e                        ; lowest set row wins
+                jr c,ks_done
+                inc b
+                jr ks_row
+ks_done:        ld a,c
+                add a,b
+                ret
+
+; --- Walk the port-2Ch output bits with a countable pulse code: bit 0 pulses
+; once, bit 1 twice, and so on, each group separated by a long gap.  Probe a
+; connector pin, count the pulses, and you have its bit -- no timing
+; reference, no second channel, an LED and an eye would do.
+;
+; Entered by holding any key at power-up, and never left: it is a different
+; job from measuring the link, and it drives 2Ch bit 5, which is the IR port
+; select.
+portmap:        ld d,0x01                   ; bit under test
+                ld c,0x01                   ; ... pulses that many times
+pm_bit:         ld a,PORTMAP_BITS
+                and d
+                jr z,pm_gap                 ; not in the set: silent slot, so
+                ld b,c                      ; the count still equals the bit
+pm_pulse:       ld a,d
+                out (PORT_2C),a
+                call pm_delay
+                xor a
+                out (PORT_2C),a
+                call pm_delay
+                djnz pm_pulse
+pm_gap:         call pm_delay               ; four delays: a gap long enough
+                call pm_delay               ; to be unmistakable between
+                call pm_delay               ; groups
+                call pm_delay
+                inc c
+                sla d
+                jr nz,pm_bit
+                jr portmap
+
+pm_delay:       ld hl,0x4000                ; ~115 ms
+pm_wait:        dec hl
+                ld a,h
+                or l
+                jr nz,pm_wait
+                ret
+vec_end:
 
                 org LO_ORG
 
@@ -324,6 +421,13 @@ lo_end:
 start:          di
                 ld sp,STACK
 
+                ; A key held at power-up selects the pin walk instead of the
+                ; link run.  Checked before anything else touches the
+                ; hardware, and it never returns.
+                call KbdStrobeAll
+                or a
+                jp nz,portmap
+
                 ; The cold boot we are replacing establishes 2Ah = 20h before
                 ; anything touches the link (014B: LD A,20h / OUT (2Ah),A), so
                 ; do the same -- LinkPortSelect only clears bit 1 there and
@@ -416,6 +520,9 @@ stream:         ld a,(V_COUNT)
                 and FRAME_RECS
                 call z,newframe             ; gap, flag, then the phase's state
 
+                call kbd_scan               ; before the snapshot: this
+                ld (V_KEY),a                ; clobbers B, C, D and E
+
                 ld a,(V_OR)                 ; snapshot the window just ended --
                 ld b,a                      ; taken after the gap, so windows
                 ld a,(V_AND)                ; are contiguous and the gap is not
@@ -437,6 +544,8 @@ stream:         ld a,(V_COUNT)
                 call putbyte                ; [5] CTRL this phase asked for
                 ld a,(V_WD_N)
                 call putbyte                ; [6] watchdog trips so far
+                ld a,(V_KEY)
+                call putbyte                ; [7] key index, or FFh
 
                 ld hl,V_COUNT
                 inc (hl)

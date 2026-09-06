@@ -27,8 +27,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from micronic.z80asm import assemble
 
-REGIONS = [("lo", 0x724C, 0x7302, "lo_end"),
-           ("hi", 0x7E96, 0x7FF9, "hi_end")]
+REGIONS = [("vec", 0x00A2, 0x00FF, "vec_end"),
+           ("lo",  0x724C, 0x7302, "lo_end"),
+           ("hi",  0x7E96, 0x7FF9, "hi_end")]
 # The cold-boot entry itself, not the vector that reaches it: 0000 jumps to
 # 0103 which jumps here, and the emulator harness starts directly at 014B, so
 # patching here is exercised identically on hardware and in the emulator.

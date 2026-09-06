@@ -32,8 +32,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 MAGIC = (0xA5, 0x5A)
-RECLEN = 7
-VER = 9
+RECLEN = 8
+VER = 10
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -138,6 +138,12 @@ def main():
     sweep_report(records)
     side = sorted({r[4] for r in records})
     print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
+    keys = sorted({r[7] for r in records} - {0xFF})
+    if keys:
+        print("keypad indices seen (col*6+row): "
+              + " ".join(f"{k}=c{k//6}r{k%6}" for k in keys))
+    else:
+        print("keypad: no key seen held during the capture")
 
 
 def report_phases(records):

@@ -29,11 +29,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `9AAD` |
+| `micron1_exerciser.bin` | `C9DD` |
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `9AAD`** so it
+needs no reference to this repo. **Label the burned exerciser `C9DD`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -48,11 +48,16 @@ is not the one it was written against:
 
 | Edit | |
 |---|---|
-| `724C`-`72DC` | helpers and the beacon, in a 183-byte run of `00` filler (38 left) |
-| `7E96`-`7FC1` | the main body, in a 356-byte run of `00` filler (56 left) |
+| `00A2`-`00FD` | keypad scan and the pin walk, in a 94-byte run of `00` filler (2 left) |
+| `724C`-`72DC` | helpers and the beacon, in a 183-byte run (38 left) |
+| `7E96`-`7FD4` | the main body, in a 356-byte run (37 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
-Both filler runs must be empty beforehand. `014B` rather than the reset vector
+All three filler runs must be empty beforehand. `00A2`-`00FF` sits above every
+reset vector (`RST 38h` at `0038`, NMI at `0066`) and below the boot vector at
+`0100`. Four byte pairs elsewhere in the image look like control transfers
+into it; all four are operand bytes or table entries, checked individually —
+and any real one would already be jumping the firmware into 94 bytes of `NOP`. `014B` rather than the reset vector
 because `0000` → `0103` → `014B`, and the emulator harness starts directly at
 `014B`, so the same patch is exercised on hardware and in the emulator.
 
@@ -60,7 +65,7 @@ The two code regions are a single assembly — `ORG` pads forward and only the
 two real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**446 bytes differ from the original.** One chip: `ROM01` is untouched.
+**546 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The beacon, first
 
@@ -73,11 +78,10 @@ IR line is otherwise ambiguous between *the controller never asserts `TXRDY`*
 burn, a bent pin, or a wrong socket. Watching one side-port pin settles it in
 a second.
 
-It also maps the port outwards: the two bits square at different rates, so a
-probe identifies which external pin carries which. `SIDE` in the record stream
-does the same for the inputs. Together they are the two-wire command channel
-the next exerciser needs — which is the point, since a steerable exerciser is
-one that does not need another swap.
+It also gives a coarse outward map for free: the two bits square at different
+rates, so a probe identifies which external pin carries which. The pin walk
+above does that job properly; the beacon's version is the one you get without
+choosing a mode.
 
 Bits 0 and 1 of `2Ch` are what the barcode front end drives (`1283`, `1292`,
 `1519`, `1528`), so this stays inside behaviour the firmware already has.
@@ -104,6 +108,48 @@ Driving the real Load/Run form in the emulator settled it, one run per
 choice: `V24 ADAPTOR` leaves `fdd4` = `63h` and takes the bit5-set branch
 (`2Ch` = `00`); `PLINTH` leaves `43h` and the bit5-clear branch (`2Ch` = `20`).
 See `doc/re-notes/commstar-evidence.md`.
+
+## Two modes, chosen at power-up
+
+**Hold any key while powering on** and it runs the pin walk instead of the
+link exerciser. Release and power-cycle to go back. That is the whole user
+interface, and it needs no knowledge of the keymap — which is the point,
+because the keymap is one of the things being reverse-engineered.
+
+### The pin walk
+
+For finding which connector pin carries which port bit. It drives port `2Ch`
+with a countable pulse code: **bit 0 pulses once, bit 1 twice, bit 4 five
+times, bit 5 six times**, each group separated by a long gap, repeating for
+ever. Probe a pin, count the pulses, and you have its bit. No timing
+reference, no second scope channel — an LED and an eye would do.
+
+Bits it is not driving leave a silent slot, so the count still equals the bit
+number and nothing shifts. `PORTMAP_BITS` in `exerciser.asm` selects the set;
+it defaults to `33h` — bits 0, 1, 4 and 5, the ones the firmware itself
+drives. `FFh` also walks 2, 3, 6 and 7, which no ROM instruction ever sets:
+unknown territory, and the unit powering off mid-walk would be the first
+thing you learn about them.
+
+Note bit 5 is the IR port select, so its six-pulse group may not appear on
+the side connector at all. That makes it a useful contrast case rather than a
+nuisance.
+
+Inputs do not move during the walk — find those with the `KEY` and `SIDE`
+fields in the normal mode instead, by shorting each pin in turn and watching
+which one changes.
+
+### The keypad, and why it matters more than the side port
+
+`kbd_scan` drives one column at a time through the firmware's own strobe
+helper (`ROM00:1A44`: writes port `02h`, settles, reads port `00h` masked to
+six rows) and returns `col*6 + row` — the same index `tbl_kbd_map` is built
+on. It is reported in every record, so pressing keys and watching `KEY` maps
+the keypad empirically.
+
+This supersedes port `2Dh` as the command channel for a steerable follow-up
+burn. It needs no wiring, no pinout, and no case modification, and it is
+already proven by this run's own capture.
 
 ## The four phases
 
@@ -158,6 +204,7 @@ record     COUNT OR AND RXD SIDE CTRL     64 per frame, ~7.3 ms apart
 | `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
+| `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |
 
 `OR` and `AND` are what make the modest record rate sufficient. Waiting for
 `TXRDY` is a tight polling loop — one `LINK_STATUS` sample every ~35 µs — and
@@ -253,7 +300,7 @@ The watchdog blink is the point of that fourth row: the IR channel cannot
 report that the IR channel has stopped, so it reports on the side port
 instead.
 
-94 bytes of filler remain across the two blocks.
+77 bytes of filler remain across the three blocks.
 
 ## Restoring
 
