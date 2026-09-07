@@ -8,9 +8,9 @@
 ; powered.
 ;
 ; The reporting channel is LINK_TXD itself: a write to 4Dh puts a byte on the
-; wire, which the existing Arduino receiver already decodes.  No LCD, no
-; keyboard, no extra hardware, and it exercises the transmit path at the same
-; time.
+; wire, which the existing Arduino receiver already decodes.  The LCD mirrors
+; the first ten record fields and the keyboard supplies a positive interrupt
+; control, so no extra hardware beyond the existing receiver is required.
 ;
 ; --- what it is measuring --------------------------------------------------
 ;
@@ -49,8 +49,8 @@
 ;                  LINK_STATUS bit 6 become set, and if so does it clear?
 ;                  A frame is well over 0.5 s, where the firmware allows
 ;                  9.92 ms for the clear wait.
-;   2  RX armed    the 3378 sequence, then held.  Does bit 0 ever set, and
-;                  does LINK_RXD ever come back non-zero?
+;   2  RX armed    the 3378 sequence, then held.  Does LINK_STATUS bit 0 ever
+;                  set, and does LINK_RXD ever come back non-zero?
 ;   3  CTRL sweep  one value per frame, advancing each cycle, covering all
 ;                  256.  The firmware writes bits 0, 1, 4 and 5 directly, and
 ;                  bits 6 and 7 through the pair 34BD (sets both) and 34D2
@@ -176,21 +176,25 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; both states.
 LINK_ID         equ 0x43            ; top V24 state first; alternates with 63h
 VERSION         equ 0x0D            ; bumped whenever the wire format changes
-STACK           equ 0xC800          ; upper TPA, documented free in the RAM map
+STACK           equ 0xC900          ; upper TPA, documented free in the RAM map
 
-; Loop state.  Well clear of the stack, which never goes more than 3 deep.
+; Loop state.  The stack starts 0x113 bytes above the last state byte.  A
+; bounded emulator run found the deepest write only ten bytes below its old
+; C800h top; the larger separation also covers an interrupt at that point
+; without relying on so narrow a margin.
 V_OR            equ 0xC7E0          ; sticky OR of LINK_STATUS, this window
 V_AND           equ 0xC7E1          ; sticky AND of LINK_STATUS, this window
 V_COUNT         equ 0xC7E2          ; record counter; top 2 bits are the phase
 V_SWEEP         equ 0xC7E3          ; phase 3's value, +1 each cycle
 V_WD_N          equ 0xC7E4          ; rolling count of watchdog trips
 V_IRQN          equ 0xC7E5          ; interrupt entries seen, rolling. Must stay
-V_ISTAT         equ 0xC7E6          ; directly below V_ISTAT: the ISR walks
-                                    ; from one to the other with DEC HL
+                                    ; directly below V_ISTAT: the ISR walks
+                                    ; from V_ISTAT to V_IRQN with DEC HL
+V_ISTAT         equ 0xC7E6          ; sticky OR of LINK_STATUS at interrupt time
 V_ISRC          equ 0xC7E7          ; active-high IRQ sources, sticky for run
 V_WD            equ 0xC7E8          ; waitready watchdog
 V_BASE          equ 0xC7E9          ; LINK_CTRL as the frame opening left it
-V_ID            equ 0xC7EA          ; current link id; bit 5 alternates the port
+V_ID            equ 0xC7EA          ; current wire ID; wire-ID bit 5 alternates
 V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
 V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
 V_KEY           equ 0xC7ED          ; key index this record, or FFh
@@ -208,7 +212,7 @@ HI_ORG          equ 0x7E96          ; first free block, 356 bytes
 
 LCD_REG         equ 0x23            ; HD61830 register index
 LCD_DAT         equ 0x03            ; ... and its data port
-LCD_CONTRAST    equ 0x46            ; contrast DAC; see CONTRAST below
+LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 
 ; ---------------------------------------------------------------------------
 ; DISPLAY CONTRAST -- change this one number if the screen is unreadable.
@@ -231,13 +235,16 @@ LCD_CONTRAST    equ 0x46            ; contrast DAC; see CONTRAST below
 ;
 ; Not to be confused with port 2Bh, which an earlier version of this file had
 ; wrong: 2Bh is the BEEPER, and writing a contrast value to it would have made
-; the unit sound continuously.  Confirmed against the MAME driver
-; (micronic.cpp): 2Bh beep_w, 46h lcd_contrast_w, 2Ch bit 4 backlight.
+; the unit sound continuously.  ROM accesses confirm the first two identities;
+; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
+; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
 CONTRAST        equ 0x40            ; a good way below the stock 70h
 
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
+LcdInit         equ 0x1EEC          ; complete stock LCD init and VRAM clear
+DelayLoop       equ 0x35CE          ; A outer iterations; preserves BC
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
 KBD_SHADOW      equ 0xF782          ; firmware's port-02h working copy
 IRQ_MASK        equ 0x04            ; interrupt enable, ACTIVE LOW
@@ -315,8 +322,7 @@ isr_end:
 ; Reached only when the controller will not open a frame at all.  Shows DEAD
 ; on the glass -- spelled with the hex printer, so it costs no string table
 ; -- which is otherwise indistinguishable from every other kind of silence.
-dead:           xor a
-                call lcd_at
+dead:           call lcd_home
                 ld a,0xDE
                 call lcd_hex
                 ld a,0xAD
@@ -381,15 +387,15 @@ ks_done:        ld a,c
 ; job from measuring the link, and it drives 2Ch bits that are not connector
 ; pins at all.
 ;
-; Two of the four groups identify themselves without a probe.  2Ch bit 4 is
-; the LCD BACKLIGHT, so its five-pulse group flashes the screen; bit 5 is the
-; IR port select.  That leaves bits 0 and 1 -- the pair the barcode front end
-; drives at ROM00:1283 and 1519 -- as the real side-connector candidates, and
-; the other two groups as a free calibration of the count.
-portmap:        ld d,0x01                   ; bit under test
+; Two of the four groups have prior identities.  Port-2Ch bit 4 is LIKELY the
+; LCD backlight from firmware use plus the MAME model, so its five-pulse group
+; may flash the screen.  Port-2Ch bit 5 is CONFIRMED as the IR port select.
+; That leaves port-2Ch bits 0 and 1 -- the pair the barcode front end drives at
+; ROM00:1283 and 1519 -- as the real side-connector candidates, and the other
+; two groups as a free calibration of the count.
+portmap:        ld d,0x01                   ; port-2Ch bit under test
                 ld c,0x01                   ; ... pulses that many times
-pm_bit:         xor a
-                call lcd_at
+pm_bit:         call lcd_home
                 ld a,d
                 call lcd_hex                ; which bit is pulsing now
                 ld a,PORTMAP_BITS
@@ -508,33 +514,35 @@ ctrl_put:       ld (hl),a
 
 ; ---------------------------------------------------------------------------
 ; HD61830 LCD.  Register-indexed: port 23h picks the register, port 03h
-; carries the byte.  Nothing here is invented -- the init values are the ones
-; the firmware writes at boot, captured from a stock emulator run, and the
-; contrast value is the firmware's own, turned down.  Skipping all of it is
-; why a patched boot shows nothing usable: nothing has configured the
-; controller, set the contrast DAC, or cleared 160 cells of power-on garbage
-; out of the display RAM.
+; carries the byte.  power_lcd_init below calls the complete stock LcdInit,
+; including its own settling delay, register sequence, 160-cell VRAM clear,
+; contrast write and cursor disable.  Keeping that known-good routine is safer
+; than maintaining a second initialization sequence here.
 ;
 ; This is now the primary liveness indicator, and a better one than the
 ; side-port beacon it replaces: text on the glass cannot be mistaken for
 ; anything else.  The beacon's other job, mapping pins, belongs to the pin
 ; walk.
 ;
-; Port map, confirmed against the MAME driver (micronic.cpp) as well as the
-; ROM: 00h keypad read, 02h keypad drive, 03h/23h HD61830 data/control,
-; 08h/28h RTC, 2Bh BEEPER, 2Ch bit 4 backlight, 46h contrast, 47h bank select,
-; 48h/49h status flag.  MAME does not model 4Ah-4Fh at all, which is the whole
-; reason this exerciser exists.
+; Port map confirmed from ROM accesses and corroborated by the MAME driver
+; (micronic.cpp): 00h keypad read, 02h keypad drive, 03h/23h HD61830
+; data/control, 08h/28h RTC, 2Bh BEEPER, 46h contrast, 47h bank select and
+; 48h/49h status flag.  MAME additionally models port-2Ch bit 4 as the LIKELY
+; backlight.  It does not model 4Ah-4Fh at all, which is why this exerciser
+; exists.
 ; ---------------------------------------------------------------------------
 
-; A = cell address 0..159.  The controller auto-increments after each data
-; write, so a run of characters needs this once.
-; R11, the address high byte, is always zero for 160 cells, so lcd_init sets
-; it once and this only touches R10.
-lcd_at:         push af
-                ld a,0x0A
+; Set the VRAM cursor to cell zero.  HD61830 cursor-address low register R10
+; must always be followed by cursor-address high register R11: changing R10
+; from bit 7 set to clear can carry into R11.  The stock lcd_sync_status at
+; ROM00:1F91-1F9E uses this same low-then-high sequence.
+lcd_home:       ld a,0x0A
                 out (LCD_REG),a
-                pop af
+                xor a
+                out (LCD_DAT),a
+                ld a,0x0B
+                out (LCD_REG),a
+                ld a,0x00                  ; match ROM00:1F9C timing exactly
                 out (LCD_DAT),a
                 ret
 
@@ -575,11 +583,8 @@ pm_wait:        dec hl
                 or l
                 jr nz,pm_wait
                 ret
-lcd_tab:        db 0x00,0x3C, 0x01,0x75, 0x02,0x13, 0x03,0x3F
-                db 0x04,0x07, 0x08,0x00, 0x09,0x00, 0x0B,0x00
-
 ; Reproduce the sleep configuration paired with IRQ mask FAh at ROM00:1766:
-; bit 6 selects the IRQ-wake mode and bit 3 selects keypad column 3.
+; KBD_DRIVE bit 6 selects IRQ-wake mode and KBD_DRIVE bit 3 selects column 3.
 kbd_irq_arm:    ld (KBD_SHADOW),a
                 out (PORT_KBD_DRV),a
                 ret
@@ -587,27 +592,19 @@ lo_end:
 
                 org MID_ORG
 
-; The values the firmware writes at boot: R0 mode, R1 character pitch,
-; R2 = 13h = 20 characters, R3 = 3Fh = 64 lines, R4 cursor, R8/R9 display
-; start.  R10/R11 are set by lcd_at, so they are not in the table.
-lcd_init:       ld hl,lcd_tab
-                ld b,0x08
-li_loop:        ld a,(hl)
-                out (LCD_REG),a
-                inc hl
-                ld a,(hl)
-                out (LCD_DAT),a
-                inc hl
-                djnz li_loop
-                ld a,CONTRAST               ; see the CONTRAST block above
-                out (LCD_CONTRAST),a
-                xor a                       ; clear 160 cells of power-on
-                call lcd_at                 ; garbage
-                ld b,0xA0
-li_clr:         ld a,0x20
-                call lcd_putc
-                djnz li_clr
-                ret
+; Reproduce the minimum stock path that is proven to reach LcdInit.  Reset at
+; ROM00:0152 first writes CTL_LATCH_2A=20h, then waits 0FA0h iterations before
+; the special-boot path can call LcdInit at ROM00:0178.  DelayLoop with A=1Eh
+; takes within one percent of that reset loop's Z80 cycles, after which the
+; complete stock LcdInit adds its own longer controller-settling delay.
+power_lcd_init: ld a,0x20
+                out (PORT_2A),a
+                ld (PORT2A_SHADOW),a
+                ld a,0x1E
+                call DelayLoop
+                ld a,CONTRAST
+                ld (LCD_CONTRAST_SHADOW),a
+                jp LcdInit
 mid_end:
 
                 org HI_ORG
@@ -615,7 +612,7 @@ mid_end:
 start:          di
                 ld sp,STACK
                 call nmi_safe               ; protect the whole LCD init too
-                call lcd_init
+                call power_lcd_init
 
                 ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
                 ; through F5F6, both uninitialised here.  Point the first at
@@ -633,14 +630,6 @@ start:          di
                 call KbdStrobeAll
                 or a
                 jp nz,portmap
-
-                ; The cold boot we are replacing establishes 2Ah = 20h before
-                ; anything touches the link (014B: LD A,20h / OUT (2Ah),A), so
-                ; do the same -- LinkPortSelect only clears bit 1 there and
-                ; preserves the rest through the shadow.
-                ld a,0x20
-                out (PORT_2A),a
-                ld (PORT2A_SHADOW),a
 
                 ; The firmware's link routines are read-modify-write against
                 ; these shadows.  Seed them rather than inheriting whatever
@@ -672,7 +661,8 @@ init_clear:     ld (hl),a
                 and 0x20
                 call LinkPortSelect
 
-                ; --- LinkBlockTx's opening: bit 0 low, bit 0 high, bit 4 low
+                ; --- LinkBlockTx opening: LINK_CTRL bit 0 low, then high;
+                ;     LINK_CTRL bit 4 low
                 ld a,0xFE
                 call ctrl_and
                 ld a,0x01
@@ -702,7 +692,7 @@ open_try:       call LinkPresent            ; preserves BC
 opened:         call accreset
 
                 ; --- preamble.  Identifies the image and its wire format, and
-                ; gives the receiver a known 6 bytes to confirm alignment on
+                ; gives the receiver five known bytes to confirm alignment on
                 ; before any measurement is read.
                 ld a,0xA5
                 call putbyte
@@ -739,8 +729,8 @@ stream:         ld a,(V_COUNT)
                                             ; putbyte uses C.
                 call accreset
 
-                xor a                       ; the record also goes to the
-                call lcd_at                 ; glass, top row, 20 hex digits
+                call lcd_home               ; record also goes to the glass,
+                                            ; top row, 20 hex digits
 
                 ld a,(V_COUNT)
                 call emit                   ; [0] COUNT
@@ -790,11 +780,11 @@ newframe:       call gap
 
 ; Phase 3.  One CTRL value per frame, advancing each cycle so all 256 are
 ; covered.  Port alternation means each port sees only odd or even raw counter
-; values.  RLCA moves that correlated bit 0 into bit 1 before bit 1 is forced
-; to the selected port; the other seven bits therefore cover all 128 effective
-; states on each port rather than only 64.  Sweeping bit 1 itself would switch
-; ports underneath the measurement, which is a confound rather than an
-; experiment.
+; values.  RLCA moves V_SWEEP bit 0 into LINK_CTRL bit 1 before LINK_CTRL
+; bit 1 is forced to the selected port; the other seven bits therefore cover
+; all 128 effective states on each port rather than only 64.  Sweeping
+; LINK_CTRL bit 1 itself would switch ports underneath the measurement, which
+; is a confound rather than an experiment.
 sweep:          ld hl,V_SWEEP
                 inc (hl)
                 ld a,(V_BASE)
@@ -806,13 +796,10 @@ sweep:          ld hl,V_SWEEP
                 or c
                 jp ctrl_set
 
-; Alternate the port on every counter wrap, so one burn covers both.  Which
-; physical window each latch state drives cannot be settled from the ROM: the
-; chain from the menu choice to the wire id runs through compiler-generated
-; forwarding frames, and the two readings of it disagree.  So do not infer it
-; -- drive both and watch which window lights.  A few seconds each,
-; alternating; LINK_CTRL bit 1 is already in every record, so the capture
-; says which state was live without needing a schedule.
+; Alternate the port on every counter wrap, so one burn covers both.  The
+; owner-observed V24 run establishes that wire-ID bit 5 clear selects the top
+; window while setting LINK_CTRL bit 1 and port-2Ch bit 5.  The complementary
+; wire-ID-bit-5-set state remains LIKELY the back window by elimination.
 port_swap:      ld hl,V_ID
                 ld a,(hl)
                 and 0x20
@@ -820,13 +807,13 @@ port_swap:      ld hl,V_ID
                 ld a,(hl)                   ; the first cycle is LINK_ID
                 xor 0x20                    ; ... then flip for the next
                 ld (hl),a
-                ld a,(CTRL_SHADOW)          ; the swap moved bit 1; rebase
+                ld a,(CTRL_SHADOW)          ; port swap moved LINK_CTRL bit 1
                 ld (V_BASE),a
                 ret
 
-; ROM00:32CC-32EE, byte for byte.  This is what makes HSBUSY mean anything:
-; the controller asserts it here, and the firmware's 9.92 ms wait at 32F3 is
-; for it to fall again.
+; ROM00:32CC-32EE, byte for byte.  This is what makes LINK_STATUS bit 6 worth
+; measuring: the firmware applies this arm, then allows 9.92 ms for that bit
+; to be clear.  Whether the arm sets the bit is deliberately not assumed.
 tx_arm:         ld a,0x20
                 call ctrl_or
                 ld a,0x10

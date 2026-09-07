@@ -117,15 +117,18 @@ undocumented and the unit may do something unexpected.
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin`** and label it with the sum `build.py`
-   prints. `ROM01` is untouched.
+1. **Burn `micron1_exerciser.bin`** only if sum16 is `1225` and SHA-256 is
+   `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
+   Label it `1225`; `ROM01` is untouched.
 2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
    first: a counting hex row means everything downstream is working, and if
    the contrast is wrong for your unit, change `CONTRAST` in `exerciser.asm`
    — port `46h`, `00h`-`FFh`, lower is lighter, stock firmware boots to `70h`
-   — before going further. This is the control run and everything else is read
-   against it. Capture ≥60 s so every phase and both ports repeat several
-   times. A complete 128-state sweep per port requires a much longer run.
+   — before going further. Use good ambient light: the link run does not depend
+   on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
+   This is the control run and everything else is read against it. Capture
+   ≥60 s so every phase and both ports repeat several times. A complete
+   128-state sweep per port requires a much longer run.
 3. **Watch which window blinks** during each cycle of a few seconds. Note it.
 4. **Press N, ENTER or YES** during the capture. Two jobs: `KEY` records the
    index (`col*6 + row`), which maps the keypad as a free by-product. `IRQN` should
@@ -138,9 +141,11 @@ undocumented and the unit may do something unexpected.
    exerciser does not care what the Arduino does.
 6. **Decode** each capture with `decode_records.py`.
 
-Expect a blank screen and a dead keyboard: interrupts are off and it never
-powers down. Power-cycling is the only exit, and it drives the IR LED
-continuously, so use external power if you can.
+Expect no menus and no normal keyboard handling: this is a dedicated test
+loop and it never powers down. The top LCD row should count continuously, and
+N/ENTER/YES are retained only as the interrupt positive control. Power-cycling
+is the only exit, and it drives the IR LED continuously, so use external power
+if you can.
 
 ## Reading the result
 
@@ -279,6 +284,6 @@ so one chip covers the whole experiment space and the operator drives it by
 hand while watching the wire. That frees more space than it costs, because the
 phase sequencing and the sweep counter both go away.
 
-Remaining space after this build is 22 bytes across three filler runs. A
+Remaining space after this build is 54 bytes across all six filler runs. A
 steerable follow-up will need to retire fixed phases or other instrumentation
 rather than assume the old free-space figures still apply.

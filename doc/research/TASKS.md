@@ -158,7 +158,7 @@ State: continuously updated as work progresses.
 1. **Run the v13 replacement-ROM exerciser.** The owner reports that
    programming the socketed ROM is easier than attaching a logic analyser to
    the Z80 bus. Verify stock chips against `ACF8`/`2E12`, burn and label ROM00
-   sum16 `1CBD`, then follow `doc/re-notes/exerciser-test-plan.md`. The first
+   sum16 `1225`, then follow `doc/re-notes/exerciser-test-plan.md`. The first
    control is `ISRC` bit 0 from N/ENTER/YES; only after it passes are `ISRC`
    bit 2 remaining clear and `LINK_STATUS` bit 6 remaining set meaningful
    negative results.
@@ -4063,7 +4063,10 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   determine the minimal optical acknowledgement that makes the link hardware
   release the next byte; capture `LINK_TXD` and IR together if possible.
 
-## IR link exerciser review and flash-ready ROM (2026-09-06)
+## IR link exerciser review (2026-09-06; burn image superseded)
+
+The `1CBD` image and hash in this historical entry are **SUPERSEDED** by the
+pre-burn audit below. The current burn image is sum16 `1225`.
 
 * **Replacement ROM00 reviewed and rebuilt as wire format v13.** The burnable
   image is `analysis/rom_exerciser/micron1_exerciser.bin`, 32768 bytes,
@@ -4122,7 +4125,7 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   targeted emulator integration tests also passed for the PLINTH and V24 UI
   routes with the new port-select tuple assertions. The rebuilt image SHA-256
   is `01bd49402645b78413fecc07af31c47ed097ca2379bdff74920857b37157696a`.
-* **Next hardware sequence:** (1) read and `cmp` both fitted ROMs; (2) burn
+* **SUPERSEDED hardware sequence — do not execute:** (1) read and `cmp` both fitted ROMs; (2) burn
   and label `1CBD`; (3) run the pin walk; (4) capture at least 60 seconds in
   `LISTEN_ONLY`, pressing N/ENTER/YES until `ISRC` bit 0 proves the IRQ path;
   (5) read `ISRC` bit 2, phase-1 `HSBUSY`, phase-2 `RX byte`/`RXD`, and
@@ -4248,3 +4251,46 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   analyser to the Z80 bus is harder than programming the socketed ROM. The
   prepared v13 replacement-ROM exerciser is now the next physical task;
   stock-ROM bus capture is retained only as a fallback.
+
+## Replacement-ROM pre-burn audit (2026-09-07)
+
+* **SHOWSTOPPER FIX — HD61830 cursor-page carry:** the previous v13
+  `lcd_at` helper rewrote cursor-address low register R10 without following it
+  with cursor-address high register R11. The Hitachi HD61830 datasheet Table 2
+  requires R11 to be rewritten after R10 because an R10 bit-7 transition from
+  set to clear can increment R11. After the 160-cell clear, the first live
+  record could therefore land in display-RAM page 1 and leave the visible row
+  blank. `lcd_home` now writes `R10=00h` then `R11=00h`, byte-for-byte matching
+  `ROM00:1F91`-`1F9E`.
+* **LCD initialization now uses the stock routine.** The hand-maintained
+  register table and clear loop were removed. `power_lcd_init` writes
+  `CTL_LATCH_2A=20h`, waits within one percent of the stock
+  `ROM00:0152`-`015D` reset loop's Z80 cycle count, sets the contrast shadow to
+  `40h`, and tail-calls the complete stock `LcdInit` at `ROM00:1EEC`. This is
+  the minimum byte-proven path: the stock special-boot route also reaches
+  `LcdInit` after that latch state and reset delay.
+* **Stack collision margin increased.** A bounded run of the old image found
+  a deepest stack write at `C7F6h`, only nine bytes above the last exerciser
+  state byte at `C7EDh`; an interrupt there had only two bytes of remaining
+  margin. The stack now starts at `C900h`, 275 bytes above that state byte,
+  within the documented free upper TPA.
+* **Burn image supersedes the September 6 fingerprint:** guarded build is
+  32768 bytes, 674 bytes differ from stock, 54 filler bytes remain, sum16 is
+  `1225`, and SHA-256 is
+  `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
+  The old `1CBD` image and hash in the historical entry above must not be
+  burned.
+* **Validation:** six dedicated exerciser tests now lock the image fingerprint,
+  stock `LcdInit` entry bytes and HD61830 command sequence, R10-then-R11 home
+  sequence, region bounds, stack separation and CTRL sweep. The full
+  `analysis/` suite passes: 95 passed, 33 emulator-dependent tests skipped and
+  71 subtests passed. A bounded 30,000-slice run logged the complete stock LCD
+  sequence, 160-space clear, contrast `40h`, ASCII top row
+  `00808000FF0300FF0000`, preamble `A5 5A 0D 80 80`, and 3,154 decoded records
+  with no counter discontinuity or watchdog trip. The final partial record is
+  the intentional slice-limit stop. The repository-wide suite additionally
+  collected 105 passing tests but its 102 barcode build cases could not start
+  because this sandbox cannot run their `sudo docker` assembler command; that
+  is unrelated to the exerciser.
+* **Ghidra saved:** `lcd_sync_status` now records the R10/R11 low-then-high
+  requirement, and reset at `ROM00:0152` records the latch plus delay contract.

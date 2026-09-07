@@ -13,7 +13,7 @@ every edit is checked before it is applied:
 
 The six sections are one assembly, so they can call each other by name.  ORG
 pads forward, so the blob spans the firmware that sits between them -- only
-the two real regions are ever copied out of it.
+the six declared regions are ever copied out of it.
 
 Usage:  build.py [-o OUT]        default out: micron1_exerciser.bin
 """

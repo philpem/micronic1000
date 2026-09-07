@@ -30,11 +30,16 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1CBD` |
+| `micron1_exerciser.bin` | `1225` |
+
+The final exerciser SHA-256 is
+`9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
+The dedicated regression test reconstructs the burn image and locks both
+fingerprints as well as the 674-byte diff count.
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1CBD`** so it
+needs no reference to this repo. **Label the burned exerciser `1225`** so it
 is never confused with a stock `ACF8` part.
 
 ## Build
@@ -50,11 +55,11 @@ clobbering anything if the image is not the one it was written against:
 | Edit | |
 |---|---|
 | `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
-| `0069`-`007F` | `DEAD` display and the NMI guard, exactly filling a 23-byte run |
-| `00A2`-`00FC` | keypad scan and the pin walk, in a 94-byte run (3 left) |
-| `724C`-`7302` | link, LCD and keypad-arm helpers, exactly filling a 183-byte run |
-| `7CE0`-`7D00` | LCD init, in a 48-byte run (15 left) |
-| `7E96`-`7FF9` | the main body, exactly filling a 356-byte run |
+| `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
+| `00A2`-`00FB` | keypad scan and the pin walk, in a 94-byte run (4 left) |
+| `724C`-`72F9` | link, LCD and keypad-arm helpers, in a 183-byte run (9 left) |
+| `7CE0`-`7CF3` | stock-reset/LCD entry helper, in a 48-byte run (28 left) |
+| `7E96`-`7FF1` | the main body, in a 356-byte run (8 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 All six filler runs must be empty beforehand. Two other runs of zeros are
@@ -73,7 +78,7 @@ The six code regions are a single assembly — `ORG` pads forward and only the
 six real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**703 bytes differ from the original.** One chip: `ROM01` is untouched.
+**674 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -92,9 +97,13 @@ That display is also the liveness indicator, and a better one than the
 side-port beacon it replaces: text on the glass cannot be mistaken for
 anything else, and it costs no interpretation.
 
-Nothing in the init is invented. The register values are the ones the firmware
-writes at boot, captured from a stock emulator run — it is an **HD61830**,
-register-indexed through port `23h` with data on `03h`:
+The exerciser no longer carries a second, hand-written LCD initializer. It
+sets the chosen contrast in the firmware's `FC05` shadow and calls the complete
+stock `LcdInit` at `ROM00:1EEC`. **CONFIRMED:** that routine supplies its own
+settling delay, initializes the LCD state and framebuffer, calls the stock
+HD61830 register sequence at `ROM00:1F33`, clears all 160 VRAM cells through
+the normal output path, writes contrast port `46h`, and disables the cursor.
+The register sequence is:
 
 | reg | value | |
 |---|---|---|
@@ -104,11 +113,23 @@ register-indexed through port `23h` with data on `03h`:
 | R3 | `3F` | 64 display lines |
 | R4 | `07` | cursor |
 | R8 R9 | `00` | display start |
-| R11 | `00` | address high — always zero for 160 cells, so `lcd_at` only writes R10 |
+| R10 R11 | `00` | cursor address, low byte followed by high byte |
 
-Then 160 cells are cleared. Skipping all of this is exactly why a patched boot
-comes up dark: nothing has configured the controller, set the drive level, or
-cleared the power-on garbage out of its RAM.
+The reset prerequisite is preserved too. Before calling `LcdInit`, the helper
+writes `CTL_LATCH_2A=20h` and delays for the same number of Z80 cycles (within
+one percent) as the stock `ROM00:0152`-`015D` loop. The special stock boot path
+reaches `LcdInit` with exactly that latch/delay setup, so this is the smallest
+byte-proven cold path rather than a guessed subset.
+
+There was one **SHOWSTOPPER** in the previous v13 image: its per-record home
+helper wrote HD61830 cursor-address low register R10 without rewriting
+cursor-address high register R11. The [Hitachi datasheet](https://www.displayfuture.com/Display/datasheet/controller/hd61830b.pdf)
+requires R11 to be set again after R10 because an R10 bit-7 transition from
+set to clear can carry into R11. After clearing 160 cells, that could redirect
+the live record writes to page 1 and leave the visible screen blank. The new
+`lcd_home` emits `R10=00h` followed by `R11=00h`, exactly matching
+`ROM00:1F91`-`1F9E`. A regression test locks both the stock initializer call
+and this low-then-high sequence.
 
 **Contrast is port `46h`**, and `CONTRAST` in `exerciser.asm` is the one
 number to change if the screen is unreadable. The firmware keeps the level in
@@ -352,22 +373,25 @@ The port log lands in `/tmp/opencode/micronic_boot_io.txt`. The expected
 opening matches what `LinkBlockTx` does, access for access:
 
 ```
-  0  PC=7EB8  2A = 20     the cold boot's own 2Ah setup, reproduced
-  1  PC=3493  4F = 1F     LinkProbe WRITES LINK_PROBE
-  2  PC=349D  4A = 00     probe: ctrl bit 5 clear
-  3  PC=34A7  4A = 01     probe: ctrl bit 0 set
-  4  PC=34B1  4A = 00     probe: ctrl bit 0 clear
-  5  PC=34B7  2C = 00     probe done, port 2Ch restored
-  6  PC=34DC  4A = 00     LinkPresent
-  7  PC=34E6  4A = 00
-  8  PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
-  9  PC=347D  4A = 02     LINK_CTRL bit 1 set
- 10  PC=3489  2C = 20     port 2Ch bit 5 set
- 11  PC=72B3  4A = 02     our frame opening: bit 0 low
- 12  PC=72B3  4A = 03                        bit 0 high
- 13  PC=72B3  4A = 03                        bit 4 low
- 14  PC=34F7  4C = 81     LINK_CMD -- the opening flag
- 15+ PC=728A  4D = ..     version-13 preamble, then 11-byte records
+  0  PC=7CE4  2A = 20     stock CTL_LATCH_2A setup, before the LCD
+1-18 PC=1Fxx  23/03       exact stock HD61830 register sequence
+ ... PC=1Fxx  23/03       stock 160-cell clear and cursor setup
+987  PC=1FDB  46 = 40     stock LcdInit writes the selected contrast
+991  PC=3493  4F = 1F     LinkProbe writes LINK_PROBE
+992  PC=349D  4A = 00     probe: LINK_CTRL bit 5 clear
+993  PC=34A7  4A = 01     probe: LINK_CTRL bit 0 set
+994  PC=34B1  4A = 00     probe: LINK_CTRL bit 0 clear
+995  PC=34B7  2C = 00     probe done, port 2Ch restored
+996  PC=34DC  4A = 00     LinkPresent
+997  PC=34E6  4A = 00
+998  PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
+999  PC=347D  4A = 02     LINK_CTRL bit 1 set
+1000 PC=3489  2C = 20     port 2Ch bit 5 set
+1001 PC=72B3  4A = 02     frame opening: LINK_CTRL bit 0 clear
+1002 PC=72B3  4A = 03                    LINK_CTRL bit 0 set
+1003 PC=72B3  4A = 03                    LINK_CTRL bit 4 clear
+1004 PC=34F7  4C = 81     LINK_CMD -- the opening flag
+1005+ PC=728A 4D = ..     version-13 preamble, then 11-byte records
 ```
 
 `--max-slices 30000` runs long enough to pass LCD initialisation and emit
@@ -384,7 +408,8 @@ hardware run is for.
 ## On the hardware
 
 Decode the wire with the Arduino in `LISTEN_ONLY` mode, then drive its
-stimulus modes and watch whether anything moves — phase 1 bit 6 above all.
+stimulus modes and watch whether anything moves — phase 1 `LINK_STATUS` bit 6
+above all.
 
 Silence now reads off the screen:
 
@@ -400,12 +425,12 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-22 bytes of filler remain across the six blocks.
+54 bytes of filler remain across the six blocks.
 
 ## Restoring
 
 Put the original chip back. What it touches in RAM: fourteen variables and a few
-bytes of stack in the upper TPA (`C7E0`-`C800`, which the RAM map documents as
+bytes of stack in the upper TPA (`C7E0`-`C900`, which the RAM map documents as
 free), and the firmware's own I/O shadows at `F78B`, `F78D`, `F794`, `F796`
 and `F799`. Those shadows are volatile working copies that the firmware
 re-seeds on its own cold boot, so nothing user-visible survives. No user data
