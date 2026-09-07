@@ -673,16 +673,23 @@ displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 ## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
 
 Two bounded synthetic traces were captured by calling the session TX
-builders with synthetic stack arguments and bypassing only a separate
-preflight at `5C1F`/`5D05` (forcing successful `HL=0` at `5C22`/`5D08`).
+builders with synthetic stack arguments and bypassing their preceding
+state-`0000` transaction at `5C1F`/`5D05` (forcing successful `HL=0` at
+`5C22`/`5D08`).
 `E6E6=0` in both traces. The physical low-five-bit prelude
 (`link_id & 1Fh`) is excluded from the quoted logical frames. Meanings of
 payload constants/fields and complete RECORD/BLOCK/C-COMMAND semantics
 remain **OPEN**.
 
-The preflight's condition is **OPEN**. No quoted transaction has satisfied it
-normally, so it may be a real-peer prerequisite. The forced return is emulator
-instrumentation, not an action available to a server.
+**The former "preflight" question is CLOSED.** Both call sites invoke
+`Session_TxFrameAndRx` (`ROM00:5B79`), which clears the two 138-byte session
+buffers, calls `SessionSetParams` with state, argument, and size zero and both
+frame lengths six, sends through `SessionTxSendFrame33`, and waits in
+`SessionRxByteLoop`. The ordinary protocol-aware peer completes it with the
+normal type-2/type-3/type-4 control exchange. The bounded program-download
+regression executes it without a forced return and observes states beginning
+`0000`, `0006`, `0062`, `0064`, `0045`. **CONFIRMED by bytes at
+`ROM00:5B79`-`5BA5`, both call sites, and the emulator regression.**
 
 * `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector,
   mapped through `FE83 + selector - 1`; it is **not** logical frame type.
@@ -691,14 +698,16 @@ instrumentation, not an action available to a server.
   independently by `ROM00:2F6D`.
 
 * **Trace 4 — Session_TxBlock4 path (CONFIRMED):** synthetic stack args
-  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the separate preflight at
+  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the preceding state-`0000`
+  exchange at
   `5C1F` by forcing successful `HL=0` at `5C22`. Payload length `15`;
   payload `06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`; complete logical
   frame `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`.
 
 * **Trace 5 — Session_TxBlock5 path (CONFIRMED):** args
-  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preflight at `5D05` by
-  forcing `HL=0` at `5D08`. Payload length `19`; payload
+  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preceding state-`0000`
+  exchange at `5D05` by forcing `HL=0` at `5D08`. Payload length `19`;
+  payload
   `06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`; logical frame
   `19 00 01 01 7F 00 06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`.
 
@@ -709,10 +718,11 @@ semantics, remain **OPEN**.
 ## Bounded real transaction — form 4 through service 33 / link IRQ path (CONFIRMED mechanics only)
 
 A bounded harness option `--trace-session-transaction 4` runs builder
-form 4 through the **actual service-33/link IRQ path**, bypassing only
-the already documented separate preflight as builder trace 4 does
-(forcing `HL=0` at `5C22`). It is a mechanically valid firmware exercise,
-not an interoperable Commstar specification.
+form 4 through the **actual service-33/link IRQ path**, bypassing only the
+preceding state-`0000` exchange to isolate the state-`0006` builder (forcing
+`HL=0` at `5C22`). The state-`0000` exchange is separately covered by the
+end-to-end peer regression described above. This option is a mechanically
+valid firmware exercise, not an interoperable Commstar specification.
 
 **Service identities (CONFIRMED):** actual service-33 entry is
 `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
@@ -1216,14 +1226,15 @@ the published site.
 
 The next work should prioritize server blockers:
 
-1. Characterise the `5C1F`/`5D05` preflight that all current builder traces
-   bypass.
-2. Cycle-account the timeout loops and determine the retry scheduler's units.
-3. Determine whether the fresh program-receive arm has a wire-observable
+1. Re-analyse the raw `conn3`-`conn13` Keysight captures and the exact Arduino
+   sketch used for each run; those source files are not currently in the
+   repository.
+2. Determine whether the fresh program-receive arm has a wire-observable
    counterpart, or whether a real peer must retry.
-4. Capture one physical IR exchange to establish modulation, byte framing,
-   timing, and whether controller-queue sync/trailer bytes exist on the wire.
-5. Capture a **historical** handheld-to-host RECORD/BLOCK transfer. This
+3. Capture a successful bidirectional IR exchange to establish the return
+   handshake and whether controller-queue sync/trailer bytes exist on the
+   wire. The stock handheld's outbound waveform is already captured.
+4. Capture a **historical** handheld-to-host RECORD/BLOCK transfer. This
    project's own peer now receives one (`CommstarRecordUploadTest`), which
    establishes the ROM's acceptance conditions but not what a real server
    sent.

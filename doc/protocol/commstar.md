@@ -2,8 +2,8 @@
 
 ## Scope and implementation status
 
-The Micronic 1000 external link is a byte-latch transport to an off-board
-controller associated with two IR ports. This page states what a host-side
+The Micronic 1000 external link is a byte-latch transport to a link controller
+associated with two IR ports. This page states what a host-side
 program **may rely on** at the M1000-facing latch boundary and what remains
 blocked for a physical server.
 
@@ -13,9 +13,11 @@ The logical frame envelope, the request/response object grammar, and the
 program-data block format are established from traces against real
 firmware and are described below. Both directions now run end to end
 against real firmware in the emulator — a program download to the
-handheld, and a record upload from it. What is missing is the IR wire
-framing, a wire-visible session-arming signal, and the meaning of several
-object fields. Nothing here is proven against historical hardware.
+handheld, and a record upload from it. The outbound IR clock/data waveform
+and one-byte prelude are captured from stock hardware. What is missing is the
+return-side handshake that lets the controller transmit the logical frame, a
+wire-visible session-arming signal, and the meaning of several object fields.
+Nothing here is proven against a historical adapter or plinth.
 
 | Layer | Stability | Guidance |
 |---|---|---|
@@ -23,10 +25,10 @@ object fields. Nothing here is proven against historical hardware.
 | Controller byte transaction | **Provisional** | Ordering is stable; electrical bit meanings are not |
 | Validated frame envelope | **Provisional** | Length, type, sequence, and target-id fields are stable; other bytes are not |
 | Session request/response objects | **Provisional** | Envelope and length fields are consistent across all captures; several field meanings are open |
-| Program-data block format | **Provisional** | Marker and length fields are confirmed; chunk maximum and EOF convention are open |
+| Program-data block format | **Provisional** | Marker and length fields are confirmed; the measured host-to-handheld maximum is 126 data bytes; the historical EOF convention is open |
 | Handheld-to-host data in requests | **Provisional** | Captured and decoded: the handheld sends objects to the host in its type-1 requests — 9 bytes at state `0006`, 54 bytes at state `0045` carrying operator text. `CommstarPeer` receives them |
 | Handheld-to-host RECORD transfer | **Provisional** | Works with controlled content; the stream format is `[u8 namelen][name] (1Eh [record])* 1Ch`, multi-record confirmed. The session ends cleanly: `C-COMMAND` index 2 `SEND` reaches `READY-TX-DATA`, from which `C-END-TX` is a legal transition back to `CONNECTED` |
-| IR wire framing | **Not implementable** | Requires a hardware capture |
+| IR wire framing | **Provisional** | Stock outbound capture confirms 8192-bit/s synchronous clock/data and supports the `81h` delimiter, MSB-first, inverted-bit-stuffing interpretation; return handshake, closing delimiter, and FCS remain open |
 
 The synthetic peer in the repository is regression infrastructure, not a
 server profile. Its RAM and program-counter observations are unavailable
@@ -45,7 +47,7 @@ For the firmware evidence behind each claim, see
 | Download a COM/DIP image from a physical server | **Not implementable** | Blocked on the wire layer and a wire-visible arm |
 | Receive data a handheld sends in a request | **Provisional** | Works: `CommstarPeer` receives and decodes the objects the handheld sends at states `0006` and `0045` |
 | Receive a RECORD-mode upload from a handheld | **Provisional** | Works: `CommstarPeer` receives an application-nominated record verbatim. Pinned by `CommstarRecordUploadTest` and `CommstarCleanTeardownTest` |
-| Build the IR adapter hardware | **Not implementable** | Connector-facing modulation and timing are open |
+| Build the IR adapter hardware | **Not implementable** | Outbound timing is captured; the return stimulus that clears the controller handshake remains open |
 
 ## Roles and byte-level terminology
 
@@ -54,8 +56,9 @@ For the firmware evidence behind each claim, see
   handheld through an IR adapter. No interoperable server exists yet.
 * **Synthetic peer** — the emulator component that feeds the controller
   receive latch and observes firmware internals.
-* **Wire bytes** — bytes on the physical IR interface. Framing and even
-  correspondence to controller bytes are open.
+* **Wire bytes** — bits and reconstructed bytes on the physical IR interface.
+  The stock handheld's delimiter and prelude are captured; correspondence for
+  a full frame and the return direction remain open.
 * **Controller-queue bytes** — bytes supplied to the `LINK_RXD` latch by
   the synthetic peer. They can include an uncounted sync byte and two
   trailing excluded bytes.
@@ -71,10 +74,11 @@ bytes in transmission order.
 The two IR ports are **V24 ADAPTOR (top of the unit, where the strap
 attaches)** and **PLINTH (back of the unit)** — owner-confirmed. Neither is
 an electrical connector: both are infrared emitter/detector pairs on the
-handheld's case. Firmware selects one of two line states using bit 5 of
-the active link id; which bit value maps to which port is open. The
-5-pin side port is the barcode-reader front end and is not part of this
-transport — see [Barcode reader](../reference/barcode.md).
+handheld's case. Wire-ID bit 5 clear selects the top V24 state: `LINK_CTRL`
+bit 1 and port `2Ch` bit 5 are set. The complementary wire-ID-bit-5-set state
+clears both output bits and is **LIKELY** the back PLINTH state pending direct
+observation. The 5-pin side port is the barcode-reader front end and is not
+part of this transport — see [Barcode reader](../reference/barcode.md).
 
 ## Layer model
 
@@ -87,7 +91,7 @@ Controller queue / byte transaction   Provisional at M1000 boundary
         │
 4Ah-4Fh controller interface          Stable as latch addresses
         │
-IR wire layer and connector selection  Not implementable: framing/polarity open
+IR wire layer and connector selection  Provisional: outbound captured; return handshake open
 ```
 
 The controller interface is a byte-latch transport, not an SCC/SIO/ADLC.
@@ -104,11 +108,12 @@ ordering. No electrical names for status or control bits are proven.
 
 ### How the IR hardware works
 
-The handheld does not drive the IR line directly. It talks to an off-board
-link controller through six latches (`4Ah`-`4Fh`), and the controller does
-the serialising. Everything below describes that latch boundary, which is the
-part the firmware defines; what the controller then puts on the IR line is
-not established.
+The handheld does not drive the IR line directly. It talks to its link
+controller through six latches (`4Ah`-`4Fh`), and the controller serialises
+the data onto two IR emitters. A stock-hardware capture establishes the
+outbound clock/data waveform and prelude; see
+[IR wire protocol](../re-notes/ir-wire-protocol.md). The latch transaction is
+defined below. How a far end completes the return handshake remains open.
 
 A transfer is a handshake, not a stream:
 
@@ -541,6 +546,19 @@ so the complete set of wire states is enumerable from the ROM:
 | `0062` | `5DFD` | none | connect: **direct** (seen in every IR capture) |
 | `0064` | `60D6` | none | begin transmission |
 | `0065` | `5BA6` | none | end of transaction |
+
+`Session_TxFrameAndRx` (`ROM00:5B79`) is the state-`0000` exchange that both
+state-`0006` builders call first (`ROM00:5C1F` and `ROM00:5D05`). It clears
+both 138-byte session buffers, configures six-byte TX and RX frames with
+state, argument, and size all zero, sends the request, and waits for the
+reply. A nonzero result aborts the enclosing builder.
+
+**CONFIRMED:** this is not a separate out-of-band preflight. The
+protocol-aware peer completes it with the same type-2 control acknowledgement,
+type-3 handheld acknowledgement, and type-4 completion used for the other
+control states. The bounded program-download regression executes it normally
+and observes the request sequence beginning `0000`, `0006`, `0062`, `0064`,
+`0045`.
 
 **`0062` is the direct-connection substitute for dialling.** `ROM00:5DFD` is
 byte-for-byte identical to the state-`0065` and state-`0000` routines but for

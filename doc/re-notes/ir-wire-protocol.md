@@ -14,7 +14,8 @@ record for everything **above** the latches.
 |---|---|
 | Instrument | Agilent MSO-X 3054A, s/n MY51260150, fw 02.65 |
 | Taken | 2026-09-02 20:08:30, by the owner |
-| Files | `m1000_v24_conn2.csv` (50 segments), `m1000_v24_conn1.h5` (segment 1 of the same acquisition, byte-identical) |
+| Files | `m1000_v24_conn2.csv` (50 segments), `m1000_v24_conn1.h5` (segment 1 of the same acquisition; decodes to the same 17-cell waveform as CSV segment 0) |
+| SHA-256 | CSV `b80aa886dd2521d52852ff92fee0c24990ee5326600ea6d3638532adda84d334`; H5 `8565ec8d201e1a470665d12578cd5c942d95784d60d14d154b5dcd2bd2ead951` |
 | Probes | ch1 = IR **clock**, ch2 = IR **data**, on the V24 ADAPTOR (top) port, handheld → adapter direction |
 | Acquisition | segmented, 30769 points × 104.0006 ns = 3.2 ms per segment, armed for 64 segments, **50 fired**, 4.607 s total |
 | Stimulus | operator selects V24 ADAPTOR and starts a connection with nothing attached; ends in `*** ERROR *** 8000 Plinth not connected` |
@@ -861,32 +862,15 @@ frame that is allowed to close answers OPEN 3 and 4.
   harness `analysis/boot_hw.py` first; a one-byte table edit is verifiable in
   the emulator by reading `FE83` after boot.
 
-### T8 — which way round are the handheld's detectors? — **do this next**
+### T8 — which way round are the handheld's detectors? — **ANSWERED**
 
-Its two *emitters* identify themselves: one is periodic at 122 µs, the other
-sparse. **Nothing identifies its two detectors.** Our emitters may have been
-feeding them backwards the whole time, in which case the handheld has been
-receiving our data on its clock input and our clock on its data input, and
-every negative result so far is void for that reason alone. It is one bit, and
-it has never been tested.
-
-The retry cadence gives a way to settle it without the handheld ever answering.
-Transmitting stretches the cadence from a flat 93.75 ms to ~109 ms in about
-62% of cycles — the handheld demonstrably notices us. Build with
-`ORIENTATION_TEST 1`: content, delay and clock mode are held still and only the
-orientation alternates, burst by burst. Capture a few hundred cycles and split
-the cadence statistics by orientation.
-
-* **One orientation disturbs the cadence more** → that is the one whose clock
-  is landing on the clock detector. Fix it and re-sweep.
-* **Both disturb it equally** → the disturbance is not clock-driven, which is
-  itself informative: it would suggest the controller reacts to light on either
-  detector rather than to a decodable bit stream.
-
-Either way it costs one run and removes a variable that currently invalidates
-everything else. A phone camera pointed at the port during a burst will also
-show which two devices in the window are the emitters — the other two are the
-detectors — which at least fixes the geometry even if it does not label them.
+This was open when the orientation experiment was planned. Conn10 settled it:
+under otherwise identical stimuli, the as-built assignment produced a
+reaction on 90-95% of trials while swapping the responder's clock and data
+emitters reduced the result to baseline. **CONFIRMED:** the responder's
+as-built clock emitter addresses the handheld clock detector and its as-built
+data emitter addresses the handheld data detector. See the conn3-conn13 result
+table below.
 
 ### T7 — the plinth, if one can be borrowed
 
@@ -1011,7 +995,7 @@ the OPEN below is much smaller than it looks.
 
 Three layers, and only the middle one is unknown.
 
-**Physical.** Drive two emitters (clock, data) at 8192 bit/s, 122.04 µs cell,
+**Physical.** Drive two emitters (clock, data) at 8192 bit/s, 122.0703 µs cell,
 data as a ~78 µs RZ pulse straddling the clock's rising edge. Receive the
 other two. The M1000's own timing is the reference for what its receiver will
 accept, but that its receiver *requires* the same shape is an assumption —

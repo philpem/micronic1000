@@ -115,52 +115,43 @@ State: continuously updated as work progresses.
     writes one queued byte through the FBF0 keyboard ring and sets FBC9 bit2.
     The serial-driven boot enters the Main Menu. Matrix injection via ports
     00/02 is not viable because firmware does not scan them during this wait.
-  * Remaining: model a live link peer and capture a complete send/receive
-    transaction; the current I/O stubs still cannot establish that exchange.
+  * Both directions now run end to end against real firmware: program
+    download to the handheld and RECORD upload from it. The synthetic peer
+    still depends on internal RAM/PC state for the fresh receive arm.
 
 ## In progress
 
-- **Decode Commstar session/frame layer** — DONE only for the ROM-visible
-  transport and partial validated envelope: LinkTransferService (2F86),
-  LinkTransportCall (2F1A), RX dispatcher (2FBD),
-  LinkValidateFrameHeader (30DC), frame builders (3106/3130), session
-  bootstrap (0F40-10FB), and the 4Ah-4Fh byte-latch path. Numeric types,
-  reply words, and inline-dispatch cases are confirmed observations, not a
-  command-name or payload grammar. Remaining: trace RECORD/BLOCK/C-COMMAND
-  payload construction and consumption, resolve the complete reply envelope
-  and session transitions, and capture a complete software/live exchange.
+- **Decode Commstar session/frame layer** — the validated envelope, numeric
+  type-2/3/4 exchange, program-download blocks, RECORD upload stream, and
+  principal session transitions now run against real firmware in bounded
+  emulation. The state-`0000` exchange formerly called the builder preflight
+  is now characterised and regression-tested. Remaining: replace the
+  synthetic peer's internal receive-arm oracle, recover still-unknown object
+  fields, and establish the physical return handshake.
 
 ## Next (priority order)
 
 ### No-hardware priorities
 
-1. **Characterise the Commstar builder preflight at `5C1F`/`5D05`.** Every
-   current Load/Run builder trace forces its return to success; establish the
-   condition a real peer would have to satisfy, if any.
-2. **Cycle-account link timeout loops and retry scheduling.** Convert the
-   `02DA`/`026C`/`06F9` polls to bounded CPU time and establish the units of
-   `fdd6`/`fdd8`; do not infer connector deadlines without this.
-3. **Determine whether the fresh program-receive arm is externally visible.**
+1. **Re-analyse the existing physical captures.** Import the raw Keysight
+   `conn3`-`conn13` files and the exact Arduino sketch used for each run. Only
+   `conn1`/`conn2` and the consolidated sketch are currently available in the
+   working archive; preserve capture hashes and classify stimuli from their
+   observed waveforms rather than segment numbers.
+2. **Determine whether the fresh program-receive arm is externally visible.**
    Current synthetic Load/Run waits for RAM/PC state (`FDDC=FE0E` etc.); find a
    controller/wire event that replaces it, or record that real peers retry.
-4. **Bisect the state-44 payload maximum at 127 bytes.** A 126-byte synthetic
-   payload succeeds and 128 bytes reaches `0x1FAE` (8110), "Line failure";
-   establish whether 127 succeeds and preserve the result as a regression.
-5. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+3. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
-6. **Run a complete software-only Commstar session.** Extend the existing
-   byte-level `LinkPeer` duplex regression through the real session state
-   machine under bounded emulation. This may establish software framing and
-   sequencing, but not connector-level electrical meanings.
-7. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+4. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
-8. **Finish guarded structural repairs before semantic naming.** Repair the
+5. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
    `d2dc/d2de` / `EA14/EA1C` writers.
-9. **Final annotation and typing sweep (deferred).** Name/plate remaining
+6. **Final annotation and typing sweep (deferred).** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the canonical
    `research/gap-analysis.md` inventory only after semantic work stabilises.
 
@@ -171,9 +162,10 @@ State: continuously updated as work progresses.
    `doc/re-notes/exerciser-test-plan.md`. The first control is `ISRC` bit 0
    from N/ENTER/YES; only after it passes are a clear link bit 2 and flat
    `HSBUSY` meaningful negatives.
-2. **Capture a physical IR byte exchange.** Establish modulation, bitrate,
-   byte framing, timing, and whether the controller-queue sync/trailer bytes
-   exist at the connector boundary.
+2. **Capture a successful bidirectional IR byte exchange.** The stock
+   handheld's outbound 8192-bit/s synchronous delimiter/prelude is already
+   captured. Establish the return-side handshake, a full logical frame, and
+   whether the controller-queue sync/trailer bytes exist on the wire.
 3. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
@@ -4128,3 +4120,25 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
    `conn3`-`conn13` stimuli; (7) preserve the raw capture, decoder output, and
    a photo/video of the LCD. Only after that first result should the fixed
    phases be replaced by a keypad-steered follow-up ROM.
+
+## Physical-capture audit and state-0000 exchange (2026-09-07)
+
+* Replayed the available Keysight files with `analysis/scope_ir_decode.py`.
+  The 50-segment CSV yields exactly the documented three burst forms; every
+  form decodes under the current model to delimiter `81h` plus prelude `03h`
+  at a 122.07 us cell. The single-segment H5 reproduces CSV segment 0. Capture
+  SHA-256 values are now recorded in `re-notes/ir-wire-protocol.md`.
+* Raw `conn3`-`conn13` captures and their exact per-run Arduino sources are
+  not in the current working archive. Their published aggregate conclusions
+  remain evidence awaiting a reproducible raw-capture audit.
+* Fixed the consolidated Arduino sketch's mode selection: `PULSE_TEST` and
+  `LADDER_TEST` were both enabled, and the preprocessor silently selected the
+  ladder. The default now selects only `LADDER_TEST`; invalid combinations
+  fail preprocessing, and `ADDR_SWEEP` explicitly requires `PULSE_TEST`.
+* **CONFIRMED:** the calls at `ROM00:5C1F` and `ROM00:5D05` are not an unknown
+  out-of-band preflight. They call `Session_TxFrameAndRx`, which performs the
+  state-`0000` control exchange. The ordinary type-2/type-3/type-4 exchange
+  satisfies it, and the bounded program-download regression passed with the
+  request sequence beginning `0000`, `0006`, `0062`, `0064`, `0045`.
+  Ghidra now carries the function plate and call-site EOL comments; the
+   program was saved with the function count unchanged at 1101.

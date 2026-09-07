@@ -64,7 +64,7 @@
 // content sweeping is the wrong tool.  If only the modulated variants do it,
 // the front end is edge-sensitive and a carrier matters.  If nothing does it,
 // conn7's correlation was an artefact and we are back to needing a channel.
-#define PULSE_TEST 1
+#define PULSE_TEST 0
 
 // Stage 4: sweep the address byte.  conn10 showed the handheld reacts to
 // 00h/03h/1Fh but not to FFh under identical conditions, so the byte after the
@@ -104,11 +104,11 @@
 // compiled out when LISTEN_ONLY or LOOPBACK_TEST is set -- so the wrong
 // combination builds cleanly, transmits nothing, and wastes a run looking
 // exactly like a negative result.  Fail at compile time instead.
-#if LADDER_TEST && (LISTEN_ONLY || LOOPBACK_TEST || ORIENTATION_TEST || ADDR_SWEEP || FREERUN_TEST)
+#if LADDER_TEST && (LISTEN_ONLY || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST)
 #error "LADDER_TEST needs every other mode flag 0"
 #endif
-#if FREERUN_TEST && (LISTEN_ONLY || LOOPBACK_TEST || ORIENTATION_TEST || ADDR_SWEEP)
-#error "FREERUN_TEST needs LISTEN_ONLY/LOOPBACK_TEST/ORIENTATION_TEST/ADDR_SWEEP all 0"
+#if FREERUN_TEST && (LISTEN_ONLY || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP)
+#error "FREERUN_TEST needs every other mode flag 0"
 #endif
 #if PULSE_TEST && (LISTEN_ONLY || LOOPBACK_TEST || ORIENTATION_TEST)
 #error "PULSE_TEST needs LISTEN_ONLY 0, LOOPBACK_TEST 0, ORIENTATION_TEST 0"
@@ -121,6 +121,9 @@
 #endif
 #if LISTEN_ONLY && LOOPBACK_TEST
 #error "LOOPBACK_TEST needs LISTEN_ONLY 0 -- it transmits to hear itself"
+#endif
+#if ADDR_SWEEP && !PULSE_TEST
+#error "ADDR_SWEEP is a PULSE_TEST variant and needs PULSE_TEST 1"
 #endif
 
 // ---------------------------------------------------------------- timing --

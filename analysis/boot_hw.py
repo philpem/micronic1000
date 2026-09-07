@@ -1625,19 +1625,20 @@ def trace_session_builder(form):
         entry = 0x5BF7
         args = (1, 6, 0x22, 0x33)
         local_addr, local_len = 0xE650, 8
-        preflight_call, preflight_return = 0x5C1F, 0x5C22
+        init_call, init_return = 0x5C1F, 0x5C22
     else:
         entry = 0x5CD7
         args = (1, 6, 1, 0x44, 0x55)
         local_addr, local_len = 0xE65C, 13
-        preflight_call, preflight_return = 0x5D05, 0x5D08
+        init_call, init_return = 0x5D05, 0x5D08
     prepare_call(0, entry, args)
-    if not run_to_breakpoint(preflight_call):
-        raise RuntimeError(f"session builder {form} did not reach preflight")
-    # The preflight starts a separate link transaction. Bypass only that call
-    # so the deterministic builder body can be observed without a peer.
+    if not run_to_breakpoint(init_call):
+        raise RuntimeError(f"session builder {form} did not reach state-0000 init")
+    # The builder first runs a normal state-0000 control exchange. Bypass that
+    # transaction here so the deterministic state-0006 body can be observed
+    # without a peer; end-to-end peer tests execute state 0000 normally.
     mach.hl = 0
-    mach.pc = preflight_return
+    mach.pc = init_return
     if not run_to_breakpoint(0x59CD):
         raise RuntimeError(f"session builder {form} did not reach service 33")
     count = read_word(0xE530)
@@ -1679,7 +1680,7 @@ def trace_session_transaction(form):
     host_write_word(0xE6E6, 0)
     prepare_call(0, 0x5BF7, (1, 6, 0x22, 0x33))
     if not run_to_breakpoint(0x5C1F):
-        raise RuntimeError("transaction did not reach separate preflight")
+        raise RuntimeError("transaction did not reach state-0000 init")
     mach.hl = 0
     mach.pc = 0x5C22
 

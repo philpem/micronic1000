@@ -237,11 +237,6 @@ source tree (not published here).
   *Resolve:* account for the eight bytes between the frame length and the
   object body on the state-44 receive path.
 
-* **`5C1F`/`5D05` builder preflight** — Every current Load/Run builder
-  trace forces its return to success; the condition a real peer must
-  satisfy is open.
-  *Resolve:* characterise the preflight without forcing `HL=0`.
-
 * **Fresh program-receive arm visibility** — The synthetic peer waits for
   RAM/PC state (`FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`,
   `FDD2=2E85`); whether a wire event signals that arm or a real peer

@@ -230,12 +230,14 @@ optional `--upload-marker ADDR:VAL` (hex), `--upload-no-run` (stop
 after finalize/verify). `--trace-session-builder 4|5` runs the bounded
 synthetic builder traces described in `doc/protocol/commstar.md`.
 `--trace-session-transaction 4` runs builder form 4 through the actual
-service-33/link IRQ path (bypassing only the already documented separate
-preflight as builder trace 4 does); it is a mechanically valid firmware
-exercise only — complete command/payload meaning and peer realism remain
-**OPEN**. Its peer scaffold must expose status bit4 while inbound bytes
-remain (so IRQ poll `31B6` dispatches), bit0 while bytes remain, and bit1
-after drain; do not assign electrical names to these bits.
+service-33/link IRQ path, bypassing the normal state-`0000` control exchange
+to isolate the state-`0006` builder. End-to-end peer tests execute state
+`0000` normally. It is a mechanically valid firmware exercise only — complete
+command/payload meaning and peer realism remain **OPEN**. Its peer scaffold
+must expose `LINK_STATUS` bit 4 while inbound bytes remain (so IRQ poll
+`31B6` dispatches), `LINK_STATUS` bit 0 while bytes remain, and
+`LINK_STATUS` bit 1 after drain; do not assign electrical names to these
+bits.
 
 Opt-in integration: `MICRONIC_RUN_EMULATOR_TESTS=1
 analysis/venv/bin/python3 analysis/test_boot_upload.py` (4 tests: COM
