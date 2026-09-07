@@ -5,11 +5,12 @@ link controller. It replaces the cold-boot entry, drives the controller
 through the same states the firmware drives it through, and streams what the
 controller reports back onto the IR line for as long as it is powered.
 
-`LinkBlockTx` dies at `ROM00:32F3` waiting for `LINK_STATUS` bit 6 (`HSBUSY`)
-to go **clear**, and reports `0EEh` — the 238 on the error screen. Thirteen
-instrumented runs of external probing established the *rule* (light must still
-be present at the 9.92 ms deadline) but never the mechanism, because they were
-inferring an internal bit from external timing. This observes it directly.
+`LinkBlockTx` can report `0EEh` — the 238 on the error screen — either after
+its `LINK_STATUS` bit-6-clear wait at `ROM00:32F3` or after a per-byte
+`LINK_STATUS` bit-7-set wait beginning at `ROM00:3318`. Thirteen instrumented
+runs of external probing found repeatable timing reactions but could not
+identify the internal path, because they inferred latch state from optical
+timing. This ROM observes the complete `LINK_STATUS` byte directly.
 
 ## First: check the chips are the ones this was built against
 
@@ -255,12 +256,12 @@ with the frame boundaries.
 | 2 | RX armed | `10` | `12` | `ROM00:3378`-`33A6` byte for byte, dummy `LINK_RXD` read included |
 | 3 | CTRL sweep | varies, bit 1 forced clear | varies, bit 1 forced set | one value per frame, advancing each cycle, all 128 per wire-ID state |
 
-**Phase 1 is the experiment.** `HSBUSY` is asserted *by* the arm and the
-firmware waits for it to fall — merely watching an idle controller says
-nothing, which is why the arm has to be replayed. A frame is well over 0.5 s,
-where the firmware allows 9.92 ms, so this is far more patient than the
-firmware: if the handshake completes late, that alone explains the failure
-and points at a fixable timeout rather than a missing protocol.
+**Phase 1 is the experiment.** The firmware waits for `LINK_STATUS` bit 6 to
+clear after the arm, so merely watching an idle controller says nothing; the
+arm has to be replayed. A frame is well over 0.5 s where the firmware allows
+9.92 ms. The record therefore shows whether `LINK_STATUS` bit 6 is ever set in
+this state and, if it is, whether it later clears. It does not assume which
+optical event controls that status bit.
 
 Phase 2 asks whether the receive path ever delivers anything. Bit 0, not bit
 4, is the bit that says a byte arrived — it gates the `INI` loop at
@@ -334,11 +335,11 @@ CSV is the MSO's four-channel format, the same one `scope_ir_decode.py` reads;
 `--hex` takes one frame of whitespace-separated hex per line, for an Arduino
 serial log. Output is a per-bit verdict per phase. What to read, in phase 1:
 
-| `bit 6 HSBUSY` | |
+| `LINK_STATUS` bit 6 (`HSBUSY`) | |
 |---|---|
-| `always 1` | the handshake never completes — exactly the state the firmware dies in, now directly observed |
-| `changes` | it completes. If later than 9.92 ms, the firmware's timeout *is* the bug |
-| `always 0` | our arm is not what asserts it, and the model needs revisiting |
+| `always 1` | this arm cannot pass the firmware's `LINK_STATUS` bit-6-clear wait |
+| `changes` | a clear transition occurs; compare its time with the 9.92 ms firmware allowance |
+| `always 0` | the arm does not make `LINK_STATUS` bit 6 set |
 
 ## Validate before burning
 

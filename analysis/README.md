@@ -20,8 +20,8 @@ A Python package of evidence-scoped models and harness helpers. The link
 scaffold is not sufficient to build an interoperable Commstar adapter:
 
 * `micronic.rtc.RTC146818` — HD146818 model; the **periodic tick
-  cadence** follows Register A's RS nibble (1024 Hz default), exactly
-  as the firmware programs it.
+  cadence** follows Register A's RS nibble. The firmware uses 1,024 Hz
+  for the clock self-test and leaves it at 64 Hz after `RtcInit`.
 * `micronic.proto.Link` / `micronic.proto.LinkPeer` — raw
   byte-latch scaffold for the 4x transport: queues `LINK_RXD`,
   captures `LINK_TXD`, records `LINK_CTRL`/`LINK_CMD`/`LINK_PROBE`
@@ -77,6 +77,12 @@ Requires the `z80` python module in `venv/`.
   seed the link state + FDEA `{count, ptr}` descriptor, call
   `LinkTransferService` (2F86), capture port-4Dh bytes, compare
   against `micronic.proto`. **MATCH** (prelude + payload).
+- **`link_retry_cadence.py`** — bounded execution of the ROM's
+  `LinkTransferService` and `Comms_WorkItemSweep` under the post-boot
+  64 Hz RTC cadence. It reproduces the observed six/seven-period retry
+  populations and demonstrates HD146818 Register C PF coalescing while
+  the interrupt worker is busy. It maps modelled `LINK_STATUS` transitions
+  to possible timing signatures; it does not infer physical status state.
 - **`comms_rx_test.py`** — exploratory RX strobe trace: queue bytes through
   the port-4Eh callback into `LinkBlockRx`/RX dispatcher (2FBD) and capture
   the 4A handshake. It does not verify frame acceptance because the two

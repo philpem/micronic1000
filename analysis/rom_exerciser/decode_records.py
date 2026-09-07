@@ -13,15 +13,14 @@ the record's window, so for each bit the three possibilities are
 distinguishable and exhaustive: always 1, always 0, or changed.  COUNT's top
 two bits are the phase.
 
-The bit that matters is 6, HSBUSY.  The firmware asserts it by arming the
-handshake and then waits at ROM00:32F3 for it to go CLEAR, giving up after
-9.92 ms and reporting 238.  So the reading to look for is phase 1:
+One important bit is LINK_STATUS bit 6 (labelled HSBUSY).  After arming the
+handshake, the firmware waits at ROM00:32F3 for that bit to go CLEAR, giving
+up after 9.92 ms with one possible source of result 238.  Phase 1 shows:
 
-    high throughout   the handshake never completes -- exactly the state the
-                      firmware dies in, now directly observed
-    goes low          it completes; if it took longer than 9.92 ms the
-                      firmware's timeout is the whole problem
-    never high        our arm is not what asserts it
+    high throughout   this arm cannot pass the firmware's bit-6-clear wait
+    goes low          the clear transition occurs; compare its timing with
+                      the firmware's 9.92 ms allowance
+    never high        the arm does not make LINK_STATUS bit 6 set
 
 Usage:  decode_records.py CAPTURE.csv
         decode_records.py --hex bytes.txt

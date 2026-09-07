@@ -286,7 +286,8 @@ Descriptor lists (byte-verified, structurally mutable where noted): RX
 
 Retry scheduler (CONFIRMED): initial `fdd6=32h` / `fdd8=6`, later
 `fdd6=14h` / `fdd8=3`; the caller reschedules after `LinkBlockTx`
-without testing returned `A`/carry.
+without testing returned `A`/carry. After `RtcInit`, one scheduler sweep
+corresponds to one observed 64 Hz RTC Register C PF event.
 
 ### Timing boundary
 
@@ -297,7 +298,7 @@ deadlines below are real, but they bound **the firmware's patience at the latch
 boundary** — they say nothing about how much of that budget the controller
 itself consumes before an answer reaches the wire.
 
-[The RTC analysis](rtc.md#periodic-interrupt-rate-from-register-a-self-test-math)
+[The RTC analysis](rtc.md#periodic-interrupt-rates-from-register-a-call-order-and-live-emulation)
 performs this accounting for the clock self-test loop (24 T-states per
 iteration = 6.703 us) and is the method to apply here.
 
@@ -306,7 +307,7 @@ iteration = 6.703 us) and is the method to apply here.
 | `LinkPresent` / `LinkWaitReady` bit-7 poll | `0x02DA` | 730 | 49 T | **9.70 ms** |
 | TX bit-4 / bit-6 poll | `0x026C` | 620 | 59 T | **9.92 ms** |
 | TX/RX per-byte poll | `0x06F9` | 1785 | 51 T | **24.69 ms** |
-| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | 50 retries observed at **93.75 ms** end-to-end |
+| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | Initial retries normally span six 64 Hz periods = **93.75 ms** end-to-end |
 
 The retry cadence is no longer open: a scope capture of a failing connect shows
 exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`. See

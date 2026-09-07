@@ -28,11 +28,13 @@ source tree (not published here).
 * **Units and cadence of timeout loops and retry scheduler** — **largely
   resolved 2026-09-03.** The loop paths are cycle-accounted at the corrected
   3.6864 MHz clock: `0x02DA` = 9.70 ms, `0x026C` = 9.92 ms, `0x06F9` =
-  24.69 ms. The retry cadence is measured on hardware at 93.75 ms end-to-end
-  for `fdd6=0x32` = 50 attempts. See
-  [IR wire protocol](ir-wire-protocol.md). *Still open:* how much of each
-  budget the controller consumes before an answer reaches the wire, which
-  needs a measured adapter response.
+  24.69 ms. The retry cadence is measured on hardware at six or seven periods
+  of the post-boot 64 Hz RTC scheduler (93.750 or 109.375 ms), with
+  `g_bLinkRetriesRemaining=32h` giving 50 attempts. Bounded ROM execution
+  reproduces the extra period as periodic-flag coalescing while interrupt
+  service is busy. See [IR wire protocol](ir-wire-protocol.md). *Still open:*
+  which physical `LINK_STATUS` path occupies the worker and how much of each
+  budget the controller consumes before an answer reaches the latch boundary.
 
 ## Link identity and port selection
 

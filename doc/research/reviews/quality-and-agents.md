@@ -316,7 +316,7 @@ discipline are all right. Recommended changes:
    31F2/31F5 off-by-one and the FE83 "4 bytes" both came from this).
 8. **Resolve the data-naming contradiction**: AGENTS.md prescribes
    Hungarian `g_bXxx`, but most existing labels are snake_case
-   (`p2a_shadow`, `ext_decode_hook_ptr`, `comm_work_table`). Either
+   (`p2a_shadow`, `ext_decode_hook_ptr`, formerly `comm_work_table`). Either
    convention works; the file should match the DB's reality (or
    declare the migration) so agents stop producing a mix.
 9. **One coverage tracker**: name gap-analysis.md as canonical, delete

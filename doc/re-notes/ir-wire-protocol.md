@@ -104,8 +104,9 @@ not. Among nearby integer dividers of 3.6864 MHz only 450 fits — ÷448 is
 
 The `÷4` column is worth noting too: the machine already contains a 32.768 kHz
 crystal for its HD146818 RTC, and **122.070 µs is a rate-select line in that
-chip's own datasheet** (RS = `0011`, the same divider chain that gives the
-1024 Hz periodic interrupt this firmware programs — see [RTC](rtc.md)).
+chip's own datasheet** (RS = `0011`; the clock self-test uses RS = `0110` for
+1,024 Hz, while normal post-boot scheduling uses RS = `1010` for 64 Hz — see
+[RTC](rtc.md)).
 Whether the link controller takes the RTC's square-wave output, has its own
 watch crystal, or divides the CPU clock by 450 is **OPEN**; all three land on
 the same 122.0703125 µs cell, which is the only thing an adapter needs.
@@ -812,8 +813,8 @@ discriminating observations are:
 * whether `LINK_STATUS` bit 6 clears after the early response;
 * if it clears, whether `LINK_STATUS` bit 7 is set for the first payload byte;
 * whether `LINK_STATUS` bit 4 asserts and invokes the receive path; and
-* which of those states differs between the 96-RTC-tick and 112-RTC-tick
-  retry populations.
+* which of those states differs between the six-period and seven-period
+  retry populations of the 64 Hz post-boot scheduler.
 
 This trace directly resolves the current `ROM00:32F3` versus `ROM00:3318`
 failure ambiguity while leaving both stock ROMs fitted. If internal bus access
@@ -981,17 +982,29 @@ Thus preconditioning and clock gating affect whether the controller enters
 an additional path. No tested combination causes a post-handshake payload.
 
 In conn13 the population medians are 93.748 and 109.371 ms, a 15.624 ms
-difference. These match 96 and 112 periods of the 1,024 Hz RTC
-(93.750/109.375 ms) to capture precision. A 16-tick scheduling effect is
-therefore **LIKELY**, but its internal cause is **OPEN**. One explanation is
-an inbound controller event: `LinkStatusInterrupt` tests `LINK_STATUS` bit 4
-and calls `LinkBlockRx`, which can wait for an incomplete block. But the same
-no-payload `0EEh` result can arise if `LinkBlockTx` passes its `LINK_STATUS`
-bit-6 wait and then times out waiting for `LINK_STATUS` bit 7 before its first
-payload byte. The optical capture exposes neither status bit, so the cadence
-extension neither proves nor disproves that `LINK_STATUS` bit 6 cleared.
-Conn13 does show that content/completeness cannot steer the observed reaction
-once response duration is controlled.
+difference. These match six and seven periods of the normal 64 Hz RTC cadence
+(93.750/109.375 ms) to capture precision. **CONFIRMED:** `RtcInit` leaves RTC
+Register A = `2Ah` (64 Hz); `LinkTransferService` arms a six-sweep countdown;
+and `Comms_WorkItemSweep` runs inline from the RTC periodic-event path while
+the common interrupt worker keeps CPU maskable interrupts disabled.
+
+The extra period is **LIKELY** HD146818 Register C PF coalescing while a link
+service occupies the interrupt worker. `analysis/link_retry_cadence.py`
+executes the real ROM routines with that latch behaviour. A persistent
+`LINK_STATUS` bit-6-set wait takes 11.43 ms and settles at a 93.750 ms retry.
+If `LINK_STATUS` bit 6 clears but `LINK_STATUS` bit 7 stays clear for the first
+payload byte, the attempt takes 26.27 ms plus the modelled acknowledge delay;
+a 6 ms delay makes it cross two RTC boundaries and reproduces the 109.375 ms
+retry. This is a timing possibility, not a claim that optical light directly
+sets either `LINK_STATUS` bit.
+
+The internal cause therefore remains **OPEN**. An inbound controller event is
+another explanation: `Link_IrqPollArmOrService` tests `LINK_STATUS` bit 4 and
+can call `LinkBlockRx`, whose wait also runs with interrupts disabled. The
+optical capture exposes none of those status bits, so the cadence extension
+neither proves nor disproves that `LINK_STATUS` bit 6 cleared. Conn13 does show
+that content/completeness cannot steer the observed reaction once response
+duration is controlled.
 
 ### What does not matter — all CONFIRMED negatives
 
@@ -1041,7 +1054,8 @@ once response duration is controlled.
 
 Content-side exploration is **exhausted**. The handheld's behaviour has only
 ever taken two values — its normal cycle, or that cycle plus 15.6 ms. Conn13
-ties that extra path to a response ending before the handshake deadline;
+ties that extra path to a response ending within the timing scale of the
+`LINK_STATUS` bit-6 poll;
 conn11/conn12 show that a DC preamble or continuous clock changes the trigger
 condition. None of the decoded contents produces a post-handshake payload.
 
@@ -1056,13 +1070,13 @@ T6 is now built: `analysis/rom_exerciser/`. It replaces the cold-boot entry,
 replays `LinkBlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and
 `LinkBlockRx`'s (`3378`-`33A6`) byte for byte, and reports `LINK_STATUS` back
 over `LINK_TXD` — the same wire, decoded by the same Arduino. The measurement
-it makes is the one this page could not: whether `LINK_STATUS` bit 6 falls,
-and under what.
+it makes is the one this page could not: whether `LINK_STATUS` bit 6 becomes
+set, whether it later falls, and under what conditions.
 
-Two design points are worth carrying back here. `LINK_STATUS` bit 6 (`HSBUSY`)
-is asserted *by* the arm and the firmware waits for it to fall, so an unarmed
-controller reading zero means nothing — the arm has to be replayed before the
-bit is meaningful.
+Two design points are worth carrying back here. The firmware waits for
+`LINK_STATUS` bit 6 (`HSBUSY`) to clear after the arm, so an unarmed controller
+reading zero means nothing — the arm has to be replayed. Whether the arm itself
+makes `LINK_STATUS` bit 6 set is a measurement, not a premise.
 And each record reports the sticky OR *and* AND of every `LINK_STATUS` sample
 in its window, one every ~35 µs while waiting, so no event on the wire's own
 timescale can be aliased away by the record rate. It also records the
@@ -1070,8 +1084,9 @@ active-low port-`05h` interrupt-source bits directly; `ISRC` bit 0 is the
 keypad control and `ISRC` bit 2 is the link measurement.
 
 The exerciser also holds the handshake armed for well over 0.5 s against the
-firmware's 9.92 ms. If `LINK_STATUS` bit 6 falls late, the timeout is the whole
-failure and the OPEN below is much smaller than it looks.
+firmware's 9.92 ms bit-6-clear allowance. A late clear would explain that
+specific failure path; `LINK_STATUS` bit 7 must still permit the payload before
+the complete transmit handshake is established.
 
 ## Building an adapter — what the M1000 must see
 

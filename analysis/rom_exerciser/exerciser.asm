@@ -14,13 +14,11 @@
 ;
 ; --- what it is measuring --------------------------------------------------
 ;
-; LinkBlockTx dies at ROM00:32F3 waiting for LINK_STATUS bit 6 (HSBUSY) to go
-; CLEAR, and reports 0EEh -- the 238 on the error screen.  The direction
-; matters and is easy to get backwards: the bit is asserted by the controller
-; when the handshake starts and the firmware waits for it to fall.  So merely
-; watching an idle controller says nothing.  The handshake has to be armed
-; first, and that is what phase 1 below does, using the exact sequence from
-; ROM00:32CC.
+; LinkBlockTx reports 0EEh -- the 238 on the error screen -- after either its
+; LINK_STATUS bit-6-clear wait at ROM00:32F3 or a per-byte LINK_STATUS
+; bit-7-set wait beginning at ROM00:3318.  Merely watching an idle controller
+; cannot distinguish those paths.  Phase 1 arms the handshake with the exact
+; sequence from ROM00:32CC and records the complete LINK_STATUS byte.
 ;
 ; The three sequences this replays are all byte-verified:
 ;
@@ -47,10 +45,10 @@
 ;   0  baseline    CTRL as LinkBlockTx's opening leaves it.  Establishes the
 ;                  resting value of every status bit, which is the control
 ;                  every other phase is read against.
-;   1  TX armed    the 32CC sequence, then held for the frame.  THE question:
-;                  does HSBUSY fall?  A frame is well over 0.5 s, where the
-;                  firmware allows 9.92 ms -- so this is far more patient
-;                  than the firmware; a late fall explains everything.
+;   1  TX armed    the 32CC sequence, then held for the frame.  Does
+;                  LINK_STATUS bit 6 become set, and if so does it clear?
+;                  A frame is well over 0.5 s, where the firmware allows
+;                  9.92 ms for the clear wait.
 ;   2  RX armed    the 3378 sequence, then held.  Does bit 0 ever set, and
 ;                  does LINK_RXD ever come back non-zero?
 ;   3  CTRL sweep  one value per frame, advancing each cycle, covering all

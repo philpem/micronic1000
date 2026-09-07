@@ -7,9 +7,10 @@
 //
 // The handheld retries a connect 50 times at 93.75 ms (ROM00:2F58 sets the
 // 32h count), so one operator keypress yields ~50 free trials.  The sketch
-// changes one sweep parameter per burst and scores itself: any burst longer
-// than SUCCESS_CELLS means the HSBUSY wait at ROM00:32F3 cleared and the
-// handheld went on to stream its payload.  That is the whole experiment.
+// changes one sweep parameter per burst and scores itself.  Any burst longer
+// than SUCCESS_CELLS proves that LinkBlockTx passed both its LINK_STATUS
+// bit-6-clear wait and its per-byte LINK_STATUS bit-7-set wait and began the
+// payload.  A short burst does not identify which wait failed.
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
 //   CLK_IN   D2   handheld clock emitter drive   (INT0)
@@ -60,9 +61,9 @@
 // with a silent control interleaved at every start time so the baseline is
 // measured under the same conditions rather than assumed.
 //
-// If a bare pulse reproduces the band-pass, HSBUSY is not decoding bits and
-// content sweeping is the wrong tool.  If only the modulated variants do it,
-// the front end is edge-sensitive and a carrier matters.  If nothing does it,
+// If a bare pulse reproduces the timing reaction, the reaction does not by
+// itself prove content decoding.  If only the modulated variants do it, the
+// front end is edge-sensitive and a carrier matters.  If nothing does it,
 // conn7's correlation was an artefact and we are back to needing a channel.
 #define PULSE_TEST 0
 
@@ -319,7 +320,8 @@ const uint8_t N_CONTENT = 8;
 const uint8_t N_DELAY   = 8;
 const uint16_t delayUs[N_DELAY] = { 500, 750, 1000, 2000, 3000, 5000, 7000, 9000 };
 // The HSBUSY deadline is 9.92 ms: DE=026Ch = 620 iterations of a 59 T loop at
-// ROM00:32F0, on a 3.6864 MHz Z80.  Nothing past ~9.5 ms can ever work.
+// ROM00:32F0, on a 3.6864 MHz Z80.  That bounds this one firmware poll; later
+// light can still affect controller state or a different firmware path.
 // The floor is set by GAP_US: a burst is not known to have ended until 400 us
 // of silence, so anything below ~450 us is unreachable by this method.  If the
 // sweep comes up empty everywhere, detect the end by pattern instead -- both
@@ -696,7 +698,8 @@ void loop() {
   interrupts();
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
-  // the HSBUSY window is 10.22 ms; printing first would lose every trial.
+  // the LINK_STATUS bit-6-clear wait is about 9.92 ms; printing first would
+  // lose every trial aimed at that window.
 #if !LISTEN_ONLY && !LOOPBACK_TEST
 #if LADDER_TEST
   if (n <= SUCCESS_CELLS) {

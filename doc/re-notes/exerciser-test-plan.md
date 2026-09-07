@@ -6,27 +6,29 @@ outcome means, and what to do next in either direction. The tool itself is
 
 ## Why this run exists
 
-Thirteen runs of external stimulus (`conn3`–`conn13`, ~3,500 bursts) produced
-exactly one bit of behaviour: the handheld's normal cycle, or that cycle plus
-15.6 ms. One rule explains all of them — light must still be present at the
-9.92 ms deadline — and no variation of address, framing, completeness, clock
-or timing moved it. See [IR wire protocol](ir-wire-protocol.md).
+Thirteen runs of external stimulus (`conn3`–`conn13`) produced two retry
+populations separated by one 64 Hz scheduler period. The raw-capture audit
+found that response duration predicts the conn13 split, but preamble and clock
+state defeat a universal final-light-off rule. See
+[IR wire protocol](ir-wire-protocol.md).
 
 That work is exhausted because the deciding variable is inside the latch
-boundary. `LinkBlockTx` arms the handshake at `ROM00:32CC`, then waits at
-`ROM00:32F3` for `LINK_STATUS` bit 6 (`HSBUSY`) to go **clear**, and reports
-`0EEh` — the 238 on the error screen — when it does not. No external probe can
-see that bit. This run reads it directly.
+boundary. `LinkBlockTx` arms the handshake at `ROM00:32CC`; the same no-payload
+`0EEh` result can follow either the `LINK_STATUS` bit-6-clear wait at
+`ROM00:32F3` or a per-byte `LINK_STATUS` bit-7-set wait beginning at
+`ROM00:3318`. No optical probe can distinguish those status paths. This run
+reads the complete `LINK_STATUS` byte directly.
 
-**Direction matters and is easy to invert.** `HSBUSY` is asserted *by* the arm
-and the firmware waits for it to fall. Watching an unarmed controller reading
-zero would mean nothing at all, which is why phase 1 replays the arm.
+**Direction matters and is easy to invert.** The firmware waits for
+`LINK_STATUS` bit 6 to clear after the arm. Watching an unarmed controller
+reading zero would mean nothing, which is why phase 1 replays the arm; whether
+the arm itself makes `LINK_STATUS` bit 6 set is one of the measurements.
 
 ## What the run measures
 
 | | question | how |
 |---|---|---|
-| Q1 | Does `HSBUSY` ever go clear once armed? | phase 1, `LINK_CTRL` = `11`/`13` |
+| Q1 | Does `LINK_STATUS` bit 6 ever go clear once armed? | phase 1, `LINK_CTRL` = `11`/`13` |
 | Q2 | Does anything ever arrive? | phase 2, `LINK_STATUS` bit 0 and `LINK_RXD` |
 | Q3 | **Does the controller ever raise its interrupt?** | `IRQN`, `ISTAT` and direct source mask `ISRC`, every record |
 | Q4 | Does any `LINK_CTRL` state change any of the above? | phase 3, 128 values per port |
@@ -76,9 +78,9 @@ moving that correlated bit into bit 1, then forces bit 1 to the selected port.
 The seven remaining bits therefore enumerate all 128 combinations.
 
 **The instrument is more patient than the firmware.** A frame holds the arm for
-well over 0.5 s where `LinkBlockTx` allows 9.92 ms. If `HSBUSY` falls late, the
-firmware's timeout is the whole failure and the problem is far smaller than it
-looks.
+well over 0.5 s where `LinkBlockTx` allows 9.92 ms for `LINK_STATUS` bit 6 to
+clear. A late clear would explain that specific timeout path; the subsequent
+`LINK_STATUS` bit-7 payload gate remains a separate requirement.
 
 ## Two modes
 
@@ -199,27 +201,26 @@ livelocking the run. `ISTAT` is sticky for the whole run, so it answers
 sticky. And `ISTAT` is sampled on *every* interrupt including the keypad's,
 so it is `LINK_STATUS` at interrupt time, not at *link*-interrupt time.
 
-#### B. `phase 1 · bit 6 HSBUSY · changes`
+#### B. `phase 1 · LINK_STATUS bit 6 HSBUSY · changes`
 
-The handshake completed. This is the finding the whole project has been
-blocked on, and it converts the problem from "unknown protocol" into a search
-with a live indicator.
+A clear transition occurred while the transmit arm was held. This directly
+answers one latch-level question, but does not by itself prove the subsequent
+per-byte `LINK_STATUS` bit-7 wait or a complete handshake.
 
 Read `COUNT` for *when* it fell, and compare against the firmware's 9.92 ms
 budget — approximately the first record after the arm. Two sub-cases:
 
-* **it falls with the Arduino idle** — the controller does not need a peer at
-  all, and the failure is in how the firmware drives it. Go straight to
-  reproducing the state with a stock ROM.
-* **it falls only under stimulus** — the stimulus that did it is the answer.
-  Bisect it with the Arduino's existing modes; the exerciser reports each
-  attempt in real time, so ~3,500 blind bursts become a few dozen informed
-  ones.
+* **it falls with the Arduino idle** — clearing `LINK_STATUS` bit 6 does not
+  require that stimulus. Reproduce the state with stock ROM and observe
+  `LINK_STATUS` bit 7 at the first payload byte.
+* **it falls only under stimulus** — the stimulus controls or correlates with
+  the bit-6 transition. Bisect it with the Arduino's existing modes while also
+  recording `LINK_STATUS` bit 7 and the link interrupt source.
 
-Then: put the stock ROM back, reproduce the winning stimulus, and the session
-should pass `C-INIT-COMMS`. The remaining error decades (8020s, 8030s, …)
-become the build order for the adapter, and
-`micronic.peer.CommstarPeer` already covers the session layer above it.
+Then put the stock ROM back and reproduce the transition. Only a resulting
+payload or successful `C-INIT-COMMS` establishes that the complete transmit
+handshake passed. `micronic.peer.CommstarPeer` covers the session layer above
+that boundary.
 
 ### The sad paths
 

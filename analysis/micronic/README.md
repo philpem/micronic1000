@@ -59,7 +59,7 @@ firmware wrote, not a constant.
 ```python
 from micronic.rtc import RTC146818
 rtc = RTC146818()
-rtc.reg_write(0x0A, 0x26)   # RS=6 -> 1024 Hz   (default running rate)
+rtc.reg_write(0x0A, 0x26)   # RS=6 -> 1024 Hz (clock self-test)
 rtc.reg_write(0x0B, 0x40)   # PIE on
 rtc.push_tick()             # drive the periodic output
 assert rtc.reg_read(0x0C) & 0xC0   # IRQF+PF
@@ -67,7 +67,8 @@ assert rtc.reg_read(0x0C) & 0xC0   # IRQF+PF
 
 Rate table is the standard MC146818 one (RS 1..15). Register C
 read returns-and-clears the interrupt flags, exactly as firmware
-uses it to ACK each tick.
+uses it to acknowledge periodic events. `RtcInit` subsequently writes
+Register A = `2Ah`, so the normal post-boot scheduler cadence is 64 Hz.
 
 ## proto.py — the IR-link transport (raw byte-latch scaffold)
 

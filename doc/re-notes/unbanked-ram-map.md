@@ -100,10 +100,10 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FBB5`-`FC05` | 81 | Barcode/system state: `FBB5` sample-loop counter and capture SP base, `FBBD` saved SP, `FBC0`-`FBC2` ext decode hook, `FBC5` `g_bActiveDevice`, `FBC6` `g_bActiveDrive`, `FBC9` `g_bEventFlags`, `FBD0` `g_wSysSavedSp`, `FC05` power-latch value | CONFIRMED | named, referenced |
 | `FC06`-`FCA5` | 160 | **LCD framebuffer** (20 cols × 8 rows ASCII) | CONFIRMED | `ROM00:1D9F` `LD HL,FC06`; `1DE3`, `1DEE` |
 | `FCA6`-`FD45` | 160 | **LCD shadow/compare buffer** (paired with the above) | CONFIRMED | `ROM00:1DA4` `LD HL,FCA6` immediately after `FC06`, compared byte-for-byte |
-| `FD46`-`FD5B` | 22 | RTC working area: `FD4A`-`FD4C` alarm fields, `FD4D` `RTC_AlarmSleep` countdown, `FD4F` RTC Reg C/B wake-reason latch, `FD50` `g_abRtcRegisterSnapshot` (10 B), `FD57`/`FD58` alarm date compare, `FD5B` sweep slot index | CONFIRMED | [RTC notes](rtc.md); `ROM00:2214` `LD (FD4F),A`, `ROM00:2250` `LD (FD5B),A` |
-| `FD5C`-`FD83` | 40 | **Countdown-timer / work-item table** (`comm_work_table`) — **10 slots × 4 bytes**, `{+0..+1 = pointer to a 16-bit down-counter, +2..+3 = callback}`. Slot 0 is `FD5C`, slot 9 ends at `FD83`; the whole of the former "unidentified" `FD64`-`FD83` is slots 2-9. | CONFIRMED | see below |
+| `FD46`-`FD5B` | 22 | RTC working area: `FD4A`-`FD4C` alarm fields, `FD4D` `RTC_AlarmSleep` countdown, `FD4F` `g_bRtcWakeFlags`, `FD50` `g_abRtcRegisterSnapshot` (10 B), `FD57`/`FD58` alarm date compare, `FD5B` `g_bWorkItemSweepIndex` | CONFIRMED | [RTC notes](rtc.md); `ROM00:2214` stores the enabled wake flags, `ROM00:2250` stores the slot index |
+| `FD5C`-`FD83` | 40 | **Countdown-timer / work-item table** (`g_abCommsWorkTable`) — **10 slots × 4 bytes**, `{+0..+1 = pointer to a 16-bit down-counter, +2..+3 = callback}`. Slot 0 is `FD5C`, slot 9 ends at `FD83`; the whole of the former "unidentified" `FD64`-`FD83` is slots 2-9. | CONFIRMED | see below |
 | `FD84`-`FD96` | 19 | Comms config table | CONFIRMED | `ROM00:22E9`/`2306` copy `ROM00:2352`, 19 bytes |
-| `FD97`-`FE42` | 172 | Link/device state: `FDCA` `g_bWireId`, `FDD4` wire-id copy used as the sequence-table index, `FDD5` `g_bLinkState`, `FDDE`-`FDE2` outgoing frame header, `FDE7` received sequence byte, `FDEA` TX `{count, ptr}` descriptor, `FE0E`-`FE42` | CONFIRMED | named, referenced |
+| `FD97`-`FE42` | 172 | Link/device state: `FDCA` `g_bWireId`, `FDD4` `g_bLinkWireId`, `FDD5` `g_bLinkState`, `FDD6` `g_bLinkRetriesRemaining`, `FDD8` `g_wLinkRetryDelaySweeps`, `FDCE` `g_wLinkRetryCountdown`, `FDDE`-`FDE2` outgoing frame header, `FDE7` received sequence byte, `FDEA` TX `{count, ptr}` descriptor, `FE0E`-`FE42` | CONFIRMED | named, referenced |
 | `FE43`-`FE82` | 64 | **Per-link frame-sequence table** — one byte per remote unit address, indexed `FE43 + (FDD4 & 3Fh)`, initialised to `01` for all 64 entries at link reset. The former "unidentified" `FE45`-`FE82` is entries 2-63 of it. | CONFIRMED | see below; already CONFIRMED in [Commstar evidence](commstar-evidence.md) |
 | `FE83`-`FE92` | 16 | Device config copy A; `FE86` `g_bDeviceWireId4` | CONFIRMED | `ROM00:3237` `LD HL,FE83` ← `ROM00:3267`, 16 bytes |
 | `FE93`-`FEA2` | 16 | Device config copy B (storage wires `C:`=`73`, `D:`=`72`) | CONFIRMED | `ROM00:3205`/`3223`/`3229` LDIR ← `ROM00:3257`, 16 bytes |
@@ -114,7 +114,7 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FF7F`-`FFA2` | 36 | **BDOS FCB/directory bounce buffer** | CONFIRMED | `ram:F4F4` `21 7F FF` and `F50B` `11 7F FF`, each with `01 24 00` (`BC=24h`) |
 | `FFA3`-`FFA4` | 2 | DMA / transfer address (CP/M-style) | CONFIRMED | `ram:F510`, `F523`, `F535`, `F543` all `LD HL,(FFA3)` |
 | `FFA5`-`FFA7` | 3 | Current FCB pointer (+1 spare byte) | CONFIRMED | `ram:F4EC` `LD (FFA5),HL`, `F501`/`F508` read it |
-| `FFA8` | 1 | Interrupt-enable shadow, tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` `LD A,(FFA8); OR A; JP Z,…; EI` |
+| `FFA8` | 1 | `g_bIrqServiceArmed`, the interrupt-service gate tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` tests the gate before `EI`; `IrqCommonHandlerImage` clears it across the worker |
 | `FFA9`-`FFFF` | 87 | **Unclaimed remainder above the BDOS variable block** — top of RAM. No reference of any kind; every `FFxx` literal in either ROM that survives an alignment check is a small negative constant (`-1`, `-4`, `-5`, `-8`, `-10`, `-20`, `-24`, `-32`, `-48`) feeding an `ADD HL,rr` subtraction, not an address. Nothing writes it, **including a BDOS file workload that wrote 6,391 times into the bounce buffers immediately below without once crossing the boundary.** | CONFIRMED (unwritten across every driven workload, incl. the disk path) / OPEN (any use outside them) | `--watch-mem ffa9:ffff` = 0 writes in all five runs; see "the two spans that stayed empty" below |
 
 ### The two spans that turned out to be structure tails
@@ -142,15 +142,18 @@ ROM00:21BA CommsWorkItemCancel
   79 FE 0A 28 0C         ; C == 10 -> not found
 ```
 
-`FD5C + 10 × 4 = FD84`, which is exactly where the comms config table
+`g_abCommsWorkTable + 10 × 4 = FD84`, which is exactly where the comms config table
 starts — the table ends flush against its neighbour with no padding.
 Entry layout is `{+0..+1 = pointer to a 16-bit down-counter,
 +2..+3 = callback}`; `Comms_WorkItemSweep` (`ROM00:224C`) walks the same
 10 slots, decrements `*(entry.+0)` and, on reaching zero, zeroes
-`entry.+0..+1` and `JP (HL)`s the callback via `ROM00:2275`. The sweep
-runs off the **RTC periodic interrupt**: `ROM00:2214` latches RTC Reg C
-into `FD4F` and `ROM00:221F` `E6 40 / C4 4C 22` = `AND 40h; CALL NZ,224C`
-— Reg C bit 6 is `PF`.
+`entry.+0..+1` and `JP (HL)`s the callback via `ROM00:2275`. The `POP HL; RET`
+at `ROM00:2289` discards the sweep-loop return address, so the first expired
+slot ends that pass and later slots wait for the next event. The sweep
+runs off the **RTC periodic interrupt**: `RTC_WakeReasonFetch` stores
+`g_bRtcWakeFlags = Register C AND (Register B OR 80h)`, then calls the sweep
+when `g_bRtcWakeFlags` bit 6 (`PF AND PIE`) is set. After `RtcInit`, that
+event cadence is 64 Hz.
 
 Empirically live, too: booting to the Main Menu under
 `analysis/boot_hw.py` leaves `FD5C:40` =
@@ -760,10 +763,9 @@ symptom, not a timing one.
   nothing exercises the EXT STORAGE ADAPTER drives, a real V24 peer, or
   alarm/sleep-wake. Either span could still be claimed by firmware
   those paths reach.
-* Ghidra still labels `FD5C` `comm_work_table`, which reads as a comms
-  buffer rather than a timer table. The name is grandfathered and this
-  page does not rename it, but a reader following the label alone will
-  mis-size the structure.
+* Ghidra labels `FD5C` `g_abCommsWorkTable` and types the complete 40-byte
+  span. This replaces the older `comm_work_table` label, which obscured both
+  the timer role and the structure size.
 * The negative result for `8006`-`D080` is bounded by 61%/37% ROM
   disassembly coverage. Extending coverage of `ROM01` would tighten it.
 

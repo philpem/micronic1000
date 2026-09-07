@@ -135,11 +135,13 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Attribute the 16-RTC-period retry extension.** Trace the scheduler path
-   from `LinkBlockTx`/`LinkStatusInterrupt` to the next retry and reproduce the
-   96-versus-112-tick cadence in bounded emulation. Determine whether receive
-   dispatch and a first-byte `LINK_STATUS` bit-7 timeout have distinguishable
-   timing signatures; do not infer physical status-bit state from the model.
+1. **Observe the status path behind the extra 64 Hz retry period.** Static
+   analysis and bounded emulation now explain the six-versus-seven-period
+   cadence as a coalescing effect while the interrupt worker is busy, but do
+   not uniquely choose between receive dispatch and a first-byte
+   `LINK_STATUS` bit-7 timeout. Capture stock-ROM Z80 I/O reads of
+   `LINK_STATUS` for conn13 silent/early/late stimuli; do not infer physical
+   status-bit state from the emulator model.
 2. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
@@ -4204,14 +4206,10 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   silent controls react 1/80 and 0/80 respectively. Preamble/clock state
   therefore affects entry into an additional controller/firmware path. No
   tested stimulus produces a post-handshake payload.
-* **CORRECTION:** conn13's 93.748 and 109.371 ms population medians differ by
-  15.624 ms, matching 16 periods of the 1,024 Hz RTC to capture precision.
-  That makes a 16-tick scheduling effect LIKELY, but it is not a unique
-  fingerprint of `LinkBlockRx`. The no-payload transport error `0EEh` can
-  result from either the initial `LINK_STATUS` bit-6 timeout or the first
-  per-byte `LINK_STATUS` bit-7 timeout. The optical captures expose neither
-  status bit, so whether the reacting stimuli pass the `LINK_STATUS` bit-6
-  wait remains OPEN.
+* **SUPERSEDED below:** conn13's 93.748 and 109.371 ms population medians were
+  initially described as 96 and 112 periods of a 1,024 Hz running RTC. Fresh
+  call-order analysis shows that 1,024 Hz is confined to the clock self-test;
+  `RtcInit` subsequently leaves the post-boot RTC at 64 Hz.
 * Unit tests cover scope-channel ownership and stuffed address recovery. The
   exact Arduino source snapshot used for each early capture remains OPEN;
   decoded waveform classifications do not depend on it.
@@ -4221,3 +4219,35 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   bit-6 acknowledge wait, and the first-byte bit-7 wait. Matching OPEN
   bookmarks were saved at `ROM00:32F3` and `ROM00:3318`; `LinkBlockTx`'s plate
   now qualifies every bit with its owning register.
+
+## Retry scheduler cadence correction (2026-09-07)
+
+* **CORRECTION, CONFIRMED:** cold boot calls `ClockSelftestTickWindow` at
+  `ROM00:0208`, where `RtcPeriphRegSetup` writes RTC Register A = `26h`
+  (1,024 Hz), then calls `RtcInit` at `ROM00:024A`. Its
+  `RtcSetTimeFromBlock` call leaves RTC Register A = `2Ah` (64 Hz). A bounded
+  300,000-slice emulator boot reached the banner and reported
+  `RTC rate =64.0 Hz (RS=0xa)`.
+* The conn13 medians therefore match **six and seven 64 Hz periods**, not 96
+  and 112 1,024 Hz ticks. `LinkTransferService` copies its configured delay
+  of six into the retry countdown and registers itself with
+  `Comms_WorkItemRegister`; `RTC_WakeReasonFetch` invokes
+  `Comms_WorkItemSweep` once per observed RTC Register C PF event.
+* **LIKELY mechanism:** the common interrupt worker keeps maskable interrupts
+  disabled while callbacks execute, and RTC Register C PF is latched rather
+  than counted. `analysis/link_retry_cadence.py` executes the real service and
+  sweep routines under that rule. A `LINK_STATUS` bit-6 timeout takes 11.43 ms
+  and produces a steady 93.750 ms retry. Clearing `LINK_STATUS` bit 6 and then
+  holding `LINK_STATUS` bit 7 clear at the first payload byte takes 26.27 ms
+  plus the acknowledge delay; a 6 ms delay crosses two RTC boundaries and
+  reproduces the 109.375 ms retry.
+* The cadence remains non-unique evidence. A `LINK_STATUS` bit-4-driven
+  receive dispatch can also occupy the interrupt worker. The planned
+  stock-ROM bus capture remains the discriminating experiment for
+  `LINK_STATUS` bits 4, 6, and 7.
+* **Scheduler annotation correction:** `Comms_WorkItemDispatch` does not
+  continue at `ROM00:2268` after an expiry. Its `POP HL; RET` at
+  `ROM00:2289` discards that return address and returns directly to the sweep
+  caller, so the first expired slot ends the current pass. The Ghidra plates
+  for register, sweep, and dispatch now record the exact slot structure and
+  control flow.
