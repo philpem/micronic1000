@@ -186,6 +186,11 @@ OPTIONS
                            Complete a synthetic stream through the ROM loader
                            finalizer after its final payload. This is an
                            adapter-completion policy, not a wire-frame claim.
+  --synthetic-loadrun-arm-delay-us N
+                           Send each receive-first program object N microseconds
+                           after supplying the preceding type-4 completion to
+                           the emulated link controller. Omitting this keeps
+                           the internal receive-arm oracle for diagnostics.
   --trace-loadrun-debug
                            Bound a stalled synthetic state-44 reply phase and
                            print the link state and captured TX suffix.
@@ -490,7 +495,7 @@ if has_flag("--watch-pc"):
     try:
         WATCH_PC = [int(a, 16) & 0xFFFF
                     for a in get_arg("--watch-pc").replace(" ", "").split(",") if a]
-    except ValueError:
+    except (TypeError, ValueError):
         print("--watch-pc takes comma-separated hex addresses", file=sys.stderr)
         sys.exit(2)
 watch_hits = {a: 0 for a in WATCH_PC}
@@ -669,6 +674,18 @@ if TRACE_LOADRUN_V24_MODE and TRACE_LOADRUN_SOURCE != "v24":
     sys.exit(2)
 SYNTHETIC_LOADRUN_DATA = None
 SYNTHETIC_LOADRUN_FINALIZE = has_flag("--synthetic-loadrun-finalize")
+SYNTHETIC_LOADRUN_ARM_DELAY_US = None
+if has_flag("--synthetic-loadrun-arm-delay-us"):
+    try:
+        SYNTHETIC_LOADRUN_ARM_DELAY_US = int(
+            get_arg("--synthetic-loadrun-arm-delay-us"), 0
+        )
+    except ValueError:
+        print("--synthetic-loadrun-arm-delay-us must be an integer", file=sys.stderr)
+        sys.exit(2)
+    if SYNTHETIC_LOADRUN_ARM_DELAY_US < 0:
+        print("--synthetic-loadrun-arm-delay-us must be nonnegative", file=sys.stderr)
+        sys.exit(2)
 SYNTHETIC_RUN_AFTER_LOAD = bool(
     synthetic_workflow is not None and synthetic_workflow.run_after_load
 )
@@ -697,6 +714,9 @@ if SYNTHETIC_LOADRUN_PATH:
     )
 elif SYNTHETIC_LOADRUN_FINALIZE:
     print("--synthetic-loadrun-finalize requires --synthetic-loadrun", file=sys.stderr)
+    sys.exit(2)
+if SYNTHETIC_LOADRUN_ARM_DELAY_US is not None and not SYNTHETIC_LOADRUN_PATH:
+    print("--synthetic-loadrun-arm-delay-us requires --synthetic-loadrun", file=sys.stderr)
     sys.exit(2)
 if sum(
     option is not None
@@ -1503,7 +1523,7 @@ mem[0xFBD0:0xFBD2] = bytes([0, 0xF0])
 mem[0x289E] = 0xC9
 mem[0xFDB7] = 0xFF
 mem[0xFDB6] = 0x00
-CPU_HZ = 3_579_545
+CPU_HZ = 3_686_400
 # Emulator time per slice. The peer is pumped once per slice, so this also
 # sets how promptly a reply reaches the handheld; --slice-ticks exists to test
 # whether a result depends on that (it should not).
@@ -2217,6 +2237,8 @@ loadrun_source_finalizer_seen = False
 loadrun_source_state44_complete = False
 loadrun_source_data_offset = 0
 loadrun_source_phase14_start = None
+loadrun_source_arm_epoch_ticks = None
+cpu_ticks_total = 0
 
 # expect / queue state
 from collections import deque
@@ -2347,6 +2369,8 @@ while i < MAX_SLICES and stall < 8000:
             pass
         elif pc == 0x2F78 and loadrun_source_link_phase == 15:
             loadrun_source_link_phase = 13
+            if SYNTHETIC_LOADRUN_ARM_DELAY_US is None:
+                loadrun_source_arm_epoch_ticks = None
         if loadrun_source_breakpoint is not None:
             mach.set_breakpoint(loadrun_source_breakpoint)
 
@@ -2354,6 +2378,7 @@ while i < MAX_SLICES and stall < 8000:
     # Use the measured count so a future breakpoint/watchpoint cannot make the
     # RTC run faster than the emulated CPU.
     elapsed_ticks = SLICE_TICKS - mach.ticks_to_stop
+    cpu_ticks_total += elapsed_ticks
     advance_rtc(elapsed_ticks)
 
     # ---------- LCD poll & render ----------
@@ -2767,12 +2792,23 @@ while i < MAX_SLICES and stall < 8000:
                 phase2 = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
                 feed_rx_checked(phase2)
                 loadrun_source_link_phase = 13
+                loadrun_source_arm_epoch_ticks = (
+                    cpu_ticks_total
+                    if SYNTHETIC_LOADRUN_ARM_DELAY_US is not None
+                    else None
+                )
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
                 print(f"[loadrun-source] state44 phase2 RX={phase2.hex()}")
         elif loadrun_source_link_phase == 13:
             if (
-                loadrun_source_state44_complete
+                session_link_peer.pending_rx == 0
+                and loadrun_source_arm_epoch_ticks is None
+            ):
+                loadrun_source_arm_epoch_ticks = cpu_ticks_total
+            oracle_ready = (
+                SYNTHETIC_LOADRUN_ARM_DELAY_US is None
+                and loadrun_source_state44_complete
                 and pc == 0x2F78
                 and session_link_peer.pending_rx == 0
                 and read_word(0xFDC5) == 0xE530
@@ -2780,7 +2816,31 @@ while i < MAX_SLICES and stall < 8000:
                 and read_word(0xFDD2) == 0x2E85
                 and read_word(0xFDDC) == 0xFE0E
                 and mem[0xFDD5] == 1
-            ):
+            )
+            delay_ticks = (
+                0
+                if SYNTHETIC_LOADRUN_ARM_DELAY_US is None
+                else (
+                    SYNTHETIC_LOADRUN_ARM_DELAY_US * CPU_HZ + 999_999
+                ) // 1_000_000
+            )
+            delay_ready = (
+                SYNTHETIC_LOADRUN_ARM_DELAY_US is not None
+                and loadrun_source_arm_epoch_ticks is not None
+                and cpu_ticks_total - loadrun_source_arm_epoch_ticks >= delay_ticks
+            )
+            if oracle_ready or delay_ready:
+                if delay_ready:
+                    actual_us = (
+                        (cpu_ticks_total - loadrun_source_arm_epoch_ticks)
+                        * 1_000_000
+                        // CPU_HZ
+                    )
+                    print(
+                        "[synthetic-loadrun] receive-first send "
+                        f"after {actual_us} us; PC={pc:04X} "
+                        f"FDD5={mem[0xFDD5]:02X} FDDC={read_word(0xFDDC):04X}"
+                    )
                 link_id = mem[0xFDD4]
                 sequence = mem[0xFE43 + (link_id & 0x3F)]
                 payload = bytes.fromhex("4f4ba55a3cc3")
@@ -2856,7 +2916,14 @@ while i < MAX_SLICES and stall < 8000:
             ):
                 completion = bytes([0, 6, 0, 4, sequence, link_id, 0, 4, sequence])
                 feed_rx_checked(completion)
-                loadrun_source_link_phase = 15
+                loadrun_source_link_phase = (
+                    13 if SYNTHETIC_LOADRUN_ARM_DELAY_US is not None else 15
+                )
+                loadrun_source_arm_epoch_ticks = (
+                    cpu_ticks_total
+                    if SYNTHETIC_LOADRUN_ARM_DELAY_US is not None
+                    else None
+                )
                 loadrun_source_breakpoint = 0x31BE
                 mach.set_breakpoint(loadrun_source_breakpoint)
                 print(f"[loadrun-source] receive-first completion={completion.hex()}")

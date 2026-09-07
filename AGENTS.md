@@ -69,7 +69,7 @@ When using reverse-engineering subagents:
   kernel). All work happens in that program. Pass the `program` arg
   (`micron1.bin`) explicitly on MCP calls that take it.
 - `micronic_notes.md` — the owner's hardware spec notes (Z80 @
-  3.579545 MHz, 256K SRAM, 2×27C256, HD61830 LCD, HD146818 RTC, port
+  3.6864 MHz, 256K SRAM, 2×27C256, HD61830 LCD, HD146818 RTC, port
   positions, power). Owner-supplied facts; cite as such.
 - `doc/` — the write-ups (see `doc/README.md` for the index). **Update
   these in the same pass as any Ghidra change they describe.**

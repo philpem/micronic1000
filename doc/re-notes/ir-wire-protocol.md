@@ -88,8 +88,9 @@ single per-segment fit is good to a few hundred ppm, and pooling all 50 gives
 8192 bit/s and the measurement never had the resolution to say otherwise.
 
 The owner's correction to the CPU clock is what settles it. **The M1000 runs
-at 3.6864 MHz, not the 3.579545 MHz assumed elsewhere in this repository**
-(`protocol/commstar.md`, "Timing budget", needs the same correction):
+at 3.6864 MHz, not the 3.579545 MHz previously recorded in this repository.**
+The durable hardware notes, emulator, and protocol timing tables now use the
+corrected value:
 
 | Source | Divider for 8192 Hz | |
 |---|---|---|
@@ -487,7 +488,7 @@ the one that is *supposed* to be cleared by the far end acknowledging.
 wire.
 
 Timeout budget, computed from the actual loops **at 3.6864 MHz** (the owner's
-figure; `protocol/commstar.md` still says 3.579545 MHz and is wrong by 3%):
+corrected figure, now also used by the emulator and protocol reference):
 
 | Loop | ROM | Count | Iteration | Deadline |
 |---|---|---:|---:|---:|
@@ -617,8 +618,8 @@ of which is a positive confirmation.
 * **The stuffer has a 4-5 bit output pipeline, flushed by an unstuffed flag
   write to `LINK_CMD`.** Owner hypothesis, and it explains the lead-in cells
   better than the flag-fill reading it replaces.
-* **The CPU clock is 3.6864 MHz**, not the 3.579545 MHz assumed elsewhere in
-  this repository. CONFIRMED (owner). It changes every ROM timeout by 3% and,
+* **The CPU clock is 3.6864 MHz**, not the 3.579545 MHz recorded in earlier
+  repository revisions. CONFIRMED (owner). It changes every ROM timeout by 3% and,
   more usefully, it is the reason 8192 bit/s is exactly reachable — see the
   physical-layer section.
 * **The ROMs are socketed but the unit is awkward to open**, so T6 is a

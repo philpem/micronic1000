@@ -117,7 +117,8 @@ State: continuously updated as work progresses.
     00/02 is not viable because firmware does not scan them during this wait.
   * Both directions now run end to end against real firmware: program
     download to the handheld and RECORD upload from it. The synthetic peer
-    still depends on internal RAM/PC state for the fresh receive arm.
+    can now replace its internal RAM/PC receive-arm oracle with a tested
+    completion-relative 500 ms delay. Physical timing remains unverified.
 
 ## In progress
 
@@ -126,8 +127,9 @@ State: continuously updated as work progresses.
   principal session transitions now run against real firmware in bounded
   emulation. The state-`0000` exchange formerly called the builder preflight
   is now characterised and regression-tested. Remaining: replace the
-  synthetic peer's internal receive-arm oracle, recover still-unknown object
-  fields, and establish the physical return handshake.
+  diagnostic receive-arm oracle as the normal peer policy after physical
+  validation, recover still-unknown object fields, and establish the physical
+  return handshake.
 
 ## Next (priority order)
 
@@ -138,9 +140,11 @@ State: continuously updated as work progresses.
    `conn1`/`conn2` and the consolidated sketch are currently available in the
    working archive; preserve capture hashes and classify stimuli from their
    observed waveforms rather than segment numbers.
-2. **Determine whether the fresh program-receive arm is externally visible.**
-   Current synthetic Load/Run waits for RAM/PC state (`FDDC=FE0E` etc.); find a
-   controller/wire event that replaces it, or record that real peers retry.
+2. **Measure the completion-relative receive-arm window on hardware.** The
+   synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
+   supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
+   chunk emulator coverage is complete. Physical testing must establish the
+   wire-relative epoch and any upper acceptance deadline.
 3. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
@@ -4141,4 +4145,24 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   satisfies it, and the bounded program-download regression passed with the
   request sequence beginning `0000`, `0006`, `0062`, `0064`, `0045`.
   Ghidra now carries the function plate and call-site EOL comments; the
-   program was saved with the function count unchanged at 1101.
+  program was saved with the function count unchanged at 1101.
+
+## Completion-relative receive arm and emulator clock fix (2026-09-07)
+
+* **SHOWSTOPPER FIX:** `analysis/boot_hw.py` still advanced its RTC using
+  `CPU_HZ=3,579,545` after the owner corrected the hardware clock to
+  3.6864 MHz. The emulator constant, `micronic_notes.md`, and the durable
+  repository instructions now agree on 3.6864 MHz.
+* Added `--synthetic-loadrun-arm-delay-us`. In this mode the peer decides when
+  to send each receive-first state-44 object solely from elapsed emulated CPU
+  ticks after it supplies the preceding type-4 completion. It does not inspect
+  `PC`, `FDD5`, `FDDC`, callback pointers, or descriptor pointers to make that
+  decision.
+* **CONFIRMED in bounded emulation:** a nominal 275 ms delay (actual 275.223 ms)
+  loses the receive-first object; nominal 300 ms succeeds at both boundaries
+  (actual 300.070 and 300.690 ms) and reaches loader state 3. The regression
+  uses 500 ms and passes with 1700-, 3400-, and 6800-tick slices. This closes
+  the PLINTH DIP path, V24 mode-1 DIP path, and a 200-byte two-chunk COM path.
+  RAM/PC visibility is therefore no longer an emulator-server requirement.
+  The corresponding physical-wire epoch, maximum acceptance delay, and
+  hardware reliability are still OPEN.

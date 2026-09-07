@@ -784,9 +784,11 @@ interoperable program-transfer grammar.
 This is the implementation contract for the repository's regression peer. It
 drives the tested PLINTH route and the separately regression-covered V24
 mode-1 software route, delivering raw COM or DIP bytes to the real loader. It
-is not a general Commstar protocol and cannot be implemented by an external
-server: it reads active state from M1000 RAM and waits for a RAM/PC arming
-condition that has no known wire-visible equivalent.
+is not a general Commstar protocol. Its diagnostic default reads active state
+from M1000 RAM. With `--synthetic-loadrun-arm-delay-us 500000`, however, the
+fresh receive is scheduled only from the instant the peer supplies the
+preceding type-4 completion; no RAM, descriptor, or PC arming oracle decides
+when to send.
 
 `id` is the active link id at `g_bActiveLinkId` (`FDD4`), `seq` is its
 per-link sequence at `FE43 + (id & 0x3F)`, and `N` is an inner payload length.
@@ -823,14 +825,24 @@ only confirmed rule for delimiting a captured M1000 transmission.
 Recovering the remaining three bits by capture, probing, or a fixed convention
 is a prerequisite for an external server. It cannot observe
 `g_bActiveLinkId`, the per-link RAM sequence slot, the receive-descriptor
-ownership, or the fresh program-receive arm. In
-particular, this contract's step 4 below requires `FDDC=FE0E`, `FDD5=01`,
-specific callback/descriptor pointers, and PC `ROM00:2F78`; none is exposed by
-the known link protocol. Whether a wire event signals that arm, or whether a
-real peer retries blindly, is **OPEN**.
+ownership, or the fresh program-receive arm directly. The diagnostic oracle
+waits for `FDDC=FE0E`, `FDD5=01`, specific callback/descriptor pointers, and
+PC `ROM00:2F78`; none is exposed by the known link protocol.
 
-Therefore the queue forms below are useful only for emulator/controller-model
-work. They are insufficient to drive Load/Run from a physical server.
+**CONFIRMED in bounded emulation:** timing from the peer-controlled type-4
+completion removes that oracle. With the corrected 3.6864 MHz CPU clock, a
+275 ms delay loses the following receive-first object, while 300 ms completes
+both receive boundaries for a 50-byte DIP. The regression uses 500 ms and
+passes with 1700-, 3400-, and 6800-tick emulator slices. The timer begins when
+the controller model is supplied the type-4 queue. The same 500 ms policy also
+passes the V24 mode-1 route and a 200-byte, two-chunk COM transfer. A physical
+implementation would naturally begin after finishing that frame on the IR
+wire, so its epoch is slightly later; whether there is an upper acceptance
+deadline and whether 500 ms is reliable on hardware remain **OPEN**.
+
+The queue forms below remain controller-model evidence. A timed receive-arm
+fallback is now available, but the return wire handshake and the three hidden
+link-id bits still prevent a physical server.
 
 #### Captured M1000 session requests (controller-boundary TX) {#captured-session-requests}
 
@@ -891,9 +903,11 @@ Minimal algorithm:
    states 61, 64, and 45. For state 44, use the `N+14` type-2 form with `N=6`
    and payload `4F 4B A5 5A 3C C3`, then complete each exchange with type 3
    and type 4 using current `id` and `seq`.
-4. **Emulator only:** wait for the fresh program receive arm: `FDDC=FE0E`, `FDD5=01`,
-   `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`. Do not send stream data while
-   `FDDC=FE32`; it belongs to the previous phase-2 completion.
+4. For diagnostics, wait for the fresh program receive arm:
+   `FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`.
+   For an externally reproducible policy, instead wait 500 ms after supplying
+   the preceding type-4 completion. This is emulator-confirmed adapter policy;
+   its physical-wire timing remains untested.
 5. Send marker 0 for non-final chunks, marker 1 for the final chunk. Chunks
    of 126 then 74 bytes are regression tested, not maximums.
 6. If completion is needed, invoke `Program_FinalizeInput` with zero status as
@@ -1229,8 +1243,9 @@ The next work should prioritize server blockers:
 1. Re-analyse the raw `conn3`-`conn13` Keysight captures and the exact Arduino
    sketch used for each run; those source files are not currently in the
    repository.
-2. Determine whether the fresh program-receive arm has a wire-observable
-   counterpart, or whether a real peer must retry.
+2. Measure the 500 ms completion-relative receive-arm fallback's epoch and
+   acceptance window on hardware. PLINTH/V24 and single-/multi-chunk emulator
+   coverage is complete.
 3. Capture a successful bidirectional IR exchange to establish the return
    handshake and whether controller-queue sync/trailer bytes exist on the
    wire. The stock handheld's outbound waveform is already captured.

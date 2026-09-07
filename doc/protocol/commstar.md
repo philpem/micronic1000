@@ -16,7 +16,8 @@ against real firmware in the emulator — a program download to the
 handheld, and a record upload from it. The outbound IR clock/data waveform
 and one-byte prelude are captured from stock hardware. What is missing is the
 return-side handshake that lets the controller transmit the logical frame, a
-wire-visible session-arming signal, and the meaning of several object fields.
+physical validation of the timed receive-arm fallback, and the meaning of
+several object fields.
 Nothing here is proven against a historical adapter or plinth.
 
 | Layer | Stability | Guidance |
@@ -31,8 +32,11 @@ Nothing here is proven against a historical adapter or plinth.
 | IR wire framing | **Provisional** | Stock outbound capture confirms 8192-bit/s synchronous clock/data and supports the `81h` delimiter, MSB-first, inverted-bit-stuffing interpretation; return handshake, closing delimiter, and FCS remain open |
 
 The synthetic peer in the repository is regression infrastructure, not a
-server profile. Its RAM and program-counter observations are unavailable
-to a physical peer.
+server profile. Its diagnostic default uses RAM and program-counter
+observations unavailable to a physical peer. An alternate tested mode waits
+500 ms from supplying the preceding type-4 completion and uses no hidden arm
+state; the equivalent timing has not yet been tested through the physical IR
+controller.
 
 For the firmware evidence behind each claim, see
 [RE notes: Commstar evidence](../re-notes/commstar-evidence.md).
@@ -42,9 +46,9 @@ For the firmware evidence behind each claim, see
 | Goal | Stability | Boundary |
 |---|---|---|
 | Model the M1000-facing `4Ah-4Fh` latches | **Provisional** | Emulator or controller model, not a physical adapter |
-| Run the synthetic Load/Run peer | **Provisional** | Requires emulator access to M1000 RAM/execution state |
-| Drive a COM/DIP download against real firmware | **Provisional** | Works in the emulator; needs RAM visibility for the receive arm |
-| Download a COM/DIP image from a physical server | **Not implementable** | Blocked on the wire layer and a wire-visible arm |
+| Run the synthetic Load/Run peer | **Provisional** | Works with the diagnostic RAM/PC oracle or a tested 500 ms completion-relative delay |
+| Drive a COM/DIP download against real firmware | **Provisional** | Works in the emulator without RAM visibility when the timed arm policy is selected |
+| Download a COM/DIP image from a physical server | **Not implementable** | Timed arm candidate exists; still blocked on the return wire handshake and full received-frame link id |
 | Receive data a handheld sends in a request | **Provisional** | Works: `CommstarPeer` receives and decodes the objects the handheld sends at states `0006` and `0045` |
 | Receive a RECORD-mode upload from a handheld | **Provisional** | Works: `CommstarPeer` receives an application-nominated record verbatim. Pinned by `CommstarRecordUploadTest` and `CommstarCleanTeardownTest` |
 | Build the IR adapter hardware | **Not implementable** | Outbound timing is captured; the return stimulus that clears the controller handshake remains open |
@@ -460,11 +464,13 @@ confirmed rule for delimiting a captured M1000 transmission.
 | Link id bits | Observable from wire? | Source |
 |---|---|---|
 | 0-4 | Yes | Controller prelude |
-| 5 | No | Port select; polarity is open |
+| 5 | No | Port select; clear is top V24, set is LIKELY back PLINTH |
 | 6-7 | No | Never transmitted; two samples are not a rule |
 
-The remaining three bits, the per-link sequence slot, and the
-fresh program-receive arm are not wire-visible.
+The remaining three link-id bits and the per-link sequence slot are not
+directly visible. No connector signal for the fresh program-receive arm is
+known, but a completion-relative 500 ms fallback now completes the emulator
+transfer without inspecting it; physical validation remains open.
 
 ## Captured M1000 session requests (controller-boundary TX)
 
