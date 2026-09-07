@@ -198,6 +198,8 @@ V_ID            equ 0xC7EA          ; current wire ID; wire-ID bit 5 alternates
 V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
 V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
 V_KEY           equ 0xC7ED          ; key index this record, or FFh
+KEY_NO          equ 0x11            ; matrix index 17; keycode 01h in table
+KEY_YES         equ 0x17            ; matrix index 23; keycode 06h in table
 
 ISR_ORG         equ 0x0047          ; fifth free block, 31 bytes, between the
                                     ; bank-init tail at 0044 and NMI at 0066
@@ -230,8 +232,9 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ;                time, which is exactly the thing this constant exists to
 ;                avoid -- there is no settings UI here to reach for.
 ;
-; If the screen is still too dark, lower it; if it has gone too faint, raise
-; it.  Rebuild and reburn; nothing else depends on the value.
+; The exerciser starts at the lightest endpoint.  Hold YES to make it darker
+; or NO to make it lighter; adjustment runs once per 64-record frame through
+; the stock saturating routines, so no rebuild or reburn is needed.
 ;
 ; Not to be confused with port 2Bh, which an earlier version of this file had
 ; wrong: 2Bh is the BEEPER, and writing a contrast value to it would have made
@@ -239,16 +242,18 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
 ; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
-CONTRAST        equ 0x40            ; a good way below the stock 70h
+CONTRAST        equ 0x00            ; lightest endpoint; YES darkens, NO lightens
 
 KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
+ContrastLighter equ 0x1D4A          ; shadow -= 2, floor 00h; writes port 46h
+ContrastDarker  equ 0x1D60          ; shadow += 2, ceiling FFh; writes port 46h
 LcdInit         equ 0x1EEC          ; complete stock LCD init and VRAM clear
-DelayLoop       equ 0x35CE          ; A outer iterations; preserves BC
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
 KBD_SHADOW      equ 0xF782          ; firmware's port-02h working copy
 IRQ_MASK        equ 0x04            ; interrupt enable, ACTIVE LOW
 IRQ_STATUS      equ 0x05            ; pending, active low; reading acknowledges
+SOUND           equ 0x2B            ; beeper value; zero is silent
 ; ~05h: bit 2, the link, plus bit 0, the keypad.  The keypad is here on
 ; purpose.  With the link alone, a flat IRQN would be ambiguous between "the
 ; controller never interrupts" -- the result we want -- and "the interrupt
@@ -319,15 +324,16 @@ isr_end:
 
                 org NMI_ORG
 
-; Reached only when the controller will not open a frame at all.  Shows DEAD
-; on the glass -- spelled with the hex printer, so it costs no string table
-; -- which is otherwise indistinguishable from every other kind of silence.
-dead:           call lcd_home
-                ld a,0xDE
+; Reached only when the controller will not open a frame at all.  LcdInit left
+; the cursor at cell zero and no intervening path writes the LCD, so DEAD can
+; be printed without another home command.  YES/NO contrast adjustment stays
+; live in the loop even though no link frame can be sent.
+dead:           ld a,0xDE
                 call lcd_hex
                 ld a,0xAD
                 call lcd_hex
-dead_loop:      jr dead_loop
+dead_loop:      call dead_adjust
+                jr dead_loop
 
 ; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  Plant a
 ; RETN there so a stray NMI returns safely and restores IFF1 from IFF2.
@@ -393,7 +399,8 @@ ks_done:        ld a,c
 ; That leaves port-2Ch bits 0 and 1 -- the pair the barcode front end drives at
 ; ROM00:1283 and 1519 -- as the real side-connector candidates, and the other
 ; two groups as a free calibration of the count.
-portmap:        ld d,0x01                   ; port-2Ch bit under test
+portmap:        call dead_adjust            ; clobbers BC/DE; do before setup
+                ld d,0x01                   ; port-2Ch bit under test
                 ld c,0x01                   ; ... pulses that many times
 pm_bit:         call lcd_home
                 ld a,d
@@ -585,26 +592,51 @@ pm_wait:        dec hl
                 ret
 ; Reproduce the sleep configuration paired with IRQ mask FAh at ROM00:1766:
 ; KBD_DRIVE bit 6 selects IRQ-wake mode and KBD_DRIVE bit 3 selects column 3.
-kbd_irq_arm:    ld (KBD_SHADOW),a
-                out (PORT_KBD_DRV),a
-                ret
+kbd_irq_arm:    jp KbdStrobe                ; shadow + port + settling delay
+
+; Poll a key and tail-call the contrast dispatcher.  Used where the main
+; record loop is unavailable; exactly fills the remaining low-region bytes.
+dead_adjust:    call kbd_scan
+                ld (V_KEY),a
+                call contrast_keys
+                jp pm_delay                 ; human-scale adjustment rate
 lo_end:
 
                 org MID_ORG
 
-; Reproduce the minimum stock path that is proven to reach LcdInit.  Reset at
-; ROM00:0152 first writes CTL_LATCH_2A=20h, then waits 0FA0h iterations before
-; the special-boot path can call LcdInit at ROM00:0178.  DelayLoop with A=1Eh
-; takes within one percent of that reset loop's Z80 cycles, after which the
-; complete stock LcdInit adds its own longer controller-settling delay.
+; Reproduce the normal cold-start hardware state immediately before LcdInit.
+; Reset at ROM00:0152 writes CTL_LATCH_2A=20h and waits 0FA0h iterations.
+; The normal path then acknowledges STATUS_IN, masks every interrupt with
+; IRQ_MASK=FFh and silences the beeper with SOUND=00h at ROM00:01B1-01B9.
+; The delay loop below is the reset loop byte-for-byte; LcdInit then supplies
+; its own longer controller-settling delay.
 power_lcd_init: ld a,0x20
-                out (PORT_2A),a
                 ld (PORT2A_SHADOW),a
-                ld a,0x1E
-                call DelayLoop
+                out (PORT_2A),a
+                ld bc,0x0FA0
+pwr_delay:      nop
+                dec bc
+                ld a,b
+                or c
+                jr nz,pwr_delay
+                in a,(IRQ_STATUS)
+                ld a,0xFF
+                out (IRQ_MASK),a
+                ld a,0x00
+                out (SOUND),a
                 ld a,CONTRAST
                 ld (LCD_CONTRAST_SHADOW),a
                 jp LcdInit
+
+; Called once per 64-record frame using the last polled matrix index.  Tail
+; calls the stock saturating contrast routines.  KEY_NO and KEY_YES are matrix
+; indices, not the translated keycodes 01h and 06h.
+contrast_keys:  ld a,(V_KEY)
+                cp KEY_NO
+                jp z,ContrastLighter
+                cp KEY_YES
+                jp z,ContrastDarker
+                ret
 mid_end:
 
                 org HI_ORG
@@ -763,7 +795,8 @@ stream:         ld a,(V_COUNT)
 ; ---------------------------------------------------------------------------
 ; Frame boundary: idle, flag, then put the controller into this phase's state.
 ; ---------------------------------------------------------------------------
-newframe:       call gap
+newframe:       call contrast_keys          ; YES darker, NO lighter
+                call gap
                 call putflag
 
                 ld a,(V_BASE)               ; every phase starts from the

@@ -1,5 +1,10 @@
 # ROM exerciser — test plan
 
+> **Do not burn or reinstall sum16 `1225`.** Its verified first hardware run
+> produced a constant buzz and uniformly black LCD. The replacement described
+> below is sum16 `2692` and includes both the cold-start fix and on-unit
+> contrast calibration.
+
 The plan for the first patched-ROM run: what is being measured, what each
 outcome means, and what to do next in either direction. The tool itself is
 `analysis/rom_exerciser/`; this page is the experiment.
@@ -117,14 +122,15 @@ undocumented and the unit may do something unexpected.
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin`** only if sum16 is `1225` and SHA-256 is
-   `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
-   Label it `1225`; `ROM01` is untouched.
+1. **Burn `micron1_exerciser.bin` only if sum16 is `2692` and SHA-256 is
+   `cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.**
+   Label it `2692`; `ROM01` is untouched. Do not reuse the `1225` part.
 2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
-   first: a counting hex row means everything downstream is working, and if
-   the contrast is wrong for your unit, change `CONTRAST` in `exerciser.asm`
-   — port `46h`, `00h`-`FFh`, lower is lighter, stock firmware boots to `70h`
-   — before going further. Use good ambient light: the link run does not depend
+   first. The replacement candidate starts port `46h` at `00h`; hold **YES**
+   to make the LCD darker or **NO** to make it lighter, in stock two-count
+   steps once per 64-record frame. This permits the complete contrast range to
+   be selected without another burn. A counting hex row means everything
+   downstream is working. Use good ambient light: the link run does not depend
    on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
    This is the control run and everything else is read against it. Capture
    ≥60 s so every phase and both ports repeat several times. A complete
@@ -284,6 +290,6 @@ so one chip covers the whole experiment space and the operator drives it by
 hand while watching the wire. That frees more space than it costs, because the
 phase sequencing and the sweep counter both go away.
 
-Remaining space after this build is 54 bytes across all six filler runs. A
-steerable follow-up will need to retire fixed phases or other instrumentation
-rather than assume the old free-space figures still apply.
+Remaining space in the corrected candidate is 11 bytes across all six filler
+runs. A steerable follow-up will need to retire fixed phases or other
+instrumentation rather than assume the old free-space figures still apply.

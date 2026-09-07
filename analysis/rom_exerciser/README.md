@@ -1,5 +1,10 @@
 # Link-controller exerciser
 
+> **DO NOT BURN THE `1225` IMAGE.** Its first hardware run produced a constant
+> buzz and uniformly black LCD despite verified programming. The replacement
+> is sum16 `2692`: it restores the normal ROM's pre-LCD quiesce sequence,
+> starts contrast at `00h`, and makes the full range adjustable with YES/NO.
+
 A patched `ROM00` that turns the handheld into a dedicated test rig for the
 link controller. It replaces the cold-boot entry, drives the controller
 through the same states the firmware drives it through, and streams what the
@@ -20,7 +25,8 @@ chip is a different revision, the patch lands in the wrong place.
 The chips are labelled `DIP1 ACF8` and `DIP2 2E12`, and those are the low 16
 bits of the plain unsigned sum of all 32768 bytes — the number a programmer
 prints after a read. Both match the repo images exactly
-(`doc/re-notes/method.md`), so the label alone is a sufficient check:
+(`doc/re-notes/method.md`), but the label is only an identifier: read-back
+plus `cmp` is the required check before reuse.
 
 ```
 python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04X} {len(d)}')" FILE
@@ -30,17 +36,20 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `1225` |
+| `micron1_exerciser.bin` | `2692` |
 
-The final exerciser SHA-256 is
+The replacement exerciser SHA-256 is
+`cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.
+The retired `1225` image SHA-256 was
 `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
-The dedicated regression test reconstructs the burn image and locks both
-fingerprints as well as the 674-byte diff count.
+The dedicated regression test reconstructs the image and locks its
+fingerprint and 713-byte diff count.
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. **Label the burned exerciser `1225`** so it
-is never confused with a stock `ACF8` part.
+needs no reference to this repo. The `1225` part should be retained only for
+read-back diagnosis and must not be installed again. Label the replacement
+`2692` and verify its full SHA-256 before installation.
 
 ## Build
 
@@ -56,10 +65,10 @@ clobbering anything if the image is not the one it was written against:
 |---|---|
 | `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
 | `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
-| `00A2`-`00FB` | keypad scan and the pin walk, in a 94-byte run (4 left) |
-| `724C`-`72F9` | link, LCD and keypad-arm helpers, in a 183-byte run (9 left) |
-| `7CE0`-`7CF3` | stock-reset/LCD entry helper, in a 48-byte run (28 left) |
-| `7E96`-`7FF1` | the main body, in a 356-byte run (8 left) |
+| `00A2`-`00FE` | keypad scan and the pin walk, in a 94-byte run (1 left) |
+| `724C`-`7302` | link, LCD and keypad-arm helpers, in a 183-byte run (0 left) |
+| `7CE0`-`7D0F` | stock-reset/LCD and contrast helpers, in a 48-byte run (0 left) |
+| `7E96`-`7FF4` | the main body, in a 356-byte run (5 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 All six filler runs must be empty beforehand. Two other runs of zeros are
@@ -78,7 +87,7 @@ The six code regions are a single assembly — `ORG` pads forward and only the
 six real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**674 bytes differ from the original.** One chip: `ROM01` is untouched.
+**713 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -115,11 +124,12 @@ The register sequence is:
 | R8 R9 | `00` | display start |
 | R10 R11 | `00` | cursor address, low byte followed by high byte |
 
-The reset prerequisite is preserved too. Before calling `LcdInit`, the helper
-writes `CTL_LATCH_2A=20h` and delays for the same number of Z80 cycles (within
-one percent) as the stock `ROM00:0152`-`015D` loop. The special stock boot path
-reaches `LcdInit` with exactly that latch/delay setup, so this is the smallest
-byte-proven cold path rather than a guessed subset.
+The normal cold-start prerequisites are now preserved too. Before calling
+`LcdInit`, the helper writes `CTL_LATCH_2A=20h`, executes the exact stock
+`ROM00:0156`-`015D` delay loop, reads `IRQ_STATUS`, writes `IRQ_MASK=FFh`, and
+writes `SOUND=00h`. Those last three I/O operations exactly match
+`ROM00:01B1`-`01B9`; omitting them is the confirmed difference that the failed
+`1225` hardware run exposed.
 
 There was one **SHOWSTOPPER** in the previous v13 image: its per-record home
 helper wrote HD61830 cursor-address low register R10 without rewriting
@@ -131,21 +141,23 @@ the live record writes to page 1 and leave the visible screen blank. The new
 `ROM00:1F91`-`1F9E`. A regression test locks both the stock initializer call
 and this low-then-high sequence.
 
-**Contrast is port `46h`**, and `CONTRAST` in `exerciser.asm` is the one
-number to change if the screen is unreadable. The firmware keeps the level in
-`FC05` and pushes it out at `ROM00:1FD4`; the range is `00h`-`FFh` and **lower
-is lighter**. Stock firmware boots to `70h` — which the owner reports is almost
-black on this unit, and turns down by hand every cold start, since `0257`
-overwrites `FC05` on every boot regardless of what was saved. This build ships
-`40h`.
+**Contrast is port `46h`.** The firmware keeps its level in `FC05` and pushes
+it out at `ROM00:1FD4`; the range is `00h`-`FFh` and **lower is lighter**.
+Stock firmware boots to `70h`, which the owner reports is almost black on this
+unit. The failed exerciser's `40h` was also uniformly black. The replacement
+therefore starts at the `00h` endpoint. Hold the physical **YES** key to call
+the stock saturating increase routine once per 64-record frame, making the
+display darker by two counts; hold **NO** to decrease it and make it lighter.
+The full contrast range can be traversed on the unit without another burn.
+The YES/NO adjustment also runs in `DEAD` and pin-walk modes, so it does not
+depend on the controller successfully opening a link frame.
 
 Not port `2Bh`: **that is the beeper**, and an earlier version of this file had
 it wrong — a contrast value written there would have made the unit sound
 continuously. Both identifications are in `doc/reference/memory-map.md`, from
 the ROM. MAME's driver agrees, but it is another reverse-engineering effort
 working from the same bytes, so treat it as corroboration rather than
-measurement: this build being legible at `40h` is what will actually confirm
-`46h`.
+measurement: the on-unit YES/NO sweep is what will actually confirm `46h`.
 
 **The emulator will not render this.** `boot_hw.py` draws the framebuffer at
 `FC06`, which the firmware maintains as a shadow; the exerciser writes the
@@ -373,25 +385,27 @@ The port log lands in `/tmp/opencode/micronic_boot_io.txt`. The expected
 opening matches what `LinkBlockTx` does, access for access:
 
 ```
-  0  PC=7CE4  2A = 20     stock CTL_LATCH_2A setup, before the LCD
-1-18 PC=1Fxx  23/03       exact stock HD61830 register sequence
+  0  PC=7CE7  2A = 20     stock CTL_LATCH_2A setup, before the LCD
+  1  PC=7CF6  04 = FF     stock cold-start IRQ_MASK: all sources masked
+  2  PC=7CFA  2B = 00     stock cold-start SOUND: beeper silent
+3-20 PC=1Fxx  23/03       exact stock HD61830 register sequence
  ... PC=1Fxx  23/03       stock 160-cell clear and cursor setup
-987  PC=1FDB  46 = 40     stock LcdInit writes the selected contrast
-991  PC=3493  4F = 1F     LinkProbe writes LINK_PROBE
-992  PC=349D  4A = 00     probe: LINK_CTRL bit 5 clear
-993  PC=34A7  4A = 01     probe: LINK_CTRL bit 0 set
-994  PC=34B1  4A = 00     probe: LINK_CTRL bit 0 clear
-995  PC=34B7  2C = 00     probe done, port 2Ch restored
-996  PC=34DC  4A = 00     LinkPresent
-997  PC=34E6  4A = 00
-998  PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
-999  PC=347D  4A = 02     LINK_CTRL bit 1 set
-1000 PC=3489  2C = 20     port 2Ch bit 5 set
-1001 PC=72B3  4A = 02     frame opening: LINK_CTRL bit 0 clear
-1002 PC=72B3  4A = 03                    LINK_CTRL bit 0 set
-1003 PC=72B3  4A = 03                    LINK_CTRL bit 4 clear
-1004 PC=34F7  4C = 81     LINK_CMD -- the opening flag
-1005+ PC=728A 4D = ..     version-13 preamble, then 11-byte records
+989  PC=1FDB  46 = 00     stock LcdInit writes the lightest contrast endpoint
+993  PC=3493  4F = 1F     LinkProbe writes LINK_PROBE
+994  PC=349D  4A = 00     probe: LINK_CTRL bit 5 clear
+995  PC=34A7  4A = 01     probe: LINK_CTRL bit 0 set
+996  PC=34B1  4A = 00     probe: LINK_CTRL bit 0 clear
+997  PC=34B7  2C = 00     probe done, port 2Ch restored
+998  PC=34DC  4A = 00     LinkPresent
+999  PC=34E6  4A = 00
+1000 PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
+1001 PC=347D  4A = 02     LINK_CTRL bit 1 set
+1002 PC=3489  2C = 20     port 2Ch bit 5 set
+1003 PC=72B3  4A = 02     frame opening: LINK_CTRL bit 0 clear
+1004 PC=72B3  4A = 03                    LINK_CTRL bit 0 set
+1005 PC=72B3  4A = 03                    LINK_CTRL bit 4 clear
+1006 PC=34F7  4C = 81     LINK_CMD -- the opening flag
+1007+ PC=728A 4D = ..     version-13 preamble, then 11-byte records
 ```
 
 `--max-slices 30000` runs long enough to pass LCD initialisation and emit
@@ -425,7 +439,7 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-54 bytes of filler remain across the six blocks.
+11 bytes of filler remain across the six blocks.
 
 ## Restoring
 

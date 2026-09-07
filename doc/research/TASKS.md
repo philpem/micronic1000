@@ -155,13 +155,14 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run the v13 replacement-ROM exerciser.** The owner reports that
-   programming the socketed ROM is easier than attaching a logic analyser to
-   the Z80 bus. Verify stock chips against `ACF8`/`2E12`, burn and label ROM00
-   sum16 `1225`, then follow `doc/re-notes/exerciser-test-plan.md`. The first
-   control is `ISRC` bit 0 from N/ENTER/YES; only after it passes are `ISRC`
-   bit 2 remaining clear and `LINK_STATUS` bit 6 remaining set meaningful
-   negative results.
+1. **Run the corrected `2692` ROM00 exerciser; never reuse `1225`.** The owner
+   verified the failed part's programming and described the LCD as uniformly
+   black. The replacement copies the normal cold path's `IRQ_STATUS`
+   acknowledge, `IRQ_MASK=FFh`, and `SOUND=00h` quiesce sequence before
+   `LcdInit`, starts contrast at `00h`, and makes physical YES/NO traverse the
+   range without another burn. First confirm the buzz is gone, then hold YES
+   for up to one minute looking for a readable interval. Preserve the Arduino
+   capture regardless of the LCD outcome.
 2. **Measure the completion-relative receive-arm window on hardware.** The
    synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
    supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
@@ -4065,8 +4066,9 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 
 ## IR link exerciser review (2026-09-06; burn image superseded)
 
-The `1CBD` image and hash in this historical entry are **SUPERSEDED** by the
-pre-burn audit below. The current burn image is sum16 `1225`.
+The `1CBD` image and hash in this historical entry were **SUPERSEDED** by the
+pre-burn audit below. Its `1225` successor has since failed its first physical
+run and is also retired; see the later hardware-result entry.
 
 * **Replacement ROM00 reviewed and rebuilt as wire format v13.** The burnable
   image is `analysis/rom_exerciser/micron1_exerciser.bin`, 32768 bytes,
@@ -4262,8 +4264,9 @@ pre-burn audit below. The current burn image is sum16 `1225`.
   record could therefore land in display-RAM page 1 and leave the visible row
   blank. `lcd_home` now writes `R10=00h` then `R11=00h`, byte-for-byte matching
   `ROM00:1F91`-`1F9E`.
-* **LCD initialization now uses the stock routine.** The hand-maintained
-  register table and clear loop were removed. `power_lcd_init` writes
+* **The failed image's LCD initialization used the stock routine.** The
+  hand-maintained register table and clear loop were removed.
+  `power_lcd_init` writes
   `CTL_LATCH_2A=20h`, waits within one percent of the stock
   `ROM00:0152`-`015D` reset loop's Z80 cycle count, sets the contrast shadow to
   `40h`, and tail-calls the complete stock `LcdInit` at `ROM00:1EEC`. This is
@@ -4294,3 +4297,45 @@ pre-burn audit below. The current burn image is sum16 `1225`.
   is unrelated to the exerciser.
 * **Ghidra saved:** `lcd_sync_status` now records the R10/R11 low-then-high
   requirement, and reset at `ROM00:0152` records the latch plus delay contract.
+
+## Replacement-ROM first hardware result (2026-09-07)
+
+* **FAILED; discard the flash-ready conclusion.** Owner-supplied result from
+  the physical `1225` ROM00 image: constant buzz and uniformly black screen;
+  programmer read-back verified the burn. Whether the Arduino received the
+  v13 preamble or records remains an OPEN discriminator.
+* **CONFIRMED omitted cold-start sequence:** unlike the normal ROM path, the
+  `1225` image did not read `IRQ_STATUS`, write `IRQ_MASK=FFh`, or write
+  `SOUND=00h` before `LcdInit`. The stock bytes do exactly those operations at
+  `ROM00:01B1`-`01B9`, immediately before the normal cold path reaches
+  `LcdInit` at `ROM00:01E1`. The emulator does not model the beeper and did not
+  expose the omission. `SOUND=00h` is independently byte-confirmed as the
+  `Sound_Off` operation at `ROM00:35C9`-`35CD`.
+* **LIKELY causal split, pending hardware retest:** leaving `SOUND` at its
+  power-on state explains the constant buzz. Whether the missing
+  `IRQ_MASK=FFh` write also gates or resets LCD hardware is not established;
+  port `04h` is confirmed as the active-low interrupt mask but has other latch
+  manipulation in the ROM. The corrected candidate reproduces the full
+  `IRQ_STATUS`/`IRQ_MASK`/`SOUND` quiesce sequence before the unchanged stock
+  LCD call. After the owner confirmed a verified burn and a uniformly black
+  panel, the candidate was made self-calibrating: it starts port `46h` at
+  `00h`, then physical YES/NO tail-call the stock darker/lighter routines once
+  per 64-record frame. The same adjustment remains live in the `DEAD` loop and
+  pin-walk mode, so calibration does not depend on a successful link opening.
+  The guarded candidate is 32768 bytes, differs from stock in 713 bytes, has
+  sum16 `2692`, and SHA-256
+  `cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.
+  These identify the replacement burn artifact; the retired `1225` checksum
+  remains explicitly excluded.
+* **Replacement validation:** 101 analysis tests pass, 33 emulator-dependent
+  tests skip, and 71 subtests pass. Five CPU-level cases execute the new
+  contrast dispatcher and the real stock adjusters, verifying NO decreases
+  the port-`46h` value, YES increases it, both endpoints saturate, and no key
+  performs no write. A bounded 30,000-slice run begins with
+  `CTL_LATCH_2A=20h`, `IRQ_MASK=FFh`, `SOUND=00h`, then the complete stock LCD
+  register/clear sequence and `LCD_CONTRAST=00h`. It decodes 3,154 records
+  with no counter discontinuity or watchdog trip. The strict documentation
+  build passes.
+* **Ghidra saved:** the stock reset listing at `ROM00:01B1`-`01B9` now records
+  the complete pre-LCD quiesce sequence and gives each bitfield/register its
+  unambiguous owner.
