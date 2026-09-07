@@ -1243,12 +1243,13 @@ The implementation evidence is in `LinkBlockTx` (ROM00:3277),
 `research/TASKS.md` in the source tree; research files are excluded from
 the published site.
 
-The next work should prioritize server blockers:
+The next work should prioritize server blockers and the easiest physical
+discriminator:
 
-1. Capture stock-ROM Z80 I/O reads of `LINK_STATUS` during silent, early, and
-   late conn13 responder cases. This distinguishes the initial `LINK_STATUS`
-   bit-6 wait from a first-byte `LINK_STATUS` bit-7 timeout without burning an
-   EPROM.
+1. Run the prepared replacement-ROM exerciser and record its complete
+   `LINK_STATUS` samples. The owner reports that programming the socketed ROM
+   is easier than attaching a logic analyser to the Z80 bus. A stock-ROM bus
+   capture remains the fallback if the exerciser cannot return usable records.
 2. Measure the 500 ms completion-relative receive-arm fallback's epoch and
    acceptance window on hardware. PLINTH/V24 and single-/multi-chunk emulator
    coverage is complete.

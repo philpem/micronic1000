@@ -327,17 +327,12 @@ between a synchronised enable and a directly-latched control bit.
 
 ### What would discriminate
 
-All of these need code running on the machine — but note the circularity
-resolves in the *helpful* direction. Today that means T6, a ROM burn. **Once a
-working link exists, arbitrary code can simply be loaded over it**, and every
-test below becomes a program to download rather than a chip to swap. So these
-are deliberately parked: they are the reward for T5 succeeding, not
-prerequisites for it, and the same is true of the `LINK_CMD` sweep in the
-`81h`-coincidence section above.
-
-That also inverts the priority of T6. Its value is not that it answers these
-questions — T5 succeeding answers them more cheaply — but that it is the
-fallback if T5 stalls.
+All of these need code running on the machine. Today that means T6, the
+prepared ROM burn. **Once a working link exists, arbitrary code can simply be
+loaded over it**, and every later test becomes a program to download rather
+than another chip swap. The owner reports that attaching a logic analyser to
+the Z80 bus is mechanically harder than programming the socketed ROM, so T6
+is the primary direct-observation route; T5b is now the fallback.
 
 The tests, for when that day comes:
 
@@ -625,9 +620,10 @@ of which is a positive confirmation.
   repository revisions. CONFIRMED (owner). It changes every ROM timeout by 3% and,
   more usefully, it is the reason 8192 bit/s is exactly reachable — see the
   physical-layer section.
-* **The ROMs are socketed but the unit is awkward to open**, so T6 is a
-  fallback rather than the first move; the Arduino path (T5) is the primary
-  route.
+* **The ROMs are socketed and programming one is easier than attaching a
+  logic analyser to the Z80 bus** (owner-supplied). The prepared T6 ROM is
+  therefore the primary direct-observation route despite the awkward case;
+  T5b is the fallback.
 
 The consequence is that **no user-reachable menu path changes the address
 byte**. `FE83`/`FE93` are writable only by BDOS `F8h`/`FAh`/`FBh`, which needs
@@ -654,10 +650,10 @@ most important planning fact on this page, and it is why T6 exists.
 
 ## Test plan
 
-Revised 2026-09-03 after the owner observations above. No adapter or plinth
-exists to monitor, and no code can be run on the machine, so the plan is now:
-everything free that the machine already does (T1-T3), then the sweep (T5),
-with a patched ROM (T6) as the move that unblocks everything at once.
+Revised after the owner observations above. T1-T3 and the Arduino sweep T5
+have been exhausted without a post-handshake payload. The next physical step
+is the prepared patched ROM (T6), which exposes the internal status without
+the harder task of instrumenting the Z80 bus.
 
 ### T1 — capture the cold-boot probe
 
@@ -795,14 +791,16 @@ two return channels optically separated with a mask or a short opaque tube per
 LED: crosstalk from our clock into the handheld's data detector will look
 exactly like a protocol failure.
 
-### T5b — capture `LINK_STATUS` on the stock-ROM Z80 bus
+### T5b — fallback: capture `LINK_STATUS` on the stock-ROM Z80 bus
 
-This is now the highest-value experiment that does **not** require burning an
-EPROM. Probe Z80 address lines A0-A7 and data lines D0-D7 with the 16 digital
-pod channels, then use analogue channels for `/IORQ`, `/RD`, and `/WR` as
-needed. Decode I/O reads of port `4Bh` (`LINK_STATUS`) and writes to port `4Ah`
-(`LINK_CTRL`) around one connect attempt. These probe assignments are separate
-from the scope D0-D3 optical-channel mapping used in conn3-conn13.
+This would preserve the stock ROMs, but the owner reports that reaching and
+probing the Z80 bus is harder than programming the socketed ROM. Keep it as a
+fallback if T6 cannot return usable records. It requires address lines A0-A7
+and data lines D0-D7 on the 16 digital channels, plus `/IORQ`, `/RD`, and
+`/WR` as needed. Decode I/O reads of port `4Bh` (`LINK_STATUS`) and writes to
+port `4Ah` (`LINK_CTRL`) around one connect attempt. These probe assignments
+are separate from the scope D0-D3 optical-channel mapping used in
+conn3-conn13.
 
 Run three interleaved responder cases already present in the conn13 ladder:
 silent, the early 17-scope-D2-rise/5-scope-D3-rise response, and the late
@@ -816,19 +814,18 @@ discriminating observations are:
 * which of those states differs between the six-period and seven-period
   retry populations of the 64 Hz post-boot scheduler.
 
-This trace directly resolves the current `ROM00:32F3` versus `ROM00:3318`
-failure ambiguity while leaving both stock ROMs fitted. If internal bus access
-is impractical, T6 remains the connector-only way to obtain the same status
-evidence.
+This trace would resolve the current `ROM00:32F3` versus `ROM00:3318` failure
+ambiguity while leaving both stock ROMs fitted. It is no longer the preferred
+route because internal bus access is the more difficult intervention.
 
 ### T6 — a patched ROM: direct connector-side status route
 
 The physical controller questions are blocked behind "cannot run code,
 because loading code needs the link". A patched `ROM00` breaks that circle.
-This was filed behind T5 on the grounds that the unit is awkward to open;
-**T5 has now been run to exhaustion without producing a post-handshake
-payload**, so the balance has changed. A patched ROM is the connector-side
-route into the latch boundary when a stock-ROM bus capture is impractical.
+T5 has been exhausted without producing a post-handshake payload, and the
+owner reports that Z80-bus instrumentation is harder than programming the
+socketed ROM. T6 is therefore the next physical experiment and the primary
+route into the latch boundary.
 
 Beyond the one-byte address edit below, the version that matters here is a
 routine that drives `4Ah`-`4Fh` in a chosen sequence and **reads `LINK_STATUS`
@@ -1061,10 +1058,10 @@ condition. None of the decoded contents produces a post-handshake payload.
 
 `HSBUSY` and `TXRDY` are status bits from a controller ASIC, driven by
 something the firmware never inspects and the ROM therefore cannot describe.
-Three routes get at them: **T5b**, a stock-ROM Z80 I/O-bus capture; **T6**, a
-patched ROM that drives `4Ah`-`4Fh` directly and reads `LINK_STATUS` back; and
-a **real adapter or plinth**. Any one can settle what thirteen optical runs
-could not infer.
+Three routes get at them: **T6**, the prepared ROM that drives `4Ah`-`4Fh`
+directly and reads `LINK_STATUS` back; a **real adapter or plinth**; and
+**T5b**, a stock-ROM Z80 I/O-bus capture. The owner reports that T5b is harder
+than programming the ROM, so it is the fallback rather than the next step.
 
 T6 is now built: `analysis/rom_exerciser/`. It replaces the cold-boot entry,
 replays `LinkBlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and

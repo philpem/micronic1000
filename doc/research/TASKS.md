@@ -135,68 +135,61 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Observe the status path behind the extra 64 Hz retry period.** Static
-   analysis and bounded emulation now explain the six-versus-seven-period
-   cadence as a coalescing effect while the interrupt worker is busy, but do
-   not uniquely choose between receive dispatch and a first-byte
-   `LINK_STATUS` bit-7 timeout. Capture stock-ROM Z80 I/O reads of
-   `LINK_STATUS` for conn13 silent/early/late stimuli; do not infer physical
-   status-bit state from the emulator model.
-2. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+1. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
-3. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+2. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
-4. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
+3. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
    are now audited from their decoded waveforms, but the exact Arduino source
    snapshot used for each early run remains unavailable. Preserve it if found;
    do not infer build modes from capture filenames or segment numbers.
-5. **Finish guarded structural repairs before semantic naming.** Repair the
+4. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
    `d2dc/d2de` / `EA14/EA1C` writers.
-6. **Final annotation and typing sweep (deferred).** Name/plate remaining
+5. **Final annotation and typing sweep (deferred).** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the canonical
    `research/gap-analysis.md` inventory only after semantic work stabilises.
 
 ### Hardware-dependent priorities
 
-1. **Capture `LINK_STATUS` on the stock-ROM Z80 bus.** Probe address A0-A7,
-   data D0-D7, `/IORQ`, and `/RD` while replaying conn13 silent, early
-   17-scope-D2-rise/5-scope-D3-rise, and late
-   81-scope-D2-rise/20-scope-D3-rise stimuli. Establish whether the reacting
-   case clears `LINK_STATUS` bit 6, stalls on `LINK_STATUS` bit 7 before byte
-   1, or asserts `LINK_STATUS` bit 4 and enters receive. This is the best
-   discriminator that leaves the stock ROMs fitted.
+1. **Run the v13 replacement-ROM exerciser.** The owner reports that
+   programming the socketed ROM is easier than attaching a logic analyser to
+   the Z80 bus. Verify stock chips against `ACF8`/`2E12`, burn and label ROM00
+   sum16 `1CBD`, then follow `doc/re-notes/exerciser-test-plan.md`. The first
+   control is `ISRC` bit 0 from N/ENTER/YES; only after it passes are `ISRC`
+   bit 2 remaining clear and `LINK_STATUS` bit 6 remaining set meaningful
+   negative results.
 2. **Measure the completion-relative receive-arm window on hardware.** The
    synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
    supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
    chunk emulator coverage is complete. Physical testing must establish the
    wire-relative epoch and any upper acceptance deadline.
-3. **Run the v13 replacement-ROM exerciser.** Verify stock chips against
-   `ACF8`/`2E12`, burn and label ROM00 sum16 `1CBD`, then follow
-   `doc/re-notes/exerciser-test-plan.md`. The first control is `ISRC` bit 0
-   from N/ENTER/YES; only after it passes are `ISRC` bit 2 remaining clear and
-   `LINK_STATUS` bit 6 (`HSBUSY`) remaining set meaningful negative results.
-4. **Capture a successful bidirectional IR byte exchange.** The stock
+3. **Capture a successful bidirectional IR byte exchange.** The stock
    handheld's outbound 8192-bit/s synchronous delimiter/prelude is already
    captured. Establish the return-side handshake, a full logical frame, and
    whether the controller-queue sync/trailer bytes exist on the wire.
-5. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
+4. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-6. **Capture the electrical timing and meanings of the link status/control
+5. **Capture the electrical timing and meanings of the link status/control
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-7. **Confirm the complementary port state and EXT STORAGE attachment.** The
+6. **Confirm the complementary port state and EXT STORAGE attachment.** The
    top mapping is closed: V24 Load/Run uses wire-ID bit 5 clear, which sets
    `LINK_CTRL` bit 1 and port `2Ch` bit 5, and was captured at the top window.
    Observe the wire-ID-bit-5-set exerciser phase, which clears both outputs,
    at the back PLINTH window directly; then confirm where the EXT STORAGE
    ADAPTER attaches.
-6. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
+7. **Fallback: capture `LINK_STATUS` on the stock-ROM Z80 bus.** If the
+   exerciser cannot return usable records, probe address A0-A7, data D0-D7,
+   `/IORQ`, and `/RD` while replaying conn13 silent, early, and late stimuli.
+   This directly distinguishes `LINK_STATUS` bits 4, 6, and 7, but owner-supplied
+   mechanical constraints make it harder than programming the ROM.
+8. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
 ### Detailed and historical backlog
@@ -4251,3 +4244,7 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   caller, so the first expired slot ends the current pass. The Ghidra plates
   for register, sweep, and dispatch now record the exact slot structure and
   control flow.
+* **Physical-priority correction (owner-supplied):** attaching a logic
+  analyser to the Z80 bus is harder than programming the socketed ROM. The
+  prepared v13 replacement-ROM exerciser is now the next physical task;
+  stock-ROM bus capture is retained only as a fallback.
