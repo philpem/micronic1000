@@ -199,6 +199,7 @@ V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
 V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
 V_KEY           equ 0xC7ED          ; key index this record, or FFh
 KEY_NO          equ 0x11            ; matrix index 17; keycode 01h in table
+KEY_ENTER       equ 0x16            ; matrix index 22; keycode 0Dh in table
 KEY_YES         equ 0x17            ; matrix index 23; keycode 06h in table
 
 ISR_ORG         equ 0x0047          ; fifth free block, 31 bytes, between the
@@ -225,21 +226,20 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; form, which is why a scan for D3 46 does not find it).
 ;
 ;   range        00h to FFh
-;   NO           decrements twice and clamps at 00h (ROM00:1D4A).
-;   YES          increments twice and clamps at FFh (ROM00:1D60).
-;                Which numerical direction is visually lighter remains a
-;                hardware observation; the 2692 run could not exercise it.
+;   NO           decrements twice toward darker and clamps at 00h
+;                (ROM00:1D4A).
+;   YES          increments twice toward lighter and clamps at FFh
+;                (ROM00:1D60).  The 1E3E hardware run confirmed the visual
+;                polarity: 00h is black and FFh is clear.
 ;   firmware     70h, set at cold boot (ROM00:0257).  The owner reports this
 ;   default      is almost black on this unit and turns it down by hand every
 ;                time, which is exactly the thing this constant exists to
 ;                avoid -- there is no settings UI here to reach for.
 ;
-; The 2692 hardware run stayed uniformly black after requesting 00h.  That
-; run did not prove the write reached port 46h, and its transposed keypad
-; coordinates prevented an on-unit sweep.  This candidate starts at the
-; opposite endpoint, FFh.  Hold NO to decrease it or YES to increase it;
-; adjustment runs once per 64-record frame through the stock saturating
-; routines, so no rebuild or reburn is needed.
+; The 1E3E hardware run proved LcdInit returns and FFh clears the panel, but
+; offered no text against which to judge contrast.  Start this candidate at
+; C0h, display the live value, poll NO/YES continuously through the stock
+; saturating routines, and wait for ENTER before starting the link test.
 ;
 ; Not to be confused with port 2Bh, which an earlier version of this file had
 ; wrong: 2Bh is the BEEPER, and writing a contrast value to it would have made
@@ -247,7 +247,7 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
 ; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
-CONTRAST        equ 0xFF            ; opposite endpoint from black-screen 2692
+CONTRAST        equ 0xC0            ; between observed dark and clear endpoints
 
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 KbdBitIndex     equ 0x1A52          ; A one-hot -> A bit index (0..5)
@@ -386,22 +386,31 @@ ks_hit:         ld e,a                      ; sense bits
 ; Stock LcdInit waits a further ~112 ms before its first LCD command and writes
 ; the shadow to LCD_CONTRAST again before returning.
 lcd_preinit:    out (LCD_CONTRAST),a         ; A = CONTRAST from power_lcd_init
-                call pm_delay
-                call pm_delay
-                call pm_delay
-                call pm_delay
+                ld b,0x04
+lcd_settle:     call pm_delay
+                djnz lcd_settle
                 jp LcdInit
 
-; A deliberate ~238 ms confirmation tone emitted only after stock LcdInit
-; returns.  SOUND=0Bh is the stock RAM-failure tone; zero is the stock silent
-; value.
-diag_tone:      ld a,0x0B
-                out (SOUND),a
+; Render a stable contrast target and remain here until ENTER.  The firmware
+; adjusters keep LCD_CONTRAST_SHADOW and LCD_CONTRAST synchronized.  Redrawing
+; the live value after every poll makes the key path itself observable.
+contrast_setup: call lcd_home
+                ld hl,str_contrast
+cs_char:        ld a,(hl)
+                or a
+                jr z,cs_value
+                call lcd_putc
+                inc hl
+                jr cs_char
+cs_value:       ld a,(LCD_CONTRAST_SHADOW)
+                call lcd_hex
+                call kbd_scan
+                cp KEY_ENTER
+                ret z
+                ld (V_KEY),a
+                call contrast_keys
                 call pm_delay
-                call pm_delay
-                xor a
-                out (SOUND),a
-                ret
+                jr contrast_setup
 
 vec_end:
 
@@ -506,8 +515,7 @@ ctrl_put:       ld (hl),a
 ;
 ; This is now the primary liveness indicator, and a better one than the
 ; side-port beacon it replaces: text on the glass cannot be mistaken for
-; anything else.  The beacon's other job, mapping pins, belongs to the pin
-; walk.
+; anything else.
 ;
 ; Port map confirmed from ROM accesses and corroborated by the MAME driver
 ; (micronic.cpp): 00h keypad read, 02h keypad drive, 03h/23h HD61830
@@ -607,9 +615,10 @@ pwr_delay:      nop
                 ld (LCD_CONTRAST_SHADOW),a
                 jp lcd_preinit
 
-; Called once per 64-record frame using the last polled matrix index.  Tail
-; calls the stock saturating contrast routines.  KEY_NO and KEY_YES are matrix
-; indices, not the translated keycodes 01h and 06h.
+; Dispatch the last polled matrix index to the stock saturating contrast
+; routines.  Used continuously on the setup screen and once per 64-record
+; frame later.  KEY_NO and KEY_YES are matrix indices, not the translated
+; keycodes 01h and 06h.
 contrast_keys:  ld a,(V_KEY)
                 cp KEY_NO
                 jp z,ContrastDecrement
@@ -624,7 +633,7 @@ start:          di
                 ld sp,STACK
                 call nmi_safe               ; protect the whole LCD init too
                 call power_lcd_init
-                call diag_tone              ; stock LcdInit returned
+                call contrast_setup         ; ENTER begins the link test
 
                 ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
                 ; through F5F6, both uninitialised here.  Point the first at
@@ -843,4 +852,5 @@ rx_wait:        djnz rx_wait
                 ld a,0xDF
                 jp ctrl_and
 
+str_contrast:   db 'CONTRAST',0
 hi_end:

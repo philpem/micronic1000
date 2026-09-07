@@ -1,10 +1,12 @@
 # ROM exerciser — test plan
 
-> **Do not burn or reinstall sum16 `1225` or `2692`.** The verified `1225`
+> **Do not burn or reinstall sum16 `1225`, `2692` or `1E3E`.** The verified `1225`
 > run produced a constant buzz and uniformly black LCD. The verified `2692`
 > run produced only the expected brief power-up bleep but remained uniformly
 > black; its transposed keypad coordinates made YES/NO ineffective. The
-> replacement described below is sum16 `1E3E`.
+> verified `1E3E` run produced both beeps and a uniformly clear LCD, confirming
+> that stock `LcdInit` returned and that port `46h=FFh` is the light endpoint.
+> The replacement described below is sum16 `27E8`.
 
 The plan for the next patched-ROM run: what is being measured, what each
 outcome means, and what to do next in either direction. The tool itself is
@@ -92,24 +94,24 @@ clear. A late clear would explain that specific timeout path; the subsequent
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin` only if sum16 is `1E3E` and SHA-256 is
-   `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.**
-   Label it `1E3E`; `ROM01` is untouched. Do not reuse the `1225` or `2692`
-   parts.
-2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
-   first. Expect the brief power-up bleep, then about 0.6 s of silence, then a
-   distinct approximately 238 ms tone. The replacement writes port `46h=FFh`
-   before any LCD command, waits about 476 ms, and lets stock `LcdInit` write
-   the same value again. Hold **YES** to increment the port-`46h` value or
-   **NO** to decrement it, in stock two-count steps once per 64-record frame.
-   The visual polarity is not assumed. A counting hex row means everything
+1. **Burn `micron1_exerciser.bin` only if sum16 is `27E8` and SHA-256 is
+   `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.**
+   Label it `27E8`; `ROM01` is untouched. Do not reuse the `1225`, `2692` or
+   `1E3E` parts.
+2. **Set contrast before configuring the Arduino.** After the brief power-up
+   bleep and approximately 0.6 s startup delay, the LCD should show
+   `CONTRASTC0`. NO decrements `g_bLcdContrast` and port `46h` by two toward the
+   darker `00h` endpoint; YES increments both toward the lighter `FFh`
+   endpoint. The hexadecimal value is redrawn after every poll. Press ENTER
+   when the text is comfortably readable. The IR code is not touched before
+   ENTER.
+3. Put the Arduino in `LISTEN_ONLY`, press ENTER, and capture ≥60 s so every
+   phase and both ports repeat several times. A complete 128-state sweep per
+   port requires a much longer run. A counting hex row means everything
    downstream is working. Use good ambient light: the link run does not depend
    on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
-   This is the control run and everything else is read against it. Capture
-   ≥60 s so every phase and both ports repeat several times. A complete
-   128-state sweep per port requires a much longer run.
-3. **Watch which window blinks** during each cycle of a few seconds. Note it.
-4. **Press N, ENTER or YES** during the capture. Two jobs: `KEY` records the
+4. **Watch which window blinks** during each cycle of a few seconds. Note it.
+5. **Press N, ENTER or YES** during the capture. Two jobs: `KEY` records the
    index (`6*sense-bit-index + drive-bit-index`), which maps the keypad as a
    free by-product. `IRQN` should
    rise and `ISRC` bit 0 should latch while you do it, because the keypad IRQ
@@ -117,15 +119,15 @@ clear. A late clear would explain that specific timeout path; the subsequent
    proved live by hand. **If bit 0 never appears even while pressing keys,
    the interrupt setup is broken and an absent link-source bit is not yet a
    result about the link.**
-5. **Repeat with stimulus**, replaying the `conn3`–`conn13` modes. The
+6. **Repeat with stimulus**, replaying the `conn3`–`conn13` modes. The
    exerciser does not care what the Arduino does.
-6. **Decode** each capture with `decode_records.py`.
+7. **Decode** each capture with `decode_records.py`.
 
-Expect no menus and no normal keyboard handling: this is a dedicated test
-loop and it never powers down. The top LCD row should count continuously, and
-N/ENTER/YES are retained only as the interrupt positive control. Power-cycling
-is the only exit, and it drives the IR LED continuously, so use external power
-if you can.
+Expect no normal firmware menus: this is a dedicated test and it never powers
+down. It first presents the contrast screen; after ENTER, the top LCD row
+should count continuously, and N/ENTER/YES are retained as the interrupt
+positive-control keys. Power-cycling is the only exit, and after ENTER it
+drives the IR LED continuously, so use external power if you can.
 
 ## Reading the result
 
@@ -139,14 +141,12 @@ port. Read them in this order.
 | hex counting up | streaming | running normally |
 | hex frozen | silent | the transmitter stalled; `WD` in the frozen record says how many watchdog trips it took |
 | `DEAD` | silent | never got a frame open — `LinkPresent` failed 16 times running |
-| blank | silent | ran far enough to clear the display, then stopped before the first record |
-| dark, no deliberate post-LCD tone | unknown | execution did not return through stock `LcdInit` |
-| dark, deliberate post-LCD tone heard | check Arduino | stock `LcdInit` returned; look for the `A5 5A 0D 80 80` preamble |
+| `CONTRASTxx` | silent | contrast setup; use NO/YES, then ENTER |
+| contrast text frozen but keys inert | silent | keypad scanner or matrix mapping failed; IR has not started |
+| contrast text disappears after ENTER | check wire | ENTER was accepted and link startup began |
 
-The deliberate approximately 238 ms `SOUND=0Bh` tone occurs only after the
-complete stock initializer returns. It follows the shorter power-up bleep
-already observed with `2692`. The screen and tone together separate more
-failure modes than either alone.
+The `1E3E` run's second beep already proved that stock `LcdInit` returns, so
+the new candidate spends that ROM space on an interactive screen instead.
 
 Davison's 1998 monitor uses the same LCD ports and overlapping controller
 values, and writes port `46h` before its first HD61830 command. This candidate

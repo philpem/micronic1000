@@ -54,10 +54,10 @@ def test_burn_image_has_a_locked_fingerprint():
     image, _ = _burn_image()
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 688
-    assert sum(image) & 0xFFFF == 0x1E3E
+    assert sum(a != b for a, b in zip(image, stock)) == 715
+    assert sum(image) & 0xFFFF == 0x27E8
     assert hashlib.sha256(image).hexdigest() == (
-        "5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b"
+        "f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca"
     )
 
 
@@ -68,11 +68,11 @@ def test_lcd_powerup_delegates_to_the_complete_stock_initializer():
 
     # CTL_LATCH_2A=20h, the exact reset delay loop, and the normal cold-start
     # IRQ_STATUS acknowledge / IRQ_MASK=FFh / SOUND=00h sequence, LCD contrast
-    # shadow=FFh, then a tail call to the pre-init wrapper.
+    # shadow=C0h, then a tail call to the pre-init wrapper.
     assert code[start:end] == (
         bytes.fromhex(
-        "3e20 328bf7 d32a 01a00f 00 0b 78 b1 20fa "
-        "db05 3eff d304 3e00 d32b 3eff 3205fc c3"
+            "3e20 328bf7 d32a 01a00f 00 0b 78 b1 20fa "
+            "db05 3eff d304 3e00 d32b 3ec0 3205fc c3"
         )
         + sym["lcd_preinit"].to_bytes(2, "little")
     )
@@ -114,30 +114,106 @@ def test_contrast_keys_tail_call_stock_saturating_adjusters():
     )
 
 
-
-def test_preinit_contrast_settle_and_audible_checkpoint_wrap_stock_init():
+def test_preinit_settle_then_contrast_screen_wrap_stock_init():
     code, sym = _assembled()
     preinit = sym["lcd_preinit"] - 0x0047
-    assert code[preinit:sym["diag_tone"] - 0x0047] == (
-        bytes.fromhex("d346")
-        + (bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")) * 4
+    assert code[preinit:sym["contrast_setup"] - 0x0047] == (
+        bytes.fromhex("d346 0604")
+        + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
+        + bytes.fromhex("10fb")
         + bytes([0xC3]) + sym["LcdInit"].to_bytes(2, "little")
     )
 
-    tone = sym["diag_tone"] - 0x0047
-    assert code[tone:sym["vec_end"] - 0x0047] == (
-        bytes.fromhex("3e0b d32b")
+    setup = sym["contrast_setup"] - 0x0047
+    assert code[setup:sym["vec_end"] - 0x0047] == (
+        bytes([0xCD]) + sym["lcd_home"].to_bytes(2, "little")
+        + bytes([0x21]) + sym["str_contrast"].to_bytes(2, "little")
+        + bytes.fromhex("7e b7 2806")
+        + bytes([0xCD]) + sym["lcd_putc"].to_bytes(2, "little")
+        + bytes.fromhex("23 18f6 3a05fc")
+        + bytes([0xCD]) + sym["lcd_hex"].to_bytes(2, "little")
+        + bytes([0xCD]) + sym["kbd_scan"].to_bytes(2, "little")
+        + bytes.fromhex("fe16 c8 32edc7")
+        + bytes([0xCD]) + sym["contrast_keys"].to_bytes(2, "little")
         + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
-        + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
-        + bytes.fromhex("af d32b c9")
+        + bytes.fromhex("18d9")
     )
+    string = sym["str_contrast"] - 0x0047
+    assert code[string:sym["hi_end"] - 0x0047] == b"CONTRAST\0"
 
     start = sym["start"] - 0x0047
     assert code[start:start + 13] == (
         bytes.fromhex("f3 3100c9 cd7800")
         + bytes([0xCD]) + sym["power_lcd_init"].to_bytes(2, "little")
-        + bytes([0xCD]) + sym["diag_tone"].to_bytes(2, "little")
+        + bytes([0xCD]) + sym["contrast_setup"].to_bytes(2, "little")
     )
+
+
+@pytest.mark.skipif(z80 is None, reason="needs the z80 module")
+def test_contrast_screen_handles_no_then_enter_before_returning():
+    image, sym = _burn_image()
+    mem = bytearray(0x10000)
+    mem[:0x8000] = image
+    mem[0xFC05] = 0xC0
+    mem[0xEFFE:0xF000] = bytes.fromhex("0080")
+    drive = [0]
+    key_stage = [0]
+    lcd_reg = [None]
+    lcd_chars = []
+    contrast_writes = []
+
+    machine = z80.Z80Machine()
+    machine.set_memory_block(0, bytes(mem))
+    machine.set_read_callback(lambda address: mem[address & 0xFFFF])
+    machine.set_write_callback(
+        lambda address, value: mem.__setitem__(address & 0xFFFF, value & 0xFF)
+    )
+
+    def input_port(*args):
+        port = args[0]
+        if isinstance(port, tuple):
+            port = port[0]
+        if port & 0xFF != 0x00:
+            return 0x00
+        if key_stage[0] == 0 and drive[0] == 0x20:
+            key_stage[0] = 1
+            return 0x04  # NO: sense bit 2, drive bit 5 -> index 17
+        if key_stage[0] == 1 and drive[0] == 0x10:
+            key_stage[0] = 2
+            return 0x08  # ENTER: sense bit 3, drive bit 4 -> index 22
+        return 0x00
+
+    def output_port(*args):
+        port, value = args[:2]
+        if isinstance(port, tuple):
+            port = port[0]
+        port &= 0xFF
+        value &= 0xFF
+        if port == 0x02:
+            drive[0] = value & 0x3F
+        elif port == 0x23:
+            lcd_reg[0] = value
+        elif port == 0x03 and lcd_reg[0] == 0x0C:
+            lcd_chars.append(value)
+        elif port == 0x46:
+            contrast_writes.append(value)
+
+    machine.set_input_callback(input_port)
+    machine.set_output_callback(output_port)
+    machine.sp = 0xEFFE
+    machine.pc = sym["contrast_setup"]
+    machine.set_breakpoint(0x8000)
+    for _ in range(20):
+        machine.ticks_to_stop = 500000
+        machine.run()
+        if machine.pc & 0xFFFF == 0x8000:
+            break
+
+    assert machine.pc & 0xFFFF == 0x8000
+    assert key_stage[0] == 2
+    assert mem[0xFC05] == 0xBE
+    assert contrast_writes == [0xBE]
+    assert bytes(lcd_chars) == b"CONTRASTC0CONTRASTBE"
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")

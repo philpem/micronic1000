@@ -155,15 +155,14 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run the `1E3E` ROM00 exerciser; never reuse `1225` or `2692`.** The owner
-   verified both prior burns. `1225` produced a constant buzz and black LCD;
-   `2692` produced only the expected brief power-up bleep but stayed black,
-   while a confirmed transposed matrix calculation made YES/NO ineffective.
-   `1E3E` starts port `46h` at the opposite endpoint (`FFh`), writes it before
-   any LCD command, adds about 476 ms of settling time, and uses the corrected
-   stock/Davison keypad ordering. A deliberate ~238 ms tone occurs only after
-   stock `LcdInit` returns. Preserve the Arduino capture regardless of the LCD
-   outcome and check specifically for preamble `A5 5A 0D 80 80`.
+1. **Run the `27E8` ROM00 exerciser; never reuse `1225`, `2692` or `1E3E`.**
+   The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
+   confirming that stock `LcdInit` returns and that port `46h=FFh` is the light
+   endpoint. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
+   the live value as `CONTRASTC0`, continuously polls NO/YES through the stock
+   shadow-preserving adjusters, and waits for ENTER before touching the IR
+   link. Set a readable contrast first, then start `LISTEN_ONLY`, press ENTER,
+   and check specifically for preamble `A5 5A 0D 80 80`.
 2. **Measure the completion-relative receive-arm window on hardware.** The
    synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
    supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
@@ -4365,7 +4364,7 @@ run and is also retired; see the later hardware-result entry.
   for the HD61830, port `46h` for contrast, and the same reset-time port-`2Ah`,
   port-`05h`, port-`04h`, and port-`2Bh` sequence. Its controller values overlap
   the stock sequence, and it writes port `46h` before issuing any HD61830
-  command. The current candidate follows that ordering.
+  command. The `1E3E` and later candidates follow that ordering.
 * **Unsafe filler draft discarded before burn:** zero runs `ROM00:325B`-`3266`
   and `ROM00:7D1E`-`7D2F` are table storage, as already recorded in the
   exerciser README. The final candidate uses neither.
@@ -4377,25 +4376,44 @@ run and is also retired; see the later hardware-result entry.
   corrected keypad scanner and LCD diagnostics within previously vetted filler.
   It maps the barcode-side connector rather than the IR link and is not needed
   for this protocol run.
-* **Current candidate:** starts the port-`46h` value at `FFh`, the opposite
-  endpoint from `2692`; YES increments by two and NO decrements by two. Visual
-  lighter/darker polarity remains unproven. It writes port `46h=FFh` before
-  any LCD command, waits about 476 ms, and then enters stock `LcdInit`, whose
-  own delay adds about 112 ms before its first LCD command. A deliberate
-  approximately 238 ms `SOUND=0Bh` tone occurs only after `LcdInit` returns.
-  The 32768-byte image differs from stock in 688 bytes, has sum16 `1E3E`, and
-  SHA-256
-  `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
-* **Validation:** all 16 dedicated exerciser tests pass under the Z80
-  environment, including CPU-level physical-matrix-coordinate and contrast
-  cases; the complete analysis suite reports 105 passed, 33 skipped, and 71
-  subtests passed. A bounded 30,000-slice run logs the pre-init and stock
-  `LCD_CONTRAST=FFh` writes, the post-LCD `SOUND=0Bh`/`00h` marker, preamble
-  `A5 5A 0D 80 80`, and 3,154 complete records with zero counter
-  discontinuities or watchdog trips.
+* **`1E3E` hardware result (owner-supplied):** both beeps were heard and the
+  LCD became uniformly clear rather than black. This confirms that stock
+  `LcdInit` returned and establishes the physical contrast polarity on this
+  unit: port `46h=00h` is black/dark and port `46h=FFh` is clear/light. NO/YES
+  produced no visible change. That does not re-open the confirmed matrix
+  formula: YES began saturated at `FFh`, while both keys were polled only after
+  link startup and contrast dispatch occurred only at 64-record boundaries or
+  in the `DEAD` loop. The Arduino was not set up, so whether execution reached
+  those polling paths was not observed.
+* **`1E3E` interaction design discarded:** an endpoint with no text is not a
+  usable contrast target, and making keypad handling conditional on link
+  progress defeats the diagnostic. The post-`LcdInit` tone served its purpose
+  and is removed from the next candidate.
+* **Current candidate:** the 32768-byte `27E8` image uses the established
+  `g_bLcdContrast` shadow, starting both it and port `46h` at `C0h`. After the
+  same pre-init contrast write, approximately 476 ms settle, and complete
+  stock `LcdInit`, it repeatedly displays `CONTRASTxx`. NO decrements the
+  shadow and port value by two toward dark; YES increments both by two toward
+  light. Physical ENTER is byte-verified as matrix index 22 from
+  `tbl_kbd_map[22]=0Dh`; ENTER alone leaves setup and begins link initialization.
+  The image differs from stock in 715 bytes and has SHA-256
+  `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.
+* **Validation:** all 17 dedicated exerciser tests pass under the Z80
+  environment; the complete analysis suite reports 106 passed, 33 skipped,
+  and 71 subtests passed. The new CPU-level integration case drives the
+  physical NO coordinates, observes `g_bLcdContrast` and port `46h` change
+  from `C0h` to `BEh`, verifies `CONTRASTC0` then `CONTRASTBE` on the LCD-data
+  writes, drives the physical ENTER coordinates, and proves the setup routine
+  returns. A bounded 3,000-slice boot run logs the pre-init and stock
+  `LCD_CONTRAST=C0h` writes followed by repeated `CONTRASTC0` and all six
+  keypad-drive values; no link port is touched before ENTER. The 334-byte
+  post-setup link body is byte-identical to the already-validated `1E3E` body.
 * **Ghidra saved:** `g_bLcdContrast` and `g_bKbdMatrixIndex` now name and type
   the two relevant RAM bytes. `KbdScanRowDecode`'s plate records its exact
   bit-index contract, and the `Kbd_ScanMain` arithmetic carries a PRE comment
-  for the confirmed `6*sense-line-index + drive-line-index` mapping. The
-  owner result and the `1E3E` diagnostic sequence are bookmarked at the stock
-  LCD contrast write.
+  for the confirmed `6*sense-line-index + drive-line-index` mapping. The stale
+  `g_bLcdContrast` repeatable that called the byte a power/clock latch is
+  corrected; its plate and the `LCD_CONTRAST` repeatable record the
+  owner-observed physical polarity. `tbl_kbd_map[22]=0Dh` carries the ENTER
+  mapping in place. The owner results and replacement diagnostic sequences are
+  bookmarked at the stock LCD contrast write.
