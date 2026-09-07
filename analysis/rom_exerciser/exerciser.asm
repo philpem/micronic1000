@@ -214,6 +214,7 @@ HI_ORG          equ 0x7E96          ; first free block, 356 bytes
 
 LCD_REG         equ 0x23            ; HD61830 register index
 LCD_DAT         equ 0x03            ; ... and its data port
+LCD_CONTRAST    equ 0x46            ; display contrast latch
 LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 
 ; ---------------------------------------------------------------------------
@@ -224,17 +225,21 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; form, which is why a scan for D3 46 does not find it).
 ;
 ;   range        00h to FFh
-;   LOWER        lighter.  The firmware's adjust-down key steps DEC A twice
-;                and clamps at 0 (ROM00:1D4A); adjust-up does INC A twice and
-;                clamps at FFh (ROM00:1D60).  So the UI moves in steps of 2.
+;   NO           decrements twice and clamps at 00h (ROM00:1D4A).
+;   YES          increments twice and clamps at FFh (ROM00:1D60).
+;                Which numerical direction is visually lighter remains a
+;                hardware observation; the 2692 run could not exercise it.
 ;   firmware     70h, set at cold boot (ROM00:0257).  The owner reports this
 ;   default      is almost black on this unit and turns it down by hand every
 ;                time, which is exactly the thing this constant exists to
 ;                avoid -- there is no settings UI here to reach for.
 ;
-; The exerciser starts at the lightest endpoint.  Hold YES to make it darker
-; or NO to make it lighter; adjustment runs once per 64-record frame through
-; the stock saturating routines, so no rebuild or reburn is needed.
+; The 2692 hardware run stayed uniformly black after requesting 00h.  That
+; run did not prove the write reached port 46h, and its transposed keypad
+; coordinates prevented an on-unit sweep.  This candidate starts at the
+; opposite endpoint, FFh.  Hold NO to decrease it or YES to increase it;
+; adjustment runs once per 64-record frame through the stock saturating
+; routines, so no rebuild or reburn is needed.
 ;
 ; Not to be confused with port 2Bh, which an earlier version of this file had
 ; wrong: 2Bh is the BEEPER, and writing a contrast value to it would have made
@@ -242,12 +247,12 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
 ; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
-CONTRAST        equ 0x00            ; lightest endpoint; YES darkens, NO lightens
+CONTRAST        equ 0xFF            ; opposite endpoint from black-screen 2692
 
-KbdStrobeAll    equ 0x1A42          ; drive all six columns, then fall into...
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
-ContrastLighter equ 0x1D4A          ; shadow -= 2, floor 00h; writes port 46h
-ContrastDarker  equ 0x1D60          ; shadow += 2, ceiling FFh; writes port 46h
+KbdBitIndex     equ 0x1A52          ; A one-hot -> A bit index (0..5)
+ContrastDecrement equ 0x1D4A        ; shadow -= 2, floor 00h; writes port 46h
+ContrastIncrement equ 0x1D60        ; shadow += 2, ceiling FFh; writes port 46h
 LcdInit         equ 0x1EEC          ; complete stock LCD init and VRAM clear
 PORT_KBD_DRV    equ 0x02            ; write-only in the ROM
 KBD_SHADOW      equ 0xF782          ; firmware's port-02h working copy
@@ -270,14 +275,6 @@ SOUND           equ 0x2B            ; beeper value; zero is silent
 IRQ_ENABLE      equ 0xFA
 RST38_VECTOR    equ 0xF5F3          ; the ROM's 0038 jumps through this RAM
 NMI_VECTOR      equ 0xF5F6          ; cell, and 0066 through this one
-PORTMAP_BITS    equ 0x33            ; which 2Ch bits the pin walk drives:
-                                    ; 0, 1, 4 and 5, the ones the firmware
-                                    ; itself drives.  FFh also walks 2, 3, 6
-                                    ; and 7, which no ROM instruction ever
-                                    ; sets -- unknown territory, and the unit
-                                    ; powering off mid-walk would be the
-                                    ; first thing you learn about them.
-
 FRAME_RECS      equ 0x3F            ; mask: new frame when (COUNT and this) = 0
 GAP_SAMPLES     equ 0xC0            ; ~4 ms of idle; must exceed the receiver's
                                     ; GAP_US plus the controller's drain time
@@ -347,8 +344,9 @@ nmi_end:
 ; --- Scan the 6x6 keypad the way Kbd_ScanMain does at ROM00:190D: drive one
 ; column at a time through the firmware's own strobe helper, which writes
 ; port 02h, settles with two PUSH/POP pairs, and returns port 00h masked to
-; the six row bits.  Returns the first key found as col*6 + row -- the same
-; index tbl_kbd_map is built on -- or FFh for none.
+; the six sense bits.  Stock ROM00:1921-1933 calculates the table index as
+; 6*sense-bit-index + drive-bit-index; preserve that ordering exactly here.
+; Returns that index, or FFh for none.
 ;
 ; This is the input channel the exerciser was missing.  It needs no wiring,
 ; unlike port 2Dh, and it is reported in every record, so pressing keys and
@@ -368,62 +366,42 @@ ks_col:         ld a,d
                 djnz ks_col
                 ld a,0xFF                   ; nothing pressed
                 ret
-ks_hit:         ld e,a                      ; row bits
-                ld a,c
-                add a,a                     ; 2*col
+ks_hit:         ld e,a                      ; sense bits
+                ld a,d                      ; one-hot drive bit
+                ld d,e
+                call KbdBitIndex            ; A = drive-bit index
                 ld c,a
-                add a,a                     ; 4*col
-                add a,c                     ; 6*col
-                ld c,a
-                ld b,0x00
-ks_row:         rr e                        ; lowest set row wins
-                jr c,ks_done
-                inc b
-                jr ks_row
-ks_done:        ld a,c
-                add a,b
+                ld a,d
+                call KbdBitIndex            ; A = sense-bit index
+                sla a
+                ld d,a                      ; 2*sense index
+                sla a                       ; 4*sense index
+                add a,d                     ; 6*sense index
+                add a,c                     ; plus drive-bit index
                 ret
 
-; --- Walk the port-2Ch output bits with a countable pulse code: bit 0 pulses
-; once, bit 1 twice, and so on, each group separated by a long gap.  Probe a
-; connector pin, count the pulses, and you have its bit -- no timing
-; reference, no second channel, an LED and an eye would do.
-;
-; Entered by holding any key at power-up, and never left: it is a different
-; job from measuring the link, and it drives 2Ch bits that are not connector
-; pins at all.
-;
-; Two of the four groups have prior identities.  Port-2Ch bit 4 is LIKELY the
-; LCD backlight from firmware use plus the MAME model, so its five-pulse group
-; may flash the screen.  Port-2Ch bit 5 is CONFIRMED as the IR port select.
-; That leaves port-2Ch bits 0 and 1 -- the pair the barcode front end drives at
-; ROM00:1283 and 1519 -- as the real side-connector candidates, and the other
-; two groups as a free calibration of the count.
-portmap:        call dead_adjust            ; clobbers BC/DE; do before setup
-                ld d,0x01                   ; port-2Ch bit under test
-                ld c,0x01                   ; ... pulses that many times
-pm_bit:         call lcd_home
-                ld a,d
-                call lcd_hex                ; which bit is pulsing now
-                ld a,PORTMAP_BITS
-                and d
-                jr z,pm_gap                 ; not in the set: silent slot, so
-                ld b,c                      ; the count still equals the bit
-pm_pulse:       ld a,d
-                out (PORT_2C),a
+; Lee Davison's independent monitor writes LCD_CONTRAST before issuing any
+; HD61830 commands.  Do the same, then allow an intentionally generous four
+; pm_delay intervals (~476 ms) before entering the complete stock LcdInit.
+; Stock LcdInit waits a further ~112 ms before its first LCD command and writes
+; the shadow to LCD_CONTRAST again before returning.
+lcd_preinit:    out (LCD_CONTRAST),a         ; A = CONTRAST from power_lcd_init
+                call pm_delay
+                call pm_delay
+                call pm_delay
+                call pm_delay
+                jp LcdInit
+
+; A deliberate ~238 ms confirmation tone emitted only after stock LcdInit
+; returns.  SOUND=0Bh is the stock RAM-failure tone; zero is the stock silent
+; value.
+diag_tone:      ld a,0x0B
+                out (SOUND),a
+                call pm_delay
                 call pm_delay
                 xor a
-                out (PORT_2C),a
-                call pm_delay
-                djnz pm_pulse
-pm_gap:         call pm_delay               ; four delays: a gap long enough
-                call pm_delay               ; to be unmistakable between
-                call pm_delay               ; groups
-                call pm_delay
-                inc c
-                sla d
-                jr nz,pm_bit
-                jr portmap
+                out (SOUND),a
+                ret
 
 vec_end:
 
@@ -584,7 +562,7 @@ emit:           push af
                 pop af
                 jp lcd_hex
 
-pm_delay:       ld hl,0x4000                ; ~115 ms
+pm_delay:       ld hl,0x4000                ; ~119 ms at 3.579545 MHz
 pm_wait:        dec hl
                 ld a,h
                 or l
@@ -608,8 +586,9 @@ lo_end:
 ; Reset at ROM00:0152 writes CTL_LATCH_2A=20h and waits 0FA0h iterations.
 ; The normal path then acknowledges STATUS_IN, masks every interrupt with
 ; IRQ_MASK=FFh and silences the beeper with SOUND=00h at ROM00:01B1-01B9.
-; The delay loop below is the reset loop byte-for-byte; LcdInit then supplies
-; its own longer controller-settling delay.
+; The delay loop below is the reset loop byte-for-byte.  lcd_preinit writes
+; contrast first, adds ~476 ms of settling time, then calls LcdInit, whose own
+; delay adds ~112 ms before its first controller command.
 power_lcd_init: ld a,0x20
                 ld (PORT2A_SHADOW),a
                 out (PORT_2A),a
@@ -626,16 +605,16 @@ pwr_delay:      nop
                 out (SOUND),a
                 ld a,CONTRAST
                 ld (LCD_CONTRAST_SHADOW),a
-                jp LcdInit
+                jp lcd_preinit
 
 ; Called once per 64-record frame using the last polled matrix index.  Tail
 ; calls the stock saturating contrast routines.  KEY_NO and KEY_YES are matrix
 ; indices, not the translated keycodes 01h and 06h.
 contrast_keys:  ld a,(V_KEY)
                 cp KEY_NO
-                jp z,ContrastLighter
+                jp z,ContrastDecrement
                 cp KEY_YES
-                jp z,ContrastDarker
+                jp z,ContrastIncrement
                 ret
 mid_end:
 
@@ -645,6 +624,7 @@ start:          di
                 ld sp,STACK
                 call nmi_safe               ; protect the whole LCD init too
                 call power_lcd_init
+                call diag_tone              ; stock LcdInit returned
 
                 ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
                 ; through F5F6, both uninitialised here.  Point the first at
@@ -655,13 +635,6 @@ start:          di
                 ld hl,isr
                 ld (RST38_VECTOR+1),hl
                 im 1
-
-                ; A key held at power-up selects the pin walk instead of the
-                ; link run.  Checked before anything else touches the
-                ; hardware, and it never returns.
-                call KbdStrobeAll
-                or a
-                jp nz,portmap
 
                 ; The firmware's link routines are read-modify-write against
                 ; these shadows.  Seed them rather than inheriting whatever
@@ -795,7 +768,7 @@ stream:         ld a,(V_COUNT)
 ; ---------------------------------------------------------------------------
 ; Frame boundary: idle, flag, then put the controller into this phase's state.
 ; ---------------------------------------------------------------------------
-newframe:       call contrast_keys          ; YES darker, NO lighter
+newframe:       call contrast_keys          ; YES increments; NO decrements
                 call gap
                 call putflag
 

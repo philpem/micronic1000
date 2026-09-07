@@ -54,10 +54,10 @@ def test_burn_image_has_a_locked_fingerprint():
     image, _ = _burn_image()
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 713
-    assert sum(image) & 0xFFFF == 0x2692
+    assert sum(a != b for a, b in zip(image, stock)) == 688
+    assert sum(image) & 0xFFFF == 0x1E3E
     assert hashlib.sha256(image).hexdigest() == (
-        "cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65"
+        "5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b"
     )
 
 
@@ -68,11 +68,13 @@ def test_lcd_powerup_delegates_to_the_complete_stock_initializer():
 
     # CTL_LATCH_2A=20h, the exact reset delay loop, and the normal cold-start
     # IRQ_STATUS acknowledge / IRQ_MASK=FFh / SOUND=00h sequence, LCD contrast
-    # shadow=00h, then a tail call to the complete stock LcdInit.
-    assert code[start:end] == bytes.fromhex(
+    # shadow=FFh, then a tail call to the pre-init wrapper.
+    assert code[start:end] == (
+        bytes.fromhex(
         "3e20 328bf7 d32a 01a00f 00 0b 78 b1 20fa "
-        "db05 3eff d304 3e00 d32b "
-        "3e00 3205fc c3ec1e"
+        "db05 3eff d304 3e00 d32b 3eff 3205fc c3"
+        )
+        + sym["lcd_preinit"].to_bytes(2, "little")
     )
 
     stock = ROM.read_bytes()
@@ -91,7 +93,7 @@ def test_contrast_keys_tail_call_stock_saturating_adjusters():
     start = sym["contrast_keys"] - 0x0047
     end = sym["mid_end"] - 0x0047
 
-    # V_KEY matrix index 17 (NO) -> lighter; index 23 (YES) -> darker.
+    # V_KEY matrix index 17 (NO) -> decrement; index 23 (YES) -> increment.
     assert code[start:end] == bytes.fromhex(
         "3aedc7 fe11 ca4a1d fe17 ca601d c9"
     )
@@ -111,24 +113,96 @@ def test_contrast_keys_tail_call_stock_saturating_adjusters():
         bytes([0xC3]) + sym["KbdStrobe"].to_bytes(2, "little")
     )
 
-    # kbd_scan clobbers BC/DE.  The pin walk must poll contrast before it
-    # establishes D=port bit and C=pulse count, never inside pm_bit.
-    portmap = sym["portmap"] - 0x0047
-    assert code[portmap:portmap + 7] == (
-        bytes([0xCD])
-        + sym["dead_adjust"].to_bytes(2, "little")
-        + bytes.fromhex("1601 0e01")
+
+
+def test_preinit_contrast_settle_and_audible_checkpoint_wrap_stock_init():
+    code, sym = _assembled()
+    preinit = sym["lcd_preinit"] - 0x0047
+    assert code[preinit:sym["diag_tone"] - 0x0047] == (
+        bytes.fromhex("d346")
+        + (bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")) * 4
+        + bytes([0xC3]) + sym["LcdInit"].to_bytes(2, "little")
     )
+
+    tone = sym["diag_tone"] - 0x0047
+    assert code[tone:sym["vec_end"] - 0x0047] == (
+        bytes.fromhex("3e0b d32b")
+        + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
+        + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
+        + bytes.fromhex("af d32b c9")
+    )
+
+    start = sym["start"] - 0x0047
+    assert code[start:start + 13] == (
+        bytes.fromhex("f3 3100c9 cd7800")
+        + bytes([0xCD]) + sym["power_lcd_init"].to_bytes(2, "little")
+        + bytes([0xCD]) + sym["diag_tone"].to_bytes(2, "little")
+    )
+
+
+@pytest.mark.skipif(z80 is None, reason="needs the z80 module")
+@pytest.mark.parametrize(
+    ("pressed_drive", "sense_bits", "expected_index"),
+    (
+        (0x20, 0x04, 0x11),  # NO: 6*sense-index 2 + drive-index 5
+        (0x20, 0x08, 0x17),  # YES: 6*sense-index 3 + drive-index 5
+        (None, 0x00, 0xFF),  # no key
+    ),
+)
+def test_kbd_scan_matches_stock_matrix_coordinate_order(
+        pressed_drive, sense_bits, expected_index):
+    image, sym = _burn_image()
+    mem = bytearray(0x10000)
+    mem[:0x8000] = image
+    mem[0xEFFE:0xF000] = bytes.fromhex("0080")
+    drive = [0]
+    driven = []
+
+    machine = z80.Z80Machine()
+    machine.set_memory_block(0, bytes(mem))
+    machine.set_read_callback(lambda address: mem[address & 0xFFFF])
+    machine.set_write_callback(
+        lambda address, value: mem.__setitem__(address & 0xFFFF, value & 0xFF)
+    )
+
+    def input_port(*args):
+        port = args[0]
+        if isinstance(port, tuple):
+            port = port[0]
+        if port & 0xFF == 0x00 and drive[0] == pressed_drive:
+            return sense_bits
+        return 0x00
+
+    def output_port(*args):
+        port, value = args[:2]
+        if isinstance(port, tuple):
+            port = port[0]
+        if port & 0xFF == 0x02:
+            drive[0] = value & 0x3F
+            driven.append(drive[0])
+
+    machine.set_input_callback(input_port)
+    machine.set_output_callback(output_port)
+    machine.sp = 0xEFFE
+    machine.pc = sym["kbd_scan"]
+    machine.set_breakpoint(0x8000)
+    machine.ticks_to_stop = 10000
+    machine.run()
+
+    assert machine.pc & 0xFFFF == 0x8000
+    assert machine.a == expected_index
+    assert driven == ([1, 2, 4, 8, 16, 32] if pressed_drive in (None, 0x20)
+                      else [])
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
 @pytest.mark.parametrize(
     ("key_index", "initial", "expected", "writes"),
     (
-        (0x11, 0x40, 0x3E, [0x3E]),  # NO: lighter
-        (0x11, 0x00, 0x00, [0x00]),  # lighter endpoint saturates
-        (0x17, 0x40, 0x42, [0x42]),  # YES: darker
-        (0x17, 0xFE, 0xFF, [0xFF]),  # darker endpoint saturates
+        (0x11, 0x40, 0x3E, [0x3E]),  # NO: decrement
+        (0x11, 0x00, 0x00, [0x00]),  # lower endpoint saturates
+        (0x17, 0x40, 0x42, [0x42]),  # YES: increment
+        (0x17, 0xFE, 0xFF, [0xFF]),  # upper endpoint saturates
         (0xFF, 0x40, 0x40, []),      # no key: no contrast write
     ),
 )

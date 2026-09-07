@@ -1,11 +1,12 @@
 # ROM exerciser — test plan
 
-> **Do not burn or reinstall sum16 `1225`.** Its verified first hardware run
-> produced a constant buzz and uniformly black LCD. The replacement described
-> below is sum16 `2692` and includes both the cold-start fix and on-unit
-> contrast calibration.
+> **Do not burn or reinstall sum16 `1225` or `2692`.** The verified `1225`
+> run produced a constant buzz and uniformly black LCD. The verified `2692`
+> run produced only the expected brief power-up bleep but remained uniformly
+> black; its transposed keypad coordinates made YES/NO ineffective. The
+> replacement described below is sum16 `1E3E`.
 
-The plan for the first patched-ROM run: what is being measured, what each
+The plan for the next patched-ROM run: what is being measured, what each
 outcome means, and what to do next in either direction. The tool itself is
 `analysis/rom_exerciser/`; this page is the experiment.
 
@@ -38,8 +39,7 @@ the arm itself makes `LINK_STATUS` bit 6 set is one of the measurements.
 | Q3 | **Does the controller ever raise its interrupt?** | `IRQN`, `ISTAT` and direct source mask `ISRC`, every record |
 | Q4 | Does any `LINK_CTRL` state change any of the above? | phase 3, 128 values per port |
 | Q5 | Which physical window is which port? | both ports, alternating every few seconds |
-| Q6 | Which connector pin carries which port bit? | the pin walk (hold a key at power-up) |
-| Q7 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |
+| Q6 | What is the keypad matrix layout? | `KEY` in every record, and on the glass |
 
 **Q3 is the one no external experiment could have asked.** The firmware's
 receive path is interrupt-driven — IRQ source 2 is the link controller, and
@@ -87,49 +87,22 @@ well over 0.5 s where `LinkBlockTx` allows 9.92 ms for `LINK_STATUS` bit 6 to
 clear. A late clear would explain that specific timeout path; the subsequent
 `LINK_STATUS` bit-7 payload gate remains a separate requirement.
 
-## Two modes
-
-**Hold any key while powering on** for the pin walk; otherwise the link run.
-That is the entire interface, and it deliberately needs no keymap knowledge,
-since the keymap is itself unknown.
-
-## Procedure — A, the pin walk
-
-Do this first: it is quick, it needs no IR alignment, and its result makes
-every later side-port observation interpretable.
-
-1. Power on **with any key held**. Port `2Ch` now pulses a countable code:
-   bit 0 once, bit 1 twice, bit 4 five times, bit 5 six times, long gap,
-   repeat. Bits not being driven leave a silent slot, so the count always
-   equals the bit number.
-2. Probe each pin of the 5-pin side connector in turn — a scope, a meter on
-   a slow range, or an LED and a resistor. Count pulses. Record which pin
-   gives which count.
-3. Expect one or more pins not to move at all. Those are inputs, ground, or
-   power.
-4. Bit 5 is the IR port select, so its six-pulse group may not reach the
-   connector. Its absence is information, not a fault.
-5. For the **inputs**, power-cycle without a key held (mode B) and short each
-   remaining pin to ground and to supply in turn, watching the `SIDE` byte in
-   the decoded records. `2Dh` bits 0 and 1 are the ones the firmware reads.
-
-If nothing at all pulses on any pin, the outputs do not reach this connector;
-set `PORTMAP_BITS` to `FFh` and repeat, accepting that bits 2, 3, 6 and 7 are
-undocumented and the unit may do something unexpected.
-
-## Procedure — B, the link run
+## Procedure
 
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin` only if sum16 is `2692` and SHA-256 is
-   `cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.**
-   Label it `2692`; `ROM01` is untouched. Do not reuse the `1225` part.
+1. **Burn `micron1_exerciser.bin` only if sum16 is `1E3E` and SHA-256 is
+   `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.**
+   Label it `1E3E`; `ROM01` is untouched. Do not reuse the `1225` or `2692`
+   parts.
 2. **Power up with the Arduino idle**, in `LISTEN_ONLY`. Check the screen
-   first. The replacement candidate starts port `46h` at `00h`; hold **YES**
-   to make the LCD darker or **NO** to make it lighter, in stock two-count
-   steps once per 64-record frame. This permits the complete contrast range to
-   be selected without another burn. A counting hex row means everything
+   first. Expect the brief power-up bleep, then about 0.6 s of silence, then a
+   distinct approximately 238 ms tone. The replacement writes port `46h=FFh`
+   before any LCD command, waits about 476 ms, and lets stock `LcdInit` write
+   the same value again. Hold **YES** to increment the port-`46h` value or
+   **NO** to decrement it, in stock two-count steps once per 64-record frame.
+   The visual polarity is not assumed. A counting hex row means everything
    downstream is working. Use good ambient light: the link run does not depend
    on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
    This is the control run and everything else is read against it. Capture
@@ -137,7 +110,8 @@ undocumented and the unit may do something unexpected.
    128-state sweep per port requires a much longer run.
 3. **Watch which window blinks** during each cycle of a few seconds. Note it.
 4. **Press N, ENTER or YES** during the capture. Two jobs: `KEY` records the
-   index (`col*6 + row`), which maps the keypad as a free by-product. `IRQN` should
+   index (`6*sense-bit-index + drive-bit-index`), which maps the keypad as a
+   free by-product. `IRQN` should
    rise and `ISRC` bit 0 should latch while you do it, because the keypad IRQ
    is armed alongside the link's precisely so the interrupt path can be
    proved live by hand. **If bit 0 never appears even while pressing keys,
@@ -166,10 +140,20 @@ port. Read them in this order.
 | hex frozen | silent | the transmitter stalled; `WD` in the frozen record says how many watchdog trips it took |
 | `DEAD` | silent | never got a frame open — `LinkPresent` failed 16 times running |
 | blank | silent | ran far enough to clear the display, then stopped before the first record |
-| garbage or dark | silent | the patch never ran. Not a result |
+| dark, no deliberate post-LCD tone | unknown | execution did not return through stock `LcdInit` |
+| dark, deliberate post-LCD tone heard | check Arduino | stock `LcdInit` returned; look for the `A5 5A 0D 80 80` preamble |
 
-The screen carries those distinctions, which is the point of initialising it:
-every failure mode now names itself without a scope, an Arduino or a decode.
+The deliberate approximately 238 ms `SOUND=0Bh` tone occurs only after the
+complete stock initializer returns. It follows the shorter power-up bleep
+already observed with `2692`. The screen and tone together separate more
+failure modes than either alone.
+
+Davison's 1998 monitor uses the same LCD ports and overlapping controller
+values, and writes port `46h` before its first HD61830 command. This candidate
+copies that ordering, not Davison's full eight-page display-RAM clear: stale
+off-screen RAM cannot explain a uniformly driven-black panel. Davison's source
+is in `micron.zip` on the
+[archived Micronic download page](https://www.geocities.ws/micronic99.geo/download.htm).
 The top row is the current record — `COUNT OR AND RXD SIDE CTRL WD KEY IRQN
 ISTAT` as twenty hex digits — so **`OR` and `AND` can be read live while you
 move the Arduino around**, and the IR capture becomes the recording rather

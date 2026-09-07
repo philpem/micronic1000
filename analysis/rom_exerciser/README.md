@@ -1,9 +1,10 @@
 # Link-controller exerciser
 
-> **DO NOT BURN THE `1225` IMAGE.** Its first hardware run produced a constant
-> buzz and uniformly black LCD despite verified programming. The replacement
-> is sum16 `2692`: it restores the normal ROM's pre-LCD quiesce sequence,
-> starts contrast at `00h`, and makes the full range adjustable with YES/NO.
+> **DO NOT REBURN `1225` OR `2692`.** The verified `1225` image produced a
+> constant buzz and uniformly black LCD. The verified `2692` image reduced
+> that to the expected brief power-up bleep, but its display remained black;
+> its transposed keypad coordinates also made YES/NO ineffective. The current
+> candidate is sum16 `1E3E`.
 
 A patched `ROM00` that turns the handheld into a dedicated test rig for the
 link controller. It replaces the cold-boot entry, drives the controller
@@ -36,20 +37,22 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `2692` |
+| `micron1_exerciser.bin` | `1E3E` |
 
 The replacement exerciser SHA-256 is
+`5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
+The retired `2692` image SHA-256 was
 `cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.
 The retired `1225` image SHA-256 was
 `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
 The dedicated regression test reconstructs the image and locks its
-fingerprint and 713-byte diff count.
+fingerprint and 688-byte diff count.
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. The `1225` part should be retained only for
-read-back diagnosis and must not be installed again. Label the replacement
-`2692` and verify its full SHA-256 before installation.
+needs no reference to this repo. The `1225` and `2692` parts should be retained
+only for read-back diagnosis and must not be installed again. Label the
+replacement `1E3E` and verify its full SHA-256 before installation.
 
 ## Build
 
@@ -65,10 +68,10 @@ clobbering anything if the image is not the one it was written against:
 |---|---|
 | `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
 | `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
-| `00A2`-`00FE` | keypad scan and the pin walk, in a 94-byte run (1 left) |
+| `00A2`-`00E8` | keypad scan, pre-init contrast/delay and diagnostic tone, in a 94-byte run (23 left) |
 | `724C`-`7302` | link, LCD and keypad-arm helpers, in a 183-byte run (0 left) |
 | `7CE0`-`7D0F` | stock-reset/LCD and contrast helpers, in a 48-byte run (0 left) |
-| `7E96`-`7FF4` | the main body, in a 356-byte run (5 left) |
+| `7E96`-`7FF0` | the main body, in a 356-byte run (9 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 All six filler runs must be empty beforehand. Two other runs of zeros are
@@ -87,7 +90,7 @@ The six code regions are a single assembly — `ORG` pads forward and only the
 six real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**713 bytes differ from the original.** One chip: `ROM01` is untouched.
+**688 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -106,12 +109,13 @@ That display is also the liveness indicator, and a better one than the
 side-port beacon it replaces: text on the glass cannot be mistaken for
 anything else, and it costs no interpretation.
 
-The exerciser no longer carries a second, hand-written LCD initializer. It
-sets the chosen contrast in the firmware's `FC05` shadow and calls the complete
-stock `LcdInit` at `ROM00:1EEC`. **CONFIRMED:** that routine supplies its own
-settling delay, initializes the LCD state and framebuffer, calls the stock
-HD61830 register sequence at `ROM00:1F33`, clears all 160 VRAM cells through
-the normal output path, writes contrast port `46h`, and disables the cursor.
+The exerciser sets the chosen contrast in the firmware's `FC05` shadow and
+writes it directly to port `46h` before any LCD command. It then waits about
+476 ms and calls the complete stock `LcdInit` at `ROM00:1EEC`.
+**CONFIRMED:** that routine supplies a further approximately 112 ms delay,
+initializes the LCD state and framebuffer, calls the stock HD61830 register
+sequence at `ROM00:1F33`, clears all 160 VRAM cells through the normal output
+path, writes the `FC05` value to port `46h` again, and disables the cursor.
 The register sequence is:
 
 | reg | value | |
@@ -124,12 +128,15 @@ The register sequence is:
 | R8 R9 | `00` | display start |
 | R10 R11 | `00` | cursor address, low byte followed by high byte |
 
-The normal cold-start prerequisites are now preserved too. Before calling
-`LcdInit`, the helper writes `CTL_LATCH_2A=20h`, executes the exact stock
-`ROM00:0156`-`015D` delay loop, reads `IRQ_STATUS`, writes `IRQ_MASK=FFh`, and
-writes `SOUND=00h`. Those last three I/O operations exactly match
-`ROM00:01B1`-`01B9`; omitting them is the confirmed difference that the failed
-`1225` hardware run exposed.
+The normal cold-start prerequisites are preserved too. Before the contrast
+write, the helper writes `CTL_LATCH_2A=20h`, executes the exact stock
+`ROM00:0156`-`015D` delay loop (about 33.5 ms), reads `IRQ_STATUS`, writes
+`IRQ_MASK=FFh`, and writes `SOUND=00h`. Those last three I/O operations exactly
+match `ROM00:01B1`-`01B9`; omitting them is the confirmed difference that the
+failed `1225` hardware run exposed. Stock cold boot also performs a full RAM
+test before `LcdInit`; that test makes no I/O writes but contributes substantial
+elapsed startup time. The added 476 ms delay conservatively restores settling
+time without modifying RAM.
 
 There was one **SHOWSTOPPER** in the previous v13 image: its per-record home
 helper wrote HD61830 cursor-address low register R10 without rewriting
@@ -141,16 +148,30 @@ the live record writes to page 1 and leave the visible screen blank. The new
 `ROM00:1F91`-`1F9E`. A regression test locks both the stock initializer call
 and this low-then-high sequence.
 
-**Contrast is port `46h`.** The firmware keeps its level in `FC05` and pushes
-it out at `ROM00:1FD4`; the range is `00h`-`FFh` and **lower is lighter**.
-Stock firmware boots to `70h`, which the owner reports is almost black on this
-unit. The failed exerciser's `40h` was also uniformly black. The replacement
-therefore starts at the `00h` endpoint. Hold the physical **YES** key to call
-the stock saturating increase routine once per 64-record frame, making the
-display darker by two counts; hold **NO** to decrease it and make it lighter.
-The full contrast range can be traversed on the unit without another burn.
-The YES/NO adjustment also runs in `DEAD` and pin-walk modes, so it does not
-depend on the controller successfully opening a link frame.
+Lee Davison's 1998 Micronic monitor source is an independent board-level
+cross-check. It uses the same LCD ports and overlapping controller values, and
+most importantly writes port `46h` before issuing any HD61830 command. The
+candidate now follows that ordering. Davison's full eight-page display-RAM
+clear is deliberately not copied: stale off-screen RAM cannot explain a
+uniformly driven-black panel. The historical source is available from the
+[archived Micronic download page](https://www.geocities.ws/micronic99.geo/download.htm).
+
+After stock `LcdInit` returns, the exerciser emits a deliberate approximately
+238 ms `SOUND=0Bh` tone and then writes `SOUND=00h`. This is distinct from the
+brief power-up bleep that ends before LCD initialization. Hearing the second
+tone proves execution returned through `LcdInit`; not hearing it localizes the
+failure to that path.
+
+**Port `46h` is LIKELY the contrast control.** The firmware keeps its value in
+`FC05` and pushes it out at `ROM00:1FD4`; Lee Davison independently labels the
+same port as LCD contrast. Stock firmware boots to `70h`, which the owner
+reports is almost black on this unit. The `2692` image requested `00h`, but a
+black panel alone does not prove that `LcdInit` reached the port write. Its
+keypad bug also prevented the planned sweep, so the visual polarity remains
+unobserved. The replacement starts at the opposite endpoint, `FFh`. Physical
+**YES** increments the port-`46h` value by two toward `FFh`; physical **NO**
+decrements it by two toward `00h`. Both saturate. The adjustment also runs in
+the `DEAD` loop, so it does not depend on opening a link frame.
 
 Not port `2Bh`: **that is the beeper**, and an earlier version of this file had
 it wrong — a contrast value written there would have made the unit sound
@@ -164,12 +185,12 @@ measurement: the on-unit YES/NO sweep is what will actually confirm `46h`.
 controller ports directly, which is what actually reaches the glass. Check the
 `23h`/`03h` port log instead — the validation section shows what to expect.
 
-## Two modes, chosen at power-up
+## Port alternation
 
-**Hold any key while powering on** and it runs the pin walk instead of the
-link exerciser. Release and power-cycle to go back. That is the whole user
-interface, and it needs no knowledge of the keymap — which is the point,
-because the keymap is one of the things being reverse-engineered.
+The earlier optional port-`2Ch` pin-walk mode is not in this candidate. Its
+vetted filler space now holds the corrected keypad scanner and the LCD
+diagnostic wrapper; preserving the link measurement and making the black-screen
+failure observable take priority over mapping the unrelated side connector.
 
 In link mode the first cycle uses `43h`, whose **wire-ID bit 5 is clear**. It
 drives **`LINK_CTRL` bit 1 set** and **port `2Ch` bit 5 set**, and was observed
@@ -179,45 +200,15 @@ each record identifies the state: set is `43h`, clear is `63h`. The
 alternation remains useful because the complementary state has not yet been
 observed directly at the back PLINTH window.
 
-### The pin walk
-
-For finding which connector pin carries which port bit. It drives port `2Ch`
-with a countable pulse code: **bit 0 pulses once, bit 1 twice, bit 4 five
-times, bit 5 six times**, each group separated by a long gap, repeating for
-ever. Probe a pin, count the pulses, and you have its bit. No timing
-reference, no second scope channel — an LED and an eye would do.
-
-Two of the four groups should identify themselves with no probe at all: `2Ch`
-bit 4 is **probably the LCD backlight** (a keyboard-toggled output that
-power-down switches off — see the bit table in
-`doc/reference/memory-map.md`), so its five-pulse group ought to flash the
-screen, and bit 5 is the IR port select. If bit 4's group does *not* flash the
-panel, that is a real finding and the backlight reading is wrong. That leaves bits 0 and 1 — the pair the barcode front
-end drives — as the real side-connector candidates, with the other two groups
-as a free calibration of your counting.
-
-Bits it is not driving leave a silent slot, so the count still equals the bit
-number and nothing shifts. `PORTMAP_BITS` in `exerciser.asm` selects the set;
-it defaults to `33h` — bits 0, 1, 4 and 5, the ones the firmware itself
-drives. `FFh` also walks 2, 3, 6 and 7, which no ROM instruction ever sets:
-unknown territory, and the unit powering off mid-walk would be the first
-thing you learn about them.
-
-Note bit 5 is the IR port select, so its six-pulse group may not appear on
-the side connector at all. That makes it a useful contrast case rather than a
-nuisance.
-
-Inputs do not move during the walk — find those with the `KEY` and `SIDE`
-fields in the normal mode instead, by shorting each pin in turn and watching
-which one changes.
-
 ### The keypad, and why it matters more than the side port
 
 `kbd_scan` drives one column at a time through the firmware's own strobe
 helper (`ROM00:1A44`: writes port `02h`, settles, reads port `00h` masked to
-six rows) and returns `col*6 + row` — the same index `tbl_kbd_map` is built
-on. It is reported in every record, so pressing keys and watching `KEY` maps
-the keypad empirically.
+six sense lines). Stock `ROM00:1921`-`1933` and Davison's independent
+`KEY_scan` both compute `6*sense-bit-index + drive-bit-index`. The retired
+`2692` image transposed those terms, which maps physical NO from 17 to 32 and
+YES from 23 to 33. The current scanner uses the stock bit-index helper and a
+CPU-level test drives the real NO/YES matrix coordinates through it.
 
 This supersedes port `2Dh` as the command channel for a steerable follow-up
 burn. It needs no wiring, no pinout, and no case modification, and it is
@@ -332,7 +323,7 @@ record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
 | `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
-| `KEY` | keypad index (`col*6 + row`) of the first key held, or `FFh` |
+| `KEY` | keypad index (`6*sense-bit-index + drive-bit-index`) of the first key held, or `FFh` |
 | `IRQN` | rolling count of interrupts taken — link **and keypad**, see below |
 | `ISTAT` | `LINK_STATUS` OR'd across every interrupt, sticky for the run |
 | `ISRC` | active-high port-`05h` source bits OR'd across every interrupt; bit 0 is keypad and bit 2 is link. Wire-only; the first ten fields fill the LCD row |
@@ -388,24 +379,21 @@ opening matches what `LinkBlockTx` does, access for access:
   0  PC=7CE7  2A = 20     stock CTL_LATCH_2A setup, before the LCD
   1  PC=7CF6  04 = FF     stock cold-start IRQ_MASK: all sources masked
   2  PC=7CFA  2B = 00     stock cold-start SOUND: beeper silent
-3-20 PC=1Fxx  23/03       exact stock HD61830 register sequence
+  3  PC=00CC  46 = FF     contrast before any HD61830 command
+4-21 PC=1Fxx  23/03       exact stock HD61830 register sequence
  ... PC=1Fxx  23/03       stock 160-cell clear and cursor setup
-989  PC=1FDB  46 = 00     stock LcdInit writes the lightest contrast endpoint
-993  PC=3493  4F = 1F     LinkProbe writes LINK_PROBE
-994  PC=349D  4A = 00     probe: LINK_CTRL bit 5 clear
-995  PC=34A7  4A = 01     probe: LINK_CTRL bit 0 set
-996  PC=34B1  4A = 00     probe: LINK_CTRL bit 0 clear
-997  PC=34B7  2C = 00     probe done, port 2Ch restored
-998  PC=34DC  4A = 00     LinkPresent
-999  PC=34E6  4A = 00
-1000 PC=345F  2A = 20     LinkPortSelect, wire-ID bit 5 clear
-1001 PC=347D  4A = 02     LINK_CTRL bit 1 set
-1002 PC=3489  2C = 20     port 2Ch bit 5 set
-1003 PC=72B3  4A = 02     frame opening: LINK_CTRL bit 0 clear
-1004 PC=72B3  4A = 03                    LINK_CTRL bit 0 set
-1005 PC=72B3  4A = 03                    LINK_CTRL bit 4 clear
-1006 PC=34F7  4C = 81     LINK_CMD -- the opening flag
-1007+ PC=728A 4D = ..     version-13 preamble, then 11-byte records
+990  PC=1FDB  46 = FF     stock LcdInit repeats the contrast write
+993  PC=00DF  2B = 0B     post-LcdInit confirmation tone on
+994  PC=00E8  2B = 00     post-LcdInit confirmation tone off
+995  PC=3493  4F = 1F     LinkProbe writes LINK_PROBE
+996  PC=349D  4A = 00     probe: LINK_CTRL bit 5 clear
+997  PC=34A7  4A = 01     probe: LINK_CTRL bit 0 set
+998  PC=34B1  4A = 00     probe: LINK_CTRL bit 0 clear
+1003 PC=347D  4A = 02     LINK_CTRL bit 1 set
+1005 PC=72B3  4A = 02     frame opening: LINK_CTRL bit 0 clear
+1006 PC=72B3  4A = 03                    LINK_CTRL bit 0 set
+1008 PC=34F7  4C = 81     LINK_CMD -- the opening flag
+1009+ PC=728A 4D = ..     version-13 preamble, then 11-byte records
 ```
 
 `--max-slices 30000` runs long enough to pass LCD initialisation and emit
@@ -433,13 +421,14 @@ Silence now reads off the screen:
 | hex frozen | silent | the transmitter stalled — `WD` in the frozen record says how many watchdog trips it took |
 | `DEAD` | silent | never got a frame open; `LinkPresent` failed 16 times running |
 | blank | silent | the patch ran far enough to clear the display, then stopped before the first record |
-| garbage or dark | silent | the patch never ran. Not a result — bad burn, bent pin, wrong socket |
+| dark, no deliberate post-LCD tone | unknown | execution did not return through stock `LcdInit` |
+| dark, deliberate post-LCD tone heard | check Arduino | stock `LcdInit` returned; inspect whether the `A5 5A 0D 80 80` preamble followed |
 
 `putbyte` blocks, so a stalled transmitter freezes the record loop and the
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-11 bytes of filler remain across the six blocks.
+37 bytes of filler remain across the six blocks.
 
 ## Restoring
 

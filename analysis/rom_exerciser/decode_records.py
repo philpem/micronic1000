@@ -166,8 +166,8 @@ def main():
 
     keys = sorted({r[7] for r in records} - {0xFF})
     if keys:
-        print("keypad indices seen (col*6+row): "
-              + " ".join(f"{k}=c{k//6}r{k%6}" for k in keys))
+        print("keypad indices seen (6*sense+drive): "
+              + " ".join(f"{k}=s{k//6}d{k%6}" for k in keys))
     else:
         print("keypad: no key seen held during the capture")
 

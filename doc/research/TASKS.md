@@ -155,14 +155,15 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run the corrected `2692` ROM00 exerciser; never reuse `1225`.** The owner
-   verified the failed part's programming and described the LCD as uniformly
-   black. The replacement copies the normal cold path's `IRQ_STATUS`
-   acknowledge, `IRQ_MASK=FFh`, and `SOUND=00h` quiesce sequence before
-   `LcdInit`, starts contrast at `00h`, and makes physical YES/NO traverse the
-   range without another burn. First confirm the buzz is gone, then hold YES
-   for up to one minute looking for a readable interval. Preserve the Arduino
-   capture regardless of the LCD outcome.
+1. **Run the `1E3E` ROM00 exerciser; never reuse `1225` or `2692`.** The owner
+   verified both prior burns. `1225` produced a constant buzz and black LCD;
+   `2692` produced only the expected brief power-up bleep but stayed black,
+   while a confirmed transposed matrix calculation made YES/NO ineffective.
+   `1E3E` starts port `46h` at the opposite endpoint (`FFh`), writes it before
+   any LCD command, adds about 476 ms of settling time, and uses the corrected
+   stock/Davison keypad ordering. A deliberate ~238 ms tone occurs only after
+   stock `LcdInit` returns. Preserve the Arduino capture regardless of the LCD
+   outcome and check specifically for preamble `A5 5A 0D 80 80`.
 2. **Measure the completion-relative receive-arm window on hardware.** The
    synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
    supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
@@ -4339,3 +4340,62 @@ run and is also retired; see the later hardware-result entry.
 * **Ghidra saved:** the stock reset listing at `ROM00:01B1`-`01B9` now records
   the complete pre-LCD quiesce sequence and gives each bitfield/register its
   unambiguous owner.
+
+## Replacement-ROM second hardware result and LCD cross-check (2026-09-07)
+
+* **Owner-supplied hardware result:** the verified `2692` image produced a
+  brief power-up bleep rather than the `1225` image's constant buzz, confirming
+  execution reached `SOUND=00h` before `LcdInit`. The panel remained uniformly
+  black and physical YES/NO caused no visible change. Whether the Arduino saw
+  preamble `A5 5A 0D 80 80` remains the key discriminator for progress beyond
+  LCD initialization.
+* **DISCARDED:** the initial hypothesis that real keypad sense was inverted.
+  Stock `Kbd_ScanMain` treats a nonzero masked `KBD_SENSE` result as a pressed
+  key at `ROM00:1915`-`1921`, matching the exerciser's active-high test.
+* **CONFIRMED keypad bug:** the `2692` scanner calculated
+  `6*drive-bit-index + sense-bit-index`. Stock `ROM00:1921`-`1933` calculates
+  `6*sense-bit-index + drive-bit-index`, using the one-hot decoder at
+  `ROM00:1A52`. Lee Davison's independent `KEY_scan` uses the same ordering.
+  Thus physical NO (table index 17) became 32 and physical YES (table index 23)
+  became 33 in `2692`; neither could reach its contrast handler. The current
+  scanner calls the stock decoder for both coordinates, and CPU-level tests
+  inject the physical NO/YES matrix states and obtain 17/23.
+* **Davison LCD cross-check:** the 1998 Micronic monitor source in `micron.zip`
+  on the archived Micronic download page independently uses ports `23h`/`03h`
+  for the HD61830, port `46h` for contrast, and the same reset-time port-`2Ah`,
+  port-`05h`, port-`04h`, and port-`2Bh` sequence. Its controller values overlap
+  the stock sequence, and it writes port `46h` before issuing any HD61830
+  command. The current candidate follows that ordering.
+* **Unsafe filler draft discarded before burn:** zero runs `ROM00:325B`-`3266`
+  and `ROM00:7D1E`-`7D2F` are table storage, as already recorded in the
+  exerciser README. The final candidate uses neither.
+* **Excessive full-page clear discarded before burn:** Davison clears all
+  eight display-RAM pages, but stale off-screen RAM cannot explain a uniformly
+  driven-black LCD. The candidate retains only stock `LcdInit` and its normal
+  160-cell clear.
+* **Scope reduction:** the optional port-`2Ch` pin walk was removed to keep the
+  corrected keypad scanner and LCD diagnostics within previously vetted filler.
+  It maps the barcode-side connector rather than the IR link and is not needed
+  for this protocol run.
+* **Current candidate:** starts the port-`46h` value at `FFh`, the opposite
+  endpoint from `2692`; YES increments by two and NO decrements by two. Visual
+  lighter/darker polarity remains unproven. It writes port `46h=FFh` before
+  any LCD command, waits about 476 ms, and then enters stock `LcdInit`, whose
+  own delay adds about 112 ms before its first LCD command. A deliberate
+  approximately 238 ms `SOUND=0Bh` tone occurs only after `LcdInit` returns.
+  The 32768-byte image differs from stock in 688 bytes, has sum16 `1E3E`, and
+  SHA-256
+  `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
+* **Validation:** all 16 dedicated exerciser tests pass under the Z80
+  environment, including CPU-level physical-matrix-coordinate and contrast
+  cases; the complete analysis suite reports 105 passed, 33 skipped, and 71
+  subtests passed. A bounded 30,000-slice run logs the pre-init and stock
+  `LCD_CONTRAST=FFh` writes, the post-LCD `SOUND=0Bh`/`00h` marker, preamble
+  `A5 5A 0D 80 80`, and 3,154 complete records with zero counter
+  discontinuities or watchdog trips.
+* **Ghidra saved:** `g_bLcdContrast` and `g_bKbdMatrixIndex` now name and type
+  the two relevant RAM bytes. `KbdScanRowDecode`'s plate records its exact
+  bit-index contract, and the `Kbd_ScanMain` arithmetic carries a PRE comment
+  for the confirmed `6*sense-line-index + drive-line-index` mapping. The
+  owner result and the `1E3E` diagnostic sequence are bookmarked at the stock
+  LCD contrast write.

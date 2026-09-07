@@ -6,8 +6,9 @@ code is split across six runs of 00 filler that ROM00 has room in, and
 every edit is checked before it is applied:
 
   1. 0047-0065, 0069-007F, 00A2-00FF, 724C-7302, 7CE0-7D0F and
-     7E96-7FF9 take the ISR, NMI guard, keypad/pin walk, helpers, LCD init and
-     main body.  Every run must be entirely zero beforehand;
+     7E96-7FF9 take the ISR, NMI guard, keypad, helpers, LCD support,
+     diagnostic tone and main body.  Every run must be entirely zero
+     beforehand;
   2. the cold-boot entry at 014B is replaced with a jump to the exerciser,
      a three-byte edit, after checking it still holds the prologue we expect.
 
