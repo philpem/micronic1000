@@ -135,22 +135,21 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Re-analyse the existing physical captures.** Import the raw Keysight
-   `conn3`-`conn13` files and the exact Arduino sketch used for each run. Only
-   `conn1`/`conn2` and the consolidated sketch are currently available in the
-   working archive; preserve capture hashes and classify stimuli from their
-   observed waveforms rather than segment numbers.
-2. **Measure the completion-relative receive-arm window on hardware.** The
-   synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
-   supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
-   chunk emulator coverage is complete. Physical testing must establish the
-   wire-relative epoch and any upper acceptance deadline.
-3. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
+1. **Attribute the 16-RTC-period retry extension.** Trace the scheduler path
+   from `LinkBlockTx`/`LinkStatusInterrupt` to the next retry and reproduce the
+   96-versus-112-tick cadence in bounded emulation. Determine whether receive
+   dispatch and a first-byte `LINK_STATUS` bit-7 timeout have distinguishable
+   timing signatures; do not infer physical status-bit state from the model.
+2. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
    C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
    fields, and remaining runtime result/state writers in the loaded modules.
-4. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+3. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
+4. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
+   are now audited from their decoded waveforms, but the exact Arduino source
+   snapshot used for each early run remains unavailable. Preserve it if found;
+   do not infer build modes from capture filenames or segment numbers.
 5. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
@@ -161,23 +160,35 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run the v13 replacement-ROM exerciser.** Verify stock chips against
+1. **Capture `LINK_STATUS` on the stock-ROM Z80 bus.** Probe address A0-A7,
+   data D0-D7, `/IORQ`, and `/RD` while replaying conn13 silent, early
+   17-scope-D2-rise/5-scope-D3-rise, and late
+   81-scope-D2-rise/20-scope-D3-rise stimuli. Establish whether the reacting
+   case clears `LINK_STATUS` bit 6, stalls on `LINK_STATUS` bit 7 before byte
+   1, or asserts `LINK_STATUS` bit 4 and enters receive. This is the best
+   discriminator that leaves the stock ROMs fitted.
+2. **Measure the completion-relative receive-arm window on hardware.** The
+   synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
+   supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
+   chunk emulator coverage is complete. Physical testing must establish the
+   wire-relative epoch and any upper acceptance deadline.
+3. **Run the v13 replacement-ROM exerciser.** Verify stock chips against
    `ACF8`/`2E12`, burn and label ROM00 sum16 `1CBD`, then follow
    `doc/re-notes/exerciser-test-plan.md`. The first control is `ISRC` bit 0
-   from N/ENTER/YES; only after it passes are a clear link bit 2 and flat
-   `HSBUSY` meaningful negatives.
-2. **Capture a successful bidirectional IR byte exchange.** The stock
+   from N/ENTER/YES; only after it passes are `ISRC` bit 2 remaining clear and
+   `LINK_STATUS` bit 6 (`HSBUSY`) remaining set meaningful negative results.
+4. **Capture a successful bidirectional IR byte exchange.** The stock
    handheld's outbound 8192-bit/s synchronous delimiter/prelude is already
    captured. Establish the return-side handshake, a full logical frame, and
    whether the controller-queue sync/trailer bytes exist on the wire.
-3. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
+5. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-4. **Capture the electrical timing and meanings of the link status/control
+6. **Capture the electrical timing and meanings of the link status/control
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-5. **Confirm the complementary port state and EXT STORAGE attachment.** The
+7. **Confirm the complementary port state and EXT STORAGE attachment.** The
    top mapping is closed: V24 Load/Run uses wire-ID bit 5 clear, which sets
    `LINK_CTRL` bit 1 and port `2Ch` bit 5, and was captured at the top window.
    Observe the wire-ID-bit-5-set exerciser phase, which clears both outputs,
@@ -4132,9 +4143,9 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   form decodes under the current model to delimiter `81h` plus prelude `03h`
   at a 122.07 us cell. The single-segment H5 reproduces CSV segment 0. Capture
   SHA-256 values are now recorded in `re-notes/ir-wire-protocol.md`.
-* Raw `conn3`-`conn13` captures and their exact per-run Arduino sources are
-  not in the current working archive. Their published aggregate conclusions
-  remain evidence awaiting a reproducible raw-capture audit.
+* Raw `conn3`-`conn13` captures were not in the repository archive inspected
+  during this pass. This availability note is superseded by the later raw
+  capture audit below.
 * Fixed the consolidated Arduino sketch's mode selection: `PULSE_TEST` and
   `LADDER_TEST` were both enabled, and the preprocessor silently selected the
   ladder. The default now selects only `LADDER_TEST`; invalid combinations
@@ -4166,3 +4177,47 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   RAM/PC visibility is therefore no longer an emulator-server requirement.
   The corresponding physical-wire epoch, maximum acceptance delay, and
   hardware reliability are still OPEN.
+
+## Raw conn3-conn13 capture audit (2026-09-07)
+
+* Located all eleven packed-digital Keysight CSVs in the owner's external
+  `$HOME/micronic-scope-traces` archive. They contain exactly 3,877 complete
+  1,893-sample segments. SHA-256 values and per-run decoded contents are now
+  recorded in `re-notes/ir-wire-protocol.md`; the large captures remain
+  outside git.
+* Added `analysis/scope_ir_experiments.py`, which streams each CSV and
+  classifies the waveform actually captured instead of reconstructing Arduino
+  sweep state from segment numbers. **CONFIRMED from the raw masks:** scope D0
+  and scope D1 are handheld data and clock; scope D2 and scope D3 are Arduino
+  clock and data. These are scope pod channels, not Arduino pin numbers.
+* **CONFIRMED, conn13:** among valid adjacent-cadence pairs, a burst-gated
+  response whose scope-D3 data emission ends 3.03-6.01 ms after the handheld
+  clock ends produces the +15.6 ms retry extension 163/163 times. Late or
+  capture-censored responses produce it 0/243 times; silent controls produce
+  it 0/76 times. This is consistent with the firmware's 9.92 ms
+  `LINK_STATUS` bit-6 (`HSBUSY`) timeout at `ROM00:32F3`.
+* **CORRECTION:** the conn13 cutoff is not a universal final-light-off rule.
+  In conn11 every valid observation for decoded addresses `00h`-`3Fh` and
+  `7Fh` reacts, including 62 whose scope-D3 data emission ends after 9.92 ms;
+  `FFh` reacts 0/2 times. In conn12 all frame-bearing free-running- and
+  gated-clock groups react, including 78 late endings, while clock-only and
+  silent controls react 1/80 and 0/80 respectively. Preamble/clock state
+  therefore affects entry into an additional controller/firmware path. No
+  tested stimulus produces a post-handshake payload.
+* **CORRECTION:** conn13's 93.748 and 109.371 ms population medians differ by
+  15.624 ms, matching 16 periods of the 1,024 Hz RTC to capture precision.
+  That makes a 16-tick scheduling effect LIKELY, but it is not a unique
+  fingerprint of `LinkBlockRx`. The no-payload transport error `0EEh` can
+  result from either the initial `LINK_STATUS` bit-6 timeout or the first
+  per-byte `LINK_STATUS` bit-7 timeout. The optical captures expose neither
+  status bit, so whether the reacting stimuli pass the `LINK_STATUS` bit-6
+  wait remains OPEN.
+* Unit tests cover scope-channel ownership and stuffed address recovery. The
+  exact Arduino source snapshot used for each early capture remains OPEN;
+  decoded waveform classifications do not depend on it.
+* Planned a no-EPROM discriminator: capture stock-ROM Z80 I/O reads of
+  `LINK_STATUS` while replaying conn13 silent/early/late stimuli. This directly
+  observes `LINK_STATUS` bits 4, 6, and 7 and separates receive dispatch, the
+  bit-6 acknowledge wait, and the first-byte bit-7 wait. Matching OPEN
+  bookmarks were saved at `ROM00:32F3` and `ROM00:3318`; `LinkBlockTx`'s plate
+  now qualifies every bit with its owning register.

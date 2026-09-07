@@ -419,36 +419,40 @@ hardware now shows exactly that: **every failure, with and without an adapter
 answering, reads `238`**. So the displayed RCV1 is the transport error path,
 not a receive counter, and the value is `0EEh`.
 
-`LinkBlockTx` returns `0EEh` from three sites: the `HSBUSY` wait at
-`ROM00:32F3`, the per-byte `TXRDY` wait at `3315`/`334E`, and the completion
-wait at `3336`. A scope capture of the IR line during the failure shows the
-flag and the prelude and **no payload byte at all**, which excludes the latter
-two. The handheld dies at **`ROM00:32F3`, waiting for `LINK_STATUS` bit 6 to
-go clear**, 9.92 ms after the strobe.
+`LinkBlockTx` returns `0EEh` from three sites: the `LINK_STATUS` bit-6 wait at
+`ROM00:32F3`, the per-byte `LINK_STATUS` bit-7 wait at `3315`/`334E`, and the
+completion `LINK_STATUS` bit-6 wait at `3336`. A scope capture of the IR line
+during the failure shows the flag and the prelude and **no payload byte at
+all**. This excludes the completion wait and every per-byte wait after the
+first byte, but it does not exclude the first `TXRDY` wait: that can return
+`0EEh` before emitting any payload. The failure is therefore narrowed to
+either `LINK_STATUS` bit 6 at `ROM00:32F3` or `LINK_STATUS` bit 7 at
+`ROM00:3318`; the optical capture cannot distinguish them.
 
 ### What the firmware actually waits for
 
 | Step | ROM | Waits on | On the wire |
 |---|---|---|---|
-| 1 | `34F8` | bit 7 `TXRDY` set, 9.70 ms | — |
+| 1 | `34F8` | `LINK_STATUS` bit 7 (`TXRDY`) set, 9.70 ms | — |
 | 2 | `34F5` | writes `81h` to `LINK_CMD` | the flag |
 | 3 | `32B3` | writes `id & 1Fh` to `LINK_TXD` | the address |
-| 4 | `32B8` | bit 4 `RXBUSY` **clear**, 9.92 ms | — |
-| 5 | `32CC`-`32E6` | drives `LINK_CTRL` 5 high, 4 high, 32 `DJNZ`, 5 low | — |
-| 6 | `32F3` | bit 6 `HSBUSY` **clear**, 9.92 ms | **fails here** |
-| 7 | `3315` | per byte: bit 7 `TXRDY` set, 24.69 ms | never reached |
+| 4 | `32B8` | `LINK_STATUS` bit 4 (`RXBUSY`) **clear**, 9.92 ms | — |
+| 5 | `32CC`-`32E6` | drives `LINK_CTRL` bit 5 high, bit 4 high, 32 `DJNZ`, bit 5 low | — |
+| 6 | `32F3` | `LINK_STATUS` bit 6 (`HSBUSY`) **clear**, 9.92 ms | failure candidate |
+| 7 | `3318` | per byte: `LINK_STATUS` bit 7 (`TXRDY`) set, 24.69 ms | failure candidate before byte 1 |
 
 **Every one of these is a status bit from the local link controller. The
-firmware never examines the IR line.** No frame content can satisfy step 6
-directly — it can only do so by causing the controller to deassert `HSBUSY`,
-and what makes the controller do that is a property of the controller, not of
-the firmware. That remains **OPEN**.
+firmware never examines the IR line.** No frame content can satisfy step 6 or
+step 7 directly — it can only cause the controller to change `LINK_STATUS`
+bit 6 or `LINK_STATUS` bit 7. What makes the controller do that is a property
+of the controller, not of the firmware. Both states remain **OPEN**.
 
 This bounds the adapter problem usefully. Sweeping reply content is only worth
-doing under the assumption that `HSBUSY` tracks a received frame. That
-`HSBUSY` instead tracks a carrier or presence signal, or needs a complete frame
-including whatever the framer appends, is equally consistent with everything
-observed, and no amount of content sweeping would reach it.
+doing under the assumption that `LINK_STATUS` bit 6 or `LINK_STATUS` bit 7
+tracks a received frame. That either status bit instead tracks a
+carrier/presence signal, or needs a complete frame including whatever the
+framer appends, is equally consistent with everything observed. Direct
+`LINK_STATUS` capture is needed to tell.
 
 ## Session-operation error decades
 
@@ -1240,9 +1244,10 @@ the published site.
 
 The next work should prioritize server blockers:
 
-1. Re-analyse the raw `conn3`-`conn13` Keysight captures and the exact Arduino
-   sketch used for each run; those source files are not currently in the
-   repository.
+1. Capture stock-ROM Z80 I/O reads of `LINK_STATUS` during silent, early, and
+   late conn13 responder cases. This distinguishes the initial `LINK_STATUS`
+   bit-6 wait from a first-byte `LINK_STATUS` bit-7 timeout without burning an
+   EPROM.
 2. Measure the 500 ms completion-relative receive-arm fallback's epoch and
    acceptance window on hardware. PLINTH/V24 and single-/multi-chunk emulator
    coverage is complete.

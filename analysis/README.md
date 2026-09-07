@@ -2,6 +2,18 @@
 
 Everything for reverse-engineering and emulating the Micronic 1000.
 
+## IR scope-capture decoders
+
+* `scope_ir_decode.py` recovers the analogue handheld waveform in the
+  `conn1` H5 and `conn2` CSV captures, including clock/data recovery, HDLC
+  destuffing, and byte decoding.
+* `scope_ir_experiments.py` streams the packed digital `conn3`-`conn13` CSVs,
+  measures adjacent retry cadence, and groups the response actually present
+  in each segment. In those exports scope D0/D1 are handheld data/clock and
+  scope D2/D3 are Arduino clock/data; these are scope pod channel numbers,
+  not Arduino pin numbers. Use `--groups`, `--addresses`, or `--segments` for
+  progressively more detail.
+
 ## Reusable firmware models — `micronic/`
 
 A Python package of evidence-scoped models and harness helpers. The link
