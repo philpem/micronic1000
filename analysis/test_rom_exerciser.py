@@ -54,10 +54,10 @@ def test_burn_image_has_a_locked_fingerprint():
     image, _ = _burn_image()
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 715
-    assert sum(image) & 0xFFFF == 0x27E8
+    assert sum(a != b for a, b in zip(image, stock)) == 717
+    assert sum(image) & 0xFFFF == 0x2D4D
     assert hashlib.sha256(image).hexdigest() == (
-        "f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca"
+        "dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242"
     )
 
 
@@ -124,23 +124,6 @@ def test_preinit_settle_then_contrast_screen_wrap_stock_init():
         + bytes([0xC3]) + sym["LcdInit"].to_bytes(2, "little")
     )
 
-    setup = sym["contrast_setup"] - 0x0047
-    assert code[setup:sym["vec_end"] - 0x0047] == (
-        bytes([0xCD]) + sym["lcd_home"].to_bytes(2, "little")
-        + bytes([0x21]) + sym["str_contrast"].to_bytes(2, "little")
-        + bytes.fromhex("7e b7 2806")
-        + bytes([0xCD]) + sym["lcd_putc"].to_bytes(2, "little")
-        + bytes.fromhex("23 18f6 3a05fc")
-        + bytes([0xCD]) + sym["lcd_hex"].to_bytes(2, "little")
-        + bytes([0xCD]) + sym["kbd_scan"].to_bytes(2, "little")
-        + bytes.fromhex("fe16 c8 32edc7")
-        + bytes([0xCD]) + sym["contrast_keys"].to_bytes(2, "little")
-        + bytes([0xCD]) + sym["pm_delay"].to_bytes(2, "little")
-        + bytes.fromhex("18d9")
-    )
-    string = sym["str_contrast"] - 0x0047
-    assert code[string:sym["hi_end"] - 0x0047] == b"CONTRAST\0"
-
     start = sym["start"] - 0x0047
     assert code[start:start + 13] == (
         bytes.fromhex("f3 3100c9 cd7800")
@@ -150,7 +133,10 @@ def test_preinit_settle_then_contrast_screen_wrap_stock_init():
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
-def test_contrast_screen_handles_no_then_enter_before_returning():
+@pytest.mark.parametrize("sense,index,contrast", [(4, 0x11, 0xBE),
+                                               (8, 0x17, 0xC2),
+                                               (0, 0xFF, 0xC0)])
+def test_contrast_screen_handles_key_then_enter_before_returning(sense, index, contrast):
     image, sym = _burn_image()
     mem = bytearray(0x10000)
     mem[:0x8000] = image
@@ -175,11 +161,9 @@ def test_contrast_screen_handles_no_then_enter_before_returning():
             port = port[0]
         if port & 0xFF != 0x00:
             return 0x00
-        if key_stage[0] == 0 and drive[0] == 0x20:
-            key_stage[0] = 1
-            return 0x04  # NO: sense bit 2, drive bit 5 -> index 17
-        if key_stage[0] == 1 and drive[0] == 0x10:
-            key_stage[0] = 2
+        if key_stage[0] == 1 and drive[0] == 0x20:
+            return sense
+        if key_stage[0] == 2 and drive[0] == 0x10:
             return 0x08  # ENTER: sense bit 3, drive bit 4 -> index 22
         return 0x00
 
@@ -195,8 +179,11 @@ def test_contrast_screen_handles_no_then_enter_before_returning():
             lcd_reg[0] = value
         elif port == 0x03 and lcd_reg[0] == 0x0C:
             lcd_chars.append(value)
+        elif port == 0x03 and lcd_reg[0] == 0x0B:
+            key_stage[0] += 1  # new screen: cursor high set by lcd_home
         elif port == 0x46:
             contrast_writes.append(value)
+        assert port not in range(0x4A, 0x50), "IR touched before setup returns"
 
     machine.set_input_callback(input_port)
     machine.set_output_callback(output_port)
@@ -211,19 +198,20 @@ def test_contrast_screen_handles_no_then_enter_before_returning():
 
     assert machine.pc & 0xFFFF == 0x8000
     assert key_stage[0] == 2
-    assert mem[0xFC05] == 0xBE
-    assert contrast_writes == [0xBE]
-    assert bytes(lcd_chars) == b"CONTRASTC0CONTRASTBE"
+    assert mem[0xFC05] == contrast
+    assert contrast_writes == ([contrast] if sense else [])
+    assert bytes(lcd_chars) == (
+        f"CC0{index:02X}010000000000{sense:02X}"
+        f"C{contrast:02X}1602000000000800"
+    ).encode("ascii")
+    assert machine.sp == 0xF000
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
 @pytest.mark.parametrize(
     ("pressed_drive", "sense_bits", "expected_index"),
-    (
-        (0x20, 0x04, 0x11),  # NO: 6*sense-index 2 + drive-index 5
-        (0x20, 0x08, 0x17),  # YES: 6*sense-index 3 + drive-index 5
-        (None, 0x00, 0xFF),  # no key
-    ),
+    [(1 << drive, 1 << sense, 6 * sense + drive)
+     for sense in range(6) for drive in range(6)] + [(None, 0, 0xFF)],
 )
 def test_kbd_scan_matches_stock_matrix_coordinate_order(
         pressed_drive, sense_bits, expected_index):
@@ -267,8 +255,9 @@ def test_kbd_scan_matches_stock_matrix_coordinate_order(
 
     assert machine.pc & 0xFFFF == 0x8000
     assert machine.a == expected_index
-    assert driven == ([1, 2, 4, 8, 16, 32] if pressed_drive in (None, 0x20)
-                      else [])
+    masks = [1, 2, 4, 8, 16, 32]
+    assert driven == (masks if pressed_drive is None
+                      else masks[:masks.index(pressed_drive) + 1])
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
@@ -328,6 +317,52 @@ def test_lcd_home_always_writes_cursor_low_then_cursor_high():
     assert code[start:end] == bytes.fromhex(
         "3e0a d323 af d303 3e0b d323 3e00 d303 c9"
     )
+
+
+@pytest.mark.skipif(z80 is None, reason="needs the z80 module")
+@pytest.mark.parametrize("ram_fill", [0x00, 0xFF, 0xA5])
+def test_cold_boot_reaches_live_setup_with_dirty_battery_ram(ram_fill):
+    image, sym = _burn_image()
+    mem = bytearray([ram_fill] * 0x10000)
+    mem[:0x8000] = image
+    outputs = []
+    machine = z80.Z80Machine()
+    machine.set_memory_block(0, bytes(mem))
+    machine.set_read_callback(lambda address: mem[address & 0xFFFF])
+    machine.set_write_callback(
+        lambda address, value: mem.__setitem__(address & 0xFFFF, value & 0xFF)
+    )
+    machine.set_input_callback(lambda *args: 0)
+    machine.set_output_callback(
+        lambda port, value: outputs.append((port & 0xFF, value & 0xFF))
+    )
+    machine.pc = 0x014B
+    # Stop after one whole screen (including both scans), before the delay.
+    machine.set_breakpoint(sym["pm_delay"])
+    for _ in range(4):  # four pre-LCD settling calls
+        for _ in range(100):
+            machine.ticks_to_stop = 100000
+            machine.run()
+            if machine.pc == sym["pm_delay"]:
+                break
+        assert machine.pc == sym["pm_delay"]
+        machine.clear_breakpoint(sym["pm_delay"])
+        machine.ticks_to_stop = 4  # execute one instruction past breakpoint
+        machine.run()
+        machine.set_breakpoint(sym["pm_delay"])
+    for _ in range(100):
+        machine.ticks_to_stop = 100000
+        machine.run()
+        if machine.pc == sym["pm_delay"]:
+            break
+    assert machine.pc == sym["pm_delay"]
+    assert mem[sym["V_COUNT"]] == (ram_fill + 1) & 0xFF
+    assert mem[sym["V_KEY"]] == 0xFF
+    assert mem[0xFC05] == 0xC0
+    assert [value for port, value in outputs if port == 0x46] == [0xC0, 0xC0]
+    assert [value for port, value in outputs if port == 0x02] == [1, 2, 4, 8, 16, 32] * 2
+    assert not any(0x4A <= port <= 0x4F for port, _ in outputs)
+    assert mem[0xF5F6:0xF5F8] == bytes.fromhex("ed45")
 
 
 def test_stack_has_interrupt_headroom_above_state():

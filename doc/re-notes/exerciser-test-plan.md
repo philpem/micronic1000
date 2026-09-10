@@ -5,8 +5,18 @@
 > run produced only the expected brief power-up bleep but remained uniformly
 > black; its transposed keypad coordinates made YES/NO ineffective. The
 > verified `1E3E` run produced both beeps and a uniformly clear LCD, confirming
-> that stock `LcdInit` returned and that port `46h=FFh` is the light endpoint.
-> The replacement described below is sum16 `27E8`.
+> that stock `LcdInit` returned. Correction (2026-09-10): contrast polarity
+> was not isolated from concurrent startup timing and ordering changes.
+> The owner reports that `27E8` displays `CONTRASTC0`, but keys remain
+> ineffective. Do not reburn it unchanged; keypad diagnosis precedes IR tests.
+> Current replacement: sum16 `2D4D`, SHA-256
+> `dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242`.
+> It preserves LCD startup and adds keypad diagnostics, not a proven hardware
+> keypad fix. The row is `C` followed by two hex digits each for contrast,
+> decoded key, heartbeat and six masked sense readings (drive masks
+> `01h,02h,04h,08h,10h,20h`). NO/YES adjust contrast; ENTER starts the link.
+> If keys fail, record the row at rest and with keys held and whether the
+> heartbeat advances. Older `CONTRASTC0` instructions below describe `27E8`.
 
 The plan for the next patched-ROM run: what is being measured, what each
 outcome means, and what to do next in either direction. The tool itself is

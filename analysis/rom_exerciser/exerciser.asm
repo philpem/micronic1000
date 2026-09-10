@@ -247,7 +247,7 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
 ; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
-CONTRAST        equ 0xC0            ; between observed dark and clear endpoints
+CONTRAST        equ 0xC0            ; owner observed readable text in 27E8
 
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 KbdBitIndex     equ 0x1A52          ; A one-hot -> A bit index (0..5)
@@ -355,35 +355,28 @@ nmi_end:
 ; KbdStrobe preserves BC, DE and HL (it saves HL with PUSH/POP), so the scan
 ; needs no spills.
 kbd_scan:       ld b,0x06                   ; six columns
-                ld c,0x00                   ; column index
                 ld d,0x01                   ; column drive bit
 ks_col:         ld a,d
                 call KbdStrobe
                 or a
                 jr nz,ks_hit
-                inc c
                 sla d
                 djnz ks_col
                 ld a,0xFF                   ; nothing pressed
                 ret
-ks_hit:         ld e,a                      ; sense bits
-                ld a,d                      ; one-hot drive bit
-                ld d,e
-                call KbdBitIndex            ; A = drive-bit index
-                ld c,a
-                ld a,d
-                call KbdBitIndex            ; A = sense-bit index
+ks_hit:         call KbdBitIndex            ; A = sense-bit index; preserves B
                 sla a
                 ld d,a                      ; 2*sense index
                 sla a                       ; 4*sense index
                 add a,d                     ; 6*sense index
-                add a,c                     ; plus drive-bit index
+                add a,0x06
+                sub b                       ; plus drive index = 6-B
                 ret
 
 ; Lee Davison's independent monitor writes LCD_CONTRAST before issuing any
 ; HD61830 commands.  Do the same, then allow an intentionally generous four
-; pm_delay intervals (~476 ms) before entering the complete stock LcdInit.
-; Stock LcdInit waits a further ~112 ms before its first LCD command and writes
+; pm_delay intervals (~462 ms at 3.6864 MHz) before the complete stock LcdInit.
+; Stock LcdInit waits a further ~109 ms before its first LCD command and writes
 ; the shadow to LCD_CONTRAST again before returning.
 lcd_preinit:    out (LCD_CONTRAST),a         ; A = CONTRAST from power_lcd_init
                 ld b,0x04
@@ -391,23 +384,31 @@ lcd_settle:     call pm_delay
                 djnz lcd_settle
                 jp LcdInit
 
-; Render a stable contrast target and remain here until ENTER.  The firmware
-; adjusters keep LCD_CONTRAST_SHADOW and LCD_CONTRAST synchronized.  Redrawing
-; the live value after every poll makes the key path itself observable.
+; Display C, contrast byte, decoded key, heartbeat, then six sense bytes.
+; The sense bytes are a SECOND scan, in drive-mask order 01,02,04,08,10,20.
+; Static text alone did not prove the failed 27E8 unit kept polling.
+; V_COUNT is reused as a heartbeat before link mode initializes it; its
+; initial battery-RAM value is immaterial, but each screen increments it.
+; Stock adjusters keep LCD_CONTRAST_SHADOW and LCD_CONTRAST synchronized.
 contrast_setup: call lcd_home
-                ld hl,str_contrast
-cs_char:        ld a,(hl)
-                or a
-                jr z,cs_value
+                ld a,'C'
                 call lcd_putc
-                inc hl
-                jr cs_char
 cs_value:       ld a,(LCD_CONTRAST_SHADOW)
                 call lcd_hex
                 call kbd_scan
+                ld (V_KEY),a
+                push af
+                call lcd_hex
+                ld hl,V_COUNT
+                inc (hl)
+                ld a,(hl)
+                call lcd_hex
+                ld b,0x06
+                ld d,0x01
+                call kbd_raw_display
+                pop af
                 cp KEY_ENTER
                 ret z
-                ld (V_KEY),a
                 call contrast_keys
                 call pm_delay
                 jr contrast_setup
@@ -570,7 +571,7 @@ emit:           push af
                 pop af
                 jp lcd_hex
 
-pm_delay:       ld hl,0x4000                ; ~119 ms at 3.579545 MHz
+pm_delay:       ld hl,0x4000                ; ~116 ms at owner-stated 3.6864 MHz
 pm_wait:        dec hl
                 ld a,h
                 or l
@@ -595,8 +596,8 @@ lo_end:
 ; The normal path then acknowledges STATUS_IN, masks every interrupt with
 ; IRQ_MASK=FFh and silences the beeper with SOUND=00h at ROM00:01B1-01B9.
 ; The delay loop below is the reset loop byte-for-byte.  lcd_preinit writes
-; contrast first, adds ~476 ms of settling time, then calls LcdInit, whose own
-; delay adds ~112 ms before its first controller command.
+; contrast first, adds ~462 ms of settling time, then calls LcdInit, whose own
+; delay adds ~109 ms before its first controller command (3.6864 MHz).
 power_lcd_init: ld a,0x20
                 ld (PORT2A_SHADOW),a
                 out (PORT_2A),a
@@ -671,8 +672,7 @@ init_clear:     ld (hl),a
                                             ; reference for every later sample
 
                 ; --- select the port exactly as LinkBlockTx does at 3277
-                ld a,LINK_ID
-                and 0x20
+                ld a,LINK_ID & 0x20
                 call LinkPortSelect
 
                 ; --- LinkBlockTx opening: LINK_CTRL bit 0 low, then high;
@@ -835,11 +835,11 @@ tx_arm:         ld a,0x20
                 call ctrl_or
                 ld b,ARM_DELAY
 tx_wait:        djnz tx_wait
-                ld a,0xDF
+tx_disarm:      ld a,0xDF
                 jp ctrl_and
 
-; ROM00:3378-33A6, byte for byte, dummy LINK_RXD read included -- it is what
-; flushes the receiver before arming.
+; ROM00:3378-33A6 control-write sequence, dummy LINK_RXD read included.
+; Share the final mask/write tail with TX (one extra JR after the wait).
 rx_arm:         ld a,0xFE
                 call ctrl_and
                 ld a,0x20
@@ -849,8 +849,14 @@ rx_arm:         ld a,0xFE
                 call ctrl_or
                 ld b,ARM_DELAY
 rx_wait:        djnz rx_wait
-                ld a,0xDF
-                jp ctrl_and
+                jr tx_disarm
 
-str_contrast:   db 'CONTRAST',0
+; No decoding or early exit: show all six masked KBD_SENSE readings.
+; In: B=6, D=01h. Out: six hex bytes; clobbers AF, B, D.
+kbd_raw_display: ld a,d
+                call KbdStrobe
+                call lcd_hex
+                sla d
+                djnz kbd_raw_display
+                ret
 hi_end:

@@ -155,10 +155,15 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run the `27E8` ROM00 exerciser; never reuse `1225`, `2692` or `1E3E`.**
+1. **Diagnose the keypad before another protocol burn.** The owner reports
+   that `27E8` displays `CONTRASTC0`, but keys still have no observable effect.
+   Do not reburn it unchanged. Candidate `2D4D` now adds a visible heartbeat,
+   masked sense readings for all six drive masks, and the decoded index
+   before any link access. It preserves the working LCD startup sequence;
+   the cause of the hardware keypad failure remains unresolved.
    The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
-   confirming that stock `LcdInit` returns and that port `46h=FFh` is the light
-   endpoint. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
+   confirming that stock `LcdInit` returns, but not isolating contrast
+   polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
    the live value as `CONTRASTC0`, continuously polls NO/YES through the stock
    shadow-preserving adjusters, and waits for ENTER before touching the IR
    link. Set a readable contrast first, then start `LISTEN_ONLY`, press ENTER,
@@ -4319,7 +4324,7 @@ run and is also retired; see the later hardware-result entry.
   `IRQ_STATUS`/`IRQ_MASK`/`SOUND` quiesce sequence before the unchanged stock
   LCD call. After the owner confirmed a verified burn and a uniformly black
   panel, the candidate was made self-calibrating: it starts port `46h` at
-  `00h`, then physical YES/NO tail-call the stock darker/lighter routines once
+  `00h`, then physical YES/NO tail-call the stock byte-adjustment routines once
   per 64-record frame. The same adjustment remains live in the `DEAD` loop and
   pin-walk mode, so calibration does not depend on a successful link opening.
   The guarded candidate is 32768 bytes, differs from stock in 713 bytes, has
@@ -4378,8 +4383,9 @@ run and is also retired; see the later hardware-result entry.
   for this protocol run.
 * **`1E3E` hardware result (owner-supplied):** both beeps were heard and the
   LCD became uniformly clear rather than black. This confirms that stock
-  `LcdInit` returned and establishes the physical contrast polarity on this
-  unit: port `46h=00h` is black/dark and port `46h=FFh` is clear/light. NO/YES
+  `LcdInit` returned. **Correction 2026-09-10:** this does not establish
+  physical contrast polarity: value, ordering and delay changed together,
+  and the earlier run did not prove its final contrast write was reached. NO/YES
   produced no visible change. That does not re-open the confirmed matrix
   formula: YES began saturated at `FFh`, while both keys were polled only after
   link startup and contrast dispatch occurred only at 64-record boundaries or
@@ -4393,8 +4399,8 @@ run and is also retired; see the later hardware-result entry.
   `g_bLcdContrast` shadow, starting both it and port `46h` at `C0h`. After the
   same pre-init contrast write, approximately 476 ms settle, and complete
   stock `LcdInit`, it repeatedly displays `CONTRASTxx`. NO decrements the
-  shadow and port value by two toward dark; YES increments both by two toward
-  light. Physical ENTER is byte-verified as matrix index 22 from
+  shadow and port value by two; YES increments both by two.
+  Physical ENTER is byte-verified as matrix index 22 from
   `tbl_kbd_map[22]=0Dh`; ENTER alone leaves setup and begins link initialization.
   The image differs from stock in 715 bytes and has SHA-256
   `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.
@@ -4417,3 +4423,60 @@ run and is also retired; see the later hardware-result entry.
   owner-observed physical polarity. `tbl_kbd_map[22]=0Dh` carries the ENTER
   mapping in place. The owner results and replacement diagnostic sequences are
   bookmarked at the stock LCD contrast write.
+
+### 2026-09-10 — readable exerciser screen, keypad still unresolved
+
+* **Owner-supplied result:** `27E8` displays `CONTRASTC0`; keys have no
+  observable effect. Initial LCD text output works. Repeated setup-loop
+  execution and hardware keypad scanning are not established by static text.
+* **Discarded explanation:** waiting for IR progress cannot explain this
+  result, because this setup screen precedes link initialization. The old
+  link-dependent interaction design was a defect, but removing it did not
+  resolve the observed keypad failure.
+* **Validation limit:** synthetic sense inputs test the decoding algorithm,
+  not the actual keypad's response. Local ROM inspection and Davison's
+  monitor agree on OUT `02h`, two PUSH/POP pairs, IN `00h`, AND `3Fh`.
+  No byte-level cause of the current failure has been established.
+* **Next diagnostic, not yet implemented:** preserve LCD initialization;
+  show a changing heartbeat, all six raw sense readings with their drive
+  masks, and the decoded key index before any link operations. This separates
+  a stalled loop, unexpected sense inputs, and decoding/dispatch failure.
+* **Correction pending in Ghidra:** the previous session's physical-polarity
+  claim in the contrast RAM plate and port repeatable was overconfident;
+  contrast, ordering and delay were confounded. README and this log are
+  corrected. MCP currently exposes only `vingcard2100`, not `micronic1000`;
+  no unrelated program was modified. Reopen Micronic before correcting and
+  saving those annotations. No replacement ROM or proven keypad fix this turn.
+
+### 2026-09-10 — rebuild with visible keypad diagnostics (`2D4D`)
+
+* **Implemented:** preserve the working LCD startup and shadow-based contrast
+  adjustment. Replace static `CONTRASTC0` with `C` and hex fields for contrast,
+  decoded key, incrementing heartbeat and six masked sense readings. The raw
+  display is a separate complete scan in drive-mask order
+  `01h,02h,04h,08h,10h,20h`. This fixes diagnostic observability, not a proven
+  physical keypad cause. The failure's cause remains OPEN.
+* **Compaction:** derive the drive index from the scan counter (`6-B`), fold
+  the constant wire-ID mask at assembly time, and share the RX final control
+  write with TX via one extra JR after the arm delay. No new patch regions;
+  original LCD initialization, command timing and settling loops retained.
+  Timing prose now uses the owner-stated 3.6864 MHz clock.
+* **Build:** 32768 bytes, sum16 `2D4D`, 717 bytes differ from stock; SHA-256
+  `dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242`.
+  Seven unused bytes remain across the six guarded regions. ROM01 untouched.
+* **Validation:** 56 dedicated tests pass, including all 36 single-key
+  coordinates; full diagnostic rows for NO/YES/no-key then ENTER; contrast
+  shadow/output consistency, stack balance and no pre-ENTER IR writes;
+  cold boot with RAM filled `00h`, `FFh`, and `A5h`. Synthetic port responses
+  cannot establish the physical sense-byte values. No hardware success claim.
+  Full analysis suite: 145 passed, 33 skipped, 71 subtests passed;
+  strict documentation build and whitespace checks passed.
+* **Ghidra correction completed:** connected to `micronic1000`, opened
+  `/micron1.bin` without analysis, freshly read contrast helper bytes and
+  corrected the shadow plate and port repeatable after same-provider review
+  (cross-provider reviewer unavailable in this environment). Removed the
+  unisolated physical-polarity claim; preserved verified shadow mechanics.
+  Program saved. This resolves the preceding entry's pending correction.
+* **Next hardware observation:** whether the heartbeat changes, the decoded
+  key value, and the six sense bytes at rest/with NO or YES held. ENTER still
+  starts IR; Arduino remains unnecessary for the setup diagnosis.
