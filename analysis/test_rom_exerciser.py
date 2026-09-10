@@ -55,9 +55,9 @@ def test_burn_image_has_a_locked_fingerprint():
 
     assert len(image) == 0x8000
     assert sum(a != b for a, b in zip(image, stock)) == 717
-    assert sum(image) & 0xFFFF == 0x2D4D
+    assert sum(image) & 0xFFFF == 0x2D31
     assert hashlib.sha256(image).hexdigest() == (
-        "dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242"
+        "7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6"
     )
 
 
@@ -68,11 +68,11 @@ def test_lcd_powerup_delegates_to_the_complete_stock_initializer():
 
     # CTL_LATCH_2A=20h, the exact reset delay loop, and the normal cold-start
     # IRQ_STATUS acknowledge / IRQ_MASK=FFh / SOUND=00h sequence, LCD contrast
-    # shadow=C0h, then a tail call to the pre-init wrapper.
+    # shadow=A4h, then a tail call to the pre-init wrapper.
     assert code[start:end] == (
         bytes.fromhex(
             "3e20 328bf7 d32a 01a00f 00 0b 78 b1 20fa "
-            "db05 3eff d304 3e00 d32b 3ec0 3205fc c3"
+            "db05 3eff d304 3e00 d32b 3ea4 3205fc c3"
         )
         + sym["lcd_preinit"].to_bytes(2, "little")
     )
@@ -358,8 +358,8 @@ def test_cold_boot_reaches_live_setup_with_dirty_battery_ram(ram_fill):
     assert machine.pc == sym["pm_delay"]
     assert mem[sym["V_COUNT"]] == (ram_fill + 1) & 0xFF
     assert mem[sym["V_KEY"]] == 0xFF
-    assert mem[0xFC05] == 0xC0
-    assert [value for port, value in outputs if port == 0x46] == [0xC0, 0xC0]
+    assert mem[0xFC05] == 0xA4
+    assert [value for port, value in outputs if port == 0x46] == [0xA4, 0xA4]
     assert [value for port, value in outputs if port == 0x02] == [1, 2, 4, 8, 16, 32] * 2
     assert not any(0x4A <= port <= 0x4F for port, _ in outputs)
     assert mem[0xF5F6:0xF5F8] == bytes.fromhex("ed45")

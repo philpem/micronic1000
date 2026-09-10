@@ -247,7 +247,7 @@ LCD_CONTRAST_SHADOW equ 0xFC05       ; value written to port 46h by LcdInit
 ; the MAME driver (micronic.cpp) agrees and identifies port-2Ch bit 4 as the
 ; backlight, which remains LIKELY rather than byte-confirmed here.
 ; ---------------------------------------------------------------------------
-CONTRAST        equ 0xC0            ; owner observed readable text in 27E8
+CONTRAST        equ 0xA4            ; owner-preferred level in controlled 2D4D test
 
 KbdStrobe       equ 0x1A44          ; A = column mask -> A = row bits, 3Fh
 KbdBitIndex     equ 0x1A52          ; A one-hot -> A bit index (0..5)

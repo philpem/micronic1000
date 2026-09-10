@@ -155,12 +155,12 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Diagnose the keypad before another protocol burn.** The owner reports
-   that `27E8` displays `CONTRASTC0`, but keys still have no observable effect.
-   Do not reburn it unchanged. Candidate `2D4D` now adds a visible heartbeat,
-   masked sense readings for all six drive masks, and the decoded index
-   before any link access. It preserves the working LCD startup sequence;
-   the cause of the hardware keypad failure remains unresolved.
+1. **Validate ENTER and start the IR exerciser capture.** The owner has now
+   validated `2D4D` heartbeat, idle, NO/YES and release behaviour on hardware.
+   Decreasing the contrast byte darkens the screen; `A4h` is preferred.
+   `2D31` changes only the initial contrast to `A4h`; no reburn is needed:
+   keep `2D4D` and adjust manually. The earlier `27E8` failure is unexplained,
+   but it no longer blocks tests on the working diagnostic image.
    The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
    confirming that stock `LcdInit` returns, but not isolating contrast
    polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
@@ -4480,3 +4480,22 @@ run and is also retired; see the later hardware-result entry.
 * **Next hardware observation:** whether the heartbeat changes, the decoded
   key value, and the six sense bytes at rest/with NO or YES held. ENTER still
   starts IR; Arduino remains unnecessary for the setup diagnosis.
+
+### 2026-09-10 — owner validates keypad and selects contrast default
+
+* **CONFIRMED (owner-controlled hardware test, `2D4D`):** heartbeat changes;
+  idle key `FFh` and all six sense bytes zero; NO gives key `11h` and the
+  drive-`20h` sense byte `04h`, while contrast decreases; YES gives key
+  `17h` and that sense byte `08h`, while contrast increases. Releasing either
+  key restores idle. Decreasing the contrast byte darkens the screen in the
+  tested range. Owner prefers `A4h`; no endpoint appearance claim is made.
+* **Implemented:** change only initial contrast `C0h` to `A4h`. Rebuilt
+  32768-byte image sum16 `2D31`, SHA-256
+  `7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6`.
+  Existing `2D4D` can be adjusted manually; avoid a burn for this change alone.
+* **Ghidra:** same-provider reviewer checked the scoped owner-observation
+  claim (cross-provider unavailable). Contrast shadow plate now records the
+  controlled result and preference, retaining the prior-failure uncertainty;
+  mechanics-only port repeatable unchanged. Program saved.
+* **Next:** with Arduino `LISTEN_ONLY` ready, press ENTER and capture the
+  transition into the link test. Physical ENTER/IR success is not yet reported.

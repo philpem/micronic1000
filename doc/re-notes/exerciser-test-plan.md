@@ -9,10 +9,12 @@
 > was not isolated from concurrent startup timing and ordering changes.
 > The owner reports that `27E8` displays `CONTRASTC0`, but keys remain
 > ineffective. Do not reburn it unchanged; keypad diagnosis precedes IR tests.
-> Current replacement: sum16 `2D4D`, SHA-256
-> `dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242`.
-> It preserves LCD startup and adds keypad diagnostics, not a proven hardware
-> keypad fix. The row is `C` followed by two hex digits each for contrast,
+> Current replacement: sum16 `2D31`, SHA-256
+> `7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6`.
+> Owner validated `2D4D` heartbeat, idle readings, NO/YES and key release.
+> Decreasing the contrast byte darkens the screen; `A4h` is preferred.
+> `2D31` changes only the initial contrast to `A4h`; no reburn is needed to
+> continue with `2D4D` adjusted manually. The row is `C` followed by hex pairs for contrast,
 > decoded key, heartbeat and six masked sense readings (drive masks
 > `01h,02h,04h,08h,10h,20h`). NO/YES adjust contrast; ENTER starts the link.
 > If keys fail, record the row at rest and with keys held and whether the

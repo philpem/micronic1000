@@ -10,21 +10,28 @@
 > displays readable `CONTRASTC0`, but keys still have no observable effect.
 > Do not reburn unchanged `27E8` to investigate the keypad.
 
-## Current diagnostic build: `2D4D` (2026-09-10)
+## Current diagnostic build: `2D31` (2026-09-10)
 
-The working LCD startup sequence is unchanged. This build fixes the setup
-screen's lack of independent liveness and sense-input reporting; it is **not
-a proven fix for the hardware keypad failure**. No Arduino is needed for setup.
+**Hardware validation:** the owner tested `2D4D`: heartbeat advances; idle
+key is `FFh` with all sense readings zero; NO gives key `11h`, last sense
+byte `04h` and decreasing contrast; YES gives key `17h`, last sense byte
+`08h` and increasing contrast. Both return to idle on release. Decreasing
+the contrast byte darkens the screen in the tested range; `A4h` is the
+owner's preferred default. The earlier `27E8` failure's cause is not explained.
+
+`2D31` changes only the initial contrast byte from `C0h` to `A4h`; working
+LCD startup, diagnostics and key handling are unchanged. **No reburn is needed
+to continue testing `2D4D`: adjust it to `A4h` with NO.** No Arduino is needed for setup.
 The first row now contains 19 characters, grouped here only for explanation:
 
 ```text
-C C0 FF 01 00 00 00 00 00 00
+C A4 FF 01 00 00 00 00 00 00
   CC KK HH S1 S2 S4 S8 SA SB
 ```
 
 | Field | Meaning |
 |---|---|
-| `CC` | Contrast shadow; starts at `C0h` |
+| `CC` | Contrast shadow; starts at `A4h` |
 | `KK` | Decoded matrix index: NO=`11h`, YES=`17h`, ENTER=`16h`, none=`FFh` |
 | `HH` | Counter increments each screen; initial battery-RAM value is arbitrary |
 | Six `S` bytes | Port `00h` sense values masked with `3Fh`, for port `02h` drive masks `01h,02h,04h,08h,10h,20h` respectively |
@@ -75,10 +82,10 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `2D4D` |
+| `micron1_exerciser.bin` | `2D31` |
 
 The replacement exerciser SHA-256 is
-`dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242`.
+`7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6`.
 The retired `1E3E` image SHA-256 was
 `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
 The retired `2692` image SHA-256 was
@@ -92,7 +99,7 @@ Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
 needs no reference to this repo. The `1225`, `2692` and `1E3E` parts should be
 retained only for read-back diagnosis and must not be installed again. Label
-the replacement `2D4D` and verify its full SHA-256 before installation.
+the replacement `2D31` and verify its full SHA-256 before installation.
 
 ## Build
 
@@ -200,15 +207,17 @@ uniformly driven-black panel. The historical source is available from the
 `1E3E` run reached its post-`LcdInit` beep and left the LCD uniformly clear,
 but contrast value, write ordering and settling delay changed together.
 The earlier black screen does not establish that its final contrast write
-was reached. A controlled sweep is still needed. The replacement starts at
-`C0h` and remains in the diagnostic keypad loop before touching the IR link.
+was reached. The later controlled `2D4D` test now establishes that decreasing
+values darken the screen in the tested range; endpoint behaviour is not
+established. The replacement starts at `A4h` and remains in the diagnostic
+keypad loop before touching the IR link.
 Physical **NO** is intended to decrement `g_bLcdContrast` by two toward `00h`;
 physical **YES** is intended to increment it by two toward `FFh`.
 The stock adjusters update both the shadow and port `46h`, and the
 displayed hexadecimal value is redrawn after every poll. Press **ENTER** when
 the text is comfortably readable; only then does the IR test begin.
 
-**Owner result, 2026-09-10:** `CONTRASTC0` is visible, but keys have no
+**Historical `27E8` owner result, 2026-09-10:** `CONTRASTC0` is visible, but keys have no
 observable effect. This proves initial text output, not repeated loop
 execution or working hardware scanning. Synthetic keypad tests establish
 software behaviour for supplied sense bytes, not actual sense bytes on the
@@ -421,10 +430,10 @@ The opening is:
   0  PC=7CE7  2A = 20     stock CTL_LATCH_2A setup, before the LCD
   1  PC=7CF6  04 = FF     stock cold-start IRQ_MASK: all sources masked
   2  PC=7CFA  2B = 00     stock cold-start SOUND: beeper silent
-  3  preinit  46 = C0     contrast before any HD61830 command
+  3  preinit  46 = A4     contrast before any HD61830 command
 4-21 PC=1Fxx  23/03       exact stock HD61830 register sequence
  ... PC=1Fxx  23/03       stock 160-cell clear and cursor setup
-990  PC=1FDB  46 = C0     stock LcdInit repeats the contrast write
+990  PC=1FDB  46 = A4     stock LcdInit repeats the contrast write
  ... setup   23/03       home; contrast, key, heartbeat and six sense bytes
  ... PC=1A49 02 = ..     keypad decode scan plus complete diagnostic scan
 ```
