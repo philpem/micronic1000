@@ -1,5 +1,8 @@
 ; ---------------------------------------------------------------------------
 ; Micronic 1000 link-controller exerciser
+; CURRENT BUILD: startup diagnostic, wire version 0Eh. Only the top V24
+; baseline is exercised. Historical phase/sweep discussion below describes
+; version 0Dh, not this build. Every ready timeout is terminal and visible.
 ;
 ; Replaces the cold-boot entry so the machine becomes a dedicated test rig:
 ; no firmware, no menus, nothing else touching 4Ah-4Fh.  It drives the link
@@ -175,7 +178,7 @@ LinkWaitReady   equ 0x34F8          ; polls TXRDY, DE=02DAh; returns Z on timeou
 ; observed the transmission at the top V24 window.  The run still alternates
 ; both states.
 LINK_ID         equ 0x43            ; top V24 state first; alternates with 63h
-VERSION         equ 0x0D            ; bumped whenever the wire format changes
+VERSION         equ 0x0E            ; baseline-only startup diagnostic, same fields
 STACK           equ 0xC900          ; upper TPA, documented free in the RAM map
 
 ; Loop state.  The stack starts 0x113 bytes above the last state byte.  A
@@ -184,9 +187,9 @@ STACK           equ 0xC900          ; upper TPA, documented free in the RAM map
 ; without relying on so narrow a margin.
 V_OR            equ 0xC7E0          ; sticky OR of LINK_STATUS, this window
 V_AND           equ 0xC7E1          ; sticky AND of LINK_STATUS, this window
-V_COUNT         equ 0xC7E2          ; record counter; top 2 bits are the phase
-V_SWEEP         equ 0xC7E3          ; phase 3's value, +1 each cycle
-V_WD_N          equ 0xC7E4          ; rolling count of watchdog trips
+V_COUNT         equ 0xC7E2          ; record counter; no phase meaning in version 0Eh
+V_SWEEP         equ 0xC7E3          ; reserved former sweep state
+V_WD_N          equ 0xC7E4          ; reserved; zero in version 0Eh records
 V_IRQN          equ 0xC7E5          ; interrupt entries seen, rolling. Must stay
                                     ; directly below V_ISTAT: the ISR walks
                                     ; from V_ISTAT to V_IRQN with DEC HL
@@ -198,6 +201,9 @@ V_ID            equ 0xC7EA          ; current wire ID; wire-ID bit 5 alternates
 V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
 V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
 V_KEY           equ 0xC7ED          ; key index this record, or FFh
+V_STAGE         equ 0xC7EE          ; startup stage, retained on terminal error
+V_TX_COUNT      equ 0xC7EF          ; completed LINK_TXD writes, modulo 256
+V_FAIL          equ 0xC7F0          ; LINK_STATUS sampled on entry to error path
 KEY_NO          equ 0x11            ; matrix index 17; keycode 01h in table
 KEY_ENTER       equ 0x16            ; matrix index 22; keycode 0Dh in table
 KEY_YES         equ 0x17            ; matrix index 23; keycode 06h in table
@@ -321,16 +327,8 @@ isr_end:
 
                 org NMI_ORG
 
-; Reached only when the controller will not open a frame at all.  LcdInit left
-; the cursor at cell zero and no intervening path writes the LCD, so DEAD can
-; be printed without another home command.  YES/NO contrast adjustment stays
-; live in the loop even though no link frame can be sent.
-dead:           ld a,0xDE
-                call lcd_hex
-                ld a,0xAD
-                call lcd_hex
-dead_loop:      call dead_adjust
-                jr dead_loop
+; Both initial-open failure and a later bounded ready timeout end here.
+dead:           jp failure
 
 ; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  Plant a
 ; RETN there so a stray NMI returns safely and restores IFF1 from IFF2.
@@ -441,13 +439,9 @@ accreset:       xor a
                 ld (V_AND),a
                 ret
 
-; Poll until TXRDY (bit 7).  Blocks rather than timing out the way
-; LinkWaitReady does, so records never fragment and byte alignment on the wire
-; is exact.  The watchdog is what makes the CTRL sweep safe: a value that
-; stops the controller accepting bytes would otherwise wedge the run, so after
-; ~9 ms of no TXRDY the baseline goes back and the wait restarts.  A silent
-; wire therefore means the controller never asserts TXRDY even at the
-; baseline, which is a real result rather than a hang.
+; Bound every LINK_STATUS bit-7 wait to WD_SAMPLES samples. A timeout ends
+; the experiment with an LCD error, rather than restarting forever before
+; the first record is visible. No missing-ready data byte is transmitted.
 waitready:      ld a,WD_SAMPLES
                 ld (V_WD),a
 wr_loop:        call sample
@@ -456,27 +450,20 @@ wr_loop:        call sample
                 ld hl,V_WD
                 dec (hl)
                 jr nz,wr_loop
-                ld hl,V_WD_N                ; mark the trip in the record
-                inc (hl)
-                ld a,(V_BASE)               ; restore the hardware, but NOT
-                ld (CTRL_SHADOW),a          ; V_CTRL: the record must still
-                out (LINK_CTRL),a           ; name the value that stalled
-                jr waitready
+                jp dead
 
-; A stall needs no separate signal now.  putbyte blocks, so the record loop
-; stops and the LCD stops with it -- and a frozen display beside a counting
-; one is unmistakable.  WD in the last record shown names how many trips it
-; took to get there.
+; The error reporter retains the stage and counts completed data writes.
 
 ; A = byte to put on the wire.
 putbyte:        ld c,a
                 call waitready
                 ld a,c
                 out (LINK_TXD),a
+                ld hl,V_TX_COUNT
+                inc (hl)
                 ret
 
-; An HDLC flag: what LinkPresent writes, but blocking and with the
-; accumulators still running.  Also flushes the stuffer pipeline.
+; An HDLC flag: same command as LinkPresent, with a bounded ready wait.
 putflag:        call waitready
                 ld a,0x81
                 ld (CMD_SHADOW),a
@@ -653,7 +640,7 @@ start:          di
                 ld (CTRL_SHADOW),a
                 ld (PORT2C_SHADOW),a
                 ld hl,V_SWEEP              ; clear sweep, WD count and the
-                ld b,0x05                  ; three contiguous IRQ fields
+                ld b,0x0D                  ; through stage and TX count
 init_clear:     ld (hl),a
                 inc hl
                 djnz init_clear
@@ -665,6 +652,8 @@ init_clear:     ld (hl),a
                 ; at ROM00:34B1, which zeroes the port latch and would undo
                 ; the selection.  It also calls 34D2, clearing LINK_CTRL bits
                 ; 6 and 7 -- the state LinkBlockTx transmits in.
+                ld a,0x01
+                call progress
                 call LinkProbe
                 ld (V_PSTAT),a              ; it returns LINK_STATUS (34BA);
                                             ; the controller's state straight
@@ -672,7 +661,9 @@ init_clear:     ld (hl),a
                                             ; reference for every later sample
 
                 ; --- select the port exactly as LinkBlockTx does at 3277
-                ld a,LINK_ID & 0x20
+                ld a,0x02
+                call progress
+                xor a                       ; Z set selects top V24; A alone does not
                 call LinkPortSelect
 
                 ; --- LinkBlockTx opening: LINK_CTRL bit 0 low, then high;
@@ -696,14 +687,17 @@ settle:         djnz settle
                 ; itself the result: it would mean TXRDY never asserts.
                 ; LinkPresent uses the firmware's own 9.7 ms timeout, which
                 ; a slow-starting controller could miss once.  Retry before
-                ; concluding anything; after this, putbyte's watchdog covers
-                ; the wait, so there is no second timeout to fail.
+                ; concluding anything. Later reporting waits also fail visibly.
+                ld a,0x03
+                call progress
                 ld b,0x10
 open_try:       call LinkPresent            ; preserves BC
                 jr nz,opened
                 djnz open_try
                 jp dead
 opened:         call accreset
+                ld a,0x04
+                call progress
 
                 ; --- preamble.  Identifies the image and its wire format, and
                 ; gives the receiver five known bytes to confirm alignment on
@@ -719,6 +713,8 @@ opened:         call accreset
                 in a,(LINK_STAT)
                 call putbyte
 
+                ld a,0x05
+                call progress
                 xor a
                 ld (V_COUNT),a
 
@@ -779,77 +775,48 @@ stream:         ld a,(V_COUNT)
 ; ---------------------------------------------------------------------------
 newframe:       call contrast_keys          ; YES increments; NO decrements
                 call gap
-                call putflag
+                jp putflag                  ; startup diagnostic: baseline only
 
-                ld a,(V_BASE)               ; every phase starts from the
-                call ctrl_set               ; baseline, so phases cannot
-                                            ; accumulate on one another
-                ld a,(V_COUNT)
-                and 0xC0                    ; the phase
-                jr z,port_swap              ; 0: baseline, and swap ports
-                cp 0x40
-                jr z,tx_arm                 ; 1: TX handshake armed
-                cp 0x80
-                jr z,rx_arm                 ; 2: RX armed
-                                            ; 3: falls into the sweep
-
-; Phase 3.  One CTRL value per frame, advancing each cycle so all 256 are
-; covered.  Port alternation means each port sees only odd or even raw counter
-; values.  RLCA moves V_SWEEP bit 0 into LINK_CTRL bit 1 before LINK_CTRL
-; bit 1 is forced to the selected port; the other seven bits therefore cover
-; all 128 effective states on each port rather than only 64.  Sweeping
-; LINK_CTRL bit 1 itself would switch ports underneath the measurement, which
-; is a confound rather than an experiment.
-sweep:          ld hl,V_SWEEP
-                inc (hl)
-                ld a,(V_BASE)
-                and 0x02
-                ld c,a
-                ld a,(hl)
-                rlca
-                and 0xFD
-                or c
-                jp ctrl_set
-
-; Alternate the port on every counter wrap, so one burn covers both.  The
-; owner-observed V24 run establishes that wire-ID bit 5 clear selects the top
-; window while setting LINK_CTRL bit 1 and port-2Ch bit 5.  The complementary
-; wire-ID-bit-5-set state remains LIKELY the back window by elimination.
-port_swap:      ld hl,V_ID
-                ld a,(hl)
-                and 0x20
-                call LinkPortSelect         ; select the id we hold now, so
-                ld a,(hl)                   ; the first cycle is LINK_ID
-                xor 0x20                    ; ... then flip for the next
-                ld (hl),a
-                ld a,(CTRL_SHADOW)          ; port swap moved LINK_CTRL bit 1
-                ld (V_BASE),a
+; A = stage number. Preserve BC so call sites can retain loop counters.
+; Clear the row after the marker, removing the previous setup/error text.
+progress:       ld (V_STAGE),a
+                push bc
+                push af
+                call lcd_home
+                pop af
+                call lcd_hex
+                ld b,0x12
+                call blank_tail
+                pop bc
                 ret
 
-; ROM00:32CC-32EE, byte for byte.  This is what makes LINK_STATUS bit 6 worth
-; measuring: the firmware applies this arm, then allows 9.92 ms for that bit
-; to be clear.  Whether the arm sets the bit is deliberately not assumed.
-tx_arm:         ld a,0x20
-                call ctrl_or
-                ld a,0x10
-                call ctrl_or
-                ld b,ARM_DELAY
-tx_wait:        djnz tx_wait
-tx_disarm:      ld a,0xDF
-                jp ctrl_and
+blank_tail:     ld a,' '
+bt_loop:        call lcd_putc
+                djnz bt_loop
+                ret
 
-; ROM00:3378-33A6 control-write sequence, dummy LINK_RXD read included.
-; Share the final mask/write tail with TX (one extra JR after the wait).
-rx_arm:         ld a,0xFE
-                call ctrl_and
-                ld a,0x20
-                call ctrl_or
-                in a,(LINK_RXD)
-                ld a,0x10
-                call ctrl_or
-                ld b,ARM_DELAY
-rx_wait:        djnz rx_wait
-                jr tx_disarm
+; Terminal timeout: EE, stage, fresh LINK_STATUS, CTRL shadow, TX count.
+; Do not send another link command or data byte. Keep NO/YES polling live.
+; The status is sampled on entry, not claimed to be the last polling sample.
+failure:        di
+                in a,(LINK_STAT)
+                ld (V_FAIL),a
+                ld sp,STACK                 ; abandon nested transmit calls
+                call lcd_home
+                ld a,0xEE
+                call lcd_hex
+                ld a,(V_STAGE)
+                call lcd_hex
+                ld a,(V_FAIL)
+                call lcd_hex
+                ld a,(CTRL_SHADOW)
+                call lcd_hex
+                ld a,(V_TX_COUNT)
+                call lcd_hex
+                ld b,0x0A
+                call blank_tail
+failure_loop:   call dead_adjust
+                jr failure_loop
 
 ; No decoding or early exit: show all six masked KBD_SENSE readings.
 ; In: B=6, D=01h. Out: six hex bytes; clobbers AF, B, D.

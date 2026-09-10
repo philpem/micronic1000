@@ -155,12 +155,14 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Validate ENTER and start the IR exerciser capture.** The owner has now
+1. **Run startup diagnostic `2726` to locate the post-ENTER stall.** The owner has now
    validated `2D4D` heartbeat, idle, NO/YES and release behaviour on hardware.
    Decreasing the contrast byte darkens the screen; `A4h` is preferred.
-   `2D31` changes only the initial contrast to `A4h`; no reburn is needed:
-   keep `2D4D` and adjust manually. The earlier `27E8` failure is unexplained,
-   but it no longer blocks tests on the working diagnostic image.
+   After ENTER the `2D4D` screen freezes, NO/YES stop responding, no error
+   marker or Arduino output appears. Candidate `2726` adds stages and bounded
+   ready waits with visible error status, keeping validated setup and `A4h`.
+   Capture its full error row or last stage; this run is fixed top V24,
+   baseline only, wire version `0Eh`. Earlier sweep instructions are deferred.
    The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
    confirming that stock `LcdInit` returns, but not isolating contrast
    polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
@@ -4499,3 +4501,62 @@ run and is also retired; see the later hardware-result entry.
   mechanics-only port repeatable unchanged. Program saved.
 * **Next:** with Arduino `LISTEN_ONLY` ready, press ENTER and capture the
   transition into the link test. Physical ENTER/IR success is not yet reported.
+
+### 2026-09-10 — ENTER recognised, no Arduino output reported
+
+* **Owner result:** after ENTER, no Arduino output; LCD transcribed as
+  `CA41612000000000800`. Its leading fields are contrast `A4h`, key `16h`
+  (ENTER), heartbeat `12h`. The transcription is 18 characters, whereas the
+  complete diagnostic row is 19; do not infer every sense field from it.
+* **Open observation:** does the heartbeat remain `12h` after releasing
+  ENTER, and do NO/YES still change the contrast? Inspect the entire LCD for
+  `DEAD`, including the next row: the current error printer does not home the
+  cursor after setup, so its marker starts after the diagnostic text.
+* **SUSPECTED:** if the row freezes without an error marker, execution may
+  be waiting for LINK_STATUS bit 7 in the first reporting operations.
+  Stock LinkPresent at ROM00:34EC-34F7 has a bounded ready wait and then
+  writes LINK_CMD=81h. The exerciser's subsequent putbyte/putflag waits
+  retry indefinitely; no new screen is rendered before the preamble.
+  A PC/status observation or explicit startup-stage indicator would
+  distinguish this from other failures. No Arduino output alone does not
+  prove absence of physical IR activity or identify the controller state.
+
+### 2026-09-10 — post-ENTER startup diagnostic ROM (`2726`)
+
+* **Owner follow-up:** heartbeat remains `12h` after ENTER, NO/YES no longer
+  affect contrast, and no `DEAD` marker appears anywhere. The setup loop has
+  stopped updating; a reporting ready-wait stall remains SUSPECTED, not proven.
+* **Implemented:** retain the validated setup, raw keypad display and LCD
+  startup; show stages 01 probe, 02 select/baseline, 03 initial frame open,
+  04 preamble, 05 record stream. Replace indefinite reporting-ready retries
+  with a terminal error after 255 status samples. Initial open retains 16
+  stock bounded attempts. Error homes and replaces all 20 first-row cells
+  with `EESSRRCCNN` and spaces: stage, fresh error-entry status, control
+  shadow, completed data-write count modulo 256. NO/YES stay live; reset to
+  restart. A transmitted-byte count means OUTs completed, not IR delivery.
+* **Scoped experiment:** suspend port alternation, TX/RX arm phases and
+  control sweeps to fit these diagnostics in existing vetted filler. Keep
+  the top V24 baseline and original 11-byte record layout. Version `0Eh`
+  identifies the changed experiment; decoder suppresses phase interpretation
+  for it and for captures without a known phase-bearing preamble.
+* **Flag bug fixed:** the prior constant-folded `LD A,LINK_ID & 20h` did not
+  establish the caller-Z contract of LinkPortSelect. Progress rendering
+  exposed this in tests (control `01h` instead of `03h`). Fresh bytes at
+  ROM00:3454-3489 and caller ROM00:3278-327A confirm the flag dependence,
+  already correctly described by the Ghidra plate. Use XOR A for fixed-top
+  Z-set selection. Same-provider review approved this narrow correction.
+  Discard the earlier claim that constant-folding was generally equivalent;
+  do not infer that it caused the older hardware freeze.
+* **Build:** 32768 bytes, sum16 `2726`, 698 changed bytes versus stock,
+  SHA-256 `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+  Original six filler regions and boot jump only; 25 filler bytes remain.
+* **Validation:** 63 dedicated tests pass. Full CPU boot plus ENTER tests
+  cover never-ready, failure immediately after the first command, mid-preamble,
+  first record-frame flag and later record transmission, plus always-ready
+  streaming. Assert exact error rows, cleared suffixes, completed write counts,
+  stage progression, reset stack, live NO adjustment on error, top-port latch
+  outputs, and no data writes after failure. Existing keypad/LCD tests remain.
+  Physical handshake behaviour remains unverified by these synthetic inputs.
+  Full suite: 152 passed, 33 skipped, 71 subtests passed. Strict documentation
+  build passes; reviewed flag-contract and hardware-test bookmarks saved in
+  Ghidra. No new hardware-success claim is made for this candidate.

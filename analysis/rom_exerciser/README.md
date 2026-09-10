@@ -10,7 +10,65 @@
 > displays readable `CONTRASTC0`, but keys still have no observable effect.
 > Do not reburn unchanged `27E8` to investigate the keypad.
 
-## Current diagnostic build: `2D31` (2026-09-10)
+## Current startup diagnostic: `2726` (2026-09-10)
+
+**Burn this candidate for the frozen-after-ENTER investigation.** The validated
+LCD startup and full keypad status screen are retained, with default contrast
+`A4h`. Press ENTER once. The next screen shows a two-digit startup stage at
+the upper left, with the rest of the row blank:
+
+| Stage | Operation about to run |
+|---|---|
+| `01` | Stock controller probe/reset |
+| `02` | Select top V24 port and establish baseline control |
+| `03` | Open frame: up to 16 stock bounded ready waits |
+| `04` | Send the five-byte preamble |
+| `05` | Start baseline record streaming, including record-frame flags |
+
+Stages may pass too quickly to read. A timeout instead shows ten hex digits:
+
+```text
+EE SS RR CC NN
+```
+
+There are no spaces on the unit. `EE` marks a terminal error; `SS` is the
+stage; `RR` is the full port-`4Bh` (`LINK_STATUS`) byte sampled on error entry;
+`CC` is the port-`4Ah` (`LINK_CTRL`) software shadow; `NN` is completed
+port-`4Dh` data writes, modulo 256. `NN` excludes command/flag writes and
+does not establish physical delivery. For example, `EE04400300` means stage
+04 failed, error-entry status `40h`, control shadow `03h`, no data writes.
+`RR` is a fresh error-entry sample, not necessarily the final wait-loop sample.
+
+Every exerciser ready wait is bounded to 255 samples (roughly 9 ms, subject
+to interrupts); initial frame opening retains the 16 stock timeout attempts.
+On failure the ROM stops sending, homes and overwrites the full first row,
+and continues NO/YES contrast polling. Reset to restart; ENTER does not retry
+from the error screen. If only a stage number remains frozen instead, report
+that number too. Send the full error row and any Arduino output.
+
+**Scope:** this burn is baseline-only on top V24, with no port alternation or
+TX/RX control sweeps. Those experiments are suspended to make room for useful
+failure reporting. Wire version is now `0Eh`; record field layout is unchanged.
+The decoder recognises it and does not interpret record-counter bits as phases.
+
+**Flag fix:** `LinkPortSelect` consumes the caller's Z flag. The former
+constant-folded `LD A,0` failed to establish that contract. `XOR A` now sets
+Z explicitly for this fixed top-V24 baseline, after progress rendering. Tests
+verify port `2Ch=20h` and `LINK_CTRL=03h` after initialization. This defect
+does not establish the cause of the older hardware freeze.
+
+Build: 32768 bytes, sum16 `2726`, SHA-256
+`813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+698 bytes differ from stock; all edits remain inside the six guarded filler
+regions plus the boot-entry jump. ROM01 is untouched. The helper usage is now
+10 bytes in the NMI block, 176 in the low block and 355 in the high block;
+the other block sizes are unchanged. Twenty-five filler bytes remain.
+
+### Previous setup validation and historical sweep design
+
+The older build identifiers, memory-use table and phase/sweep instructions
+below are historical; the current build and experiment are specified above.
+The unchanged setup-screen field guide remains applicable.
 
 **Hardware validation:** the owner tested `2D4D`: heartbeat advances; idle
 key is `FFh` with all sense readings zero; NO gives key `11h`, last sense
@@ -82,10 +140,10 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `2D31` |
+| `micron1_exerciser.bin` | `2726` |
 
 The replacement exerciser SHA-256 is
-`7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6`.
+`813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
 The retired `1E3E` image SHA-256 was
 `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
 The retired `2692` image SHA-256 was
@@ -93,13 +151,13 @@ The retired `2692` image SHA-256 was
 The retired `1225` image SHA-256 was
 `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
 The dedicated regression test reconstructs the image and locks its
-fingerprint and 717-byte diff count.
+fingerprint and 698-byte diff count.
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
 needs no reference to this repo. The `1225`, `2692` and `1E3E` parts should be
 retained only for read-back diagnosis and must not be installed again. Label
-the replacement `2D31` and verify its full SHA-256 before installation.
+the replacement `2726` and verify its full SHA-256 before installation.
 
 ## Build
 
@@ -114,11 +172,11 @@ clobbering anything if the image is not the one it was written against:
 | Edit | |
 |---|---|
 | `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
-| `0069`-`007E` | `DEAD` display and the NMI guard, in a 23-byte run (1 left) |
+| `0069`-`0072` | failure jump and NMI guard, in a 23-byte run (13 left) |
 | `00A2`-`00FF` | keypad scan, pre-init delay and diagnostic screen, in a 94-byte run (0 left) |
-| `724C`-`7302` | link, LCD and keypad-arm helpers, in a 183-byte run (0 left) |
+| `724C`-`72FB` | link, LCD and keypad-arm helpers, in a 183-byte run (7 left) |
 | `7CE0`-`7D0F` | stock-reset/LCD and contrast helpers, in a 48-byte run (0 left) |
-| `7E96`-`7FF7` | the main body and raw sense display, in a 356-byte run (2 left) |
+| `7E96`-`7FF8` | main body, startup/error reporting and raw sense display, in a 356-byte run (1 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
 All six filler runs must be empty beforehand. Two other runs of zeros are
@@ -137,7 +195,7 @@ The six code regions are a single assembly — `ORG` pads forward and only the
 six real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**717 bytes differ from the original.** One chip: `ROM01` is untouched.
+**698 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -470,7 +528,7 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-7 bytes of filler remain across the six blocks.
+25 bytes of filler remain across the six blocks.
 
 ## Restoring
 

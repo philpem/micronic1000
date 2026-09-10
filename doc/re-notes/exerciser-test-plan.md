@@ -1,5 +1,24 @@
 # ROM exerciser — test plan
 
+## Current burn: startup diagnostic `2726`
+
+SHA-256: `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+The validated setup and `A4h` contrast are retained. After ENTER, stages
+`01` (probe), `02` (top-V24 select/baseline), `03` (frame open), `04`
+(preamble), `05` (baseline records) appear at the upper left.
+
+A ready timeout displays `EESSRRCCNN`: stage `SS`, fresh error-entry
+`LINK_STATUS` byte `RR`, `LINK_CTRL` shadow `CC`, completed data-write count
+`NN` modulo 256. The full first row is overwritten; NO/YES remain available.
+Report the complete error row, or the stage number if frozen without `EE`,
+plus Arduino output. Reset is required to restart the experiment.
+
+This diagnostic uses wire version `0Eh`, fixed top V24 and no control sweeps.
+Each reporting wait is bounded to 255 samples; initial frame opening uses
+16 stock bounded waits. Scope and detailed build instructions are in
+`analysis/rom_exerciser/README.md`. The remainder below describes historical
+version-`0Dh` experiments, not the current sweep coverage.
+
 > **Do not burn or reinstall sum16 `1225`, `2692` or `1E3E`.** The verified `1225`
 > run produced a constant buzz and uniformly black LCD. The verified `2692`
 > run produced only the expected brief power-up bleep but remained uniformly

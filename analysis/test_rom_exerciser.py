@@ -54,10 +54,10 @@ def test_burn_image_has_a_locked_fingerprint():
     image, _ = _burn_image()
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 717
-    assert sum(image) & 0xFFFF == 0x2D31
+    assert sum(a != b for a, b in zip(image, stock)) == 698
+    assert sum(image) & 0xFFFF == 0x2726
     assert hashlib.sha256(image).hexdigest() == (
-        "7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6"
+        "813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827"
     )
 
 
@@ -126,7 +126,7 @@ def test_preinit_settle_then_contrast_screen_wrap_stock_init():
 
     start = sym["start"] - 0x0047
     assert code[start:start + 13] == (
-        bytes.fromhex("f3 3100c9 cd7800")
+        bytes.fromhex("f3 3100c9 cd") + sym["nmi_safe"].to_bytes(2, "little")
         + bytes([0xCD]) + sym["power_lcd_init"].to_bytes(2, "little")
         + bytes([0xCD]) + sym["contrast_setup"].to_bytes(2, "little")
     )
@@ -370,15 +370,127 @@ def test_stack_has_interrupt_headroom_above_state():
     assert sym["STACK"] - sym["V_KEY"] >= 0x100
 
 
-def test_rotated_sweep_covers_128_states_on_each_port():
-    seen = {0: set(), 2: set()}
-    for counter in range(1, 257):
-        raw = counter & 0xFF
-        rotated = ((raw << 1) | (raw >> 7)) & 0xFF  # Z80 RLCA
-        port_bit = 0 if counter & 1 else 2
-        seen[port_bit].add((rotated & 0xFD) | port_bit)
+def test_startup_diagnostic_does_not_run_the_old_sweep():
+    _, sym = _assembled()
+    assert sym["VERSION"] == 0x0E
+    assert sym["LINK_ID"] == 0x43  # XOR A at selection is fixed to this state
+    assert not {"sweep", "tx_arm", "rx_arm", "port_swap"} & sym.keys()
 
-    assert len(seen[0]) == 128
-    assert len(seen[2]) == 128
-    assert all(value & 2 == 0 for value in seen[0])
-    assert all(value & 2 == 2 for value in seen[2])
+
+@pytest.mark.skipif(z80 is None, reason="needs the z80 module")
+@pytest.mark.parametrize("stop_after,status,stage", [
+    (-1, 0x40, 3),  # never ready, including the initial open
+    (0, 0x40, 4),   # command accepted; first preamble byte cannot be sent
+    (2, 0x01, 4),   # two preamble bytes accepted, then stall
+    (5, 0x00, 5),   # complete preamble; first record-frame flag cannot be sent
+    (16, 0x00, 5),  # complete first record; fail in the next record's emit
+    (None, 0x80, 5),  # always ready: complete records at the baseline
+])
+def test_boot_enter_and_link_timeout_paths(stop_after, status, stage):
+    image, sym = _burn_image()
+    mem = bytearray([0xA5] * 0x10000)
+    mem[:0x8000] = image
+    drive, lcd_reg, cursor = [0], [0], [0]
+    screen = bytearray(b"?" * 256)
+    screens, data, commands, controls, port2c = [], [], [], [], []
+    contrast = []
+    error_key = [None]
+    machine = z80.Z80Machine()
+    machine.set_memory_block(0, bytes(mem))
+    machine.set_read_callback(lambda address: mem[address & 0xFFFF])
+    machine.set_write_callback(
+        lambda address, value: mem.__setitem__(address & 0xFFFF, value & 0xFF)
+    )
+
+    def input_port(port):
+        port &= 0xFF
+        if port == 0:
+            if error_key[0] is None:
+                return 8 if drive[0] == 16 else 0  # ENTER
+            return error_key[0] if drive[0] == 32 else 0
+        if port == 0x4B:
+            if stop_after == -1 or (stop_after is not None and commands
+                                    and len(data) >= stop_after):
+                return status
+            return 0x80
+        return 0
+
+    def output_port(port, value):
+        port &= 0xFF
+        if port == 2:
+            drive[0] = value
+        elif port == 0x23:
+            lcd_reg[0] = value
+        elif port == 3:
+            if lcd_reg[0] == 0x0A:
+                cursor[0] = value
+            elif lcd_reg[0] == 0x0B:
+                cursor[0] |= value << 8
+            elif lcd_reg[0] == 0x0C:
+                screen[cursor[0] & 255] = value
+                cursor[0] += 1
+                if cursor[0] == 20:
+                    screens.append(bytes(screen[:20]))
+        elif port == 0x46:
+            contrast.append(value)
+        elif port == 0x4A:
+            controls.append(value)
+        elif port == 0x2C:
+            port2c.append(value)
+        elif port == 0x4C:
+            commands.append(value)
+        elif port == 0x4D:
+            data.append(value)
+
+    machine.set_input_callback(input_port)
+    machine.set_output_callback(output_port)
+    machine.pc = 0x014B
+    target = sym["stream"] if stop_after is None else sym["failure_loop"]
+    machine.set_breakpoint(target)
+    for _ in range(100):
+        machine.ticks_to_stop = 100000
+        machine.run()
+        if machine.pc == target:
+            break
+    assert machine.pc == target, "startup failed to finish within CPU budget"
+    assert mem[sym["V_STAGE"]] == stage
+    assert port2c == [0, 0x20]  # probe reset, then top V24, never alternated
+    assert mem[sym["CTRL_SHADOW"]] == 3
+    for n in range(1, stage + 1):
+        assert f"{n:02X}".encode() + b" " * 18 in screens
+    if stop_after is not None:
+        count = max(stop_after, 0)
+        assert len(data) == count
+        expected_commands = 0 if stop_after == -1 else (2 if stop_after > 5 else 1)
+        assert commands == [0x81] * expected_commands
+        assert mem[sym["V_FAIL"]] == status
+        assert screen[:20] == f"EE{stage:02X}{status:02X}03{count:02X}".encode() + b" " * 10
+        assert machine.sp == sym["STACK"]
+        machine.clear_breakpoint(target)
+        machine.set_breakpoint(sym["pm_delay"])
+        error_key[0] = 4  # NO still works in the terminal error loop
+        machine.ticks_to_stop = 100000
+        machine.run()
+        assert machine.pc == sym["pm_delay"]
+        assert contrast[-1] == 0xA2
+        assert mem[0xFC05] == 0xA2
+        assert len(data) == count
+    else:
+        assert data == [0xA5, 0x5A, 0x0E, 0x80, 0x80]
+        machine.clear_breakpoint(target)
+        machine.ticks_to_stop = 1000000
+        machine.run()
+        assert len(data) >= 5 + 11
+        assert set(controls) <= {0, 1, 2, 3}
+
+
+def test_decoder_does_not_invent_phases_for_startup_diagnostic(capsys):
+    from rom_exerciser.decode_records import report_phases
+    records = [(count, 0x80, 0x80, 0, 0, 3, 0, 0xFF, 0, 0, 0)
+               for count in (0, 64, 128, 192)]
+    report_phases(records, phased=False)
+    output = capsys.readouterr().out
+    assert "4 records" in output
+    assert "TX armed" not in output
+    assert "RX armed" not in output
+    assert "CTRL sweep" not in output

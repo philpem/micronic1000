@@ -33,6 +33,7 @@ sys.path.insert(0, str(HERE.parent))
 MAGIC = (0xA5, 0x5A)
 RECLEN = 11
 VER = 13
+STARTUP_VER = 14
 
 PHASES = {0: "baseline", 1: "TX armed", 2: "RX armed", 3: "CTRL sweep"}
 
@@ -103,15 +104,15 @@ def main():
     print(f"{len(frames)} frames, {len(records)} records"
           f"{f', {short} not a whole number of records' if short else ''}")
 
-    if preamble:
+    ver = None
+    if preamble and len(preamble) >= 5:
         ver, pstat, st = preamble[2:5]
         print(f"\npreamble  version {ver}  "
               f"LINK_STATUS after reset {pstat:02X}, after frame open {st:02X}")
-        if ver != VER:
-            print(f"  ! this decoder is written for version {VER}")
+        if ver not in (VER, STARTUP_VER):
+            print("  ! unknown version: phase interpretation disabled")
     else:
-        print("\nno preamble frame in this capture "
-              "(fine if it started after power-up)")
+        print("\nno complete preamble: phase interpretation disabled")
 
     if not records:
         return
@@ -120,9 +121,9 @@ def main():
                if (p[0] + 1) & 0xFF != c[0])
     print(f"counter discontinuities: {lost}")
     trips = sum(1 for p, c in zip(records, records[1:]) if p[6] != c[6])
-    print(f"watchdog trips: {trips}"
-          + ("   <- some LINK_CTRL value stalled the transmitter"
-             if trips else "   (no LINK_CTRL value stopped the controller)"))
+    print(f"reported watchdog-count changes: {trips}")
+    if ver == STARTUP_VER:
+        print("baseline-only startup diagnostic; timeouts stop on the LCD")
 
     # --- LINK_STATUS per port per phase.  The phase is the top two bits of
     # COUNT; the port is LINK_CTRL bit 1, which LinkPortSelect sets: bit 1 set
@@ -136,9 +137,10 @@ def main():
             continue
         print(f"\n=== LINK_CTRL bit 1 {'set' if portbit else 'clear'}"
               f" -- {idname}, {len(pr)} records ===")
-        report_phases(pr)
+        report_phases(pr, phased=(ver == VER))
 
-    sweep_report(records)
+    if ver == VER:
+        sweep_report(records)
     side = sorted({r[4] for r in records})
     print(f"\nport 2Dh: {' '.join(f'{v:02X}' for v in side)}")
     took = sum((cur[8] - prev[8]) & 0xFF
@@ -172,13 +174,14 @@ def main():
         print("keypad: no key seen held during the capture")
 
 
-def report_phases(records):
-    for ph in range(4):
-        recs = [r for r in records if r[0] >> 6 == ph]
+def report_phases(records, phased=True):
+    for ph in range(4 if phased else 1):
+        recs = [r for r in records if not phased or r[0] >> 6 == ph]
         if not recs:
             continue
         ctrls = sorted({r[5] for r in recs})
-        print(f"  phase {ph}  {PHASES[ph]}  ({len(recs)} records, "
+        label = f"phase {ph}  {PHASES[ph]}" if phased else "unphased status"
+        print(f"  {label}  ({len(recs)} records, "
               f"LINK_CTRL {' '.join(f'{c:02X}' for c in ctrls[:8])}"
               f"{' ...' if len(ctrls) > 8 else ''})")
         for bit in range(7, -1, -1):
