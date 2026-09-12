@@ -132,6 +132,34 @@ Shared and stubbed handlers confirm the numbering: fn 7=8 share,
 fn 1B=1D share (static vector returns), and the disk-oriented stubs
 (1C, 1E, 1F) are no-ops — this machine has a RAMdisk, not disks.
 
+## Local terminal escape protocol
+
+`tty_out_char` (`ROM00:1BEB`) interprets `ESC` followed by a byte from the
+computed table at `ROM00:2050`. Its parallel handler-word table starts at
+`ROM00:2062`: the dispatcher pre-increments its handler pointer twice, so
+the apparent `2060` base is two bytes early.
+
+| Sequence | Confirmed action |
+|----------|------------------|
+| `ESC X p` | consume one 1-based column parameter (1..20) |
+| `ESC Y p` | consume one 1-based row parameter (1..8) |
+| `ESC A` | select page 0 and cursor-blink state |
+| `ESC B` | select page 1 and character-blink state |
+| `ESC U` | direct LCD write: inherited D is temporary attribute, E is byte |
+| `ESC I`, `ESC W` | bare no-op return |
+| `ESC C` | toggle LCD mode state and reprogram Mode Control |
+| `ESC K` | clear the 160-character LCD buffer |
+| `ESC R` | enable LCD mode bit 0 and select keyboard page 1 |
+| `ESC S` | toggle keyboard page 0/1 |
+| `ESC +` | decrement contrast code by two and write `LCD_CONTRAST` |
+| `ESC -` | increment contrast code by two and write `LCD_CONTRAST` |
+| `ESC H` | call the display-reset helper |
+| `ESC V`, `ESC (`, `ESC )` | complete escape parsing with no additional state change |
+
+There are no terminators or decimal strings: only X/Y consume one following
+byte. The meanings of the display-reset helper remain open. The table above
+records mechanics only; it does not imply an ANSI or VT-family protocol.
+
 Note on addressing: handlers below 8000 live in the banked window
 and require ROM bank 0 mapped during service — which is exactly what
 `BankedCallBankZeroWrapper` (ROM00:3ADD) arranges before work happens.

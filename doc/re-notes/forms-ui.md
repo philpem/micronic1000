@@ -190,12 +190,11 @@ ROM01:10de with a keyboard-ring byte in `HL`. Its inline table (1166) maps:
 The two tail stubs are adjacent and easy to confuse: `115b` is
 `LD HL,1 / RET` (handled) and `115f` is `LD HL,0 / RET` (not handled).
 
-`0xdb` is the raw counter-edit byte that advances a counter field, and
-`ec97` is the 30-byte backing object shared with the V24 Log-on form (Mode,
-Linespeed, User id, Password, Group id, Telephone). This is therefore the
-same path the V24 mode-1 emulator trace exercises when it changes the Mode
-field, reached from static analysis rather than from the trace — see
-[Commstar evidence](commstar-evidence.md).
+`0xdb` is the Shift-page code at the physical N-key position. This small
+dispatcher advances a bounded counter field; `ec97` is the 30-byte V24
+Log-on backing object (Mode, Linespeed, User id, Password, Group id,
+Telephone). It is one of two confirmed uses of `0xdb`; the Load/Run source
+editor has a separate path below.
 
 **OPEN:** the `0x14` handler and `ram:d463` are unidentified.
 
@@ -214,14 +213,44 @@ state (base in `fbda`; `Kbd_ScanMain` ROM00:18f0). Index = `col*6 + row`
 | key | code | key | code |
 |-----|------|-----|------|
 | YES | 0x06 | NO | 0x01 |
-| Sun+YES | 0x0b | Sun+NO | 0x0c |
-| ENTER | 0x0d | Sun+ENTER | 0x12 |
+| Sun, then YES | 0x0b | Sun, then NO | 0x0c |
+| ENTER | 0x0d | Sun, then ENTER | 0x12 |
 | space | 0x20 | backspace | 0x7f |
 | END | 0x14 | DEPT | 0xd0 |
-| Sun+N (Z) | 0x5a | (spare) | 0x11 |
+| Sun, then N (Z) | 0x5a | (spare) | 0x11 |
+| Shift+N | 0xdb | Sun, then F (X) | 0x58 |
+| Sun, then J (Y) | 0x59 | | |
 
 See the [user guide](../manual/user-guide.md) for the physical keypad and
 the operator-level key meanings.
+
+### Load/Run text and enumerated fields
+
+The Load/Run `Name` and `From` fields do not use the five-byte choice-object
+dispatcher at `1f96`. They enter the generic editor continuation at
+`ROM01:2f75-34aa`; its split Ghidra body begins at `3075`.
+
+The active editor key is stored in `e78d`. `0x4e` reaches the printable path
+at `3353` and is stored as N after `Lib_CharTranslate`; it does not select a
+source. `0xdb` compares equal at `3232`. `Lib_Eq16` returns one with Z clear
+for equality, so `JP Z,3272` is not taken and the enumerated-field action at
+`3238` runs. The earlier analysis read that unusual flag convention
+backwards.
+
+The From template at `ROM01:758b` has flag byte `+9 = 0x08` and a
+null-terminated source-name pointer array at `+12 = ROM01:757f`:
+`WORKSTATION MEMORY`, `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, and
+`EXT STORAGE ADAPTOR`. The `0xdb` action advances this index-backed value;
+an execution trace confirms `PLINTH -> V24 ADAPTOR`.
+
+### Text/list input mode transition
+
+**CONFIRMED:** the field editor changes keyboard page and LCD cursor mode as
+one input-mode operation. The terminal escape handlers `ESC R` and `ESC S`
+select or toggle `fbdc`, respectively; `Kbd_ScanMain` uses `fbdc=0` for page
+0 and `fbdc=1` for page 1. Owner hardware observation of underline -> block
+at list entry matches the cursor-mode transition. Tap/release Sun remains a
+one-key page-2 override; held Sun follows the separate direct-chord path.
 
 ## Error screens
 

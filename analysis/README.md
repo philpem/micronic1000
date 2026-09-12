@@ -155,6 +155,17 @@ timeout 300 analysis/venv/bin/python3 analysis/boot_hw.py --ram 512 --expect-fil
 
 ## Decode scripts (static)
 
+- `decode_ir_scope.py` — stream a Keysight segmented two-channel CSV one
+  segment at a time. It treats CH1 as clock, samples CH2 on rising edges, and
+  reconstructs unclocked cells from integral clock-period gaps. It writes
+  compact JSON with edge times, intervals, and bit strings; it does not infer
+  byte framing or data polarity. See `--help` for threshold and sample-offset
+  controls.
+- `correlate_ir_scope.py` — correlate the ordered bursts produced by
+  `decode_ir_scope.py`. It retains inter-segment gaps, finds repeat families,
+  and reports raw MSB/LSB candidate-byte substring matches. It also tests the
+  inverted-HDLC-style flag hypothesis and emits raw-polarity de-stuffed
+  octets, without claiming a complete HDLC frame.
 - `decode_chains.py` — decode the boot-load chains (fn=0/1/2 records)
   -> the src/dst/len of every module copy.
 - `disasm_modules.py` — disassemble the chain-loaded module blobs.
