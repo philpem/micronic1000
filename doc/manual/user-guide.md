@@ -18,9 +18,8 @@ in [forms and UI code](../re-notes/forms-ui.md).
 
 ## The keyboard
 
-The keypad is an alphanumeric key. The layout below shows each key and its
-shifted value (the second label is produced with the **Shift** or **Sun**
-modifier held):
+The keypad is alphanumeric. The second labels are produced by either the
+**Shift** or **Sun** modifier, as shown below.
 
 ```
 Shift(MODE)   Sun(2nd)
@@ -34,10 +33,56 @@ Shift(MODE)   Sun(2nd)
 
 **Modifiers:**
 
-* **Shift (MODE)** selects the shifted keymap — digits (U/1…Space/0), the
-  punctuation shown above, and the function labels below.
-* **Sun (2nd)** selects the Sun keymap — letters X/Y/Z and the shifted
-  navigation keys (Sun+YES, Sun+NO, Sun+ENTER).
+* **Shift (MODE)** selects page 1: punctuation, digits, red function labels,
+  and `0xDB` at the N-key position. It is not the source of Z.
+* **Sun (2nd)** is normally tapped and released, then page 2 applies to the
+  next key. It supplies X/Y/Z at F/J/N and alternate navigation codes. Held
+  Sun+X/Y/Z emits no key.
+* **Held Sun** uses a separate direct-chord path: Sun+B toggles the backlight,
+  Sun+END increases visible contrast, Sun+ENTER decreases it, and Sun+MODE
+  enters power-down. These are not page-2 mappings.
+* The field editor changes the cursor and keymap together. Text fields emit
+  `ESC A`, selecting page 0 and the HD61830 cursor-blink mode (the observed
+  underline). List fields emit `ESC B`, selecting page 1 and character blink
+  (the observed block). The one-shot Sun page still overrides either page for
+  one key.
+
+The three firmware pages use the following physical layout. This follows the
+owner's [keyboard table](https://philpem.me.uk/elec/micronic); a dash means
+that the page supplies no key code for that position.
+
+```text
+Page 0: ordinary
+             MODE    SUN
+ A   B   C   D   E   F
+ G   H   I   J   K   L   M
+ N   O   P   Q   DEPT
+ R   S   T   END
+ U   V   W   ENTER
+ BS  SPACE    NO  YES
+```
+
+```text
+Page 1: Shift (MODE)
+              MODE    SUN
+ A=( B=) C=currency D=% E=# F=&
+ G=+ H=/ I=,        J=? K=- L=* M=.
+ N=0xDB O=7 P=8     Q=9 DEPT
+ R=4 S=5 T=6        END
+ U=1 V=2 W=3        ENTER
+ BS  SPACE=0         NO  YES
+```
+
+```text
+Page 2: tap/release Sun (2nd), then one key
+             MODE  SUN
+ A=- B=- C=- D=- E=- F=X
+ G=- H=- I=- J=Y K=- L=- M=-
+ N=Z O=- P=- Q=- DEPT=-
+ R=- S=- T=- END=-
+ U=- V=- W=- ENTER=last
+ BS=cancel SPACE=- NO=previous YES=next
+```
 
 **Function labels** (their exact effect in each screen is still being
 mapped):
@@ -53,21 +98,17 @@ mapped):
 
 | key | code | action |
 |-----|------|--------|
-| YES | 0x06 | move to next field; in a choice field, step value forward |
-| NO | 0x01 | move to previous field; in a choice field, step value back |
+| YES | 0x06 | move to the next field; the last field gives an error beep |
+| NO | 0x01 | move to the previous field |
 | ENTER | 0x0d | accept/commit the current field, advance |
 | Backspace | 0x7f | delete previous character |
 | Space | 0x20 | space (and cursor advance in text fields) |
-| A–W | 0x41–0x57 | type into a text field; in a choice field, select the entry whose key matches |
+| A-W | 0x41-0x57 | type into a text field; field-specific handling may apply |
 
-Within a choice field (e.g. `From`), the value cycles through the device
-list **PLINTH → V24 ADAPTOR → EXT STORAGE ADAPTER → WORKSTATION MEMORY →
-WORKSTATION RAMDISK**. Sun+YES/NO duplicate YES/NO; Sun+ENTER jumps to the
-last choice.
-
-> **Note:** the ROM maps the cycle to **YES/NO**. The N/Z key labels type
-> the letters N and Z. The operator-report that N/Z cycles the value is
-> recorded as an open item to verify on hardware.
+On the Load/Run `From` field, ordinary **N** (`0x4E`) is a printable
+character: it appends `N` to the text. **Shift+N** produces `0xDB`, the
+field's enumerate/change command; it advances the source selection, for
+example `PLINTH` to `V24 ADAPTOR`. Sun+N produces `Z` (`0x5A`).
 
 ## Menu map
 
@@ -174,8 +215,6 @@ is at header `+0`. See [Program formats](../reference/program-formats.md) for th
 These items cannot be settled from the ROM and are deferred until the unit
 is available:
 
-* Whether the value-cycle key is **N/Z** (operator report) or **YES/NO**
-  (ROM maps next/prev to YES/NO; N/Z type letters).
 * The exact effect of the function labels (`CHNGE`, `REFER`, `HELP`,
   `INSRT`, `F1`/`F2`, `STWDL`, `LIGHT`, `TOP`, `BOT`, `/POS`).
 * Whether menu items are selected by number (digits are shifted values) or

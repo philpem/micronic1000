@@ -832,7 +832,14 @@ five-entry storage picker at `micron2.bin 0x757F` (`WORKSTATION MEMORY`,
 `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
 what the harness drives, while the two-entry picker at `0x7663` (`PLINTH`,
 `V24 ADAPTOR`) sits in the comms setup form and is **not** exercised by any
-current trace.
+   current trace.
+
+**CONFIRMED (owner hardware observation, 2026-09-02):** initiating a
+Load/Run `PLINTH` selection flashes the back/base IR port; `V24 ADAPTOR`
+flashes the top IR port. This confirms that those UI selections reach their
+named physical connectors. It does not expose the wire id or the
+`LinkPortSelect` bit-5 branch, so the bit-5-to-connector mapping remains
+open.
 
 What would settle it: drive the `0x7663` picker and re-read the prelude, or
 watch which IR port goes active on real hardware.

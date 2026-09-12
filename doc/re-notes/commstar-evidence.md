@@ -17,6 +17,92 @@ ROM address remains byte-verifiable and every trace remains citable.
 
 ## Controller transaction
 
+### Physical TX capture (no peer response)
+
+**CONFIRMED (owner capture, 2026-09-02):** a Keysight MSOX3054A segmented
+capture of V24 ADAPTOR output, with no IR response transmitted to the
+handheld, has 50 complete segments of 30,769 samples. CH1 is the clock
+emitter and CH2 is the data emitter. Sampling CH2 at each CH1 rising edge
+with zero sample offset yields exactly these three burst classes:
+
+| Rising edges | CH2 bits at CH1 rising edges | Count |
+|---:|---|---:|
+| 17 | `10000001000001011` | 16 |
+| 21 | `000010000001000001011` | 15 |
+| 22 | `0000110000001000001011` | 19 |
+
+The median rising-edge period is **121.993 us** (approximately 8.20 kHz).
+`analysis/decode_ir_scope.py` streams the CSV one segment at a time and
+writes the edge times, periods, thresholds, and extracted bit strings as
+JSON; it does not load the multi-segment CSV into memory. Offsets of -10, 0,
+and +10 samples (about +/-1.04 us) produce identical edge counts and bit
+strings for all 50 segments.
+
+**CONFIRMED (owner clarification):** the capture is continuous. Between CSV
+segments, both channels hold 0 V; their median timestamp gap is 90.605 ms
+(range 89.876-100.435 ms). Those intervals contain no CH1 rising edges, so
+they contribute no clocked symbols. In chronological order, the three
+families are `A=17`, `B=21`, and `C=22` rising edges:
+
+```
+ABCBAACACBCBCBCBCAACCBCAABCBCACBCAAAABCBCBAACBCBCA
+```
+
+`BC` occurs 13 times, `CB` 12 times, and `CBC` 10 times. Family-label
+autocorrelation peaks at lag 18 (20/32 equal labels); this is evidence of
+repeated physical burst classes, not an established packet period.
+
+**CONFIRMED:** the first eight rising-edge samples in every family are A
+`10000001`, B `00001000`, and C `00001100`. If, and only if, a burst start is
+an MSB-first byte boundary, these read as `0x81`, `0x08`, and `0x0C`.
+**CORRECTION:** the earlier conditional matches of A-start `0x81` to
+`LINK_CMD=0x81` and C-start `0x0C` to the descriptor byte are discarded.
+With the shared `0x81` position as the byte alignment, C's `0x0C` crosses its
+five-bit preamble and the marker; it is not a descriptor-byte observation.
+
+**CONFIRMED:** every B burst has one 244-us CH1 interval after its fourth
+rising edge, exactly two nominal 122-us cells. Sampling CH2 at the missing
+cell recovers B as 22 cells, `0000010000001000001011`, with its inverted
+`0x7E` flag at the same right-aligned position as A and C. Thus B is not a
+21-bit alternative frame; it is a 22-cell burst with one unclocked cell.
+
+**LIKELY (inverted HDLC-style start plus prelude):** the shared raw marker is
+`10000001` (`0x81`), the inverted electrical representation of HDLC's
+`01111110` (`0x7E`) flag. The nine following raw bits are `000001011`: five
+zeroes, a one, then `011`. In an inverted line sense, HDLC's stuffed zero is
+a physical one, so removing that one yields `00000011` (`0x03`). This exactly
+matches the first controller-boundary `LINK_TXD` byte, the `link_id & 0x1F`
+prelude for the established `0x43` Load/Run transaction. All 50 bursts carry
+this same flag-plus-prelude suffix; A is exactly that 17-bit suffix, while B
+and C add four/five raw preamble bits before it.
+
+Full HDLC remains **SUSPECTED**: this no-peer capture has no closing flag,
+variable payload, or FCS to verify. The quiescent 0-V intervals have no clock
+edges (owner clarification), so they do not themselves distinguish gated-clock
+HDLC from another synchronous burst protocol.
+
+### Next physical test (no adapter required)
+
+**OPEN:** the no-peer transmitter stops after the proven physical `0x03`
+prelude, before the controller-boundary next byte `0x0C`. `LinkBlockTx` has
+only the `LinkTransferService` caller, so changing later Load/Run request
+fields cannot distinguish physical byte framing while this low-level exchange
+is stalled. The Z80 does not parse an optical flag here: after writing the
+prelude it waits for controller `LINK_STATUS` bit 4 to clear, strobes
+`LINK_CTRL` bits 5 then 4, and waits for status bit 6 to clear. Only then does
+it stream the descriptor's first byte (`0x0C` in the documented V24 request),
+with status bit 7 checked before every byte. Thus an Arduino optical response
+must change the link controller's state machine; a null-bit/flag sequence is
+not firmware-proven acknowledgement grammar. Start passively by validating
+the decoded `0x03`; then inject one conservative candidate response while
+capturing whether `LINK_STATUS` or the next IR octet changes. A synchronous
+probe of `LINK_TXD`, `LINK_STATUS`, and the IR emitters would establish the
+controller-byte-to-IR mapping directly.
+
+This confirms an inverted HDLC-style start marker and the first physical
+prelude byte. It does **not** establish a complete HDLC frame, closing flag,
+FCS, or the meaning of the preamble cells.
+
 LinkBlockTx (ROM00:3277-3377) and LinkBlockRx (ROM00:3378-3453) mechanically
 drive `LINK_CTRL` (4Ah) and poll `LINK_STATUS` (4Bh). **No electrical names
 for status or control bits are proven** — the descriptions below list only the
@@ -901,4 +987,3 @@ offset +5 is never read by the examined ROM link
 code and may be writable by loaded code — the examined ROM
 transport/header path has no checksum; integrity inside unresolved
 loaded-session payloads remains **OPEN**.
-

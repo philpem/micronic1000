@@ -42,6 +42,26 @@ The machine is a battery-powered handheld with an LCD, a keyboard,
 an HD146818 real-time clock, and an **infrared link** (used for
 program/data transfer to/from a PC via a Commstar-style session).
 
+### Keyboard input pages
+
+The keyboard scanner uses three 36-byte pages at `ROM00:1B58`. Ordinary
+keys use page 0; Shift (MODE) selects page 1; tap/release Sun (2nd) selects
+page 2 for one following key. These are distinct modifiers, not two names
+for Shift. Held Sun is intercepted before keymap lookup for B/END/ENTER/MODE
+direct chords; held Sun+X/Y/Z emits no key.
+
+At the physical N/Z key position the pages return `0x4E` (N), `0xDB`, and
+`0x5A` (Z), respectively. `0xDB` is a field-editor command, not text: in the
+Load/Run `From` field it advances the enumerated source. Thus a program or
+input emulator must emit `0xDB` for Shift+N and `0x5A` for Sun+N; emitting
+ASCII Z for Shift+N is incorrect. See the [user guide](user-guide.md#the-keyboard)
+for the complete physical-key grids.
+
+The local terminal's `ESC A` and `ESC B` select page 0/cursor blink and page
+1/character blink, respectively; `ESC R` also selects page 1 and `ESC S`
+toggles page 0/1. `ESC U` alone consumes inherited `D/E` register values for
+a private direct LCD write; no static firmware stream emits `ESC U`.
+
 ### Calling BDOS
 
 The entry shape follows CP/M: put the function number in register **C**, any

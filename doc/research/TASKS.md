@@ -1590,10 +1590,10 @@ current priority order; the concise lists above are authoritative.
     (Program received, Session complete, Logging on/off). Qualifiers
     confirmed for Plinth (8000=default, 8001=case-9); the rest are
     ROM-derivable (each error site pushes its own literal) and queued.
-  * PARKED (hardware-gated, owner-decision): N/Z vs YES/NO cycle key;
-    function-label effects (CHNGE/REFER/HELP/INSRT/F1/F2/STWDL/LIGHT);
-    menu-item selection mechanism; Diagnostics sub-menu + self-test
-    screens. Documented in user-guide.md "To confirm on hardware".
+   * PARKED (hardware-gated, owner-decision): function-label effects
+     (CHNGE/REFER/HELP/INSRT/F1/F2/STWDL/LIGHT);
+     menu-item selection mechanism; Diagnostics sub-menu + self-test
+     screens. Documented in user-guide.md "To confirm on hardware".
   * NEXT (user-guide plan): trace the per-error qualifier literals (ROM-
     only), map the Diagnostics sub-menu + self-test screens, finish the
     menu map field detail. Then fold into the final annotation pass.
@@ -3959,8 +3959,82 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   (the CP/M BDOS gate), `0008: C3 E1 F5`, and **`0010` is not a jump at all**
   — the dispatcher is coded inline, which is also why `RST 18h` is unusable.
   The stale `doc/internals/memory-map.md` path in that bullet is fixed too.
-* **`analysis/test_barcode.py` imported `z80` at module level**, so it could
-  not be collected by the system interpreter (which has pytest but not `z80`)
-  nor run by the venv (which has `z80` but not pytest). The import is now
-  guarded and the CPU-level test class skips without it, so the suite behaves
-  like the others under both.
+ * **`analysis/test_barcode.py` imported `z80` at module level**, so it could
+   not be collected by the system interpreter (which has pytest but not `z80`)
+   nor run by the venv (which has `z80` but not pytest). The import is now
+   guarded and the CPU-level test class skips without it, so the suite behaves
+   like the others under both.
+- 2026-09-02 (owner hardware keyboard test; docs updated):
+  * CONFIRMED by owner observation: YES/NO move form focus forward/back;
+    YES on the final field beeps. Shift selects the underline-cursor
+    punctuation/numeric page; Sun is one-shot and Sun+F/J/N gives X/Y/Z.
+    Shift+N is the byte-verified 0xDB code and beeps in Load/Run `From`.
+  * The old conclusion that the located `ROM01:1f96` dispatcher explained
+    all `From` input is discarded. The owner observes unshifted N advancing
+    `From` in block-cursor mode, but 1f96 has no 0x4E case. This is an OPEN,
+    mode-dependent path or translation question; no function names or
+    dispatcher interpretation were changed.
+- 2026-09-02 (keyboard-page and Load/Run editor review):
+  * RESOLVED the dispatch confusion. Load/Run `From` uses the generic editor
+    continuation at ROM01:2f75-34aa, not the `1f96` five-byte choice-object
+    dispatcher. Page 0 N=0x4E takes its printable path; page 1 Shift+N=0xDB
+    matches the enumerate/change path and advances `PLINTH -> V24 ADAPTOR`.
+    Sun+N=0x5A is page 2's one-shot Z. `Lib_Eq16` returns one with Z clear on
+    equality, so 0xDB falls through the `JP Z` at 3235; the earlier branch
+    reading was reversed and is discarded.
+  * Owner observed the visible cursor change underline -> block on entry to
+    a list field. LIKELY this is coupled to page 1; it is not a proof because
+    page 2 overrides the same scanner state. User guide now carries three
+    physical-key grids and distinguishes Shift from one-shot Sun. Open only:
+    capture the actual keyboard-ring byte with FBDC/FBDD to prove the visual
+    cursor/page relation.
+- 2026-09-02 (input-mode chain and physical IR selection):
+  * CONFIRMED the field transition behind the owner-observed underline ->
+    block: text mode emits ESC A -> ROM00:1e9f -> fbdc=0/page 0/HD61830
+    cursor blink; list mode emits ESC B -> 1ea8 -> fbdc=1/page 1/character
+    blink. The editor sends ESC A/B via boot-installed EEF0->6772->F13C->
+    71E2 thunks. This closes the cursor/page question; Sun page 2 is still a
+    one-key override.
+  * CONFIRMED by owner hardware observation: initiating Load/Run PLINTH
+    flashes the back/base IR port; V24 ADAPTOR flashes the top port. This
+    proves UI-to-physical-connector routing only, not LinkPortSelect bit-5
+    polarity; retain that separate hardware question.
+- 2026-09-02 (terminal escape table): documented the 17 byte-verified ESC
+  second-byte commands at ROM00:2050 and corrected its handler-table base to
+  ROM00:2062. ESC A/B/S/R carry the text/list input-mode path; X/Y/H/U retain
+  mechanical descriptions until their parser-state/display meanings are
+  traced.
+- 2026-09-02 (physical IR TX capture): added `analysis/decode_ir_scope.py`, a
+  streaming Keysight segmented-CSV decoder. The owner V24 no-peer capture has
+  50 segments and exactly three rising-edge-sampled CH2 patterns: 17-bit
+  `10000001000001011` (16), 21-bit `000010000001000001011` (15), and 22-bit
+  `0000110000001000001011` (19), at 121.993-us median clock period. This is
+  raw physical evidence only: framing/order/polarity and queue correspondence
+  remain open until a return-path capture exists.
+- 2026-09-02 (physical IR repeat analysis): added
+  `analysis/correlate_ir_scope.py`. The active CSV segments have a 90.605-ms
+  median timestamp gap; owner correction below establishes continuous 0-V
+  levels in that interval, with no CH1 clock edges. Their family order has
+  repeated `BC` (13), `CB` (12), and `CBC` (10) runs. The first eight sampled
+  bits are A=`10000001`, B=`00001000`, C=`00001100`; conditional MSB-first
+  values are 0x81/0x08/0x0C. Superseded below: the 0x81/0x0C substring matches
+  are not byte-boundary evidence.
+- 2026-09-02 (IR polarity and HDLC test): inverted, right-aligned A/B/C share
+  `01111110111110100`; `01111110` is at the same aligned offset and the tail
+  is `111110100`. This is LIKELY an HDLC-style delimiter only, because the
+  tail has HDLC-compatible five-one/zero stuffing. Full HDLC is SUSPECTED:
+  there is no closing flag, variable payload, or FCS in these 50 fixed bursts.
+  Resolve with a variable transfer capture and a verified unstuffed FCS.
+- 2026-09-02 (owner correction, inverted HDLC alignment): timestamp gaps are
+  continuous 0-V/no-clock intervals, not absent acquisition time. More
+  importantly, raw `10000001 000001011` is an inverted `0x7E` flag followed
+  by five raw zeroes and a stuffed raw one; removing that one gives
+  `00000011` = the known `0x03` LinkBlockTx prelude. This supersedes the
+  earlier speculative 0x81=LINK_CMD and C-prefix=0x0C matches. Full HDLC is
+  still SUSPECTED until a closing flag and FCS are observed.
+- 2026-09-02 (no-peer physical boundary): reconstructed B's omitted clock cell
+  from its 244-us gap; A/B/C all de-stuff to raw `0x03`. Static callers show
+  every transmit funnels through LinkTransferService, so later Load/Run fields
+  cannot expose byte 0x0C while the physical exchange stops after 0x03. Open:
+  determine the minimal optical acknowledgement that makes the link hardware
+  release the next byte; capture `LINK_TXD` and IR together if possible.

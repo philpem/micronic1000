@@ -57,18 +57,21 @@ Firmware key codes (master table `tbl_kbd_map` at ROM00:1b58, three
 36-entry pages; Kbd_ScanMain ROM00:18f0 indexes it as col*6+row):
 letters are ASCII 0x41-0x57 ('A'..'W'), ENTER=0x0D, space=0x20,
 backspace=0x7F. Function-key codes: 0x01/0x06/0x0b/0x0c/0x11/0x12/
-0x14/0x1a/0xd0. Sun-shifted page: N->Z (0x5A), plus 0x58/0x59.
+0x14/0x1a/0xd0. The Shift page supplies punctuation and digits; its N
+position is 0xDB, not Z. The one-shot Sun page maps F/J/N to X/Y/Z
+(0x58/0x59/0x5A).
 
-Owner UI navigation facts: YES/NO move between the form fields; N/Z
-is said to cycle a choice field's value to the next predefined setting.
+Owner UI navigation facts: YES/NO move between the form fields. YES on the
+final field gives an error beep. Sun applies to one key only. Entering a
+selection-list field changes the visible cursor from underline to block.
 
 Emulator-confirmed key codes (2026-08-27): YES=0x06 (moves DOWN a
 field), NO=0x01 (moves UP), ENTER=0x0D, space=0x20, backspace=0x7F.
-N/Z = 0x4E/0x5A are plain letters: they TYPE into a text field. The
-Load/Run "From" field is a free-text field (default "PLINTH") and
-typing appends to it - no N/Z cycle observed in firmware (no CP
-0x4E/0x5A in the field-edit path). OPEN: reconcile owner "N/Z cycles"
-with firmware "N/Z types letters".
+Load/Run uses the separate generic editor, not the `ROM01:1f96` choice
+dispatcher. It handles `0x4E` as printable N and `0xDB` (the Shift-page
+N-key code) as its enumerated-source advance command. Text fields select
+page 0 with HD61830 cursor blink (underline); list fields select page 1 with
+character blink (block). Sun page 2 remains a one-key override.
 
 ## Side port
 

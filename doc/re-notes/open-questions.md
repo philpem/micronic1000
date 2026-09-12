@@ -257,9 +257,6 @@ source tree (not published here).
   patched at factory is not knowable from ROM.
   *Resolve:* hardware dump of the resident farms.
 
-* **Value-cycle key identity** — ROM maps next/prev to `YES/NO` (`06h`/
-  `01h`); operator report that `N/Z` cycles the value remains open.
-  *Resolve:* hardware test on the Load/Run form.
 
 ## Naming and annotation
 
