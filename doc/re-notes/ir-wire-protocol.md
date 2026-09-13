@@ -947,6 +947,24 @@ build configuration.
 | `conn12` | 500 | `21219b76b00034e30c00ad983e6feeba856a29a85eb69d9e592e8ad358d813b3` | continuous-clock, gated-clock and silent controls |
 | `conn13` | 500 | `dac5f15ac60a72420dc061bbad8bd1e407976f3d388d26e0d1f7aa011dfb1cfd` | six-rung completeness/length ladder |
 
+**Source provenance — SUSPECTED run→mode map (2026-09-12, investigation
+only, NOT archived).** The per-run build-mode snapshot for `conn3`..`conn12`
+remains not archived (raw captures only in `$HOME/micronic-scope-traces`;
+SHA-256 banked above). The on-disk
+`analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` is a single
+mutually-exclusive-mode build (`LADDER_TEST` currently `#defined`; `#error`
+guards at `m1000_ir_probe.ino:108`-`128`). A run→mode map inferred from
+decoded-contents strings vs sketch mode structures is therefore
+**SUSPECTED** only: `conn13→LADDER_TEST` (near-explicit),
+`conn12→FREERUN_TEST` (near-explicit), `conn11→ADDR_SWEEP`
+(near-explicit), `conn10`/`conn9`/`conn8→PULSE_TEST`,
+`conn6→ORIENTATION_TEST`, `conn4→LISTEN_ONLY`,
+`conn3`/`conn5`/`conn7→`generic `#else` sweep. Do NOT infer mode from
+capture filenames — filename digit is run index, not mode. Discriminating
+observation that would confirm or refute: the single `Serial` banner line
+emitted by `setup()` captured with each CSV, or a versioned `.ino` copy
+per run. See `research/TASKS.md` 2026-09-12 entry.
+
 `analysis/scope_ir_experiments.py` performs this audit as a streaming parser.
 It measures adjacent trigger cadence, decodes Arduino response bits and
 addresses, reports capture gaps, and associates each stimulus with the next

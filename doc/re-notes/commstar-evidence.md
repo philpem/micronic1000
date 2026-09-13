@@ -675,6 +675,42 @@ there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
 displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 **OPEN**.
 
+### Session-module senders and status fields — 2026-09-12 (parent-adjudicated, bytes verified)
+
+* **Senders `Session_Tx4Param`/`Session_Tx5Param` (CONFIRMED mechanics;
+  RECORD vs BLOCK mapping OPEN).** `ROM00:5669` (4 stack args: 1 word +
+  3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result
+  word `g_wTxBlock4Result` at `ram:e64e`); `ROM00:56A4` (5 byte args)
+  calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result word
+  `g_wTxBlock5Result` at `ram:e65a`). Both builders also reachable via
+  `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 →
+  `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`). `TxBlock4`
+  fills `ram:e650`-`ram:e656` (first stack word argument `==1` selects
+  device `63h` else `43h` → `ram:e52e`; `ram:e658=8`); `TxBlock5` fills
+  `ram:e65c`-`ram:e668`. Whether `Tx4Param` vs `Tx5Param` is RECORD vs
+  BLOCK remains OPEN (discriminator: correlate one wrapper with a captured
+  RECORD/BLOCK UI transaction). See `research/TASKS.md` 2026-09-12 entry.
+
+* **RCV1/RCV2 snapshots (CONFIRMED).** `ram:e701` (`g_wSessRcv1`) and
+  `ram:e6ff` (`g_wSessRcv2`) are display snapshots of the last-consumed
+  RX object's frame-type byte at `ram:e5be` and sequence byte at
+  `ram:e5bf` via `ram:e646`/`ram:e648` (`ROM00:5AA3`/`ROM00:5AAC`); 3
+  direct static writers (live copy `ROM00:5AA3`/`ROM00:5AAC`; init-zero
+  `ROM00:45C4`/`ROM00:45CA` and `ROM00:4737`/`ROM00:473D`); single direct
+  reader `ROM00:4380`/`ROM00:4399` in `SessionStateBuild` via
+  `FormatDecU16` width 3. Not counters, not builder inputs.
+
+* **Zero-length wait threshold `ram:e6fc` (`g_bSessZeroLengthWaitSec`)
+  (CONFIRMED mechanics; 55 s semantics LIKELY).** Written `0x37` at
+  `ROM00:4587`/`ROM00:46FA`; read `ROM00:5AF0` → `ROM00:6443` which
+  compares baseline vs RTC current time (BDOS `FDh` via `ram:DA13`;
+  `+60` at minute boundary) and returns
+  `baseline + threshold_seconds ≤ current_seconds` → result `9`. The
+  `0x37` value's meaning as 55 seconds is LIKELY.
+
+Cross-link: `research/TASKS.md` 2026-09-12 entry covers the same
+findings with full writer/reader addresses.
+
 ## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
 
 Two bounded synthetic traces were captured by calling the session TX

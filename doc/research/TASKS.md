@@ -135,16 +135,39 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
-   C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
-   fields, and remaining runtime result/state writers in the loaded modules.
+1. **Continue static session-module and UI analysis.** RECORD/BLOCK/
+   C-COMMAND payload construction and consumption remains partly **OPEN**.
+   `ram:e701`/`ram:e6ff` (`g_wSessRcv1`/`g_wSessRcv2`) are **CONFIRMED**
+   display snapshots (not counters; see 2026-09-12 entry below) — CLOSED.
+   RECORD/BLOCK builder mechanics are **CONFIRMED** via `ROM00:5669`
+   `Session_Tx4Param` → `Session_TxBlock4` (`ROM00:5BF7`) and `ROM00:56A4`
+   `Session_Tx5Param` → `Session_TxBlock5` (`ROM00:5CD7`), plus
+   `Session_RuntimeStubSourceTable` entries `ROM00:7D96`/`7D98`; whether
+   `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains **OPEN**
+   (discriminator: correlate one wrapper with a captured RECORD/BLOCK UI
+   transaction). `ram:e48c` error-code cell mechanics are **CONFIRMED**
+   (17 readers, indirect write via `ROM00:454B` → `ROM00:3C06` →
+   `SessionCoroJumpTable` `ROM00:692A`) but its full runtime-writer map
+   remains **OPEN**. `ram:e6fc` (`g_bSessZeroLengthWaitSec`) threshold
+   mechanics are **CONFIRMED** (see 2026-09-12 entry); 55 s semantics
+   **LIKELY**. `ram:e085` `Lib_SignedGt16` polarity
+   (`HL_out = (signed HL > signed DE) ? 1 : 0`) is now **CONFIRMED** —
+   CLOSED (was OPEN at `ROM00:5AB7` negative-length check).
 2. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
 3. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
-   are now audited from their decoded waveforms, but the exact Arduino source
-   snapshot used for each early run remains unavailable. Preserve it if found;
-   do not infer build modes from capture filenames or segment numbers.
+   are now audited from their decoded waveforms (SHA-256 banked in
+   `re-notes/ir-wire-protocol.md`), but the exact per-run Arduino source
+   snapshot used for each early capture remains **OPEN** and not archived
+   (raw captures only in `$HOME/micronic-scope-traces`). The current
+   on-disk `m1000_ir_probe.ino` is a single mutually-exclusive-mode build
+   (`LADDER_TEST` currently defined; `#error` guards at `.ino:108-128`);
+   a run→mode map inferred from decoded-contents strings vs sketch mode
+   structures is **SUSPECTED** only (see 2026-09-12 entry). Preserve a
+   versioned `.ino` per run or the `setup()` Serial banner if found; do
+   not infer build modes from capture filenames or segment numbers
+   (filename digit is run index, not mode).
 4. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
@@ -4551,12 +4574,102 @@ run and is also retired; see the later hardware-result entry.
   SHA-256 `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
   Original six filler regions and boot jump only; 25 filler bytes remain.
 * **Validation:** 63 dedicated tests pass. Full CPU boot plus ENTER tests
-  cover never-ready, failure immediately after the first command, mid-preamble,
-  first record-frame flag and later record transmission, plus always-ready
-  streaming. Assert exact error rows, cleared suffixes, completed write counts,
-  stage progression, reset stack, live NO adjustment on error, top-port latch
-  outputs, and no data writes after failure. Existing keypad/LCD tests remain.
-  Physical handshake behaviour remains unverified by these synthetic inputs.
-  Full suite: 152 passed, 33 skipped, 71 subtests passed. Strict documentation
-  build passes; reviewed flag-contract and hardware-test bookmarks saved in
-  Ghidra. No new hardware-success claim is made for this candidate.
+   cover never-ready, failure immediately after the first command, mid-preamble,
+   first record-frame flag and later record transmission, plus always-ready
+   streaming. Assert exact error rows, cleared suffixes, completed write counts,
+   stage progression, reset stack, live NO adjustment on error, top-port latch
+   outputs, and no data writes after failure. Existing keypad/LCD tests remain.
+   Physical handshake behaviour remains unverified by these synthetic inputs.
+   Full suite: 152 passed, 33 skipped, 71 subtests passed. Strict documentation
+   build passes; reviewed flag-contract and hardware-test bookmarks saved in
+   Ghidra. No new hardware-success claim is made for this candidate.
+
+### 2026-09-12 — session-module UI/field analysis and IR wire provenance (parent-adjudicated, bytes verified, cross-reviewed; no new inference)
+
+* **A1 — `ram:e701`/`ram:e6ff` are display snapshots, not counters
+  (CONFIRMED).** `g_wSessRcv1` (`ram:e701`) and `g_wSessRcv2` (`ram:e6ff`)
+  are snapshots of the last-consumed RX object's frame-type byte at
+  `ram:e5be` and sequence byte at `ram:e5bf`, via live-copy cells
+  `ram:e646`/`ram:e648` (`ROM00:5AA3`/`ROM00:5AAC`). Three direct static
+  writers: live copy at `ROM00:5AA3`/`ROM00:5AAC`; init-zero at
+  `ROM00:45C4`/`ROM00:45CA` and `ROM00:4737`/`ROM00:473D`. Single direct
+  reader at `ROM00:4380`/`ROM00:4399` in `SessionStateBuild`, via
+  `FormatDecU16` (width 3) into the RCV1/RCV2 error/status screen. They
+  are not builder inputs and not counters. Broader UI meaning beyond that
+  display remains OPEN.
+
+* **A2 — RECORD/BLOCK senders via `Session_Tx4Param`/`Session_Tx5Param`
+  (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN).**
+  `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
+  `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
+  `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
+  (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
+  `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
+  also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
+  (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
+  `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
+  argument `==1` selects device `63h` else `43h` → `ram:e52e`;
+  `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
+  `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN;
+  discriminator is to correlate one wrapper with a captured RECORD/BLOCK
+  UI transaction.
+
+* **A3 — `SessionRxStateMachine` (`ROM00:5A81`) Out contract corrected
+  (CONFIRMED).** Seeds `ram:e646` from zero-extended received type byte
+  at `ram:e5be`; substitutes only numeric values `4` (`ROM00:5B18`), `8`
+  (`ROM00:5AE7`), `9` (`ROM00:5AFE`) locally; does NOT restrict the
+  received type to `{2,3,4,8,9}`.
+
+* **A4 — `ram:e6fc` zero-length wait threshold (`g_bSessZeroLengthWaitSec`)
+  (CONFIRMED mechanics; 55 s semantics LIKELY).** Written `0x37` (=55 s)
+  at `ROM00:4587` and `ROM00:46FA`; read at `ROM00:5AF0` → `ROM00:6443`,
+  which compares baseline against RTC-derived current time (BDOS `FDh`
+  via `ram:DA13`; minute-boundary `+60`) and returns whether
+  `baseline + threshold_seconds ≤ current_seconds`; when true, result `9`.
+  The elapsed-seconds threshold role is byte-verified; that `0x37` means
+  55 seconds of wall time is LIKELY (era convention combined with
+  observed value).
+
+* **A5 — `ram:e48c` session error-code cell (CONFIRMED mechanics; full
+  runtime-writer map OPEN).** 17 direct readers, no direct static writer;
+  written indirectly via `ROM00:454B`-`ROM00:4557` → `ROM00:3C06`
+  (`SessionCoroJumpTable`); table at `ROM00:692A + 17*ram:E22D + selector`,
+  masked `0x7F`, written through destination pointer at `ROM00:3C94`-`ROM00:3C9E`
+  (byte `ram:e48c` via `HL` indirection). Full set of runtime selectors
+  that drive it remains OPEN.
+
+* **A6 — `ram:e085` `Lib_SignedGt16` contract (CONFIRMED; closes
+  previously-OPEN polarity item).** `HL_out = (signed HL > signed DE) ? 1
+  : 0`. Used at `ROM00:5AB7`-`ROM00:5AC1` with `HL=0`, `DE=length` to
+  detect negative length. Byte-verified at `ram:e085`.
+
+* **B — `conn3`-`conn13` Arduino source provenance (investigation only,
+  NOT archived; SUSPECTED map).** The per-run build-mode snapshot of
+  `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` for `conn3`..`conn12`
+  remains not archived; `TASKS` open item 3 stays OPEN and raw captures
+  remain only in `$HOME/micronic-scope-traces` (SHA-256 banked in
+  `re-notes/ir-wire-protocol.md`). The on-disk sketch is a single
+  mutually-exclusive-mode build (`LADDER_TEST` currently `#defined`;
+  `#error` guards at `m1000_ir_probe.ino:108`-`128`). A run→mode map is
+  **INFERRED** from decoded-contents strings vs sketch mode structures and
+  must be recorded as **SUSPECTED** only: `conn13→LADDER_TEST`
+  (near-explicit), `conn12→FREERUN_TEST` (near-explicit),
+  `conn11→ADDR_SWEEP` (near-explicit),
+  `conn10`/`conn9`/`conn8→PULSE_TEST`, `conn6→ORIENTATION_TEST`,
+  `conn4→LISTEN_ONLY`, `conn3`/`conn5`/`conn7→`generic `#else` sweep. Do
+  NOT infer mode from capture filenames — filename digit is run index, not
+  mode. Discriminating observation that would confirm or refute: the single
+  `Serial` banner line emitted by `setup()` captured with each CSV, or a
+  versioned `.ino` copy per run.
+  **Codex session logs checked 2026-09-13:** `~/.codex/sessions/2026/09/`
+  (days 06-10, 12) contain no per-run mode, banner, or `.ino` snapshot for
+  `conn3`-`conn13`. The one Micronic session (01a07851, 2026-09-06/07) and
+  its three guardian transcripts state the per-run sketch is not under
+  `/home/philpem` and record only a mid-edit dual-flag
+  `PULSE_TEST`+`LADDER_TEST` snapshot (since fixed), not a per-run build.
+  Raw CSV files are MSO samples with no embedded banner. Provenance
+  confirmed absent from sessions; SUSPECTED map stands.
+
+Cross-links: `re-notes/commstar-evidence.md` (senders, snapshots,
+threshold) and `re-notes/ir-wire-protocol.md` (SUSPECTED run→mode map).
+No Ghidra changes; docs only.
