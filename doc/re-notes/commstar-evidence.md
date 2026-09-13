@@ -115,7 +115,9 @@ sequence (byte-verified):
 
 1. `LinkPortSelect` (ROM00:3454) has already driven `LINK_CTRL` bit 1 to
    match active-link-id bit 5. This selects one of two owner-confirmed IR line
-   states; which state is V24 ADAPTOR versus PLINTH remains **OPEN**.
+   states. Wire-ID bit 5 clear sets `LINK_CTRL` bit 1 and port `2Ch` bit 5 and
+   is the top V24 state. Wire-ID bit 5 set clears those outputs and is
+   **LIKELY** back PLINTH pending direct observation.
 2. Clear `LINK_CTRL` bit 0, set `LINK_CTRL` bit 0, clear `LINK_CTRL` bit 4;
    `B=0x80` DJNZ delay.
 3. `LinkPresent` (ROM00:34EC) then `LinkWaitReady` (ROM00:34F8). `34F8` is
@@ -284,7 +286,8 @@ Descriptor lists (byte-verified, structurally mutable where noted): RX
 
 Retry scheduler (CONFIRMED): initial `fdd6=32h` / `fdd8=6`, later
 `fdd6=14h` / `fdd8=3`; the caller reschedules after `LinkBlockTx`
-without testing returned `A`/carry.
+without testing returned `A`/carry. After `RtcInit`, one scheduler sweep
+corresponds to one observed 64 Hz RTC Register C PF event.
 
 ### Timing boundary
 
@@ -295,7 +298,7 @@ deadlines below are real, but they bound **the firmware's patience at the latch
 boundary** — they say nothing about how much of that budget the controller
 itself consumes before an answer reaches the wire.
 
-[The RTC analysis](rtc.md#periodic-interrupt-rate-from-register-a-self-test-math)
+[The RTC analysis](rtc.md#periodic-interrupt-rates-from-register-a-call-order-and-live-emulation)
 performs this accounting for the clock self-test loop (24 T-states per
 iteration = 6.703 us) and is the method to apply here.
 
@@ -304,10 +307,259 @@ iteration = 6.703 us) and is the method to apply here.
 | `LinkPresent` / `LinkWaitReady` bit-7 poll | `0x02DA` | 730 | 49 T | **9.70 ms** |
 | TX bit-4 / bit-6 poll | `0x026C` | 620 | 59 T | **9.92 ms** |
 | TX/RX per-byte poll | `0x06F9` | 1785 | 51 T | **24.69 ms** |
-| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | 50 retries observed at **93.75 ms** end-to-end |
+| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | Initial retries normally span six 64 Hz periods = **93.75 ms** end-to-end |
 
 The retry cadence is no longer open: a scope capture of a failing connect shows
-exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`.
+exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`. See
+[IR wire protocol](ir-wire-protocol.md).
+
+## The full session error map — CONFIRMED
+
+Byte-verified 2026-09-04 by joining each wrapper's `InlineTableDispatch` table
+to the `LD HL,1Fxx` literal in each case handler and the message builder that
+follows it. Result `0x0000` is always the success arm and `0x0004` is a second
+success arm on the three connect commands.
+
+| Command | Result | Code | Message |
+|---|---:|---:|---|
+| `C-INIT-COMMS` | 9 | 8001 | Plinth not connected |
+| | *default* | **8000** | Plinth not connected |
+| `C-DIAL` | 9 | 8011 | Not available |
+| | 12h | 8012 | Failed to connect |
+| | 13h | 8013 | Failed to connect |
+| | 0Ch | 8014 | Failed to connect |
+| | 0Bh | 8015 | Failed to connect |
+| | 1, 0Fh | 8016 | Modem fault |
+| | *default* | 8010 | Failed to connect |
+| `C-ANSWER` | 9 | 8021 | Not available |
+| | 12h | 8022 | Failed to connect |
+| | 13h | 8023 | Failed to connect |
+| | 1, 0Fh | 8024 | Modem fault |
+| | *default* | 8020 | Failed to connect |
+| `C-MANUAL` | 9 | 8031 | Not available |
+| | 12h | 8032 | Failed to connect |
+| | 13h | 8033 | Failed to connect |
+| | 0Dh | 8034 | Failed to connect |
+| | 1, 0Fh | 8035 | Modem fault |
+| | *default* | 8030 | Failed to connect |
+| `C-DROP-LINE` | 9 | 8041 | Not available |
+| | 1, 0Fh | 8042 | Modem fault |
+| | *default* | **8040** | Line failure |
+
+The result values are a **vocabulary shared across commands**, which is the
+useful part:
+
+| Result | Meaning, read off the message it produces everywhere it appears |
+|---:|---|
+| 0, 4 | success — the command continues |
+| 1, `0Fh` | modem fault |
+| 9 | requested facility not available |
+| `12h`, `13h` | connect refused/failed |
+| `0Bh`, `0Ch`, `0Dh` | connect failures specific to dial and manual |
+| anything else | falls to the command's own default arm |
+
+**The link layer's result codes are outside this vocabulary entirely.**
+`LinkBlockTx`/`LinkBlockRx` return `0EBh`, `0ECh`, `0EDh` or `0EEh`, none of
+which any switch enumerates, so a link failure always lands on the default arm.
+That is the single mechanism behind `8000`, `8010`, `8020`, `8030` and `8040`
+alike — the same underlying event, named after whichever command was running.
+
+Decades `8050`+ belong to `C-COMMAND` and the transfer commands and follow the
+same shape; their switches are not decoded here.
+
+## What else can appear in `RCV1`
+
+`RCV1` is `ram:E5BE` zero-extended. Two families of value reach it:
+
+| Value | Source | Meaning |
+|---:|---|---|
+| 2, 3, 4 | frame type | a frame really was received; type as dispatched by `ROM00:2FBD` |
+| **235** `0EBh` | `ROM00:335A` | controller absent or not ready — `LinkPresent`/`LinkWaitReady`, or the `RXBUSY` wait, timed out |
+| **236** `0ECh` | `335E`, `341C` | controller reported an error: TX status bit 5, or the receive error bit |
+| **237** `0EDh` | `3414` | receive-side descriptor exhausted — the documented case is a 16-byte type-4 queue overrunning a fixed descriptor |
+| **238** `0EEh` | `3356`, `31EE`, `33EB`, `3418` | timed out waiting for completion |
+
+Byte-verified: those are every `LD A,<E0-EFh>` in `ROM00:3100-3600`, i.e. the
+whole link layer. So an operator reading `(238/001)` is being shown a
+**timeout**, and `235` would mean the controller never even reported ready —
+which is the discriminating observation for whether an adapter is being seen at
+all.
+
+## Why 8040 is not a state-machine refusal — CONFIRMED
+
+The session state matrix at `ROM00:692A` was already solved (2026-09-01):
+`table[state * 17 + command]`, a cell under `0x80` being the new state, `0x80`
+meaning ignored, `0x81`/`0x8D` refusal markers. What matters for the `8040`
+question is one column of it, rendered here for the first time in these notes:
+
+| state | INIT | DIAL/ANSW/MANU | DROP | COMM | SHUT | ABRT |
+|---|---|---|---|---|---|---|
+| 0 NOT-STARTED | **1** | - | **0** | - | - | - |
+| 1 DISCONNECTED | 81 | **2** | **0** | 81 | 81 | 13 |
+| 2 CONNECTED | 8D | 8D | **0** | **3** | **12** | 13 |
+| 3-11 (transfer states) | 8D | 8D | **0** | 8D | 8D | 13 |
+| 12 TERMINATED | 8D | 8D | **0** | 8D | 8D | 13 |
+| 13 CRASHED | 8D | 8D | **0** | 8D | 8D | 8D |
+
+**`C-DROP-LINE` is legal from every one of the fourteen states and always
+transitions to 0.** Its column is `0` in all fourteen rows — it is the only
+command that escapes `CRASHED`. So `8040` cannot be a rejected transition: the
+state change succeeds and the failure happens in the work the command then
+does. The same holds for `8000` — `C-INIT-COMMS` from `NOT-STARTED`
+transitions cleanly to `DISCONNECTED`.
+
+That is the useful negative result. Both errors are the *link layer* failing
+underneath a perfectly legal session command, which is why sweeping session
+semantics would never have explained them.
+
+## What `(238/001)` says about where it dies
+
+`E701` = RCV1 is already documented as a zero-extended snapshot of `ram:E5BE`,
+with the note that "transport error may put `EEh` (238) there". The owner's
+hardware now shows exactly that: **every failure, with and without an adapter
+answering, reads `238`**. So the displayed RCV1 is the transport error path,
+not a receive counter, and the value is `0EEh`.
+
+`LinkBlockTx` returns `0EEh` from three sites: the `LINK_STATUS` bit-6 wait at
+`ROM00:32F3`, the per-byte `LINK_STATUS` bit-7 wait at `3315`/`334E`, and the
+completion `LINK_STATUS` bit-6 wait at `3336`. A scope capture of the IR line
+during the failure shows the flag and the prelude and **no payload byte at
+all**. This excludes the completion wait and every per-byte wait after the
+first byte, but it does not exclude the first `TXRDY` wait: that can return
+`0EEh` before emitting any payload. The failure is therefore narrowed to
+either `LINK_STATUS` bit 6 at `ROM00:32F3` or `LINK_STATUS` bit 7 at
+`ROM00:3318`; the optical capture cannot distinguish them.
+
+### What the firmware actually waits for
+
+| Step | ROM | Waits on | On the wire |
+|---|---|---|---|
+| 1 | `34F8` | `LINK_STATUS` bit 7 (`TXRDY`) set, 9.70 ms | — |
+| 2 | `34F5` | writes `81h` to `LINK_CMD` | the flag |
+| 3 | `32B3` | writes `id & 1Fh` to `LINK_TXD` | the address |
+| 4 | `32B8` | `LINK_STATUS` bit 4 (`RXBUSY`) **clear**, 9.92 ms | — |
+| 5 | `32CC`-`32E6` | drives `LINK_CTRL` bit 5 high, bit 4 high, 32 `DJNZ`, bit 5 low | — |
+| 6 | `32F3` | `LINK_STATUS` bit 6 (`HSBUSY`) **clear**, 9.92 ms | failure candidate |
+| 7 | `3318` | per byte: `LINK_STATUS` bit 7 (`TXRDY`) set, 24.69 ms | failure candidate before byte 1 |
+
+**Every one of these is a status bit from the local link controller. The
+firmware never examines the IR line.** No frame content can satisfy step 6 or
+step 7 directly — it can only cause the controller to change `LINK_STATUS`
+bit 6 or `LINK_STATUS` bit 7. What makes the controller do that is a property
+of the controller, not of the firmware. Both states remain **OPEN**.
+
+This bounds the adapter problem usefully. Sweeping reply content is only worth
+doing under the assumption that `LINK_STATUS` bit 6 or `LINK_STATUS` bit 7
+tracks a received frame. That either status bit instead tracks a
+carrier/presence signal, or needs a complete frame including whatever the
+framer appends, is equally consistent with everything observed. Direct
+`LINK_STATUS` capture is needed to tell.
+
+## Session-operation error decades
+
+**CONFIRMED**, byte-verified 2026-09-04, prompted by an owner observation on
+real hardware: a V24 connect attempt ends `8000 (238/001) Plinth not
+connected`, and pressing ENTER runs a second batch of 50 attempts that ends
+`8040 (238/001) Line failure`. **8040 was not in this repository at all** — it
+is not a retry of the connect.
+
+### The mechanism
+
+Every `C-*` session command is a thin wrapper of identical shape. It pushes an
+**operation selector** and calls a common dispatcher at `ROM00:452D`, stores
+the result in `E488`, and routes it through its own `InlineTableDispatch`
+switch. `C-DROP-LINE`:
+
+```text
+4A25  11 00 00     LD DE,0000h
+4A28  CD 37 D8     CALL D837h
+4A2B  21 04 00     LD HL,0004h       ; operation selector 4
+4A2E  E5           PUSH HL
+4A2F  CD 2D 45     CALL 452Dh        ; the common session-op dispatcher
+4A32  D1           POP DE
+4A33  22 88 E4     LD (E488),HL      ; result
+4A36  7C B5        LD A,H / OR L
+4A37  C2 C8 4A     JP NZ,4AC8h
+4A3A  CD 2A 58     CALL 582Ah
+4A3D  22 88 E4     LD (E488),HL
+4A40  2A 88 E4     LD HL,(E488)
+4A43  C3 B1 4A     JP 4AB1h          ; -> the result switch
+```
+
+The selector indexes the `C-*` name table (pointers at `ROM00:6B67`, strings
+from `6B8D`). Every call site of `452D` in the image, with its selector:
+
+| Wrapper | Selector | Command | Result switch | Error decade |
+|---|---:|---|---|---|
+| `4563` | 0 | `C-INIT-COMMS` | `46D6` | 8000, 8001 |
+| `47F6` | 1 | `C-DIAL` | `4890` | 8010-8016 |
+| `48BF` | 2 | `C-ANSWER` | `494D` | 8020-8024 |
+| `4974` | 3 | `C-MANUAL` | `49FA` | 8030-8035 |
+| `4A25` | 4 | **`C-DROP-LINE`** | `4AB1` | **8040, 8041, 8042** |
+| `4AE0` | 5 | `C-COMMAND` | — | 8050-8056 |
+| `4D7B` | 8 | `C-SHUT-DOWN` | — | |
+| `4E73` | 9 | `C-RX-REC` | — | 8090, 8091 |
+| `4F60` | 10 | `C-RX-BLK` | — | 8100-8102 |
+| `503A` | 11 | `C-BEGIN-FILE` | — | 8110, 8111 |
+| `50F3` | 12 | `C-TX-REC` | — | 8120, 8121 |
+| `517F` | 13 | `C-END-FILE` | — | 8130, 8131 |
+| `51F2` | 14 | `C-TX-BLK` | — | 8140, 8141 |
+| `52EB` | 15 | `C-END-TX` | — | |
+| `546F` | 16 | `C_ABORT` | — | |
+
+Selector 0 landing on the wrapper that owns `46D6` independently confirms the
+alignment: `46D6` was already attributed to `C-INIT-COMMS` on separate
+evidence. Selectors 6 and 7 (`C-RX-CMD`, `C-TX-REPLY`) have no `452D` call
+site — **OPEN**. A second block at `46E9`, switch `47E3`, re-uses 8000/8001
+without its own selector push and is probably a later stage of
+`C-INIT-COMMS` — **SUSPECTED**.
+
+### The two switches side by side
+
+```text
+46D6  CALL E0B2  n=2  0000->469C  0009->46AA(8001)                    default->46BD(8000)
+4AB1  CALL E0B2  n=4  0000->4A47  0001->4A85(8042)  0009->4A72(8041)
+                      000F->4A85(8042)                                default->4A98(8040)
+```
+
+So `8000` and `8040` are the **same event in different operations**: a result
+the wrapper's switch does not enumerate. Both write `E488 = 6` first, which is
+why the `e488` code is 6 in both cases and the 8000-series literal is the site,
+not the class.
+
+### Reading the message off the builder
+
+Each error literal is followed by a call to one of seven message builders, and
+each builder corresponds to one string. Every builder is pinned by at least one
+already-documented code, so the mapping is byte-verified rather than inferred:
+
+| Builder | Message | Pinned by |
+|---|---|---|
+| `445D` | Plinth not connected | 8000, 8001 |
+| `4475` | Not available | 8011, 8055, 8056, 8102 |
+| `448D` | Line failure | 8054, 8090, 8110 |
+| `44A5` | Failed to connect | 8010, 8012-8015 |
+| `44BD` | Invalid reply | 8053 |
+| `44D5` | Modem fault | 8016 |
+| `443C` | Invalid data stream | 8101 |
+
+`8040` at `ROM00:4A9E` calls `448D`, so it prints **Line failure** — which is
+exactly what the hardware shows. The same sweep of `LD HL,1Fxx` literals across
+`ROM00:4200-5200` yields the decades in the table above, and adds 8020-8024,
+8030-8035, 8041, 8042, 8091, 8100, 8111, 8120, 8121, 8130, 8131, 8140 and 8141
+to the error list, none of which the emulator had reached.
+
+### What it means operationally
+
+The handheld's second batch of 50 is **the line teardown, not another connect**.
+`C-INIT-COMMS` fails and reports 8000; the operator presses ENTER; the session
+tries to drop the line; `C-DROP-LINE` fails the same way and reports 8040. The
+50-attempt count is the link-layer retry limit (`fdd6=0x32`), which applies to
+any request, so both batches retry equally.
+
+**OPEN:** what result value `C-DROP-LINE` actually returned. The switch handles
+0, 1, 9 and `0Fh`; the observed failure is none of those. Recovering it needs
+`452D` decoded, or `E488` read at the point of failure.
 
 ## Types, replies, and session state
 
@@ -363,10 +615,57 @@ The active link id is retained in `fdd4`.
   XOR-compared to `fdd4` at ROM00:30DC) and selects a per-link sequence
   slot `FE43h + (fdd4 & 3Fh)` (init 1).
 
-Which polarity maps to owner-confirmed V24 ADAPTOR (top) versus PLINTH
-(back) remains **OPEN**. Where the EXT STORAGE ADAPTER attaches also
-remains **OPEN**. This does not prove a multidrop physical topology or
-address allocation policy; treat those as open hardware questions.
+### Wire IDs, latch states, and physical ports {#device-table-ports}
+
+**CONFIRMED:** both tested Load/Run choices use wire ID `43h` when they reach
+`LinkBlockTx`. This is the wire-ID-bit-5-clear branch of `LinkPortSelect`,
+which sets `LINK_CTRL` bit 1 and port `2Ch` bit 5. A September 6 revision
+incorrectly claimed the V24 choice used `63h`; a fresh reproduction with
+explicit port-select instrumentation disproves it.
+
+There are **three distinct bits** in that sentence. “Clear” refers only to
+bit 5 of the wire ID held in `fdd4`; it does not refer to port `2Ch` bit 5.
+The canonical mapping is:
+
+| `fdd4` wire ID | wire-ID bit 5 | forced `LINK_CTRL` bit 1 | forced port `2Ch` bit 5 | selection values with other bits clear | active baseline after `LinkBlockTx` opens |
+|---|---:|---:|---:|---|---|
+| `43h` | **0 (clear)** | **1 (set)** | **1 (set)** | `LINK_CTRL=02h`, `2Ch=20h` | `LINK_CTRL=03h` |
+| `63h` | **1 (set)** | **0 (clear)** | **0 (clear)** | `LINK_CTRL=00h`, `2Ch=00h` | `LINK_CTRL=01h` |
+
+The whole `LINK_CTRL` value can contain other protocol-state bits. The exact
+selection transformations are `old | 02h` for wire ID `43h` and
+`old & FDh` for wire ID `63h`. The corresponding port-`2Ch` transformations
+are `(old & FCh) | 20h` and `old & DCh`.
+
+The two reproduced UI routes were:
+
+| From | `fdd4` | `LinkPortSelect` branch | `LINK_CTRL` bit 1 | port `2Ch` bit 5 |
+|---|---|---|---|---|
+| `PLINTH` | `43h` | `3473` (wire-ID bit 5 clear) | set | set (`2C`=`20`) |
+| `V24 ADAPTOR`, mode 1 | `43h` | `3473` (wire-ID bit 5 clear) | set | set (`2C`=`20`) |
+
+The routes are genuinely distinct: the V24 run enters its extra Log-on form,
+accepts mode 1, and emits a different state-6 application object. The new
+harness regression records each completed `LinkPortSelect` invocation as
+`FDD4/CTRL.b1/2C.b5`; both runs report `43/1/1`.
+
+The false `63h` result came from a static correlation that the bytes do not
+support. `Session_TxBlock4` at `ROM00:5BF7` does test its **first stack
+argument** against 1 at `ROM00:5C04`: equality selects device 3 (`63h`) and
+inequality selects device 4 (`43h`). `ram:E04B` returns a boolean in `HL` and
+sets Z for false, so that local branch reading is correct. What was not
+correct was identifying that stack argument with the index of the two-option
+string table at `ROM01:7663`. There is no static reference joining the table
+to `ROM00:5C04`, and the runtime result is selector 4 for both tested routes.
+
+**CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
+the handheld transmission at the top V24 window; the reproduced route uses
+`fdd4=43h`. Therefore **wire-ID bit 5 clear**, **`LINK_CTRL` bit 1 set**, and
+**port `2Ch` bit 5 set** identify the top state. Wire-ID bit 5 set, which
+clears both output bits, is **LIKELY** the back PLINTH state by elimination
+from two ports and two states, but has not yet been observed directly there.
+The replacement-ROM exerciser alternates both states and makes that remaining
+check self-describing.
 
 `E701`/`E6FF` are the width-3 decimal RCV1/RCV2 status fields
 shown on the session status screen (**CONFIRMED provenance**):
@@ -376,19 +675,62 @@ there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
 displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 **OPEN**.
 
+### Session-module senders and status fields — 2026-09-12 (parent-adjudicated, bytes verified)
+
+* **Senders `Session_Tx4Param`/`Session_Tx5Param` (CONFIRMED mechanics;
+  RECORD vs BLOCK mapping OPEN).** `ROM00:5669` (4 stack args: 1 word +
+  3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result
+  word `g_wTxBlock4Result` at `ram:e64e`); `ROM00:56A4` (5 byte args)
+  calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result word
+  `g_wTxBlock5Result` at `ram:e65a`). Both builders also reachable via
+  `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 →
+  `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`). `TxBlock4`
+  fills `ram:e650`-`ram:e656` (first stack word argument `==1` selects
+  device `63h` else `43h` → `ram:e52e`; `ram:e658=8`); `TxBlock5` fills
+  `ram:e65c`-`ram:e668`. Whether `Tx4Param` vs `Tx5Param` is RECORD vs
+  BLOCK remains OPEN (discriminator: correlate one wrapper with a captured
+  RECORD/BLOCK UI transaction). See `research/TASKS.md` 2026-09-12 entry.
+
+* **RCV1/RCV2 snapshots (CONFIRMED).** `ram:e701` (`g_wSessRcv1`) and
+  `ram:e6ff` (`g_wSessRcv2`) are display snapshots of the last-consumed
+  RX object's frame-type byte at `ram:e5be` and sequence byte at
+  `ram:e5bf` via `ram:e646`/`ram:e648` (`ROM00:5AA3`/`ROM00:5AAC`); 3
+  direct static writers (live copy `ROM00:5AA3`/`ROM00:5AAC`; init-zero
+  `ROM00:45C4`/`ROM00:45CA` and `ROM00:4737`/`ROM00:473D`); single direct
+  reader `ROM00:4380`/`ROM00:4399` in `SessionStateBuild` via
+  `FormatDecU16` width 3. Not counters, not builder inputs.
+
+* **Zero-length wait threshold `ram:e6fc` (`g_bSessZeroLengthWaitSec`)
+  (CONFIRMED mechanics; 55 s semantics LIKELY).** Written `0x37` at
+  `ROM00:4587`/`ROM00:46FA`; read `ROM00:5AF0` → `ROM00:6443` which
+  compares baseline vs RTC current time (BDOS `FDh` via `ram:DA13`;
+  `+60` at minute boundary) and returns
+  `baseline + threshold_seconds ≤ current_seconds` → result `9`. The
+  `0x37` value's meaning as 55 seconds is LIKELY.
+
+Cross-link: `research/TASKS.md` 2026-09-12 entry covers the same
+findings with full writer/reader addresses.
+
 ## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
 
 Two bounded synthetic traces were captured by calling the session TX
-builders with synthetic stack arguments and bypassing only a separate
-preflight at `5C1F`/`5D05` (forcing successful `HL=0` at `5C22`/`5D08`).
+builders with synthetic stack arguments and bypassing their preceding
+state-`0000` transaction at `5C1F`/`5D05` (forcing successful `HL=0` at
+`5C22`/`5D08`).
 `E6E6=0` in both traces. The physical low-five-bit prelude
 (`link_id & 1Fh`) is excluded from the quoted logical frames. Meanings of
 payload constants/fields and complete RECORD/BLOCK/C-COMMAND semantics
 remain **OPEN**.
 
-The preflight's condition is **OPEN**. No quoted transaction has satisfied it
-normally, so it may be a real-peer prerequisite. The forced return is emulator
-instrumentation, not an action available to a server.
+**The former "preflight" question is CLOSED.** Both call sites invoke
+`Session_TxFrameAndRx` (`ROM00:5B79`), which clears the two 138-byte session
+buffers, calls `SessionSetParams` with state, argument, and size zero and both
+frame lengths six, sends through `SessionTxSendFrame33`, and waits in
+`SessionRxByteLoop`. The ordinary protocol-aware peer completes it with the
+normal type-2/type-3/type-4 control exchange. The bounded program-download
+regression executes it without a forced return and observes states beginning
+`0000`, `0006`, `0062`, `0064`, `0045`. **CONFIRMED by bytes at
+`ROM00:5B79`-`5BA5`, both call sites, and the emulator regression.**
 
 * `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector,
   mapped through `FE83 + selector - 1`; it is **not** logical frame type.
@@ -397,14 +739,16 @@ instrumentation, not an action available to a server.
   independently by `ROM00:2F6D`.
 
 * **Trace 4 — Session_TxBlock4 path (CONFIRMED):** synthetic stack args
-  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the separate preflight at
+  `(1,6,22h,33h)`, `E6E6=0`; bypassed only the preceding state-`0000`
+  exchange at
   `5C1F` by forcing successful `HL=0` at `5C22`. Payload length `15`;
   payload `06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`; complete logical
   frame `15 00 01 01 7F 00 06 00 00 00 80 00 00 4C 00 00 22 33 00 00 05`.
 
 * **Trace 5 — Session_TxBlock5 path (CONFIRMED):** args
-  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preflight at `5D05` by
-  forcing `HL=0` at `5D08`. Payload length `19`; payload
+  `(1,6,1,44h,55h)`, `E6E6=0`; bypassed only the preceding state-`0000`
+  exchange at `5D05` by forcing `HL=0` at `5D08`. Payload length `19`;
+  payload
   `06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`; logical frame
   `19 00 01 01 7F 00 06 00 00 00 80 00 01 55 02 00 44 3C 00 00 00 00 00 00 01`.
 
@@ -415,10 +759,11 @@ semantics, remain **OPEN**.
 ## Bounded real transaction — form 4 through service 33 / link IRQ path (CONFIRMED mechanics only)
 
 A bounded harness option `--trace-session-transaction 4` runs builder
-form 4 through the **actual service-33/link IRQ path**, bypassing only
-the already documented separate preflight as builder trace 4 does
-(forcing `HL=0` at `5C22`). It is a mechanically valid firmware exercise,
-not an interoperable Commstar specification.
+form 4 through the **actual service-33/link IRQ path**, bypassing only the
+preceding state-`0000` exchange to isolate the state-`0006` builder (forcing
+`HL=0` at `5C22`). The state-`0000` exchange is separately covered by the
+end-to-end peer regression described above. This option is a mechanically
+valid firmware exercise, not an interoperable Commstar specification.
 
 **Service identities (CONFIRMED):** actual service-33 entry is
 `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
@@ -480,9 +825,11 @@ interoperable program-transfer grammar.
 This is the implementation contract for the repository's regression peer. It
 drives the tested PLINTH route and the separately regression-covered V24
 mode-1 software route, delivering raw COM or DIP bytes to the real loader. It
-is not a general Commstar protocol and cannot be implemented by an external
-server: it reads active state from M1000 RAM and waits for a RAM/PC arming
-condition that has no known wire-visible equivalent.
+is not a general Commstar protocol. Its diagnostic default reads active state
+from M1000 RAM. With `--synthetic-loadrun-arm-delay-us 500000`, however, the
+fresh receive is scheduled only from the instant the peer supplies the
+preceding type-4 completion; no RAM, descriptor, or PC arming oracle decides
+when to send.
 
 `id` is the active link id at `g_bActiveLinkId` (`FDD4`), `seq` is its
 per-link sequence at `FE43 + (id & 0x3F)`, and `N` is an inner payload length.
@@ -513,20 +860,30 @@ only confirmed rule for delimiting a captured M1000 transmission.
 | Link id bits | Server-observable? | Source |
 |---|---|---|
 | 0-4 | Yes | Controller prelude (`LinkBlockTx` transmit step 4). |
-| 5 | No | Port select via `LinkPortSelect`; polarity is **OPEN**. |
+| 5 | No | Port select via `LinkPortSelect`; clear is top V24, set is LIKELY back PLINTH. |
 | 6-7 | No | Never transmitted. Both observed ids (`0x43`, `0x63`) have bit 6 set and bit 7 clear; two samples are not a rule. |
 
 Recovering the remaining three bits by capture, probing, or a fixed convention
 is a prerequisite for an external server. It cannot observe
 `g_bActiveLinkId`, the per-link RAM sequence slot, the receive-descriptor
-ownership, or the fresh program-receive arm. In
-particular, this contract's step 4 below requires `FDDC=FE0E`, `FDD5=01`,
-specific callback/descriptor pointers, and PC `ROM00:2F78`; none is exposed by
-the known link protocol. Whether a wire event signals that arm, or whether a
-real peer retries blindly, is **OPEN**.
+ownership, or the fresh program-receive arm directly. The diagnostic oracle
+waits for `FDDC=FE0E`, `FDD5=01`, specific callback/descriptor pointers, and
+PC `ROM00:2F78`; none is exposed by the known link protocol.
 
-Therefore the queue forms below are useful only for emulator/controller-model
-work. They are insufficient to drive Load/Run from a physical server.
+**CONFIRMED in bounded emulation:** timing from the peer-controlled type-4
+completion removes that oracle. With the corrected 3.6864 MHz CPU clock, a
+275 ms delay loses the following receive-first object, while 300 ms completes
+both receive boundaries for a 50-byte DIP. The regression uses 500 ms and
+passes with 1700-, 3400-, and 6800-tick emulator slices. The timer begins when
+the controller model is supplied the type-4 queue. The same 500 ms policy also
+passes the V24 mode-1 route and a 200-byte, two-chunk COM transfer. A physical
+implementation would naturally begin after finishing that frame on the IR
+wire, so its epoch is slightly later; whether there is an upper acceptance
+deadline and whether 500 ms is reliable on hardware remain **OPEN**.
+
+The queue forms below remain controller-model evidence. A timed receive-arm
+fallback is now available, but the return wire handshake and the three hidden
+link-id bits still prevent a physical server.
 
 #### Captured M1000 session requests (controller-boundary TX) {#captured-session-requests}
 
@@ -587,9 +944,11 @@ Minimal algorithm:
    states 61, 64, and 45. For state 44, use the `N+14` type-2 form with `N=6`
    and payload `4F 4B A5 5A 3C C3`, then complete each exchange with type 3
    and type 4 using current `id` and `seq`.
-4. **Emulator only:** wait for the fresh program receive arm: `FDDC=FE0E`, `FDD5=01`,
-   `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`. Do not send stream data while
-   `FDDC=FE32`; it belongs to the previous phase-2 completion.
+4. For diagnostics, wait for the fresh program receive arm:
+   `FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`, and `FDD2=2E85`.
+   For an externally reproducible policy, instead wait 500 ms after supplying
+   the preceding type-4 completion. This is emulator-confirmed adapter policy;
+   its physical-wire timing remains untested.
 5. Send marker 0 for non-final chunks, marker 1 for the final chunk. Chunks
    of 126 then 74 bytes are regression tested, not maximums.
 6. If completion is needed, invoke `Program_FinalizeInput` with zero status as
@@ -751,8 +1110,8 @@ the historical meanings of the text fields.
 stub reaches `Session_LogonMode0Or2Callback` and whose session/device selector
 is 4. Service 33 resolves selector 4 through `g_bDeviceWireId4`; its firmware
 default is `0x43`. The `AND 0x20` at `LinkBlockTx` is therefore zero and takes
-the bit5-clear latch path. This identifies the selected software latch state,
-not the physical V24 or PLINTH connector.
+the wire-ID-bit-5-clear latch path. This identifies the selected software
+latch state, not the physical V24 or PLINTH connector.
 
 The errors `0x1F40 (8000)` and `0x1F41 (8001)` both display `"Plinth not
 connected"`. **CONFIRMED:** they arise in the two connection-result dispatchers
@@ -920,16 +1279,20 @@ The implementation evidence is in `LinkBlockTx` (ROM00:3277),
 `research/TASKS.md` in the source tree; research files are excluded from
 the published site.
 
-The next work should prioritize server blockers:
+The next work should prioritize server blockers and the easiest physical
+discriminator:
 
-1. Characterise the `5C1F`/`5D05` preflight that all current builder traces
-   bypass.
-2. Cycle-account the timeout loops and determine the retry scheduler's units.
-3. Determine whether the fresh program-receive arm has a wire-observable
-   counterpart, or whether a real peer must retry.
-4. Capture one physical IR exchange to establish modulation, byte framing,
-   timing, and whether controller-queue sync/trailer bytes exist on the wire.
-5. Capture a **historical** handheld-to-host RECORD/BLOCK transfer. This
+1. Run the prepared replacement-ROM exerciser and record its complete
+   `LINK_STATUS` samples. The owner reports that programming the socketed ROM
+   is easier than attaching a logic analyser to the Z80 bus. A stock-ROM bus
+   capture remains the fallback if the exerciser cannot return usable records.
+2. Measure the 500 ms completion-relative receive-arm fallback's epoch and
+   acceptance window on hardware. PLINTH/V24 and single-/multi-chunk emulator
+   coverage is complete.
+3. Capture a successful bidirectional IR exchange to establish the return
+   handshake and whether controller-queue sync/trailer bytes exist on the
+   wire. The stock handheld's outbound waveform is already captured.
+4. Capture a **historical** handheld-to-host RECORD/BLOCK transfer. This
    project's own peer now receives one (`CommstarRecordUploadTest`), which
    establishes the ROM's acceptance conditions but not what a real server
    sent.

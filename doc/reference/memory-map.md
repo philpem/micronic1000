@@ -640,21 +640,164 @@ decodes it.
 | `02h` | `KBD_DRIVE` | W | Keyboard drive / configuration latch. `LD A,3Fh` drives all lines (`ROM00:1A42`), `00h` clears them (`ROM00:1A83`); reset writes `FDh` at `ROM00:017B` to select one column. Shadows at `F780` and `F782`. Also written by the NMI and power-down paths. CONFIRMED as the keyboard drive; the non-keyboard uses are **Provisional** |
 | `03h` | `LCD_DATA` | W | HD61830 data byte. CONFIRMED (`ROM00:1F7F`, `1F96`, `1F9E`, `1ED2`) |
 | `04h` | `IRQ_MASK` / `OUT_LATCH` | W | **Interrupt-enable mask, active low.** `ROM00:22E9` does `LD A,1Fh; DI; IM 1; CPL; LD (F784),A; OUT (04h),A` — the mask is complemented before output, so a *set* bit in the argument enables a source. A second entry at `ROM00:2306` passes `A = 2`. Also carries power-latch bits (`PowerLatchSetBit0`/`ClrBit0`, `ROM00:1B36`/`1B41`). Shadow `F784`. CONFIRMED |
-| `05h` | `IRQ_STATUS` / `STATUS_IN` | R | **Interrupt / status byte, active low.** `ROM00:230A` (`IrqWorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` — snapshot to `F785`, complement, test bit 3. Also read at reset (`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it is polled and complemented; the meaning of individual bits beyond bit 3 is **unknown** |
-| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. Written at power-down (`ROM00:28F2`), by the link watcher (`ROM00:24AD`, `24B8`) and at `ROM00:17A0`, `17B6`, `23CC`. Function **unknown** |
+| `05h` | `IRQ_STATUS` / `STATUS_IN` | R | **Interrupt / status byte, active low.** `ROM00:230A` (`IrqWorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` — snapshot to `F785`, complement, test bit 3. Also read at reset (`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it is polled and complemented; source assignments are byte-verified below |
+| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. Written at power-down (`ROM00:28F2`), by the link watcher (`ROM00:24AD`, `24B8`) and at `ROM00:17A0`, `17B6`, `23CC`. **Only bits 0 and 1 are ever manipulated** ([bit usage](#latch-bit-usage)) — a two-bit output, not an eight-bit one. Function otherwise **unknown** |
 | `08h` | `RTC_ADDR` | W | HD146818 register-address latch. Also reached as `LD C,08h; OUT (C),B` at `ROM00:1801`, `22DD`, `22E4`. CONFIRMED |
 | `23h` | `LCD_REG` | W | HD61830 register/command select. Also `LD C,23h; OUT (C),B` at `ROM00:1F7D`. CONFIRMED |
 | `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. Register-indirect reads at `ROM00:2104` (`LD C,28h; IN B,(C)`) and `ROM00:246E`/`2477` (`LD C,28h`, after selecting RTC registers 07h and 08h). CONFIRMED. Register map: [RE notes: RTC](../re-notes/rtc.md) |
-| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Used by the barcode front end (`ROM00:123B`, `124A`, `14F2`, `1541`, `1550`) and by `LinkPortSelect` (`ROM00:345D`). CONFIRMED as a shared latch; individual bits **Provisional** |
+| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Used by the barcode front end (`ROM00:123B`, `124A`, `14F2`, `1541`, `1550`) and by `LinkPortSelect` (`ROM00:345D`, which clears bit 1 on both paths). Bits 1, 4 and 5 are individually managed; see [bit usage](#latch-bit-usage). CONFIRMED as a shared latch; individual bit meanings **Provisional** |
 | `2Bh` | `SOUND` | W | Beeper. `Port2bWrite` (`ROM00:35C6`) / `Sound_Off` (`ROM00:35CB`). CONFIRMED |
-| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Barcode arm/disable (`ROM00:1231`, `1283`, `1292`, `14E6`, `150F`-`1528`), link port select and probe (`ROM00:3487`, `34B5`), power-down (`ROM00:1786`). CONFIRMED as a shared latch; bits **Provisional** |
+| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. CONFIRMED as a shared latch; per-bit assignments in [the table below](#port-2ch-bits) |
 | `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end (`ROM00:1299`-`13ED`). CONFIRMED |
 | `33h` | *unknown* | R | **One access in the whole firmware**: `ROM00:1ED9` `DB 33` (`IN A,(33h); RET`), the tail of a four-instruction stub at `ROM00:1ED0` that first does `LD A,0Dh; OUT (03h),A`. Alignment is sound (the stub follows a `RET` at `1ECF`), but nothing references `1ED0` directly. **Purpose unknown.** Candidates worth discriminating on hardware: an LCD status/busy read (it sits inside the LCD driver block and follows an `LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Do not assume it is either |
-| `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `LcdInit` (`ROM00:1F2B`) and from `PowerLatchIncr`/`PowerLatchDecr` (`ROM00:1D73`/`1D57`), which increment and decrement the battery-RAM byte `FC05`. A ±1-adjustable level held in battery RAM and re-applied on LCD init is a contrast setting. **LIKELY** (mechanism CONFIRMED; the identity rests on the access pattern plus the project's established `LCD_CONTRAST` label). The Ghidra name `WritePowerLatchPort46` is a grandfathered misnomer |
+| `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `LcdInit` (`ROM00:1F2B`) and from `PowerLatchIncr`/`PowerLatchDecr` (`ROM00:1D73`/`1D57`). **LIKELY**, and stronger than it was. Observed: the adjusters step `FC05` by **±2, not ±1** (`1D4A` does `DEC A` twice with a floor at `00h`, `1D60` `INC A` twice with a ceiling at `FFh`), and although `FC05` lives in battery RAM, cold boot overwrites it with `70h` at `ROM00:0257`. Owner-supplied: the stock `70h` is almost black on this unit, a Sun-modified key lightens it, and a cold boot puts it back — which matches that overwrite exactly. Corroborating but **not** primary: MAME maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and seeing the screen legibility change. The Ghidra name `WritePowerLatchPort46` is a grandfathered misnomer |
+
+### Interrupt sources {#interrupt-sources}
+
+**CONFIRMED.** `04h` is the enable mask and `05h` the pending register, both
+**active low**, and both are only six bits wide in practice — because the
+dispatcher has six slots and one of them is blank.
+
+`IrqWorkerPollPort5` (`ROM00:230A`) reads `05h`, ORs it with the mask from
+`F784`, complements the result to get *pending and enabled*, and walks a table
+of `{bitmask, handler}` triples at `ram:FD84`, copied from `ROM00:2352` at
+boot and terminated by `80h`:
+
+| bit | mask | handler | source |
+|---|---|---|---|
+| 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
+| 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
+| 2 | `04h` | `ROM00:31B6` | **the link controller** — see below |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery |
+| 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
+| 5 | `00h` | none | **blank in ROM**, filled in at run time by `ROM00:2349` (`LD A,20h; LD (FD93),A; LD (FD94),HL`), whose sole caller is `ROM00:138F` in the barcode block |
+| 6, 7 | — | — | no slot exists |
+
+That is the answer to "why are so few mask bits enabled". `ROM00:22E9` writes
+`CPL 1Fh` = `E0h`, enabling exactly bits 0-4, because those are the five
+populated slots. Bit 5 is enabled only while the barcode front end has
+installed its handler (`ROM00:139C` clears the mask bit, `149E` sets it back),
+and bits 6 and 7 are masked permanently because nothing dispatches them.
+
+Reading `05h` appears to acknowledge: three sites (`ROM00:01B1`, `0238`,
+`288A`) read it and discard the value, and at `288A` the very next action is
+the HD146818's own acknowledge (`LD A,0Ch; OUT (08h); IN A,(28h)`).
+
+#### Sleep confirms bit 0 is the keypad {#sleep-wake}
+
+**CONFIRMED, and it is the cleanest evidence in this table.** Entering sleep
+(`ROM00:1775`-`177F`) selects one of three masks and writes it to `04h`:
+
+| | value | enabled (active low) |
+|---|---|---|
+| `1775` | `F8h` | 0, 1, 2 |
+| `1779` | `FAh` | 0, 2 |
+| `177D` | `D8h` | 0, 1, 2, 5 |
+
+**Bit 0 is enabled in all three**, because it is what wakes the machine. The
+same sequence prepares the matrix for it: `ROM00:1766` writes `48h` to the
+keyboard drive rather than the usual `3Fh` — one column held down plus the
+bit 6 mode flag — so a key in that column pulls a sense line while everything
+else is quiet, and the wake path at `17D5` restores `3Fh` (`AND 3Fh`) on the
+way back out. Sleep itself is a spin loop at `1793`, not a `HALT`.
+
+So the keypad is a genuine interrupt source, not something the firmware
+discovers by polling; `Kbd_ScanMain` at `18F0` is its *handler*. Note the
+`FAh` case is exactly bits 0 and 2 — keypad and link — which is the mask
+`analysis/rom_exerciser` uses, arrived at independently and then found to be
+one the firmware itself uses.
+
+#### The link interrupt {#link-interrupt}
+
+Worth stating separately, because it changes the picture of how the link is
+meant to be driven. `ROM00:31B6` is:
+
+```
+31B6  CALL 34D2      ; LINK_CTRL bits 6 and 7 low
+31B9  CALL 34E7      ; IN A,(4Bh); AND 10h  -- LINK_STATUS bit 4
+31BC  JR Z,31C2
+31BE  CALL 2FBD      ; -> LinkBlockRx (ROM00:3378)
+31C1  RET
+31C2  CALL 34BD      ; LINK_CTRL bits 6 and 7 high
+```
+
+So **`LINK_STATUS` bit 4 is "receive pending"**: it is the bit that decides
+whether the interrupt enters `LinkBlockRx` at all. That is a different job
+from bit 0, which gates the `INI` loop *inside* a block read (`ROM00:33CF`),
+and it means the receive path is normally **interrupt-driven**, not polled —
+the polling in `LinkBlockRx` only runs once the interrupt has decided a frame
+is there. `LINK_CTRL` bits 6 and 7 are raised when there is nothing to receive
+and lowered while receiving, which is consistent with an interrupt
+enable/acknowledge pair on the controller.
+
+`analysis/rom_exerciser` installs its own IM-1 handler, enables sources 0 and
+2, and records both `LINK_STATUS` and the complemented port-`05h` source mask
+at interrupt time. It does not call the firmware receive handler; the point is
+to observe whether the controller raises source 2 without consuming a frame.
+
+### Which latch bits the firmware ever touches {#latch-bit-usage}
+
+Every output latch is read-modify-written through a RAM shadow, so a bit is
+only touched by the routine that owns it, and the immediate mask names the
+bit. This table is the exhaustive result of matching that idiom
+(`LD A,(shadow)` / `AND`-`OR`-`XOR n` / `LD (shadow),A` / `OUT (p),A`) across
+`ROM00`. **`o` = some instruction sets it, `-` = cleared, `x` = both,
+`.` = no instruction ever touches it individually.**
+
+| port | shadow | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 | whole-byte writers |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `02h` `KBD_DRIVE` | `F782` | - | - | . | . | . | . | . | . | `017D` `0188` `019B` `1759` `176B` `1A47` `3B51` |
+| `04h` `IRQ_MASK` | `F784` | . | . | x | - | - | . | . | x | `01B5` `023C` `177F` `22F2` `2428` `2851` `28DA` `28FB` |
+| `07h` `CTRL_07` | `F786` | . | . | . | . | . | . | x | - | `17A0` `28F2` |
+| `2Ah` `CTL_LATCH_2A` | `F78B` | . | . | o | o | . | . | x | . | `0154` `0255` `14F2` `1541` `179D` |
+| `2Ch` `CTL_LATCH_2C` | `F78D` | . | . | - | x | . | . | x | x | `1786` `3487` `34B5` |
+| `4Ah` `LINK_CTRL` | `F794` | x | x | x | x | . | . | x | x | — |
+
+Two negatives are worth stating outright, because they bound searches:
+
+* **`LINK_CTRL` bits 2 and 3 are the only ones no ROM instruction ever
+  writes.** Bits 0, 1, 4, 5 are driven by the transmit and receive arms, and
+  6 and 7 by the pair at `ROM00:34BD` (sets both) and `34D2` (clears both,
+  called from `LinkProbe` and from `LinkBlockTx`'s entry). So the untried
+  space on that latch is exactly two bits, which is what
+  `analysis/rom_exerciser`'s sweep phase exists to cover.
+* **`CTRL_07` uses only bits 0 and 1.** Its purpose is still unknown, but it
+  is a two-bit output, not an eight-bit one.
+
+Caveats. A `.` means no *individual* manipulation; the whole-byte writers in
+the last column can still set such a bit, and `04h`'s `2428` takes its mask
+from a register rather than an immediate, so its bits are not enumerable this
+way. `02h`'s bits 0-5 are the six keyboard columns, driven as whole-byte
+masks by the scan loop (`ROM00:190D`-`191F`) rather than individually, which
+is why they read `.` here — and bit 6 is a **mode flag**: `ROM00:175E` tests
+it and drives `48h` instead of `3Fh` when set, a reduced column pattern for
+the power-down wake scan.
+
+### Port `2Ch` bits {#port-2ch-bits}
+
+Every write is a read-modify-write through the shadow at `F78D`, so a bit is
+only ever touched by the routine that owns it. **No ROM instruction ever sets
+bits 2, 3, 6 or 7** — every write masks them off or leaves them at the zero
+`LinkProbe` establishes at `ROM00:34B5` (`XOR A`).
+
+| bit | evidence in the ROM | reading |
+|---|---|---|
+| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **an output strobe on the external port.** Width and placement are CONFIRMED; what it strobes is **OPEN** |
+| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **an enable asserted around reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is a drive enable, a wand power line or a direction control is **OPEN** |
+| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+| 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **LIKELY the LCD backlight.** A user-toggleable output that is switched off on power-down fits nothing else here, and MAME's `port_2c_w` keeps exactly `BIT(data, 4)` as `m_lcd_backlight` — corroborating, but itself an inference from this same ROM, not independent measurement. *Confirmed by:* pressing the toggling key and watching the panel |
+| 5 | `LinkPortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `LinkProbe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](../re-notes/commstar-evidence.md#device-table-ports) |
+| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+
+Bits 0 and 1 are the only candidates for the 5-pin side connector's outputs:
+bit 4 flashes the panel and bit 5 switches the IR port, so neither leaves the
+case. `analysis/rom_exerciser`'s pin walk drives all four with a countable
+pulse code to settle which physical pin is which.
+
 | `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791`. 37 write sites in `ROM00`, 24 in the resident kernel. CONFIRMED |
 | `48h` | `IR_STROBE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by `IrSenseDiagEcho` (`ROM00:24F7`-`252D`) and by `LinkSelftestRun` (`ROM00:28AE`-`28E4`), also `SessionSystemInit` (`ROM00:0359`, value `03h`) and power-down (`ROM00:178D`). CONFIRMED as a strobe/select output paired with `49h`; the project's older `LCD_STROBE` label is **not supported by the call sites**, which are all IR/link diagnostics |
 | `49h` | `IR_SENSE` / `BOOTKEYS` | R | Low 2 bits read back after each `48h` write and compared against the value written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3; CP …`) — a loopback/presence test. Also read twice at reset: `IN A,(49h); AND 1; JR Z` selects the cold path, `AND 2; JP NZ` selects a second boot mode (`ROM00:0168`-`0172`). CONFIRMED |
-| `4Ah` | `LINK_CTRL` | W | External-link control latch, shadow `F794`. 26 write sites. Bit assignments in [Memory and I/O map](memory-map.md) and the RE notes are **Provisional** |
+| `4Ah` | `LINK_CTRL` | W | External-link control latch, shadow `F794`. 26 write sites. Bits 0, 1, 4, 5, 6 and 7 are all driven; **bits 2 and 3 are never written by any ROM instruction** ([bit usage](#latch-bit-usage)). Roles: bit 1 port select (CONFIRMED), bits 0/4/5 the transmit and receive arm sequences, bits 6/7 the `34BD`/`34D2` pair. Electrical meanings **Provisional** |
 | `4Bh` | `LINK_STATUS` | R | Link status, polled in `LinkBlockTx`/`LinkBlockRx`/`LinkProbe`/`LinkWaitReady`. Bit assignments **Provisional** |
 | `4Ch` | `LINK_CMD` | W | Link command latch; the only write is `81h` in `LinkPresent` (`ROM00:34F5`). CONFIRMED |
 | `4Dh` | `LINK_TXD` | W | Link TX data byte (`ROM00:32B6`, sole site). CONFIRMED |

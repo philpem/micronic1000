@@ -59,7 +59,7 @@ firmware wrote, not a constant.
 ```python
 from micronic.rtc import RTC146818
 rtc = RTC146818()
-rtc.reg_write(0x0A, 0x26)   # RS=6 -> 1024 Hz   (default running rate)
+rtc.reg_write(0x0A, 0x26)   # RS=6 -> 1024 Hz (clock self-test)
 rtc.reg_write(0x0B, 0x40)   # PIE on
 rtc.push_tick()             # drive the periodic output
 assert rtc.reg_read(0x0C) & 0xC0   # IRQF+PF
@@ -67,7 +67,8 @@ assert rtc.reg_read(0x0C) & 0xC0   # IRQF+PF
 
 Rate table is the standard MC146818 one (RS 1..15). Register C
 read returns-and-clears the interrupt flags, exactly as firmware
-uses it to ACK each tick.
+uses it to acknowledge periodic events. `RtcInit` subsequently writes
+Register A = `2Ah`, so the normal post-boot scheduler cadence is 64 Hz.
 
 ## proto.py — the IR-link transport (raw byte-latch scaffold)
 
@@ -230,20 +231,27 @@ optional `--upload-marker ADDR:VAL` (hex), `--upload-no-run` (stop
 after finalize/verify). `--trace-session-builder 4|5` runs the bounded
 synthetic builder traces described in `doc/protocol/commstar.md`.
 `--trace-session-transaction 4` runs builder form 4 through the actual
-service-33/link IRQ path (bypassing only the already documented separate
-preflight as builder trace 4 does); it is a mechanically valid firmware
-exercise only — complete command/payload meaning and peer realism remain
-**OPEN**. Its peer scaffold must expose status bit4 while inbound bytes
-remain (so IRQ poll `31B6` dispatches), bit0 while bytes remain, and bit1
-after drain; do not assign electrical names to these bits.
+service-33/link IRQ path, bypassing the normal state-`0000` control exchange
+to isolate the state-`0006` builder. End-to-end peer tests execute state
+`0000` normally. It is a mechanically valid firmware exercise only — complete
+command/payload meaning and peer realism remain **OPEN**. Its peer scaffold
+must expose `LINK_STATUS` bit 4 while inbound bytes remain (so IRQ poll
+`31B6` dispatches), `LINK_STATUS` bit 0 while bytes remain, and
+`LINK_STATUS` bit 1 after drain; do not assign electrical names to these
+bits.
+
+For synthetic Load/Run, `--synthetic-loadrun-arm-delay-us 500000` replaces
+the emulator-only RAM/PC receive-arm oracle with a timer that begins when the
+peer supplies the preceding type-4 completion. A 500 ms delay completes the
+PLINTH DIP regression with 1700-, 3400-, and 6800-tick slices, the V24 mode-1
+route, and a 200-byte two-chunk COM transfer. This is adapter-policy evidence,
+not proof of the connector-facing completion epoch.
 
 Opt-in integration: `MICRONIC_RUN_EMULATOR_TESTS=1
-analysis/venv/bin/python3 analysis/test_boot_upload.py` (4 tests: COM
-Hello, DIP Hello, max-size COM byte verification, and the bounded form-4
-service-33/link IRQ transport transaction — exact wire bytes, controller
-queues, type-3 reply, and zero-payload receive object; mechanically valid
-only, payload/command semantics and peer realism remain OPEN). All 4 passed
-serially; `test_program.py` 35/35 and `test_proto.py` 3/3 also passed. Run one
+analysis/venv/bin/python3 analysis/test_boot_upload.py`. The suite covers raw
+COM and DIP loading, boundary sizes, controller queues, session exchange,
+record upload, synthetic Load/Run, and the completion-relative arm policy;
+payload/command semantics and historical peer realism remain OPEN. Run one
 emulator process at a time under `timeout` (memory guidance in
 `analysis/README.md`). Bounded transaction example:
 `analysis/venv/bin/python3 analysis/boot_hw.py --trace-session-transaction 4`.

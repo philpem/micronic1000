@@ -115,72 +115,112 @@ State: continuously updated as work progresses.
     writes one queued byte through the FBF0 keyboard ring and sets FBC9 bit2.
     The serial-driven boot enters the Main Menu. Matrix injection via ports
     00/02 is not viable because firmware does not scan them during this wait.
-  * Remaining: model a live link peer and capture a complete send/receive
-    transaction; the current I/O stubs still cannot establish that exchange.
+  * Both directions now run end to end against real firmware: program
+    download to the handheld and RECORD upload from it. The synthetic peer
+    can now replace its internal RAM/PC receive-arm oracle with a tested
+    completion-relative 500 ms delay. Physical timing remains unverified.
 
 ## In progress
 
-- **Decode Commstar session/frame layer** — DONE only for the ROM-visible
-  transport and partial validated envelope: LinkTransferService (2F86),
-  LinkTransportCall (2F1A), RX dispatcher (2FBD),
-  LinkValidateFrameHeader (30DC), frame builders (3106/3130), session
-  bootstrap (0F40-10FB), and the 4Ah-4Fh byte-latch path. Numeric types,
-  reply words, and inline-dispatch cases are confirmed observations, not a
-  command-name or payload grammar. Remaining: trace RECORD/BLOCK/C-COMMAND
-  payload construction and consumption, resolve the complete reply envelope
-  and session transitions, and capture a complete software/live exchange.
+- **Decode Commstar session/frame layer** — the validated envelope, numeric
+  type-2/3/4 exchange, program-download blocks, RECORD upload stream, and
+  principal session transitions now run against real firmware in bounded
+  emulation. The state-`0000` exchange formerly called the builder preflight
+  is now characterised and regression-tested. Remaining: replace the
+  diagnostic receive-arm oracle as the normal peer policy after physical
+  validation, recover still-unknown object fields, and establish the physical
+  return handshake.
 
 ## Next (priority order)
 
 ### No-hardware priorities
 
-1. **Characterise the Commstar builder preflight at `5C1F`/`5D05`.** Every
-   current Load/Run builder trace forces its return to success; establish the
-   condition a real peer would have to satisfy, if any.
-2. **Cycle-account link timeout loops and retry scheduling.** Convert the
-   `02DA`/`026C`/`06F9` polls to bounded CPU time and establish the units of
-   `fdd6`/`fdd8`; do not infer connector deadlines without this.
-3. **Determine whether the fresh program-receive arm is externally visible.**
-   Current synthetic Load/Run waits for RAM/PC state (`FDDC=FE0E` etc.); find a
-   controller/wire event that replaces it, or record that real peers retry.
-4. **Bisect the state-44 payload maximum at 127 bytes.** A 126-byte synthetic
-   payload succeeds and 128 bytes reaches `0x1FAE` (8110), "Line failure";
-   establish whether 127 succeeds and preserve the result as a regression.
-5. **Continue static session-module and UI analysis.** Resolve RECORD/BLOCK/
-   C-COMMAND payload construction and consumption, the `e701/e6ff` RCV1/RCV2
-   fields, and remaining runtime result/state writers in the loaded modules.
-6. **Run a complete software-only Commstar session.** Extend the existing
-   byte-level `LinkPeer` duplex regression through the real session state
-   machine under bounded emulation. This may establish software framing and
-   sequencing, but not connector-level electrical meanings.
-7. **Resolve the runtime loader input-provider path.** Trace the coroutine/
+1. **Continue static session-module and UI analysis.** RECORD/BLOCK/
+   C-COMMAND payload construction and consumption remains partly **OPEN**.
+   `ram:e701`/`ram:e6ff` (`g_wSessRcv1`/`g_wSessRcv2`) are **CONFIRMED**
+   display snapshots (not counters; see 2026-09-12 entry below) — CLOSED.
+   RECORD/BLOCK builder mechanics are **CONFIRMED** via `ROM00:5669`
+   `Session_Tx4Param` → `Session_TxBlock4` (`ROM00:5BF7`) and `ROM00:56A4`
+   `Session_Tx5Param` → `Session_TxBlock5` (`ROM00:5CD7`), plus
+   `Session_RuntimeStubSourceTable` entries `ROM00:7D96`/`7D98`; whether
+   `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains **OPEN**
+   (discriminator: correlate one wrapper with a captured RECORD/BLOCK UI
+   transaction). `ram:e48c` error-code cell mechanics are **CONFIRMED**
+   (17 readers, indirect write via `ROM00:454B` → `ROM00:3C06` →
+   `SessionCoroJumpTable` `ROM00:692A`) but its full runtime-writer map
+   remains **OPEN**. `ram:e6fc` (`g_bSessZeroLengthWaitSec`) threshold
+   mechanics are **CONFIRMED** (see 2026-09-12 entry); 55 s semantics
+   **LIKELY**. `ram:e085` `Lib_SignedGt16` polarity
+   (`HL_out = (signed HL > signed DE) ? 1 : 0`) is now **CONFIRMED** —
+   CLOSED (was OPEN at `ROM00:5AB7` negative-length check).
+2. **Resolve the runtime loader input-provider path.** Trace the coroutine/
    provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
    COM/DIP file grammar and host-side validator are already complete.
-8. **Finish guarded structural repairs before semantic naming.** Repair the
+3. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
+   are now audited from their decoded waveforms (SHA-256 banked in
+   `re-notes/ir-wire-protocol.md`), but the exact per-run Arduino source
+   snapshot used for each early capture remains **OPEN** and not archived
+   (raw captures only in `$HOME/micronic-scope-traces`). The current
+   on-disk `m1000_ir_probe.ino` is a single mutually-exclusive-mode build
+   (`LADDER_TEST` currently defined; `#error` guards at `.ino:108-128`);
+   a run→mode map inferred from decoded-contents strings vs sketch mode
+   structures is **SUSPECTED** only (see 2026-09-12 entry). Preserve a
+   versioned `.ino` per run or the `setup()` Serial banner if found; do
+   not infer build modes from capture filenames or segment numbers
+   (filename digit is run index, not mode).
+4. **Finish guarded structural repairs before semantic naming.** Repair the
    `ROM01:6E77-6EEE` inline-data body with the required function-list diff
    guard, then address the pending compiler-runtime page and unresolved
    `d2dc/d2de` / `EA14/EA1C` writers.
-9. **Final annotation and typing sweep (deferred).** Name/plate remaining
+5. **Final annotation and typing sweep (deferred).** Name/plate remaining
    `FUN_*` functions, repair data/table types, and refresh the canonical
    `research/gap-analysis.md` inventory only after semantic work stabilises.
 
 ### Hardware-dependent priorities
 
-1. **Capture a physical IR byte exchange.** Establish modulation, bitrate,
-   byte framing, timing, and whether the controller-queue sync/trailer bytes
-   exist at the connector boundary.
-2. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
+1. **Run startup diagnostic `2726` to locate the post-ENTER stall.** The owner has now
+   validated `2D4D` heartbeat, idle, NO/YES and release behaviour on hardware.
+   Decreasing the contrast byte darkens the screen; `A4h` is preferred.
+   After ENTER the `2D4D` screen freezes, NO/YES stop responding, no error
+   marker or Arduino output appears. Candidate `2726` adds stages and bounded
+   ready waits with visible error status, keeping validated setup and `A4h`.
+   Capture its full error row or last stage; this run is fixed top V24,
+   baseline only, wire version `0Eh`. Earlier sweep instructions are deferred.
+   The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
+   confirming that stock `LcdInit` returns, but not isolating contrast
+   polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
+   the live value as `CONTRASTC0`, continuously polls NO/YES through the stock
+   shadow-preserving adjusters, and waits for ENTER before touching the IR
+   link. Set a readable contrast first, then start `LISTEN_ONLY`, press ENTER,
+   and check specifically for preamble `A5 5A 0D 80 80`.
+2. **Measure the completion-relative receive-arm window on hardware.** The
+   synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
+   supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
+   chunk emulator coverage is complete. Physical testing must establish the
+   wire-relative epoch and any upper acceptance deadline.
+3. **Capture a successful bidirectional IR byte exchange.** The stock
+   handheld's outbound 8192-bit/s synchronous delimiter/prelude is already
+   captured. Establish the return-side handshake, a full logical frame, and
+   whether the controller-queue sync/trailer bytes exist on the wire.
+4. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
    4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
    one remaining runtime item for the file-transfer tool.
-3. **Capture the electrical timing and meanings of the link status/control
+5. **Capture the electrical timing and meanings of the link status/control
    bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
    a hardware trace is still required to map 4Bh/4Ah bits to electrical
    functions and to measure connector-facing timing.
-4. **Resolve physical port selection.** Hardware-test which wire-id bit5 value
-   selects the top V24 ADAPTOR versus back PLINTH port, and confirm where the
-   EXT STORAGE ADAPTER attaches. ROM evidence proves only the shared 4x byte
-   transport and the bit5 selector.
-5. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
+6. **Confirm the complementary port state and EXT STORAGE attachment.** The
+   top mapping is closed: V24 Load/Run uses wire-ID bit 5 clear, which sets
+   `LINK_CTRL` bit 1 and port `2Ch` bit 5, and was captured at the top window.
+   Observe the wire-ID-bit-5-set exerciser phase, which clears both outputs,
+   at the back PLINTH window directly; then confirm where the EXT STORAGE
+   ADAPTER attaches.
+7. **Fallback: capture `LINK_STATUS` on the stock-ROM Z80 bus.** If the
+   exerciser cannot return usable records, probe address A0-A7, data D0-D7,
+   `/IORQ`, and `/RD` while replaying conn13 silent, early, and late stimuli.
+   This directly distinguishes `LINK_STATUS` bits 4, 6, and 7, but owner-supplied
+   mechanical constraints make it harder than programming the ROM.
+8. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
    modules/state can be compared with the static overlays.
 
 ### Detailed and historical backlog
@@ -1861,8 +1901,10 @@ current priority order; the concise lists above are authoritative.
     `internals/io-map.md` revised (4Ah/4Bh rows, Interface-shape section,
     Ghidra label table) to report only confirmed drive/poll behaviour.
     Owner statement preserved: link-id bit 5 selects one of two IR line
-    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; which
-    `LINK_CTRL` bit 1 value maps to which physical connector remains OPEN.
+    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; at this
+    session the polarity remained OPEN. **SUPERSEDED 2026-09-06:** fresh UI
+    trace plus the owner's top-window capture maps wire-ID bit 5 clear to top
+    V24.
    * **Ghidra:** retained the existing `LINK_CTRL`/`LINK_STATUS`/`LINK_CMD`/
      `LINK_PROBE` labels; added plates and EOL comments to `LinkBlockTx`,
      `LinkBlockRx`, `LinkWaitReady`, `LinkPresent`, and `LinkProbe` for the
@@ -2192,8 +2234,9 @@ current priority order; the concise lists above are authoritative.
     semantics remain OPEN.
   * **CONFIRMED V24 mode-0 link chain:** mode record `D108` selects shared
     callback `Session_LogonMode0Or2Callback`, session/device selector 4, and
-    default wire ID `g_bDeviceWireId4=0x43`. Bit5 is clear, so `LinkBlockTx`
-    takes the bit5-clear latch path. This is not a physical-port assignment.
+    default wire ID `g_bDeviceWireId4=0x43`. Wire-ID bit 5 is clear, so
+    `LinkBlockTx` takes the wire-ID-bit-5-clear latch path. This is not a
+    physical-port assignment by itself.
     `0x1F40 (8000)` and `0x1F41 (8001)`, both `"Plinth not connected"`, are
     emitted by earlier connection-result dispatchers, not that callback.
   * **CONFIRMED V24 mode edit:** raw keyboard-ring byte `DBh` invokes
@@ -2236,7 +2279,8 @@ current priority order; the concise lists above are authoritative.
     grammar. A new V24 mode-1 trace reaches loader state 3 using the same
     synthetic type-2/type-4 responder and is regression covered. Independent
     byte review confirms its mode-table/runtime-stub mechanics. Historical
-    modem semantics and physical-port polarity remain OPEN.
+    modem semantics remained OPEN; the physical top-port polarity was closed
+    by the later 2026-09-06 correction.
   * **Commstar historical-server readiness (2026-08-31):** cross-provider
     review confirms that controller transport and the bounded type-2/type-3/
     type-4 exchange are implementable, but a real historical server remains
@@ -2734,7 +2778,8 @@ current priority order; the concise lists above are authoritative.
     0,1,2,3 in order — not four separate polls, which the earlier
     "polls bits 0-3" wording implied.
     `LINK_CTRL` (`4Ah`): bit0 transfer active, bit1 port select from
-    link-id bit 5, bit4 direction/enable, bit5 strobe.
+    link-ID bit 5, `LINK_CTRL` bit 4 direction/enable, and `LINK_CTRL` bit 5
+    strobe.
     Still OPEN: what any bit means electrically at the connector, and whether
     a real controller derives them this way. Two things corroborate the
     reading — the turn-taking rule follows from bit 4, and the synthetic peer
@@ -3362,15 +3407,15 @@ at 1087 functions.
   whether the controller forwards it onto the IR line or consumes it as
   addressing is not determinable from the firmware. It decides whether the
   prelude is a byte an adapter will see. A logic capture settles it.
-* **Port select resolved.** "Connector" was the wrong word: Plinth and V24 are
+* **Port-select mechanics resolved.** "Connector" was the wrong word: Plinth and V24 are
   two **IR ports on the handheld** — base and top — and the connector is the
   infrared link itself. `LinkBlockTx` tests link-id bit 5 (`ROM00:3278`,
   `AND 20h`) and hands it to `LinkPortSelect` (`ROM00:3454`), which drives
-  `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: id bit 5 clear -> both
-  set, id bit 5 set -> both clear. **LIKELY** bit 5 clear = Plinth, since the
-  factory default screen reads `PLINTH / LOCAL LINK / 9600` and every
-  default-configuration trace carries link id `43h`. Confirming needs a
-  capture with `V24 ADAPTOR` selected.
+  `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: wire-ID bit 5 clear ->
+  both set, wire-ID bit 5 set -> both clear. The session's inference that
+  wire-ID bit 5 clear meant Plinth was later **REJECTED**: a reproduced V24
+  UI run also uses `43h`, and the owner's top-window capture maps that
+  clear-bit state to V24.
 
 ## Commstar: both directions demonstrated, and the session ends cleanly (2026-09-01)
 
@@ -3455,10 +3500,11 @@ at 1087 functions.
     `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
     what the harness drives; the two-entry picker at `0x7663` sits in the
     comms setup form and **no current trace exercises it**.
-  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on link-id bit 5
+  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on wire-ID bit 5
     (`ROM00:3278`) and `LinkPortSelect` drives `LINK_CTRL` bit 1 and port
-    `2Ch` bit 5 together. **OPEN:** which id selects which physical port.
-    Next experiment: drive the `0x7663` picker and re-read the prelude.
+    `2Ch` bit 5 together. At this session the physical mapping remained OPEN.
+    **SUPERSEDED 2026-09-06:** the V24 trace plus owner capture maps wire-ID
+    bit 5 clear/output bits set to the top port.
 * **CLOSED: `ram:D120` -> `E6E8` -> command record `+8`.** It is not a
   credential buffer. `D120` is the byte immediately after the four 6-byte
   link-method records at `ram:D108` (`D108 + 4*6 = D120`) — the table
@@ -3778,7 +3824,16 @@ Established and byte-verified this pass:
   All its call sites are IR/link diagnostics, so the existing `LCD_STROBE`
   label is **not supported**; flagged rather than renamed.
 
-**OPEN:** port `33h`'s identity and the `2Ah`/`2Ch` bit assignments both need
+**PARTLY CLOSED (2026-09-06):** every output latch's bit usage is now
+tabulated in `reference/memory-map.md#latch-bit-usage`, exhaustively, by
+matching the shadow read-modify-write idiom across ROM00. Port `2Ch` gets its
+own table at `#port-2ch-bits`: bit 5 IR port select CONFIRMED, bit 4 backlight
+LIKELY, bits 0/1 external-port strobe and read-enable with their mechanisms
+CONFIRMED and their loads OPEN, bits 2/3/6/7 never written. Also settled:
+`LINK_CTRL` bits 2 and 3 are the only bits on that latch no instruction ever
+writes; `CTRL_07` is a two-bit output; `02h` bit 6 is a power-down wake-scan
+mode flag (`ROM00:175E`). **Still OPEN:** port `33h`'s identity, and what the
+`2Ah` bits and `CTRL_07`'s two bits actually drive, which need
 hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
 
 ## Unbanked RAM: the last two spans, and a memory write-watch (2026-09-02)
@@ -4038,3 +4093,583 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   cannot expose byte 0x0C while the physical exchange stops after 0x03. Open:
   determine the minimal optical acknowledgement that makes the link hardware
   release the next byte; capture `LINK_TXD` and IR together if possible.
+
+## IR link exerciser review (2026-09-06; burn image superseded)
+
+The `1CBD` image and hash in this historical entry were **SUPERSEDED** by the
+pre-burn audit below. Its `1225` successor has since failed its first physical
+run and is also retired; see the later hardware-result entry.
+
+* **Replacement ROM00 reviewed and rebuilt as wire format v13.** The burnable
+  image is `analysis/rom_exerciser/micron1_exerciser.bin`, 32768 bytes,
+  sum16 `1CBD`; stock `micron1.bin` remains sum16 `ACF8`, and ROM01 is
+  untouched. The guarded build reports 703 changed bytes and 22 bytes free
+  across the six filler regions.
+* **SHOWSTOPPER FIX — interrupt source attribution is now direct.** The v12
+  plan inferred that an `IRQN` increment with `KEY=FFh` came from the link.
+  That is invalid because `KEY` is sampled only once near the start of a
+  record; a keypad edge can occur later. The ISR now reads active-low port
+  `05h`, complements and ORs it into wire-only `ISRC`: bit 0 is keypad, bit 2
+  is link. Records are 11 bytes:
+  `{COUNT,OR,AND,RXD,SIDE,CTRL,WD,KEY,IRQN,ISTAT,ISRC}`.
+* **SHOWSTOPPER FIX — the keypad positive control is actually armed.** Merely
+  writing IRQ mask `FAh` did not reproduce the paired sleep configuration.
+  After every scan the exerciser now writes `48h` to `ram:F782` and port
+  `02h`, matching `ROM00:1766`-`177F`. This selects column 3; N, ENTER and YES
+  are known positive-control keys.
+* **SHOWSTOPPER FIX — both ports now receive all 128 effective CTRL states.**
+  Alternating the port with the raw sweep counter correlated one port with odd
+  values and the other with even values, so each could cover only 64 states.
+  `RLCA` now moves that parity bit into forced port-select bit 1 first. A
+  regression test proves 128 distinct states on each port.
+* **Safety fix:** the RAM target of the NMI vector receives `RETN` (`ED 45`),
+  not `RET`, and is installed before LCD initialisation. This restores IFF1
+  correctly if a stray NMI occurs.
+* **CORRECTION — wire-ID bit 5 set was not the top-port state.** The September 6
+  `63h` claim equated `Session_TxBlock4`'s first stack argument at
+  `ROM00:5C04` with the unrelated two-option string table index at
+  `ROM01:7663`; no xref supports that correlation. Fresh PLINTH and V24
+  Load/Run runs both reach `LinkPortSelect` with `fdd4=43h`: wire-ID bit 5 is
+  clear, while `LINK_CTRL` bit 1 and port `2Ch` bit 5 are set. The V24 run
+  enters its distinct Log-on form and emits distinct application data, so the
+  UI choice was genuine. Combined with the owner's capture of that operation
+  at the top V24 window, **wire-ID bit 5 clear is CONFIRMED top**. Wire-ID bit
+  5 set clears both output bits and is LIKELY back by two-port elimination; it
+  remains a direct exerciser observation. The harness now
+  logs and regression-tests `FDD4/CTRL.b1/2C.b5` for both UI routes.
+* **Documentation/Ghidra clarity pass:** the canonical mapping now separates
+  all three signals explicitly: `fdd4=43h` means wire-ID bit 5 clear, which
+  forces `LINK_CTRL` bit 1 set and port `2Ch` bit 5 set. It also records the
+  selection-time values (`02h`/`20h`), active baseline (`03h`), and inverse
+  `63h` row (`00h`/`00h`, active baseline `01h`). Matching comments were
+  saved in Ghidra; function count remained 1101.
+* **Durable notation rule:** `AGENTS.md` now requires every bit statement to
+  identify its owning value whenever more than one register, port, RAM cell,
+  or wire byte is in scope. Compact wording remains allowed after one owner
+  is unambiguous. `CLAUDE.md` is a relative symlink to `AGENTS.md`, making the
+  neutral file the single authoritative instruction source without drift.
+* **Validation:** guarded rebuild reproduced sum16 `1CBD`; 88 tests passed,
+  33 emulator-dependent cases skipped, and 5 subtests passed. A bounded
+  30,000-slice emulator run reached the controller, emitted preamble
+  `A5 5A 0D 80 80`, streamed 11-byte records, and repeatedly wrote the
+  keypad arm value `48h`. The harness does not assert a link INT for this
+  dedicated ROM, so direct `ISRC` behavior remains a hardware test. Two
+  targeted emulator integration tests also passed for the PLINTH and V24 UI
+  routes with the new port-select tuple assertions. The rebuilt image SHA-256
+  is `01bd49402645b78413fecc07af31c47ed097ca2379bdff74920857b37157696a`.
+* **SUPERSEDED hardware sequence — do not execute:** (1) read and `cmp` both fitted ROMs; (2) burn
+  and label `1CBD`; (3) run the pin walk; (4) capture at least 60 seconds in
+  `LISTEN_ONLY`, pressing N/ENTER/YES until `ISRC` bit 0 proves the IRQ path;
+  (5) read `ISRC` bit 2, phase-1 `HSBUSY`, phase-2 `RX byte`/`RXD`, and
+  watchdog count in that order; (6) repeat the same geometry with the
+   `conn3`-`conn13` stimuli; (7) preserve the raw capture, decoder output, and
+   a photo/video of the LCD. Only after that first result should the fixed
+   phases be replaced by a keypad-steered follow-up ROM.
+
+## Physical-capture audit and state-0000 exchange (2026-09-07)
+
+* Replayed the available Keysight files with `analysis/scope_ir_decode.py`.
+  The 50-segment CSV yields exactly the documented three burst forms; every
+  form decodes under the current model to delimiter `81h` plus prelude `03h`
+  at a 122.07 us cell. The single-segment H5 reproduces CSV segment 0. Capture
+  SHA-256 values are now recorded in `re-notes/ir-wire-protocol.md`.
+* Raw `conn3`-`conn13` captures were not in the repository archive inspected
+  during this pass. This availability note is superseded by the later raw
+  capture audit below.
+* Fixed the consolidated Arduino sketch's mode selection: `PULSE_TEST` and
+  `LADDER_TEST` were both enabled, and the preprocessor silently selected the
+  ladder. The default now selects only `LADDER_TEST`; invalid combinations
+  fail preprocessing, and `ADDR_SWEEP` explicitly requires `PULSE_TEST`.
+* **CONFIRMED:** the calls at `ROM00:5C1F` and `ROM00:5D05` are not an unknown
+  out-of-band preflight. They call `Session_TxFrameAndRx`, which performs the
+  state-`0000` control exchange. The ordinary type-2/type-3/type-4 exchange
+  satisfies it, and the bounded program-download regression passed with the
+  request sequence beginning `0000`, `0006`, `0062`, `0064`, `0045`.
+  Ghidra now carries the function plate and call-site EOL comments; the
+  program was saved with the function count unchanged at 1101.
+
+## Completion-relative receive arm and emulator clock fix (2026-09-07)
+
+* **SHOWSTOPPER FIX:** `analysis/boot_hw.py` still advanced its RTC using
+  `CPU_HZ=3,579,545` after the owner corrected the hardware clock to
+  3.6864 MHz. The emulator constant, `micronic_notes.md`, and the durable
+  repository instructions now agree on 3.6864 MHz.
+* Added `--synthetic-loadrun-arm-delay-us`. In this mode the peer decides when
+  to send each receive-first state-44 object solely from elapsed emulated CPU
+  ticks after it supplies the preceding type-4 completion. It does not inspect
+  `PC`, `FDD5`, `FDDC`, callback pointers, or descriptor pointers to make that
+  decision.
+* **CONFIRMED in bounded emulation:** a nominal 275 ms delay (actual 275.223 ms)
+  loses the receive-first object; nominal 300 ms succeeds at both boundaries
+  (actual 300.070 and 300.690 ms) and reaches loader state 3. The regression
+  uses 500 ms and passes with 1700-, 3400-, and 6800-tick slices. This closes
+  the PLINTH DIP path, V24 mode-1 DIP path, and a 200-byte two-chunk COM path.
+  RAM/PC visibility is therefore no longer an emulator-server requirement.
+  The corresponding physical-wire epoch, maximum acceptance delay, and
+  hardware reliability are still OPEN.
+
+## Raw conn3-conn13 capture audit (2026-09-07)
+
+* Located all eleven packed-digital Keysight CSVs in the owner's external
+  `$HOME/micronic-scope-traces` archive. They contain exactly 3,877 complete
+  1,893-sample segments. SHA-256 values and per-run decoded contents are now
+  recorded in `re-notes/ir-wire-protocol.md`; the large captures remain
+  outside git.
+* Added `analysis/scope_ir_experiments.py`, which streams each CSV and
+  classifies the waveform actually captured instead of reconstructing Arduino
+  sweep state from segment numbers. **CONFIRMED from the raw masks:** scope D0
+  and scope D1 are handheld data and clock; scope D2 and scope D3 are Arduino
+  clock and data. These are scope pod channels, not Arduino pin numbers.
+* **CONFIRMED, conn13:** among valid adjacent-cadence pairs, a burst-gated
+  response whose scope-D3 data emission ends 3.03-6.01 ms after the handheld
+  clock ends produces the +15.6 ms retry extension 163/163 times. Late or
+  capture-censored responses produce it 0/243 times; silent controls produce
+  it 0/76 times. This is consistent with the firmware's 9.92 ms
+  `LINK_STATUS` bit-6 (`HSBUSY`) timeout at `ROM00:32F3`.
+* **CORRECTION:** the conn13 cutoff is not a universal final-light-off rule.
+  In conn11 every valid observation for decoded addresses `00h`-`3Fh` and
+  `7Fh` reacts, including 62 whose scope-D3 data emission ends after 9.92 ms;
+  `FFh` reacts 0/2 times. In conn12 all frame-bearing free-running- and
+  gated-clock groups react, including 78 late endings, while clock-only and
+  silent controls react 1/80 and 0/80 respectively. Preamble/clock state
+  therefore affects entry into an additional controller/firmware path. No
+  tested stimulus produces a post-handshake payload.
+* **SUPERSEDED below:** conn13's 93.748 and 109.371 ms population medians were
+  initially described as 96 and 112 periods of a 1,024 Hz running RTC. Fresh
+  call-order analysis shows that 1,024 Hz is confined to the clock self-test;
+  `RtcInit` subsequently leaves the post-boot RTC at 64 Hz.
+* Unit tests cover scope-channel ownership and stuffed address recovery. The
+  exact Arduino source snapshot used for each early capture remains OPEN;
+  decoded waveform classifications do not depend on it.
+* Planned a no-EPROM discriminator: capture stock-ROM Z80 I/O reads of
+  `LINK_STATUS` while replaying conn13 silent/early/late stimuli. This directly
+  observes `LINK_STATUS` bits 4, 6, and 7 and separates receive dispatch, the
+  bit-6 acknowledge wait, and the first-byte bit-7 wait. Matching OPEN
+  bookmarks were saved at `ROM00:32F3` and `ROM00:3318`; `LinkBlockTx`'s plate
+  now qualifies every bit with its owning register.
+
+## Retry scheduler cadence correction (2026-09-07)
+
+* **CORRECTION, CONFIRMED:** cold boot calls `ClockSelftestTickWindow` at
+  `ROM00:0208`, where `RtcPeriphRegSetup` writes RTC Register A = `26h`
+  (1,024 Hz), then calls `RtcInit` at `ROM00:024A`. Its
+  `RtcSetTimeFromBlock` call leaves RTC Register A = `2Ah` (64 Hz). A bounded
+  300,000-slice emulator boot reached the banner and reported
+  `RTC rate =64.0 Hz (RS=0xa)`.
+* The conn13 medians therefore match **six and seven 64 Hz periods**, not 96
+  and 112 1,024 Hz ticks. `LinkTransferService` copies its configured delay
+  of six into the retry countdown and registers itself with
+  `Comms_WorkItemRegister`; `RTC_WakeReasonFetch` invokes
+  `Comms_WorkItemSweep` once per observed RTC Register C PF event.
+* **LIKELY mechanism:** the common interrupt worker keeps maskable interrupts
+  disabled while callbacks execute, and RTC Register C PF is latched rather
+  than counted. `analysis/link_retry_cadence.py` executes the real service and
+  sweep routines under that rule. A `LINK_STATUS` bit-6 timeout takes 11.43 ms
+  and produces a steady 93.750 ms retry. Clearing `LINK_STATUS` bit 6 and then
+  holding `LINK_STATUS` bit 7 clear at the first payload byte takes 26.27 ms
+  plus the acknowledge delay; a 6 ms delay crosses two RTC boundaries and
+  reproduces the 109.375 ms retry.
+* The cadence remains non-unique evidence. A `LINK_STATUS` bit-4-driven
+  receive dispatch can also occupy the interrupt worker. The planned
+  stock-ROM bus capture remains the discriminating experiment for
+  `LINK_STATUS` bits 4, 6, and 7.
+* **Scheduler annotation correction:** `Comms_WorkItemDispatch` does not
+  continue at `ROM00:2268` after an expiry. Its `POP HL; RET` at
+  `ROM00:2289` discards that return address and returns directly to the sweep
+  caller, so the first expired slot ends the current pass. The Ghidra plates
+  for register, sweep, and dispatch now record the exact slot structure and
+  control flow.
+* **Physical-priority correction (owner-supplied):** attaching a logic
+  analyser to the Z80 bus is harder than programming the socketed ROM. The
+  prepared v13 replacement-ROM exerciser is now the next physical task;
+  stock-ROM bus capture is retained only as a fallback.
+
+## Replacement-ROM pre-burn audit (2026-09-07)
+
+* **SHOWSTOPPER FIX — HD61830 cursor-page carry:** the previous v13
+  `lcd_at` helper rewrote cursor-address low register R10 without following it
+  with cursor-address high register R11. The Hitachi HD61830 datasheet Table 2
+  requires R11 to be rewritten after R10 because an R10 bit-7 transition from
+  set to clear can increment R11. After the 160-cell clear, the first live
+  record could therefore land in display-RAM page 1 and leave the visible row
+  blank. `lcd_home` now writes `R10=00h` then `R11=00h`, byte-for-byte matching
+  `ROM00:1F91`-`1F9E`.
+* **The failed image's LCD initialization used the stock routine.** The
+  hand-maintained register table and clear loop were removed.
+  `power_lcd_init` writes
+  `CTL_LATCH_2A=20h`, waits within one percent of the stock
+  `ROM00:0152`-`015D` reset loop's Z80 cycle count, sets the contrast shadow to
+  `40h`, and tail-calls the complete stock `LcdInit` at `ROM00:1EEC`. This is
+  the minimum byte-proven path: the stock special-boot route also reaches
+  `LcdInit` after that latch state and reset delay.
+* **Stack collision margin increased.** A bounded run of the old image found
+  a deepest stack write at `C7F6h`, only nine bytes above the last exerciser
+  state byte at `C7EDh`; an interrupt there had only two bytes of remaining
+  margin. The stack now starts at `C900h`, 275 bytes above that state byte,
+  within the documented free upper TPA.
+* **Burn image supersedes the September 6 fingerprint:** guarded build is
+  32768 bytes, 674 bytes differ from stock, 54 filler bytes remain, sum16 is
+  `1225`, and SHA-256 is
+  `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
+  The old `1CBD` image and hash in the historical entry above must not be
+  burned.
+* **Validation:** six dedicated exerciser tests now lock the image fingerprint,
+  stock `LcdInit` entry bytes and HD61830 command sequence, R10-then-R11 home
+  sequence, region bounds, stack separation and CTRL sweep. The full
+  `analysis/` suite passes: 95 passed, 33 emulator-dependent tests skipped and
+  71 subtests passed. A bounded 30,000-slice run logged the complete stock LCD
+  sequence, 160-space clear, contrast `40h`, ASCII top row
+  `00808000FF0300FF0000`, preamble `A5 5A 0D 80 80`, and 3,154 decoded records
+  with no counter discontinuity or watchdog trip. The final partial record is
+  the intentional slice-limit stop. The repository-wide suite additionally
+  collected 105 passing tests but its 102 barcode build cases could not start
+  because this sandbox cannot run their `sudo docker` assembler command; that
+  is unrelated to the exerciser.
+* **Ghidra saved:** `lcd_sync_status` now records the R10/R11 low-then-high
+  requirement, and reset at `ROM00:0152` records the latch plus delay contract.
+
+## Replacement-ROM first hardware result (2026-09-07)
+
+* **FAILED; discard the flash-ready conclusion.** Owner-supplied result from
+  the physical `1225` ROM00 image: constant buzz and uniformly black screen;
+  programmer read-back verified the burn. Whether the Arduino received the
+  v13 preamble or records remains an OPEN discriminator.
+* **CONFIRMED omitted cold-start sequence:** unlike the normal ROM path, the
+  `1225` image did not read `IRQ_STATUS`, write `IRQ_MASK=FFh`, or write
+  `SOUND=00h` before `LcdInit`. The stock bytes do exactly those operations at
+  `ROM00:01B1`-`01B9`, immediately before the normal cold path reaches
+  `LcdInit` at `ROM00:01E1`. The emulator does not model the beeper and did not
+  expose the omission. `SOUND=00h` is independently byte-confirmed as the
+  `Sound_Off` operation at `ROM00:35C9`-`35CD`.
+* **LIKELY causal split, pending hardware retest:** leaving `SOUND` at its
+  power-on state explains the constant buzz. Whether the missing
+  `IRQ_MASK=FFh` write also gates or resets LCD hardware is not established;
+  port `04h` is confirmed as the active-low interrupt mask but has other latch
+  manipulation in the ROM. The corrected candidate reproduces the full
+  `IRQ_STATUS`/`IRQ_MASK`/`SOUND` quiesce sequence before the unchanged stock
+  LCD call. After the owner confirmed a verified burn and a uniformly black
+  panel, the candidate was made self-calibrating: it starts port `46h` at
+  `00h`, then physical YES/NO tail-call the stock byte-adjustment routines once
+  per 64-record frame. The same adjustment remains live in the `DEAD` loop and
+  pin-walk mode, so calibration does not depend on a successful link opening.
+  The guarded candidate is 32768 bytes, differs from stock in 713 bytes, has
+  sum16 `2692`, and SHA-256
+  `cf2474dbd4be30a04998382f8e9946522cb2f87f91a7b516f40ff3119ae04c65`.
+  These identify the replacement burn artifact; the retired `1225` checksum
+  remains explicitly excluded.
+* **Replacement validation:** 101 analysis tests pass, 33 emulator-dependent
+  tests skip, and 71 subtests pass. Five CPU-level cases execute the new
+  contrast dispatcher and the real stock adjusters, verifying NO decreases
+  the port-`46h` value, YES increases it, both endpoints saturate, and no key
+  performs no write. A bounded 30,000-slice run begins with
+  `CTL_LATCH_2A=20h`, `IRQ_MASK=FFh`, `SOUND=00h`, then the complete stock LCD
+  register/clear sequence and `LCD_CONTRAST=00h`. It decodes 3,154 records
+  with no counter discontinuity or watchdog trip. The strict documentation
+  build passes.
+* **Ghidra saved:** the stock reset listing at `ROM00:01B1`-`01B9` now records
+  the complete pre-LCD quiesce sequence and gives each bitfield/register its
+  unambiguous owner.
+
+## Replacement-ROM second hardware result and LCD cross-check (2026-09-07)
+
+* **Owner-supplied hardware result:** the verified `2692` image produced a
+  brief power-up bleep rather than the `1225` image's constant buzz, confirming
+  execution reached `SOUND=00h` before `LcdInit`. The panel remained uniformly
+  black and physical YES/NO caused no visible change. Whether the Arduino saw
+  preamble `A5 5A 0D 80 80` remains the key discriminator for progress beyond
+  LCD initialization.
+* **DISCARDED:** the initial hypothesis that real keypad sense was inverted.
+  Stock `Kbd_ScanMain` treats a nonzero masked `KBD_SENSE` result as a pressed
+  key at `ROM00:1915`-`1921`, matching the exerciser's active-high test.
+* **CONFIRMED keypad bug:** the `2692` scanner calculated
+  `6*drive-bit-index + sense-bit-index`. Stock `ROM00:1921`-`1933` calculates
+  `6*sense-bit-index + drive-bit-index`, using the one-hot decoder at
+  `ROM00:1A52`. Lee Davison's independent `KEY_scan` uses the same ordering.
+  Thus physical NO (table index 17) became 32 and physical YES (table index 23)
+  became 33 in `2692`; neither could reach its contrast handler. The current
+  scanner calls the stock decoder for both coordinates, and CPU-level tests
+  inject the physical NO/YES matrix states and obtain 17/23.
+* **Davison LCD cross-check:** the 1998 Micronic monitor source in `micron.zip`
+  on the archived Micronic download page independently uses ports `23h`/`03h`
+  for the HD61830, port `46h` for contrast, and the same reset-time port-`2Ah`,
+  port-`05h`, port-`04h`, and port-`2Bh` sequence. Its controller values overlap
+  the stock sequence, and it writes port `46h` before issuing any HD61830
+  command. The `1E3E` and later candidates follow that ordering.
+* **Unsafe filler draft discarded before burn:** zero runs `ROM00:325B`-`3266`
+  and `ROM00:7D1E`-`7D2F` are table storage, as already recorded in the
+  exerciser README. The final candidate uses neither.
+* **Excessive full-page clear discarded before burn:** Davison clears all
+  eight display-RAM pages, but stale off-screen RAM cannot explain a uniformly
+  driven-black LCD. The candidate retains only stock `LcdInit` and its normal
+  160-cell clear.
+* **Scope reduction:** the optional port-`2Ch` pin walk was removed to keep the
+  corrected keypad scanner and LCD diagnostics within previously vetted filler.
+  It maps the barcode-side connector rather than the IR link and is not needed
+  for this protocol run.
+* **`1E3E` hardware result (owner-supplied):** both beeps were heard and the
+  LCD became uniformly clear rather than black. This confirms that stock
+  `LcdInit` returned. **Correction 2026-09-10:** this does not establish
+  physical contrast polarity: value, ordering and delay changed together,
+  and the earlier run did not prove its final contrast write was reached. NO/YES
+  produced no visible change. That does not re-open the confirmed matrix
+  formula: YES began saturated at `FFh`, while both keys were polled only after
+  link startup and contrast dispatch occurred only at 64-record boundaries or
+  in the `DEAD` loop. The Arduino was not set up, so whether execution reached
+  those polling paths was not observed.
+* **`1E3E` interaction design discarded:** an endpoint with no text is not a
+  usable contrast target, and making keypad handling conditional on link
+  progress defeats the diagnostic. The post-`LcdInit` tone served its purpose
+  and is removed from the next candidate.
+* **Current candidate:** the 32768-byte `27E8` image uses the established
+  `g_bLcdContrast` shadow, starting both it and port `46h` at `C0h`. After the
+  same pre-init contrast write, approximately 476 ms settle, and complete
+  stock `LcdInit`, it repeatedly displays `CONTRASTxx`. NO decrements the
+  shadow and port value by two; YES increments both by two.
+  Physical ENTER is byte-verified as matrix index 22 from
+  `tbl_kbd_map[22]=0Dh`; ENTER alone leaves setup and begins link initialization.
+  The image differs from stock in 715 bytes and has SHA-256
+  `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.
+* **Validation:** all 17 dedicated exerciser tests pass under the Z80
+  environment; the complete analysis suite reports 106 passed, 33 skipped,
+  and 71 subtests passed. The new CPU-level integration case drives the
+  physical NO coordinates, observes `g_bLcdContrast` and port `46h` change
+  from `C0h` to `BEh`, verifies `CONTRASTC0` then `CONTRASTBE` on the LCD-data
+  writes, drives the physical ENTER coordinates, and proves the setup routine
+  returns. A bounded 3,000-slice boot run logs the pre-init and stock
+  `LCD_CONTRAST=C0h` writes followed by repeated `CONTRASTC0` and all six
+  keypad-drive values; no link port is touched before ENTER. The 334-byte
+  post-setup link body is byte-identical to the already-validated `1E3E` body.
+* **Ghidra saved:** `g_bLcdContrast` and `g_bKbdMatrixIndex` now name and type
+  the two relevant RAM bytes. `KbdScanRowDecode`'s plate records its exact
+  bit-index contract, and the `Kbd_ScanMain` arithmetic carries a PRE comment
+  for the confirmed `6*sense-line-index + drive-line-index` mapping. The stale
+  `g_bLcdContrast` repeatable that called the byte a power/clock latch is
+  corrected; its plate and the `LCD_CONTRAST` repeatable record the
+  owner-observed physical polarity. `tbl_kbd_map[22]=0Dh` carries the ENTER
+  mapping in place. The owner results and replacement diagnostic sequences are
+  bookmarked at the stock LCD contrast write.
+
+### 2026-09-10 — readable exerciser screen, keypad still unresolved
+
+* **Owner-supplied result:** `27E8` displays `CONTRASTC0`; keys have no
+  observable effect. Initial LCD text output works. Repeated setup-loop
+  execution and hardware keypad scanning are not established by static text.
+* **Discarded explanation:** waiting for IR progress cannot explain this
+  result, because this setup screen precedes link initialization. The old
+  link-dependent interaction design was a defect, but removing it did not
+  resolve the observed keypad failure.
+* **Validation limit:** synthetic sense inputs test the decoding algorithm,
+  not the actual keypad's response. Local ROM inspection and Davison's
+  monitor agree on OUT `02h`, two PUSH/POP pairs, IN `00h`, AND `3Fh`.
+  No byte-level cause of the current failure has been established.
+* **Next diagnostic, not yet implemented:** preserve LCD initialization;
+  show a changing heartbeat, all six raw sense readings with their drive
+  masks, and the decoded key index before any link operations. This separates
+  a stalled loop, unexpected sense inputs, and decoding/dispatch failure.
+* **Correction pending in Ghidra:** the previous session's physical-polarity
+  claim in the contrast RAM plate and port repeatable was overconfident;
+  contrast, ordering and delay were confounded. README and this log are
+  corrected. MCP currently exposes only `vingcard2100`, not `micronic1000`;
+  no unrelated program was modified. Reopen Micronic before correcting and
+  saving those annotations. No replacement ROM or proven keypad fix this turn.
+
+### 2026-09-10 — rebuild with visible keypad diagnostics (`2D4D`)
+
+* **Implemented:** preserve the working LCD startup and shadow-based contrast
+  adjustment. Replace static `CONTRASTC0` with `C` and hex fields for contrast,
+  decoded key, incrementing heartbeat and six masked sense readings. The raw
+  display is a separate complete scan in drive-mask order
+  `01h,02h,04h,08h,10h,20h`. This fixes diagnostic observability, not a proven
+  physical keypad cause. The failure's cause remains OPEN.
+* **Compaction:** derive the drive index from the scan counter (`6-B`), fold
+  the constant wire-ID mask at assembly time, and share the RX final control
+  write with TX via one extra JR after the arm delay. No new patch regions;
+  original LCD initialization, command timing and settling loops retained.
+  Timing prose now uses the owner-stated 3.6864 MHz clock.
+* **Build:** 32768 bytes, sum16 `2D4D`, 717 bytes differ from stock; SHA-256
+  `dd90a72ff05e9d26c35c599f171e09e5962ea740387b78ab0917e188e1419242`.
+  Seven unused bytes remain across the six guarded regions. ROM01 untouched.
+* **Validation:** 56 dedicated tests pass, including all 36 single-key
+  coordinates; full diagnostic rows for NO/YES/no-key then ENTER; contrast
+  shadow/output consistency, stack balance and no pre-ENTER IR writes;
+  cold boot with RAM filled `00h`, `FFh`, and `A5h`. Synthetic port responses
+  cannot establish the physical sense-byte values. No hardware success claim.
+  Full analysis suite: 145 passed, 33 skipped, 71 subtests passed;
+  strict documentation build and whitespace checks passed.
+* **Ghidra correction completed:** connected to `micronic1000`, opened
+  `/micron1.bin` without analysis, freshly read contrast helper bytes and
+  corrected the shadow plate and port repeatable after same-provider review
+  (cross-provider reviewer unavailable in this environment). Removed the
+  unisolated physical-polarity claim; preserved verified shadow mechanics.
+  Program saved. This resolves the preceding entry's pending correction.
+* **Next hardware observation:** whether the heartbeat changes, the decoded
+  key value, and the six sense bytes at rest/with NO or YES held. ENTER still
+  starts IR; Arduino remains unnecessary for the setup diagnosis.
+
+### 2026-09-10 — owner validates keypad and selects contrast default
+
+* **CONFIRMED (owner-controlled hardware test, `2D4D`):** heartbeat changes;
+  idle key `FFh` and all six sense bytes zero; NO gives key `11h` and the
+  drive-`20h` sense byte `04h`, while contrast decreases; YES gives key
+  `17h` and that sense byte `08h`, while contrast increases. Releasing either
+  key restores idle. Decreasing the contrast byte darkens the screen in the
+  tested range. Owner prefers `A4h`; no endpoint appearance claim is made.
+* **Implemented:** change only initial contrast `C0h` to `A4h`. Rebuilt
+  32768-byte image sum16 `2D31`, SHA-256
+  `7f2efaa6a4893c889dc6f0059a8411952a2a622419d390c1d892fb2648707bf6`.
+  Existing `2D4D` can be adjusted manually; avoid a burn for this change alone.
+* **Ghidra:** same-provider reviewer checked the scoped owner-observation
+  claim (cross-provider unavailable). Contrast shadow plate now records the
+  controlled result and preference, retaining the prior-failure uncertainty;
+  mechanics-only port repeatable unchanged. Program saved.
+* **Next:** with Arduino `LISTEN_ONLY` ready, press ENTER and capture the
+  transition into the link test. Physical ENTER/IR success is not yet reported.
+
+### 2026-09-10 — ENTER recognised, no Arduino output reported
+
+* **Owner result:** after ENTER, no Arduino output; LCD transcribed as
+  `CA41612000000000800`. Its leading fields are contrast `A4h`, key `16h`
+  (ENTER), heartbeat `12h`. The transcription is 18 characters, whereas the
+  complete diagnostic row is 19; do not infer every sense field from it.
+* **Open observation:** does the heartbeat remain `12h` after releasing
+  ENTER, and do NO/YES still change the contrast? Inspect the entire LCD for
+  `DEAD`, including the next row: the current error printer does not home the
+  cursor after setup, so its marker starts after the diagnostic text.
+* **SUSPECTED:** if the row freezes without an error marker, execution may
+  be waiting for LINK_STATUS bit 7 in the first reporting operations.
+  Stock LinkPresent at ROM00:34EC-34F7 has a bounded ready wait and then
+  writes LINK_CMD=81h. The exerciser's subsequent putbyte/putflag waits
+  retry indefinitely; no new screen is rendered before the preamble.
+  A PC/status observation or explicit startup-stage indicator would
+  distinguish this from other failures. No Arduino output alone does not
+  prove absence of physical IR activity or identify the controller state.
+
+### 2026-09-10 — post-ENTER startup diagnostic ROM (`2726`)
+
+* **Owner follow-up:** heartbeat remains `12h` after ENTER, NO/YES no longer
+  affect contrast, and no `DEAD` marker appears anywhere. The setup loop has
+  stopped updating; a reporting ready-wait stall remains SUSPECTED, not proven.
+* **Implemented:** retain the validated setup, raw keypad display and LCD
+  startup; show stages 01 probe, 02 select/baseline, 03 initial frame open,
+  04 preamble, 05 record stream. Replace indefinite reporting-ready retries
+  with a terminal error after 255 status samples. Initial open retains 16
+  stock bounded attempts. Error homes and replaces all 20 first-row cells
+  with `EESSRRCCNN` and spaces: stage, fresh error-entry status, control
+  shadow, completed data-write count modulo 256. NO/YES stay live; reset to
+  restart. A transmitted-byte count means OUTs completed, not IR delivery.
+* **Scoped experiment:** suspend port alternation, TX/RX arm phases and
+  control sweeps to fit these diagnostics in existing vetted filler. Keep
+  the top V24 baseline and original 11-byte record layout. Version `0Eh`
+  identifies the changed experiment; decoder suppresses phase interpretation
+  for it and for captures without a known phase-bearing preamble.
+* **Flag bug fixed:** the prior constant-folded `LD A,LINK_ID & 20h` did not
+  establish the caller-Z contract of LinkPortSelect. Progress rendering
+  exposed this in tests (control `01h` instead of `03h`). Fresh bytes at
+  ROM00:3454-3489 and caller ROM00:3278-327A confirm the flag dependence,
+  already correctly described by the Ghidra plate. Use XOR A for fixed-top
+  Z-set selection. Same-provider review approved this narrow correction.
+  Discard the earlier claim that constant-folding was generally equivalent;
+  do not infer that it caused the older hardware freeze.
+* **Build:** 32768 bytes, sum16 `2726`, 698 changed bytes versus stock,
+  SHA-256 `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+  Original six filler regions and boot jump only; 25 filler bytes remain.
+* **Validation:** 63 dedicated tests pass. Full CPU boot plus ENTER tests
+   cover never-ready, failure immediately after the first command, mid-preamble,
+   first record-frame flag and later record transmission, plus always-ready
+   streaming. Assert exact error rows, cleared suffixes, completed write counts,
+   stage progression, reset stack, live NO adjustment on error, top-port latch
+   outputs, and no data writes after failure. Existing keypad/LCD tests remain.
+   Physical handshake behaviour remains unverified by these synthetic inputs.
+   Full suite: 152 passed, 33 skipped, 71 subtests passed. Strict documentation
+   build passes; reviewed flag-contract and hardware-test bookmarks saved in
+   Ghidra. No new hardware-success claim is made for this candidate.
+
+### 2026-09-12 — session-module UI/field analysis and IR wire provenance (parent-adjudicated, bytes verified, cross-reviewed; no new inference)
+
+* **A1 — `ram:e701`/`ram:e6ff` are display snapshots, not counters
+  (CONFIRMED).** `g_wSessRcv1` (`ram:e701`) and `g_wSessRcv2` (`ram:e6ff`)
+  are snapshots of the last-consumed RX object's frame-type byte at
+  `ram:e5be` and sequence byte at `ram:e5bf`, via live-copy cells
+  `ram:e646`/`ram:e648` (`ROM00:5AA3`/`ROM00:5AAC`). Three direct static
+  writers: live copy at `ROM00:5AA3`/`ROM00:5AAC`; init-zero at
+  `ROM00:45C4`/`ROM00:45CA` and `ROM00:4737`/`ROM00:473D`. Single direct
+  reader at `ROM00:4380`/`ROM00:4399` in `SessionStateBuild`, via
+  `FormatDecU16` (width 3) into the RCV1/RCV2 error/status screen. They
+  are not builder inputs and not counters. Broader UI meaning beyond that
+  display remains OPEN.
+
+* **A2 — RECORD/BLOCK senders via `Session_Tx4Param`/`Session_Tx5Param`
+  (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN).**
+  `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
+  `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
+  `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
+  (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
+  `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
+  also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
+  (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
+  `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
+  argument `==1` selects device `63h` else `43h` → `ram:e52e`;
+  `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
+  `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN;
+  discriminator is to correlate one wrapper with a captured RECORD/BLOCK
+  UI transaction.
+
+* **A3 — `SessionRxStateMachine` (`ROM00:5A81`) Out contract corrected
+  (CONFIRMED).** Seeds `ram:e646` from zero-extended received type byte
+  at `ram:e5be`; substitutes only numeric values `4` (`ROM00:5B18`), `8`
+  (`ROM00:5AE7`), `9` (`ROM00:5AFE`) locally; does NOT restrict the
+  received type to `{2,3,4,8,9}`.
+
+* **A4 — `ram:e6fc` zero-length wait threshold (`g_bSessZeroLengthWaitSec`)
+  (CONFIRMED mechanics; 55 s semantics LIKELY).** Written `0x37` (=55 s)
+  at `ROM00:4587` and `ROM00:46FA`; read at `ROM00:5AF0` → `ROM00:6443`,
+  which compares baseline against RTC-derived current time (BDOS `FDh`
+  via `ram:DA13`; minute-boundary `+60`) and returns whether
+  `baseline + threshold_seconds ≤ current_seconds`; when true, result `9`.
+  The elapsed-seconds threshold role is byte-verified; that `0x37` means
+  55 seconds of wall time is LIKELY (era convention combined with
+  observed value).
+
+* **A5 — `ram:e48c` session error-code cell (CONFIRMED mechanics; full
+  runtime-writer map OPEN).** 17 direct readers, no direct static writer;
+  written indirectly via `ROM00:454B`-`ROM00:4557` → `ROM00:3C06`
+  (`SessionCoroJumpTable`); table at `ROM00:692A + 17*ram:E22D + selector`,
+  masked `0x7F`, written through destination pointer at `ROM00:3C94`-`ROM00:3C9E`
+  (byte `ram:e48c` via `HL` indirection). Full set of runtime selectors
+  that drive it remains OPEN.
+
+* **A6 — `ram:e085` `Lib_SignedGt16` contract (CONFIRMED; closes
+  previously-OPEN polarity item).** `HL_out = (signed HL > signed DE) ? 1
+  : 0`. Used at `ROM00:5AB7`-`ROM00:5AC1` with `HL=0`, `DE=length` to
+  detect negative length. Byte-verified at `ram:e085`.
+
+* **B — `conn3`-`conn13` Arduino source provenance (investigation only,
+  NOT archived; SUSPECTED map).** The per-run build-mode snapshot of
+  `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` for `conn3`..`conn12`
+  remains not archived; `TASKS` open item 3 stays OPEN and raw captures
+  remain only in `$HOME/micronic-scope-traces` (SHA-256 banked in
+  `re-notes/ir-wire-protocol.md`). The on-disk sketch is a single
+  mutually-exclusive-mode build (`LADDER_TEST` currently `#defined`;
+  `#error` guards at `m1000_ir_probe.ino:108`-`128`). A run→mode map is
+  **INFERRED** from decoded-contents strings vs sketch mode structures and
+  must be recorded as **SUSPECTED** only: `conn13→LADDER_TEST`
+  (near-explicit), `conn12→FREERUN_TEST` (near-explicit),
+  `conn11→ADDR_SWEEP` (near-explicit),
+  `conn10`/`conn9`/`conn8→PULSE_TEST`, `conn6→ORIENTATION_TEST`,
+  `conn4→LISTEN_ONLY`, `conn3`/`conn5`/`conn7→`generic `#else` sweep. Do
+  NOT infer mode from capture filenames — filename digit is run index, not
+  mode. Discriminating observation that would confirm or refute: the single
+  `Serial` banner line emitted by `setup()` captured with each CSV, or a
+  versioned `.ino` copy per run.
+  **Codex session logs checked 2026-09-13:** `~/.codex/sessions/2026/09/`
+  (days 06-10, 12) contain no per-run mode, banner, or `.ino` snapshot for
+  `conn3`-`conn13`. The one Micronic session (01a07851, 2026-09-06/07) and
+  its three guardian transcripts state the per-run sketch is not under
+  `/home/philpem` and record only a mid-edit dual-flag
+  `PULSE_TEST`+`LADDER_TEST` snapshot (since fixed), not a per-run build.
+  Raw CSV files are MSO samples with no embedded banner. Provenance
+  confirmed absent from sessions; SUSPECTED map stands.
+
+Cross-links: `re-notes/commstar-evidence.md` (senders, snapshots,
+threshold) and `re-notes/ir-wire-protocol.md` (SUSPECTED run→mode map).
+No Ghidra changes; docs only.

@@ -796,11 +796,19 @@ class CommstarShadowPeerTest(unittest.TestCase):
                                   "--trace-loadrun-v24-mode", "1")
         self.assertEqual(counts["differed"], 0, out)
         self.assertGreaterEqual(counts["agreed"], 12)
+        self.assertIn(
+            "[loadrun-source] port-select FDD4=43/CTRL.b1=1/2C.b5=1",
+            out,
+        )
 
     def test_agrees_on_the_plinth_route(self):
         counts, out = self._trace("--trace-loadrun-source", "plinth")
         self.assertEqual(counts["differed"], 0, out)
         self.assertGreaterEqual(counts["agreed"], 13)
+        self.assertIn(
+            "[loadrun-source] port-select FDD4=43/CTRL.b1=1/2C.b5=1",
+            out,
+        )
 
 
 @unittest.skipUnless(RUN_EMULATOR, "set MICRONIC_RUN_EMULATOR_TESTS=1")
@@ -899,6 +907,8 @@ class BootSessionTransactionTest(unittest.TestCase):
                     "--synthetic-loadrun",
                     str(image),
                     "--synthetic-loadrun-finalize",
+                    "--synthetic-loadrun-arm-delay-us",
+                    "500000",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -909,6 +919,7 @@ class BootSessionTransactionTest(unittest.TestCase):
             )
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("[synthetic-loadrun] prepared", proc.stdout)
+        self.assertIn("[synthetic-loadrun] receive-first send after", proc.stdout)
         self.assertIn("payload=50 marker=1 offset=50", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
@@ -939,6 +950,8 @@ class BootSessionTransactionTest(unittest.TestCase):
                     "--synthetic-loadrun",
                     str(image),
                     "--synthetic-loadrun-finalize",
+                    "--synthetic-loadrun-arm-delay-us",
+                    "500000",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -973,6 +986,7 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertEqual(
             capture_tx(proc.stdout, "state44"), "030c0001017f0044000000ff00"
         )
+        self.assertIn("[synthetic-loadrun] receive-first send after", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 
@@ -1058,6 +1072,8 @@ class BootSessionTransactionTest(unittest.TestCase):
                     "--synthetic-loadrun",
                     str(image),
                     "--synthetic-loadrun-finalize",
+                    "--synthetic-loadrun-arm-delay-us",
+                    "500000",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -1069,6 +1085,7 @@ class BootSessionTransactionTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("payload=126 marker=0 offset=126", proc.stdout)
         self.assertIn("payload=74 marker=1 offset=200", proc.stdout)
+        self.assertIn("[synthetic-loadrun] receive-first send after", proc.stdout)
         self.assertIn("adapter finalizer reached loader state 3", proc.stdout)
         self.assertIn("loadrun_source_trace_status=succeeded", proc.stdout)
 

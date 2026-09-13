@@ -36,17 +36,74 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
 * The `08h/28h` pair **is** the HD146818 RTC; the `4Ah-4Fh` cluster is not.
 * There is no serial EEPROM; the serial number is user-entered and lives in
   battery RAM near `FEAB`.
-* The 5-pin side port was used with a barcode pen; the port-`2Dh`
-  edge-timing code is the barcode-reader front end (`Barcode_` prefix).
+* The **5-pin** side port was used with a barcode pen; the port-`2Dh`
+  edge-timing code is the barcode-reader front end (`Barcode_` prefix). The
+  owner's reading of it: VCC and GND (determined), one GPIO input nominally
+  for the barcode pen, and potentially two GPIO outputs — which matches the
+  firmware, where `2Dh` is read-only and `2Ch` bits 0 and 1 are the only
+  candidate outputs ([bit usage](../reference/memory-map.md#port-2ch-bits)).
 * The two IR ports are **V24 ADAPTOR = top, PLINTH = back**. Firmware
-  selects between two line states by wire-id bit 5; which bit value maps to
-  which port is **OPEN**.
+  selects between two line states by wire-id bit 5. A fresh trace of the real
+  V24 Load/Run choice uses `fdd4=43h`, the wire-ID-bit-5-clear branch
+  (`LINK_CTRL` bit 1 and port `2Ch` bit 5 both set), and the owner observed
+  that operation at the top window. **CONFIRMED: wire-ID bit 5 clear is top
+  V24; it drives both output bits set.** Wire-ID bit 5 set clears both output
+  bits and is **LIKELY** the back PLINTH state by two-port elimination, but
+  has not yet been observed at that window. See
+  [commstar-evidence](commstar-evidence.md#device-table-ports).
 * All drive `C:`+ storage I/O runs over the 4-wire byte transport, so the
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
-  `C:=0x73`, `D:=0x72` (both bit 5 = 1).
+  `C:=0x73`, `D:=0x72` (wire-ID bit 5 = 1 in both, hence the likely
+  back-port state).
+  **Contradicted in part by the ROM**, which is worth recording rather than
+  reconciling away: every one of the fourteen call sites of the drive-id
+  lookup at `ROM00:0824` refuses a non-zero id, so *this* firmware's BDOS
+  implements local drives only. See
+  [open questions](open-questions.md#link-identity-and-port-selection).
 
 When ROM evidence and an owner statement seem to conflict, report the
 contradiction — do not invent a reconciliation.
+
+## The ROM images are the ones in the machine
+
+**CONFIRMED.**  The two firmware DIPs carry handwritten labels
+`DIP1 ACF8` and `DIP2 2E12`.  Both are the low 16 bits of the unsigned sum
+of all 32768 bytes of the corresponding image — the checksum every EPROM
+programmer of the era prints after a read:
+
+| chip   | image         | sum of bytes | low 16 bits | label  |
+|--------|---------------|--------------|-------------|--------|
+| DIP1   | `micron1.bin` | `0037ACF8`   | `ACF8`      | `ACF8` |
+| DIP2   | `micron2.bin` | `00332E12`   | `2E12`      | `2E12` |
+
+Nothing was fitted to make this work: a plain byte sum was the first
+algorithm tried, and it matched both chips.  Twenty-one CRC-16 variants and
+a dozen other sum and XOR forms were also computed; none matched either
+label.  Two independent 16-bit agreements is a coincidence of about one in
+4 billion, so the images in `micronic/` **are** the contents of the labelled
+chips, to a 16-bit sum.
+
+Two consequences:
+
+* every offset in this record is an offset into the firmware that is
+  physically in the unit, not into a similar dump from elsewhere;
+* the label is a live check.  Reading the chips back and summing gives a
+  number comparable against the label without any reference to this repo,
+  which is the check to run before burning anything (see
+  `analysis/rom_exerciser/README.md`).
+
+A byte sum detects any single-byte error but is permutation-invariant, so it
+proves the images are the right *contents*, not that no compensating pair of
+errors exists.  For that, compare a read-back against `micronic/` byte for
+byte.
+
+**LIKELY**, from the labels alone: the parts are field-programmed rather than
+masked.  A mask ROM carries a printed vendor part code, not a handwritten
+number, and the number written on these is precisely the one a programmer
+prints after a read.  The device type is **OPEN** — worth reading off the
+package before ordering blanks, since a `27C256` EPROM and a `28C256` EEPROM
+are not pin-compatible (`27C256` pin 1 is `VPP` and pin 27 is `A14`; on the
+`28C256` those are `A14` and `/WE`).
 
 ## Z80 and Ghidra
 
