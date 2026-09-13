@@ -469,6 +469,13 @@ CSV is the MSO's four-channel format, the same one `scope_ir_decode.py` reads;
 `--hex` takes one frame of whitespace-separated hex per line, for an Arduino
 serial log. Output is a per-bit verdict per phase. What to read, in phase 1:
 
+To get that serial log with no scope in the loop, build the probe sketch
+(`analysis/arduino/m1000_ir_probe/`) with `LISTEN_ONLY 1` and
+`RECORD_READOUT 1`. It de-stuffs the wire as it arrives and prints one
+whitespace-separated hex frame per burst, so `decode_records.py --hex
+serial.log` works directly. Every Arduino log line that is not hex is ignored,
+so the mode banners and any `#` comments are harmless.
+
 | `LINK_STATUS` bit 6 (`HSBUSY`) | |
 |---|---|
 | `always 1` | this arm cannot pass the firmware's `LINK_STATUS` bit-6-clear wait |
@@ -519,7 +526,7 @@ Silence now reads off the screen:
 |---|---|---|
 | hex counting up | streaming | healthy |
 | hex frozen | silent | the transmitter stalled — `WD` in the frozen record says how many watchdog trips it took |
-| `DEAD` | silent | never got a frame open; `LinkPresent` failed 16 times running |
+| `DEAD` (not an actual screen string; see the test plan's error-row table) | silent | frame never opened; the real screen is `EE03RR0300` |
 | `CONTRASTxx` | silent | contrast setup; use NO/YES, then ENTER |
 | contrast text frozen but keys inert | silent | keypad scanner or matrix mapping failed; IR has not started |
 | contrast text disappears after ENTER | check wire | ENTER was accepted and link startup began |

@@ -32,6 +32,15 @@
 // you have not validated is two unknowns at once.
 #define LISTEN_ONLY 0
 
+// Exerciser readout.  The patched-ROM exerciser (analysis/rom_exerciser/)
+// streams LINK_STATUS records as inverted-HDLC frames of 64 x 11-byte records.
+// A record frame is ~6 KB of cells, far past the 160-cell burst buffer, so
+// this mode de-stuffs the bits as they arrive and streams one hex token per
+// byte; the burst gap ends the line, so decode_records.py --hex sees one frame
+// per line exactly as it expects.  Needs LISTEN_ONLY 1 (it never transmits).
+// Use it to read the exerciser's records over serial with no scope in the loop.
+#define RECORD_READOUT 0
+
 // Stage 1b: point the Arduino's own emitters at its own detectors and build
 // with LOOPBACK_TEST 1.  It transmits twice a second and reports what its
 // receiver made of it, so the whole transmit chain -- framing, cell timing,
@@ -126,6 +135,9 @@
 #if ADDR_SWEEP && !PULSE_TEST
 #error "ADDR_SWEEP is a PULSE_TEST variant and needs PULSE_TEST 1"
 #endif
+#if RECORD_READOUT && !LISTEN_ONLY
+#error "RECORD_READOUT needs LISTEN_ONLY 1 -- it is a listen-only mode"
+#endif
 
 // ---------------------------------------------------------------- timing --
 // True values, not raw measurements.  The handheld's drive is slew-limited
@@ -167,6 +179,68 @@ uint8_t  datPrev  = 0;
 uint16_t datRises = 0;
 unsigned long datPhase = 0;   // us from the previous clock edge to a data rise
 
+#if RECORD_READOUT
+// ------------------------------------------- streaming inverted-HDLC de-stuff
+// The exerciser's record frame is 64 x 11 bytes (~6 KB of cells), so it cannot
+// be buffered on an AVR and must be de-stuffed on the fly.  Bytes are handed
+// to the main loop through a small single-producer/single-consumer ring; only
+// uint8_t head/tail are shared, which is atomic on AVR.
+const uint8_t RB_SIZE = 128;                  // power of two
+volatile uint8_t rbBuf[RB_SIZE];
+volatile uint8_t rbHead = 0, rbTail = 0;
+
+volatile uint8_t dfHunting = 1;   // 1 = hunting for the 1000_0001 flag
+volatile uint8_t dfShift   = 0;   // last 8 raw bits, for the flag hunt
+volatile uint8_t dfByte    = 0;   // byte being assembled, MSB first
+volatile uint8_t dfBits    = 0;   // bits collected in dfByte, 0..7
+volatile uint8_t dfZeros   = 0;   // run of 0s since the last 1
+volatile uint8_t dfStuff   = 0;   // set: the next bit is the stuffed 1
+
+// Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
+// after five consecutive 0s, MSB first.  Stuffed data can never contain the
+// flag (six 0s are forbidden), so a sliding 8-bit match is unambiguous.
+inline void destuffBit(uint8_t b) {
+  if (dfHunting) {
+    dfShift = (uint8_t)((dfShift << 1) | b);
+    if (dfShift == FLAG) {                    // flag: start of a frame
+      dfHunting = 0; dfByte = 0; dfBits = 0; dfZeros = 0; dfStuff = 0;
+    }
+    return;
+  }
+  if (dfStuff) {                              // drop the inserted 1
+    dfStuff = 0; dfZeros = 0;
+    return;
+  }
+  dfByte = (uint8_t)((dfByte << 1) | b);
+  if (++dfBits == 8) {
+    uint8_t next = (uint8_t)((rbHead + 1) & (RB_SIZE - 1));
+    if (next != rbTail) { rbBuf[rbHead] = dfByte; rbHead = next; }
+    dfByte = 0; dfBits = 0;
+  }
+  if (b) dfZeros = 0;
+  else if (++dfZeros == 5) dfStuff = 1;       // five 0s: next bit is stuffed
+}
+
+// A burst gap ends the frame; re-arm the flag hunt for the next one.
+void destuffReset() {
+  noInterrupts();
+  dfHunting = 1; dfShift = 0; dfByte = 0; dfBits = 0; dfZeros = 0; dfStuff = 0;
+  interrupts();
+}
+
+// Stream whatever bytes have arrived.  Called every loop pass so the ring
+// never backs up: printing is faster than an 8192 bit/s byte stream.
+void drainRing() {
+  while (rbTail != rbHead) {
+    uint8_t b = rbBuf[rbTail];
+    rbTail = (uint8_t)((rbTail + 1) & (RB_SIZE - 1));
+    if (b < 0x10) Serial.print('0');
+    Serial.print(b, HEX);
+    Serial.print(' ');
+  }
+}
+#endif
+
 void onClockEdge() {
   if (txActive) return;
   unsigned long now = micros();
@@ -175,8 +249,12 @@ void onClockEdge() {
   // fabricates a bit cell.  Real edges are a whole cell apart, so this costs
   // nothing and removes the need for a Schmitt-trigger part.
   if (rxCount && now - lastEdgeUs < MIN_EDGE_US) return;
-  if (rxCount < sizeof(rxBits)) rxBits[rxCount++] = digitalRead(DAT_IN);
+  uint8_t b = digitalRead(DAT_IN);
+  if (rxCount < sizeof(rxBits)) rxBits[rxCount++] = b;
   lastEdgeUs = now;
+#if RECORD_READOUT
+  destuffBit(b);
+#endif
 }
 
 // ------------------------------------------------------------ the framer --
@@ -648,6 +726,9 @@ void setup() {
   Serial.println(F("  pass = 10000001000001011 comes back"));
 #elif LISTEN_ONLY
   Serial.println(F("MODE: LISTEN ONLY -- not transmitting, sweep frozen."));
+#if RECORD_READOUT
+  Serial.println(F("  RECORD_READOUT: de-stuffed hex, one frame per line"));
+#endif
 #elif ORIENTATION_TEST
   Serial.println(F("MODE: ORIENTATION TEST -- swap alternates, all else held."));
   Serial.println(F("  compare retry cadence between swap=0 and swap=1"));
@@ -686,6 +767,10 @@ void loop() {
   uint8_t d = digitalRead(DAT_IN);
   if (d && !datPrev) { datRises++; datPhase = micros() - last; }
   datPrev = d;
+
+#if RECORD_READOUT
+  drainRing();                                     // stream bytes continuously
+#endif
 
   if (n == 0) return;
   if (micros() - last < GAP_US) return;            // burst still in progress
@@ -765,7 +850,15 @@ void loop() {
 #endif
 #endif
 
+#if RECORD_READOUT
+  drainRing();                                     // flush the frame's tail
+  Serial.println();                                // one frame per line
+  Serial.print(F("# burst ")); Serial.print(n);
+  Serial.println(F(" cells"));
+  destuffReset();                                  // re-arm for the next burst
+#else
   report(n, snapshot);
+#endif
 #if !LISTEN_ONLY && !LOOPBACK_TEST
   if (n <= SUCCESS_CELLS) advanceSweep();
 #endif

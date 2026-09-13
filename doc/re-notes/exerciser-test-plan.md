@@ -141,6 +141,10 @@ clear. A late clear would explain that specific timeout path; the subsequent
    port requires a much longer run. A counting hex row means everything
    downstream is working. Use good ambient light: the link run does not depend
    on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
+   Build the sketch with `RECORD_READOUT 1` (as well as `LISTEN_ONLY 1`) to
+   read the de-stuffed records straight over serial with no scope; every
+   non-hex log line is ignored by `decode_records.py --hex`. See
+   `analysis/rom_exerciser/README.md`.
 4. **Watch which window blinks** during each cycle of a few seconds. Note it.
 5. **Press N, ENTER or YES** during the capture. Two jobs: `KEY` records the
    index (`6*sense-bit-index + drive-bit-index`), which maps the keypad as a
@@ -171,10 +175,59 @@ port. Read them in this order.
 |---|---|---|
 | hex counting up | streaming | running normally |
 | hex frozen | silent | the transmitter stalled; `WD` in the frozen record says how many watchdog trips it took |
-| `DEAD` | silent | never got a frame open — `LinkPresent` failed 16 times running |
+| `DEAD` (not a screen string in this build) | silent | frame never opened; the real screen is the `EE03RR0300` row below |
 | `CONTRASTxx` | silent | contrast setup; use NO/YES, then ENTER |
 | contrast text frozen but keys inert | silent | keypad scanner or matrix mapping failed; IR has not started |
 | contrast text disappears after ENTER | check wire | ENTER was accepted and link startup began |
+
+### Precomputed error rows (`2726`)
+
+A terminal timeout homes the cursor and overwrites the whole first row with ten
+hex digits and ten blanks:
+
+```text
+EE SS RR CC NN
+```
+
+`EE` is the error marker; `SS` the startup stage; `RR` a **fresh** port-`4Bh`
+(`LINK_STATUS`) sample taken on entry (`exerciser.asm:802`), not the last
+polling sample; `CC` the port-`4Ah` (`LINK_CTRL`) shadow, which this
+baseline-only build always leaves at `03h`; and `NN` the count of completed
+port-`4Dh` (`LINK_TXD`) data writes, modulo 256. Read `SS` first, then `RR`:
+that is the measurement.
+
+Only stages `03`-`05` can produce a row. Every timeout is a bounded bit-7
+(`TXRDY`) wait that expired (`waitready`, `exerciser.asm:445-453`), and the only
+sites that jump to the error screen are that wait and the 16-attempt frame-open
+loop (`open_try`, `exerciser.asm:693-697`). Stages `01`/`02` have no bounded
+wait, so a **frozen `01`/`02` with no `EE` is a hang**, not a timeout; report
+the number as-is. CONFIRMED: `failure` unconditionally writes `0xEE` first
+(`exerciser.asm:806`), and `dead: jp failure` (`:331`) is the only route in.
+
+| Failure | `SS` | `CC` | `NN` | Row shape | `RR` reading and diagnosis | Next action |
+|---|---|---|---|---|---|---|
+| `LinkPresent` failed all 16 stock attempts; frame never opened | `03` | `03` | `00` | `EE03RR0300` | bit 7 clear: TXRDY never asserted through ~16x9.7 ms. bit 7 set: it appeared just after the bound | No command and no data byte reached the wire (`LinkPresent` writes `81h` only on success). Check controller presence/power; compare with the stock ROM |
+| First preamble byte cannot be sent | `04` | `03` | `00` | `EE04RR0300` | bit 7 clear: TXRDY still not asserted. bit 7 set: late ready | Probe/select/open passed but the first data write cannot complete |
+| Preamble stalls mid-stream | `04` | `03` | `01`-`04` | `EE04RR03NN` | bit 7 clear: stalled at this byte. bit 4/0 set: inbound activity while transmitting | TX worked for `NN` bytes then stopped: intermittent ready, or a peer reply |
+| Record frame cannot start | `05` | `03` | `05` | `EE05RR0305` | bit 7 clear: the frame flag or the first record field timed out | Preamble complete. `putflag` is uncounted (`exerciser.asm:467-471`), so `NN=05` does not distinguish a missing frame flag from a missing `COUNT` field |
+| Inside a record | `05` | `03` | `06`-`15` | `EE05RR03NN` | bit 7 clear: stalled at this field | Failing field is `(NN-5) mod 11`, 0-based: 0 `COUNT`, 1 `OR`, 2 `AND`, 3 `RXD`, 4 `SIDE`, 5 `CTRL`, 6 `WD`, 7 `KEY`, 8 `IRQN`, 9 `ISTAT`, 10 `ISRC` |
+| After one or more complete records | `05` | `03` | `5+11R` | `EE05RR0310` at `R=1` | bit 7 clear: the next record's first field, or a frame flag, timed out | Completed records `R = ((NN-5) x 163) mod 256`, since `163 = 11^-1 mod 256` |
+
+The regression test asserts these shapes with a simulated controller, e.g.
+`EE03400300` (never ready), `EE04010302` (mid-preamble), `EE05000310` (first
+record done). On hardware `RR` is whatever port `4Bh` reads — extract the
+decisive bits by hand:
+
+| `RR` bit | Name | Firmware meaning |
+|---|---|---|
+| 7 | TXRDY | the exerciser's own wait condition; set means ready arrived just after the bound |
+| 6 | HSBUSY | the firmware waits for this to **clear** at `ROM00:32F3`; set means still busy |
+| 4 | RX pending | inbound frame waiting (`ROM00:34E7`); set means the peer may be answering |
+| 0 | RX byte | a received byte is ready (`ROM00:33CF`); set means the return path is alive |
+
+`RR` is one instant; the record `OR`/`AND` accumulators from the Arduino or
+scope capture are the authority on whether a bit was stuck or merely late. One
+row cannot establish a stuck bit on its own.
 
 The `1E3E` run's second beep already proved that stock `LcdInit` returns, so
 the new candidate spends that ROM space on an interactive screen instead.
