@@ -28,27 +28,67 @@ source tree (not published here).
 * **Units and cadence of timeout loops and retry scheduler** — **largely
   resolved 2026-09-03.** The loop paths are cycle-accounted at the corrected
   3.6864 MHz clock: `0x02DA` = 9.70 ms, `0x026C` = 9.92 ms, `0x06F9` =
-  24.69 ms. The retry cadence is measured on hardware at 93.75 ms end-to-end
-  for `fdd6=0x32` = 50 attempts. *Still open:* how much of each
-  budget the controller consumes before an answer reaches the wire, which
-  needs a measured adapter response.
+  24.69 ms. The retry cadence is measured on hardware at six or seven periods
+  of the post-boot 64 Hz RTC scheduler (93.750 or 109.375 ms), with
+  `g_bLinkRetriesRemaining=32h` giving 50 attempts. Bounded ROM execution
+  reproduces the extra period as periodic-flag coalescing while interrupt
+  service is busy. See [IR wire protocol](ir-wire-protocol.md). *Still open:*
+  which physical `LINK_STATUS` path occupies the worker and how much of each
+  budget the controller consumes before an answer reaches the latch boundary.
 
 ## Link identity and port selection
 
-* **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH (back)?**
-  — Firmware does `AND 0x20` and drives `LINK_CTRL` bit 1 (and port `2Ch`
-  bit 5, which moves with it) via `LinkPortSelect`; which polarity maps to
-  which physical port is open. Both are IR ports on the case, not electrical
-  connectors. The Load/Run source picker does **not** select between them:
-  driving it both ways yields link id `43h` either way.
-  *Resolve:* hardware test with two known link ids differing only in bit 5.
+* **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
+  (back)? — CLOSED for top, OPEN for direct back-port observation.** A fresh
+  emulator run through the real V24 Load/Run UI uses `fdd4=43h` and the
+  wire-ID-bit-5-clear latch state: `LINK_CTRL` bit 1 and port `2Ch` bit 5 are
+  both **set**. The owner captured that operation at the top V24 window, so
+  wire-ID bit 5 clear is the top state. Wire-ID bit 5 set clears both output
+  bits and is **LIKELY** the back state by elimination. Confirm it directly
+  with the replacement-ROM exerciser, which alternates both states while
+  reporting `LINK_CTRL` bit 1. See
+  [commstar-evidence](commstar-evidence.md#device-table-ports).
 
-* **Where does the EXT STORAGE ADAPTER attach?** — All `C:`+ storage I/O
-  runs over the 4-wire byte transport, so it must use one of the two IR
-  ports; defaults are `C:=0x73`, `D:=0x72` (both bit 5 = 1). The attachment
-  point is not yet adjudicated.
-  *Resolve:* owner confirmation or a captured storage transaction that
-  identifies its link id and port.
+* **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
+  Two separate answers, and the second is the surprise.
+
+  **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
+  `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
+  `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
+  wire-ID bit 5 **set**, so *if* those ids ever reach `LinkBlockTx`, they
+  select the same likely back-port state. The EXT STORAGE ADAPTER's physical
+  attachment remains unadjudicated.
+
+  The 5-pin side connector is excluded on its own terms: **it has no byte
+  transport.** All eight reads of `2Dh` are barcode edge timing
+  (`ROM00:1299`-`13ED`), and `2Ch`'s two outputs are a fixed-width strobe and a
+  read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) — no
+  shift register, no clock pair, no framing.
+
+  **How it is reached: not through BDOS.** `ROM00:0824` resolves a drive
+  letter to its `FE93` id, and **every one of its fourteen call sites refuses
+  a non-zero id.** Thirteen are literally `CP 00h; JR NZ,<error>` (`0846`,
+  `087A`, `08A0`, `08C3`, `091D`, `096F`, `09A6`, `0B0C`, `0B92`, `0BF6`,
+  `0C53`, `0CB7`, `0CF4`), and the fourteenth (`0913`, a two-drive rename)
+  compares both ids and then errors at `0961`. The errors are `27h`, `28h`
+  and — via BDOS 2Eh at `ROM00:0DAC` — `2Ch`. **CONFIRMED: this firmware's
+  file system implements local drives only.**
+
+  That contradicts the standing note that "all drive `C:`+ storage I/O runs
+  over the 4-wire byte transport". The byte transport exists and the drive
+  table is populated for it, but no BDOS path reaches it.
+  **SUSPECTED** reconciliation: routed storage is a *loaded-software* feature
+  that drives the Commstar session layer (`C-*`) directly rather than going
+  through BDOS file calls, which would explain a populated table with no
+  firmware consumer. Not established — it is equally possible that a different
+  firmware revision implements the routing.
+
+  Note the Load/Run menu entry named `EXT STORAGE ADAPTOR` is a third thing
+  again: selector 5 = wire id `80h`, bit 6 **clear**, so `2F44` sends it down
+  the non-link path. That is why selecting it transmits no IR and fails with
+  "Can't open or create file" — owner-observed, and predicted by the table.
+  *Resolve:* find a loaded application that uses `C:`/`D:`, or a firmware
+  revision whose `0824` callers route instead of erroring.
 
 * **Full eight-bit link id vs observable five bits** — Only `id & 1Fh`
   (bits 0-4) is wire-observable via the prelude; bits 5-7 are not.
@@ -198,11 +238,6 @@ source tree (not published here).
   The two readings are unreconciled — treat 126 as measured, not derived.
   *Resolve:* account for the eight bytes between the frame length and the
   object body on the state-44 receive path.
-
-* **`5C1F`/`5D05` builder preflight** — Every current Load/Run builder
-  trace forces its return to success; the condition a real peer must
-  satisfy is open.
-  *Resolve:* characterise the preflight without forcing `HL=0`.
 
 * **Fresh program-receive arm visibility** — The synthetic peer waits for
   RAM/PC state (`FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`,

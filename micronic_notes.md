@@ -2,7 +2,7 @@
 
 ## Specifications
 
-CPU: Zilog Z80, 3.579545 MHz
+CPU: Zilog Z80, 3.6864 MHz (owner-corrected 2026-09-03)
 RAM: 256k-byte static RAM
 ROM: Two 27C256 EPROMs (64K-bytes)
 I/O: Serial port, two infra-red ports

@@ -29,11 +29,12 @@ does not join this row.
 Common handler logic:
 
 * Push AF/BC/DE/HL/IX/IY.
-* Gate on semaphore `ffa8`:
-  * `ffa8 == 0` → DI, pop everything, RET — event silently dropped.
-    The gate is armed by writing `ffa8=1`, e.g. FUN_22E9/2306 after
+* Gate on `g_bIrqServiceArmed`:
+  * `g_bIrqServiceArmed == 0` → DI, pop everything, RET — event silently
+    dropped. The gate is armed by writing `g_bIrqServiceArmed=1`, e.g.
+    FUN_22E9/2306 after
     loading the comms config table.
-  * else → clear `ffa8` (in-service marker), DI, save current bank,
+  * else → clear `g_bIrqServiceArmed` (in-service marker), DI, save current bank,
     switch to bank 0, call worker.
 * Worker = `IrqWorkerPollPort5` (ROM00:230A):
   * Read port 05h; keep a copy in f785.
@@ -42,7 +43,11 @@ Common handler logic:
   * Enable mask = ~(p04_shadow | port5 raw).
   * Walk fd84 as 3-byte records `{mask, handler word}`, terminated by
     a byte ≥ 80h; invoke each handler whose mask bit matches.
-* Restore bank, set `ffa8=1` (re-arm), pop regs, EI, RET.
+* Restore bank, set `g_bIrqServiceArmed=1` (re-arm), pop regs, EI, RET.
+
+The worker and every handler it invokes run before that final `EI`.
+Consequently, `Comms_WorkItemSweep` and an expired work-item callback execute
+with CPU maskable interrupts disabled on the RTC event path.
 
 The fd84 table comes from ROM00:2352 (19 bytes ≈ 6 records + terminator),
 loaded under port-04h mode bits E0h/FDh.

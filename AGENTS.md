@@ -69,7 +69,7 @@ When using reverse-engineering subagents:
   kernel). All work happens in that program. Pass the `program` arg
   (`micron1.bin`) explicitly on MCP calls that take it.
 - `micronic_notes.md` — the owner's hardware spec notes (Z80 @
-  3.579545 MHz, 256K SRAM, 2×27C256, HD61830 LCD, HD146818 RTC, port
+  3.6864 MHz, 256K SRAM, 2×27C256, HD61830 LCD, HD146818 RTC, port
   positions, power). Owner-supplied facts; cite as such.
 - `doc/` — the write-ups (see `doc/README.md` for the index). **Update
   these in the same pass as any Ghidra change they describe.**
@@ -145,6 +145,25 @@ Rules:
   not evidence a feature doesn't exist (features whose support arrives
   in loaded software leave no ROM strings).
 
+### Bitfield notation must identify the owning value
+
+Every statement about a bit must make its owning register, port, RAM cell,
+wire byte, or other value unambiguous. This applies to docs, Ghidra comments,
+source annotations, commit messages, and replies.
+
+- Once a single owner has been clearly introduced, compact wording is fine:
+  “In register `CAh`, bit 4 is `NGSTAR` and bit 2 is `MVSEL`.”
+- When discussing multiple owners, qualify every potentially ambiguous bit:
+  “wire-ID bit 5 is clear; `LINK_CTRL` bit 1 and port `2Ch` bit 5 are set.”
+  Do not shorten this to “bit 5 is clear but bit 5 is set.”
+- If the same bit number occurs in more than one value, repeat the owner even
+  in adjacent sentences or table rows. In tables, put the owner in each
+  column heading.
+- Distinguish a complete byte value from one of its bits: `LINK_CTRL=02h`
+  names the byte value; “`LINK_CTRL` bit 1 is set” names the bit state.
+- Words such as “both”, “it”, “that bit”, and “the clear path” are acceptable
+  only when their antecedents cannot be confused with another value in scope.
+
 ### External ground truth (owner-supplied hardware facts)
 
 The owner has the hardware. Facts they supply are admissible evidence
@@ -167,14 +186,20 @@ is silent. Currently on record:
   "bottom/front" wording in `micronic_notes.md` and internals/os-diposb.md,
   both corrected on that date). Firmware selects between the two 4x
   port configurations by wire-id bit5 (LinkBlockTx `AND 0x20` →
-  LinkPortSelect, byte-verified); which bit5 value is which physical
-  port is still OPEN — needs a hardware test.
+  LinkPortSelect, byte-verified). **Wire-ID bit 5 clear is the top V24
+  state**:
+  a fresh emulator run of the real V24 Load/Run choice uses wire ID 0x43,
+  `LINK_CTRL` bit1 set and port 2Ch bit5 set, while the owner captured that
+  operation at the top window. Do not confuse wire-ID bit 5 with port 2Ch
+  bit 5: for this state the former is clear while the latter is set. The
+  complementary wire-ID-bit-5-set state is LIKELY the back port by two-port
+  elimination, but has not been observed there.
 - The **EXT STORAGE ADAPTER's attachment point is not yet adjudicated**
   — do not bind it to a wire-id or port until the owner confirms.
   What is CONFIRMED: all drive-C:+ storage I/O runs over the 4x byte
   transport (never the 2D edge input), so it must connect via one of
   the two IR ports; default FE93 storage wires are C:=0x73, D:=0x72
-  (both bit5=1, same port, adjacent unit addresses).
+  (wire-ID bit5=1 in both, same port state, adjacent unit addresses).
 - The main power source is 4×AA with a lithium coin cell for RAM
   retention.
 

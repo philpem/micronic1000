@@ -26,9 +26,9 @@ exactly the 146818 programming model.
 | 07 | day-of-month | written by RtcWriteTime |
 | 08 | month | written by RtcWriteTime |
 | 09 | year | written by RtcWriteTime |
-| 0A | Reg A | 0x26 periodic rate, 0x2A, 0x7A divider; UIP bit7 polled |
+| 0A | Reg A | 0x26 = 1,024 Hz self-test; 0x2A = 64 Hz normal run; 0x7A divider reset; UIP bit7 polled |
 | 0B | Reg B | 0x40=PIE, 0x46=PIE+24h+binary |
-| 0C | Reg C (IRQ flags, read-clears) | "tick poke" in clock self-test |
+| 0C | Reg C (IRQ flags, read-clears) | periodic flag drives scheduler; read by clock self-test |
 | 0D | Reg D | unused |
 | 00-09 | time register file | read by RtcReadRegisterFile (20EF) into g_abRtcRegisterSnapshot (FD50) — 10 bytes |
 
@@ -105,23 +105,23 @@ reads `00h..09h` → `g_abRtcRegisterSnapshot`), `BdosSetRtcTime`
 - Wake/resume (1805): reads Reg C (clear pending), then 229E
   enables PIE again (Reg B | 0x40).
 
-## Periodic interrupt rate (from register A + self-test math)
+## Periodic interrupt rates (from Register A, call order, and live emulation)
 
 Register A (0x0A) rate-select bits drive the periodic interrupt:
 
   | RegA value | DV(6:4) | RS(3:0) | periodic freq |
-  | 0x26 (self-test/boot) | 010 (32.768k) | 0110 | **1024 Hz** |
-  | 0x2A (divider restart after set-time) | 010 | 1010 | 64 Hz |
+  | 0x26 (clock self-test) | 010 (32.768k) | 0110 | **1024 Hz** |
+  | 0x2A (normal run after set-time) | 010 | 1010 | **64 Hz** |
   | 0x7A (write-time freeze) | 111 (reset) | - | none |
 
 The owner supplies the **3.6864 MHz** Z80 clock rate (corrected 2026-09-03;
 this passage previously said 3.579545 MHz). ClockSelftestTickWindow verifies
-the periodic interrupt rate: it arms 130 ticks (fda8) and counts inner-loop
+the self-test periodic interrupt rate: it arms 130 ticks (fda8) and counts inner-loop
 iterations at `ROM00:2844` (`INC BC / LD A,B / OR C / JP NZ` = 6+4+4+10 =
 24 T-states, byte-verified), requiring the elapsed count to land in
 0x4502..0x4C46 (17666..19526). At **1024 Hz**, 130 ticks = 126.953 ms =
 **19500 iterations** ignoring interrupt overhead. At 64 Hz it would be 312000
-iterations - far outside. So the running periodic rate is **1024 Hz**
+iterations - far outside. This confirms the **self-test** rate is 1,024 Hz
 (period ~976.6 us; 32.768 kHz / 32).
 
 Note that 19500 sits only 26 counts below the window's upper bound, which
@@ -132,9 +132,13 @@ close to the window's midpoint of 18596. The naive figure is therefore **not**
 a usable cross-check on the clock rate in either direction without accounting
 for the ISR, and none is attempted here.
 
-0x2A (64 Hz) appears only transiently when the time-set routine
-restarts the divider; the active rate the OS measures against is
-1024 Hz.
+The self-test rate is not the later scheduler rate. Cold boot calls
+`ClockSelftestTickWindow` at `ROM00:0208`, then calls `RtcInit` at
+`ROM00:024A`. `RtcInit` calls `RtcSetTimeFromBlock`, whose final Register A
+write is `2Ah`; no later boot-time write restores `26h`. **CONFIRMED:** the
+normal post-boot periodic rate is therefore 64 Hz (15.625 ms). A bounded
+300,000-slice `analysis/boot_hw.py` run reaches the banner and independently
+reports `RTC rate =64.0 Hz (RS=0xa)`.
 
 ## Live-capture confirmation (emulator, Z80 + MAME-accurate io_stub)
 
@@ -156,24 +160,23 @@ F445 47=04..00        bank selects (RAM probing)
 22DF 08=02 28=00      MINUTES = 0x00
 22DF 08=00 28=00      SECONDS = 0x00
 22DF 08=06 28=00      DAY-OF-WEEK = 0x00
-22DF 08=0A 28=2A      Reg A = 0x2A  (divider START, 1024Hz pending)
+22DF 08=0A 28=2A      Reg A = 0x2A  (divider START, 64 Hz pending)
 22E6 08=0C            Reg C read (tick/interrupt acknowledge)
 0257                 latch restore + LCD redraw (banner path)
 ```
 
 This confirms: 08h=register select, 28h=data, the exact register set
-(09/08/07/04/02/00/06) and the freeze/stop/write/start sequence. The
-1024Hz periodic interrupt drives the CPU INT (MAME-correct
-I/O stub returns port5=0x19). With the RTC tick injected at 1024Hz
-cadence the firmware boots through reset, LCD init, RTC init, link
-probe and the clock self-test; the same path that stalled at HALT
-previously now completes the RTC write and returns to the banner.
+(09/08/07/04/02/00/06) and the freeze/stop/write/start sequence. The RTC
+periodic interrupt drives the CPU INT (MAME-correct I/O stub returns
+port5=0x19). The emulator follows Register A dynamically: 1,024 Hz lets the
+clock self-test complete, then `RtcInit` changes the running cadence to 64 Hz
+before the banner.
 
 ## Open items
 
-- Whether RTC Reg C periodic interrupt is the sole IRQ source, and
-  how the periodic-rate config gives 1024 Hz against the 130-tick
-  window.
+- Whether RTC Register C periodic interrupt is the sole physical IRQ source;
+  the firmware's interrupt table also polls other active-low `STATUS_IN`
+  source bits.
 - Registers 0x0E-0x3F (146818 battery RAM, 50 bytes) - the firmware
   may use this for non-volatile data; check overlap with the FD-lands
   config copies (FE83/FE93/FC05).
@@ -202,7 +205,7 @@ data, 4Eh RX data). See io-map.md and LinkBlockTx/LinkBlockRx.
 | 07 | day-of-month | read/write | RtcWriteTime, RtcReadRegisterFile; RTC_AlarmDateMatches date gate |
 | 08 | month | read/write | RtcWriteTime, RtcReadRegisterFile; RTC_AlarmDateMatches date gate |
 | 09 | year | read/write | RtcWriteTime, RtcReadRegisterFile |
-| 0A | Reg A (ctrl) | write 0x26=1024Hz /0x2A /0x7A stop; poll UIP bit7; read-mod-write `|80h` in FF preamble | 20AC,20D9,2100, FF preamble |
+| 0A | Reg A (ctrl) | write 0x26=1,024 Hz self-test / 0x2A=64 Hz normal run / 0x7A stop; poll UIP bit7; read-mod-write `|80h` in FF preamble | 20AC,20D9,2100, FF preamble |
 | 0B | Reg B (ctrl) | write 0x40(PIE)/0x46(PIE+bin+24h); read-mod-write AIE/SET | 2295/229E/20AF,20DD,216D,217B |
 | 0C | Reg C (IRQ flags, read clears) | read (ack + EF00/17FD poke) | 0277,17FD,2206 |
 | 0D | Reg D | unused | - |
