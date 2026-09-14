@@ -22,6 +22,7 @@ REGIONS = (
     (0x0047, 0x0065, "isr_end"),
     (0x0069, 0x007F, "nmi_end"),
     (0x00A2, 0x00FF, "vec_end"),
+    (0x0250, 0x02FD, "scr_end"),
     (0x724C, 0x7302, "lo_end"),
     (0x7CE0, 0x7D0F, "mid_end"),
     (0x7E96, 0x7FF9, "hi_end"),
@@ -54,10 +55,10 @@ def test_burn_image_has_a_locked_fingerprint():
     image, _ = _burn_image()
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 698
-    assert sum(image) & 0xFFFF == 0x2726
+    assert sum(a != b for a, b in zip(image, stock)) == 716
+    assert sum(image) & 0xFFFF == 0x2609
     assert hashlib.sha256(image).hexdigest() == (
-        "813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827"
+        "ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72"
     )
 
 
@@ -374,7 +375,8 @@ def test_startup_diagnostic_does_not_run_the_old_sweep():
     _, sym = _assembled()
     assert sym["VERSION"] == 0x0E
     assert sym["LINK_ID"] == 0x43  # XOR A at selection is fixed to this state
-    assert not {"sweep", "tx_arm", "rx_arm", "port_swap"} & sym.keys()
+    assert "arm_tx" in sym                      # the transmit arm is restored
+    assert not {"sweep", "rx_arm", "port_swap"} & sym.keys()
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
@@ -455,7 +457,11 @@ def test_boot_enter_and_link_timeout_paths(stop_after, status, stage):
     assert machine.pc == target, "startup failed to finish within CPU budget"
     assert mem[sym["V_STAGE"]] == stage
     assert port2c == [0, 0x20]  # probe reset, then top V24, never alternated
-    assert mem[sym["CTRL_SHADOW"]] == 3
+    # arm_tx leaves LINK_CTRL bit 4 set (the stock stream loop does too); it
+    # runs only once the first preamble byte has been written.
+    arm_ran = stop_after is None or stop_after >= 1
+    expected_cc = 0x13 if arm_ran else 0x03
+    assert mem[sym["CTRL_SHADOW"]] == expected_cc
     for n in range(1, stage + 1):
         assert f"{n:02X}".encode() + b" " * 18 in screens
     if stop_after is not None:
@@ -464,13 +470,19 @@ def test_boot_enter_and_link_timeout_paths(stop_after, status, stage):
         expected_commands = 0 if stop_after == -1 else (2 if stop_after > 5 else 1)
         assert commands == [0x81] * expected_commands
         assert mem[sym["V_FAIL"]] == status
-        assert screen[:20] == f"EE{stage:02X}{status:02X}03{count:02X}".encode() + b" " * 10
+        assert screen[:20] == (
+            f"EE{stage:02X}{status:02X}{expected_cc:02X}{count:02X}".encode()
+            + b" " * 10
+        )
         assert machine.sp == sym["STACK"]
         machine.clear_breakpoint(target)
         machine.set_breakpoint(sym["pm_delay"])
         error_key[0] = 4  # NO still works in the terminal error loop
-        machine.ticks_to_stop = 100000
-        machine.run()
+        for _ in range(100):
+            machine.ticks_to_stop = 100000
+            machine.run()
+            if machine.pc == sym["pm_delay"]:
+                break
         assert machine.pc == sym["pm_delay"]
         assert contrast[-1] == 0xA2
         assert mem[0xFC05] == 0xA2
@@ -481,7 +493,8 @@ def test_boot_enter_and_link_timeout_paths(stop_after, status, stage):
         machine.ticks_to_stop = 1000000
         machine.run()
         assert len(data) >= 5 + 11
-        assert set(controls) <= {0, 1, 2, 3}
+        assert {0x23, 0x33, 0x13} <= set(controls)   # the arm strobed
+        assert set(controls) <= {0, 1, 2, 3, 0x13, 0x23, 0x33}
 
 
 def test_decoder_does_not_invent_phases_for_startup_diagnostic(capsys):

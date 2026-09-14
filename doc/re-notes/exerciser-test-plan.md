@@ -1,8 +1,9 @@
 # ROM exerciser — test plan
 
-## Current burn: startup diagnostic `2726`
+## Current burn: startup diagnostic `2609`
 
-SHA-256: `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+SHA-256: `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`
+(32768 bytes, 716 changed bytes vs stock).
 The validated setup and `A4h` contrast are retained. After ENTER, stages
 `01` (probe), `02` (top-V24 select/baseline), `03` (frame open), `04`
 (preamble), `05` (baseline records) appear at the upper left.
@@ -125,10 +126,10 @@ clear. A late clear would explain that specific timeout path; the subsequent
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin` only if sum16 is `27E8` and SHA-256 is
-   `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.**
-   Label it `27E8`; `ROM01` is untouched. Do not reuse the `1225`, `2692` or
-   `1E3E` parts.
+1. **Burn `micron1_exerciser.bin` only if sum16 is `2609` and SHA-256 is
+   `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`.**
+   Label it `2609`; `ROM01` is untouched. Do not reuse the `1225`, `2692`,
+   `1E3E`, or `2726` parts.
 2. **Set contrast before configuring the Arduino.** After the brief power-up
    bleep and approximately 0.6 s startup delay, the LCD should show
    `CONTRASTC0`. NO decrements `g_bLcdContrast` and port `46h` by two toward the
@@ -180,7 +181,7 @@ port. Read them in this order.
 | contrast text frozen but keys inert | silent | keypad scanner or matrix mapping failed; IR has not started |
 | contrast text disappears after ENTER | check wire | ENTER was accepted and link startup began |
 
-### Precomputed error rows (`2726`)
+### Precomputed error rows (`2609`)
 
 A terminal timeout homes the cursor and overwrites the whole first row with ten
 hex digits and ten blanks:
@@ -191,8 +192,8 @@ EE SS RR CC NN
 
 `EE` is the error marker; `SS` the startup stage; `RR` a **fresh** port-`4Bh`
 (`LINK_STATUS`) sample taken on entry (`exerciser.asm:802`), not the last
-polling sample; `CC` the port-`4Ah` (`LINK_CTRL`) shadow, which this
-baseline-only build always leaves at `03h`; and `NN` the count of completed
+polling sample; `CC` the port-`4Ah` (`LINK_CTRL`) shadow (`03h` before the
+transmit arm, `13h` after — see below); and `NN` the count of completed
 port-`4Dh` (`LINK_TXD`) data writes, modulo 256. Read `SS` first, then `RR`:
 that is the measurement.
 
@@ -204,14 +205,21 @@ wait, so a **frozen `01`/`02` with no `EE` is a hang**, not a timeout; report
 the number as-is. CONFIRMED: `failure` unconditionally writes `0xEE` first
 (`exerciser.asm:806`), and `dead: jp failure` (`:331`) is the only route in.
 
+`CC` is `03h` before the arm and `13h` after (CONFIRMED). The arm `arm_tx` at
+`0x0250` (replicating stock `ROM00:32CC-32EE`: raise `LINK_CTRL` bit 5, then
+bit 4, settle 32 iterations, drop bit 5 leaving bit 4 SET) runs once the first
+preamble byte `A5` has been written, so: stage `03` rows and stage `04` rows
+with `NN=00` show `CC=03h`; stage `04` rows with `NN>=01` and all stage `05`
+rows show `CC=13h` (CTRL_SHADOW `13h` vs `03h` baseline).
+
 | Failure | `SS` | `CC` | `NN` | Row shape | `RR` reading and diagnosis | Next action |
 |---|---|---|---|---|---|---|
 | `LinkPresent` failed all 16 stock attempts; frame never opened | `03` | `03` | `00` | `EE03RR0300` | bit 7 clear: TXRDY never asserted through ~16x9.7 ms. bit 7 set: it appeared just after the bound | No command and no data byte reached the wire (`LinkPresent` writes `81h` only on success). Check controller presence/power; compare with the stock ROM |
-| First preamble byte cannot be sent | `04` | `03` | `00` | `EE04RR0300` | bit 7 clear: TXRDY still not asserted. bit 7 set: late ready | Probe/select/open passed but the first data write cannot complete |
-| Preamble stalls mid-stream | `04` | `03` | `01`-`04` | `EE04RR03NN` | bit 7 clear: stalled at this byte. bit 4/0 set: inbound activity while transmitting | TX worked for `NN` bytes then stopped: intermittent ready, or a peer reply |
-| Record frame cannot start | `05` | `03` | `05` | `EE05RR0305` | bit 7 clear: the frame flag or the first record field timed out | Preamble complete. `putflag` is uncounted (`exerciser.asm:467-471`), so `NN=05` does not distinguish a missing frame flag from a missing `COUNT` field |
-| Inside a record | `05` | `03` | `06`-`15` | `EE05RR03NN` | bit 7 clear: stalled at this field | Failing field is `(NN-5) mod 11`, 0-based: 0 `COUNT`, 1 `OR`, 2 `AND`, 3 `RXD`, 4 `SIDE`, 5 `CTRL`, 6 `WD`, 7 `KEY`, 8 `IRQN`, 9 `ISTAT`, 10 `ISRC` |
-| After one or more complete records | `05` | `03` | `5+11R` | `EE05RR0310` at `R=1` | bit 7 clear: the next record's first field, or a frame flag, timed out | Completed records `R = ((NN-5) x 163) mod 256`, since `163 = 11^-1 mod 256` |
+| First preamble byte cannot be sent | `04` | `03` | `00` | `EE04RR0300` | bit 7 clear: TXRDY still not asserted. bit 7 set: late ready | Probe/select/open passed but the first data write cannot complete (arm has not yet run) |
+| Preamble stalls mid-stream | `04` | `13` | `01`-`04` | `EE04RR13NN` | bit 7 clear: stalled at this byte. bit 4/0 set: inbound activity while transmitting | TX worked for `NN` bytes then stopped: intermittent ready, or a peer reply |
+| Record frame cannot start | `05` | `13` | `05` | `EE05RR1305` | bit 7 clear: the frame flag or the first record field timed out | Preamble complete. `putflag` is uncounted (`exerciser.asm:467-471`), so `NN=05` does not distinguish a missing frame flag from a missing `COUNT` field |
+| Inside a record | `05` | `13` | `06`-`15` | `EE05RR13NN` | bit 7 clear: stalled at this field | Failing field is `(NN-5) mod 11`, 0-based: 0 `COUNT`, 1 `OR`, 2 `AND`, 3 `RXD`, 4 `SIDE`, 5 `CTRL`, 6 `WD`, 7 `KEY`, 8 `IRQN`, 9 `ISTAT`, 10 `ISRC` |
+| After one or more complete records | `05` | `13` | `5+11R` | `EE05RR1310` at `R=1` | bit 7 clear: the next record's first field, or a frame flag, timed out | Completed records `R = ((NN-5) x 163) mod 256`, since `163 = 11^-1 mod 256` |
 
 The regression test asserts these shapes with a simulated controller, e.g.
 `EE03400300` (never ready), `EE04010302` (mid-preamble), `EE05000310` (first

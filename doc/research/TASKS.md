@@ -178,21 +178,37 @@ State: continuously updated as work progresses.
 
 ### Hardware-dependent priorities
 
-1. **Run startup diagnostic `2726` to locate the post-ENTER stall.** The owner has now
+1. **Run startup diagnostic `2609` to locate the post-ENTER stall.** The owner has now
    validated `2D4D` heartbeat, idle, NO/YES and release behaviour on hardware.
    Decreasing the contrast byte darkens the screen; `A4h` is preferred.
    After ENTER the `2D4D` screen freezes, NO/YES stop responding, no error
-   marker or Arduino output appears. Candidate `2726` adds stages and bounded
-   ready waits with visible error status, keeping validated setup and `A4h`.
-   Capture its full error row or last stage; this run is fixed top V24,
-   baseline only, wire version `0Eh`. Earlier sweep instructions are deferred.
+   marker or Arduino output appears. Candidate `2609` (and predecessor `2726`)
+   adds stages and bounded ready waits with visible error status, keeping
+   validated setup and `A4h`. **Hardware result `2726` (CONFIRMED):**
+   `EE04580302` — stage `04`, `RR=0x58`, `CC=03h`, `NN=02` — with no light on
+   either port; the controller accepted `LINK_TXD` writes but emitted nothing.
+   Diagnosis (CONFIRMED): the stock handshake arm was missing. The arm
+   `arm_tx` at `0x0250` replicating `ROM00:32CC-32EE` (raise `LINK_CTRL` bit 5,
+   then bit 4, hold 32 iterations ~0.11 ms at 3.6864 MHz, drop bit 5 leaving
+   bit 4 SET) is now in the image — reclaimed guarded region `scr` at
+   `0250-02FD` (digest-guarded, SHA-256 `826a1915…4364`, overwrites stock
+   cold-boot/banner flow reached only by fall-through from `024D`, no CALLs/XREFs)
+   — called after the first preamble byte `A5` (stock order flag→byte→arm) and
+   at each record-frame start (`COUNT` multiple of 64, just after `COUNT`);
+   preserves `B`/`E` using `D`; `CTRL_SHADOW` is `13h` after the arm (was
+   `03h` before). Wire version stays `0Eh`, record layout unchanged (arm is
+   ROM-side only); two dead writes (`V_ID`/`V_BASE`) removed. This run is
+   fixed top V24, baseline only, `0Eh`. Earlier sweep instructions are deferred.
    The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
    confirming that stock `LcdInit` returns, but not isolating contrast
    polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
    the live value as `CONTRASTC0`, continuously polls NO/YES through the stock
    shadow-preserving adjusters, and waits for ENTER before touching the IR
    link. Set a readable contrast first, then start `LISTEN_ONLY`, press ENTER,
-   and check specifically for preamble `A5 5A 0D 80 80`.
+   and check specifically for preamble `A5 5A 0D 80 80`. Image `2609`: 32768
+   bytes, sum16 `2609`, 716 changed bytes, SHA-256
+   `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72` (was `2726`
+   `813006c2…`, 698 bytes).
 2. **Measure the completion-relative receive-arm window on hardware.** The
    synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
    supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
@@ -4673,3 +4689,34 @@ run and is also retired; see the later hardware-result entry.
 Cross-links: `re-notes/commstar-evidence.md` (senders, snapshots,
 threshold) and `re-notes/ir-wire-protocol.md` (SUSPECTED run→mode map).
 No Ghidra changes; docs only.
+
+### 2026-09-13 — transmit arm added (`2609` supersedes `2726`)
+
+* **Hardware result `2726` (CONFIRMED):** `EE04580302` — stage `04`,
+  `RR=0x58`, `CC=03h`, `NN=02` — with no emission on either port; controller
+  accepted `LINK_TXD` writes but the existing hardware run showed nothing
+  optically. Diagnosis (CONFIRMED): missing stock handshake arm — the ROM
+  exerciser's transmit path omitted the `ROM00:32CC-32EE` arm that raises
+  `LINK_CTRL` bit 5 then bit 4, settles, then drops bit 5 leaving bit 4 SET.
+* **Fix (CONFIRMED):** new code `arm_tx` at `0x0250` replicates that sequence
+  exactly (raise bit 5, then bit 4, 32-iteration settle ~0.11 ms at 3.6864 MHz,
+  drop bit 5; bit 4 left SET so `CTRL_SHADOW` is `13h` after the arm vs `03h`
+  before). Called in preamble after first byte `A5` (mirroring stock order
+  flag→byte→arm) and at each record-frame start (`COUNT` multiple of 64, just
+  after `COUNT`); preserves `B`/`E` (record loop `OR`/`AND` snapshot) using
+  `D` for its settle. Two dead writes (`V_ID`/`V_BASE`) removed to make room.
+* **Reclaimed guarded region `scr` at `0250-02FD` (CONFIRMED):** overwrites the
+  stock cold-boot/banner flow reached only by fall-through from warm-boot entry
+  `024D` (this ROM never runs it) and never CALLed (Ghidra xrefs: none; byte
+  scan for `CALL`/`JP` into the range finds only a self-jump at `0x02E2`).
+  Build refuses unless untouched stock bytes at `0250-02FD` hash to SHA-256
+  `826a1915a2f2ec88fe5e8d25cc1c8d5d89d9327a1b544d45d2680f7346694364`.
+* **Build `2609` (CONFIRMED):** 32768 bytes, sum16 `2609` (was `2726`),
+  716 changed bytes vs stock (was 698), SHA-256
+  `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72` (was
+  `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`); old image
+  `2726` 698-byte diff retired. Wire version stays `0Eh`, record layout
+  unchanged (arm is ROM-side only).
+* **Tests (CONFIRMED):** 63 exerciser tests pass; full suite 152 passed / 33
+  skipped (71 subtests passed). No Ghidra changes; docs updated
+  (`analysis/rom_exerciser/README.md`, `doc/re-notes/exerciser-test-plan.md`).

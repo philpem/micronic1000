@@ -27,9 +27,17 @@ from micronic.z80asm import assemble
 REGIONS = [("isr", 0x0047, 0x0065, "isr_end"),
            ("nmi", 0x0069, 0x007F, "nmi_end"),
            ("vec", 0x00A2, 0x00FF, "vec_end"),
+           ("scr", 0x0250, 0x02FD, "scr_end"),
            ("lo",  0x724C, 0x7302, "lo_end"),
            ("mid", 0x7CE0, 0x7D0F, "mid_end"),
            ("hi",  0x7E96, 0x7FF9, "hi_end")]
+# The scr region is not zero filler: it reclaims the stock cold-boot/banner
+# flow at 0250-02FD, which is reached only by fall-through from the warm-boot
+# entry at 024D and is never CALLed (Ghidra xrefs: none).  The digest is of
+# those untouched bytes in micron1.bin and must match before it is overwritten.
+RECLAIMED = {
+    "scr": "826a1915a2f2ec88fe5e8d25cc1c8d5d89d9327a1b544d45d2680f7346694364",
+}
 # The cold-boot entry itself, not the vector that reaches it: 0000 jumps to
 # 0103 which jumps here, and the emulator harness starts directly at 014B, so
 # patching here is exercised identically on hardware and in the emulator.
@@ -61,7 +69,12 @@ for name, lo, hi, endsym in REGIONS:
     if end > hi + 1:
         sys.exit(f"{name} section is {used} bytes, overruns {lo:04X}-{hi:04X} "
                  f"by {end - hi - 1}")
-    if any(orig[lo:hi + 1]):
+    if name in RECLAIMED:
+        import hashlib
+        if hashlib.sha256(orig[lo:hi + 1]).hexdigest() != RECLAIMED[name]:
+            sys.exit(f"{lo:04X}-{hi:04X} is not the expected stock code "
+                     f"for reclaimed region '{name}' -- refusing to patch")
+    elif any(orig[lo:hi + 1]):
         sys.exit(f"{lo:04X}-{hi:04X} is not empty in this image -- refusing to patch")
     rom[lo:end] = code[lo - base:end - base]
     print(f"{name}  {used:3d} bytes at {lo:04X}-{end-1:04X} "
