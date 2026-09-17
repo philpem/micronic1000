@@ -576,64 +576,73 @@ The byte path thereafter uses `LINK_STATUS` bit 4 for the IRQ decision and
 
 ### Finding 4 — the link is firmware-managed half-duplex at the interrupt level — LIKELY
 
-The transmit transaction clears the `LINK_CTRL` 6/7 pair (the RX interrupt
-enable) for its whole duration, so a peer reply arriving **during** the
-controller's own TX cannot raise the RX interrupt. The interrupt poll
-re-arms `LINK_CTRL` bits 6/7 only when the link is otherwise idle
-(`ROM00:31B6` `RXBUSY` clear path).
+**What is byte-verified (CONFIRMED):** the firmware holds the `LINK_CTRL`
+6/7 pair clear during a transmit transaction and raises it again afterwards.
+`LinkBlockTx` clears both at `ROM00:327D` and has no 6/7 writer inside it;
+`LinkTransferService` (`ROM00:2F58`) calls `LinkBlockTx` at `ROM00:2F9A` and
+then `ROM00:34BD` at `ROM00:2FAE` before returning at `ROM00:2FB1`; the IRQ
+poll clears 6/7 on entry (`ROM00:31B6`) and raises them on the idle path
+(`ROM00:31C2`); `LinkProbe` clears them (`ROM00:34B7`). So the firmware treats
+6/7 as something to hold clear while transmitting and to restore when idle.
 
-**CONFIRMED ordering:** `LinkTransferService` (`ROM00:2F58`) calls
-`LinkBlockTx` at `ROM00:2F9A`, then calls `ROM00:34BD` — raising `LINK_CTRL`
-bits 6/7 — at `ROM00:2FAE`, immediately after the transmit transaction
-returns, and returns at `ROM00:2FB1`. `LinkBlockTx` has no writer for the 6/7
-pair inside it. So the receive path is re-enabled only once the transmit
-transaction has completed: the receive window follows the transmit
-transaction, and a reply cannot be serviced while the controller still
-declares its own transmit busy.
+**What is NOT established — the electrical meaning is Provisional.** No
+measurement shows the *controller* stops receiving while 6/7 are clear. The
+project's own port table marks every `4Ah` bit role "Provisional"
+([memory map](../reference/memory-map.md)). Candidate readings the ROM cannot
+separate: an **RX-path enable**, an **RX interrupt enable** (data path still
+live, only the IRQ suppressed), a link-online/mode bit, or an
+acknowledge/strobe pair. "RX is disabled" therefore means only "the firmware
+holds the 6/7 pair clear", not "the controller cannot receive" — LIKELY at
+best, and then only if 6/7 gates the receive path and not merely its
+interrupt. Also note bits 5/4 are the *arm* (shared with TX); 6/7 is a
+separate pair, not the arm.
 
-**Emulator demonstration — CONFIRMED:** with a synthetic controller whose
-`LINK_STATUS` bit 6 never clears, the stock `LinkTransferService` inner path
-(`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion — one
-`LINK_CMD`=`81h` write, one `LINK_TXD`=`03h` write, `LINK_CTRL` 6/7 clear
-throughout — and returns with `A=0EEh`/carry set (the `ROM00:3356` error). It
-then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (observed
-writes `42h`, `0C2h`). So the "stock firmware never reaches the `2FAE`
-RX-enable" hypothesis is **FALSE**: `LinkTransferService` ignores
-`LinkBlockTx`'s carry and re-enables the receiver after the failed
-transaction. *Harness detail, not a firmware finding:* the demo needed a stub
-`RET` at the resident-kernel helper `0F54Eh` (absent from flat emulated
-memory).
+**Emulator demonstration — CONFIRMED (firmware side only):** with a synthetic
+controller whose `LINK_STATUS` bit 6 never clears, the stock
+`LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx`
+(`ROM00:3277`) to completion — one `LINK_CMD`=`81h` write, one `LINK_TXD`=`03h`
+write, `LINK_CTRL` 6/7 clear throughout — and returns with `A=0EEh`/carry set
+(the `ROM00:3356` error). It then calls `ROM00:34BD` at `ROM00:2FAE` and
+raises `LINK_CTRL` 6/7 (observed writes `42h`, `0C2h`). So the "stock firmware
+never reaches the `2FAE` RX-enable" hypothesis is **FALSE** (the carry is
+ignored and the pair is restored). This is a *firmware latch-write* result:
+the emulator's controller is synthetic, so it says nothing about whether the
+controller's receiver was actually inhibited. *Harness detail, not a firmware
+finding:* the demo needed a stub `RET` at the resident-kernel helper `0F54Eh`
+(absent from flat emulated memory).
 
-**Temporal gating — CONFIRMED:** the gating is temporal, not permanent.
-`LINK_CTRL` 6/7 are cleared for the whole `LinkBlockTx` transaction and
-restored by `34BD` at `2FAE` after it, on success or the `0EEh` timeout. The
-disabled window is the transaction itself: the bit-6 wait is 620 iterations of
-a 59 T loop ~= 9.92 ms at 3.6864 MHz (`ROM00:32F0`), within a ~93.75 ms retry
-interval. The receiver is therefore disabled for roughly the first ~10–12 ms
-of each attempt and enabled for the remainder.
+**Temporal pattern — CONFIRMED for the firmware, controller effect SUSPECTED:**
+6/7 are cleared for the whole `LinkBlockTx` transaction and restored after it,
+on success or the `0EEh` timeout. The firmware therefore holds the pair clear
+for the transaction itself — the bit-6 wait is 620 iterations of a 59 T loop
+≈ 9.92 ms at 3.6864 MHz (`ROM00:32F0`), within a ~93.75 ms retry interval, so
+roughly the first ~10–12 ms of each attempt. Whether the controller's receiver
+is actually inhibited for that window is unmeasured (see above).
 
 The name `HSBUSY` for `LINK_STATUS` bit 6 is the **project's coinage**, not
 ROM-derived. The firmware only waits for the bit to be clear after the arm;
 whether it reports handshake, TX-complete, or another controller condition
 remains OPEN — see questions A/B below.
 
-### Re-framing the `conn3`-`conn13` negatives — analysis (corrected)
+### Re-framing the `conn3`-`conn13` negatives — analysis (corrected, SUSPECTED)
 
 The Arduino replies in `conn3`-`conn13` were sent ~1–9 ms after the
-handheld's burst, i.e. **inside the ~10–12 ms disabled window** described
-above, so the framed data could not be received. The exerciser `2726` that
-produced `EE04580302` (no optical emission) omitted the `ROM00:32CC`-`ROM00:32EE`
-arm entirely; build `2609` restores it (see
-[exerciser test plan](exerciser-test-plan.md)). The doc's existing "receive
-window only opens after the transmit transaction completes" remains correct;
-sharpened: the receiver **is** re-enabled after each attempt (at `ROM00:2FAE`
-via `ROM00:34BD`, CONFIRMED above), and the replies simply landed in the
-disabled window. The optical reaction those runs measured was a front-end /
-cadence effect, not a framed receive. Discard any earlier wording implying the
-RX was never enabled — that hypothesis is refuted by the emulator trace.
-Those negatives remain SUSPECT — they exercised a return path while the
-receiver was disabled — and should not be treated as settled. SUSPECTED,
-pending Phase 0/2.
+handheld's burst, i.e. inside the window in which the firmware holds
+`LINK_CTRL` 6/7 clear. **If** clearing 6/7 inhibits the controller's receiver
+(see above — the electrical meaning is Provisional), the framed data could
+not be received, and the optical reaction those runs measured was a
+front-end/cadence effect rather than a framed receive. **If instead** 6/7
+gates only the RX interrupt, the data path may still have received and the
+failure would lie in framing/convention (question C) instead. Both readings
+are consistent with the bytes, and the emulator cannot separate them.
+
+What *is* settled: the pair is restored after every attempt (at `ROM00:2FAE`
+via `ROM00:34BD`, CONFIRMED), so any earlier wording implying "the RX was
+never enabled" is discarded. What remains SUSPECTED is the narrower claim
+that the replies were missed *because the receiver was disabled* — it rests on
+the Provisional 6/7 reading. Resolve with Phase 2: send a framed reply while
+6/7 are clear and while they are set (the witness now drives them) and watch
+`LINK_STATUS` bit 4 / bit 0 and `ISRC` bit 2.
 
 ### Open questions for hardware
 
@@ -693,7 +702,7 @@ Byte-verified in `ROM00`. Static Phase-1 map of the ROM's receive chain as coded
 
 * SET (`ROM00:34BD`): IRQ idle path `ROM00:31C2`; `LinkRxDispatcher` `ROM00:3010`/`3028`/`3056`; `LinkTransferService` `ROM00:2FAE` (immediately after the TX transaction returns — CONFIRMED by emulator to fire even after the `0EEh` timeout, raising `42h`/`0C2h`).
 * CLEAR (`ROM00:34D2`): IRQ entry `ROM00:31B6`; `LinkBlockTx` entry `ROM00:327D`; `LinkProcessCommandFrame` `ROM00:30B3`; `LinkTransportOpen` `ROM00:2EC2`; `LinkHandleIdle` `ROM00:2ED4`; `LinkProbe` `ROM00:34B7`.
-* Reading: the 6/7 pair is the receive-arm/interrupt-enable; it is cleared for the whole TX transaction and restored by `LinkTransferService` after it (temporal gating: disabled ~10–12 ms covering the `ROM00:32F0` 9.92 ms bit-6 wait, enabled for the remainder of the ~93.75 ms retry interval — CONFIRMED by emulator), and is toggled around each received frame.
+* Reading: bits 5/4 are the *arm* (shared with the TX arm `ROM00:32CC`); the 6/7 pair is separate, cleared for the whole TX transaction and restored after it (firmware write pattern CONFIRMED; cleared ~10–12 ms covering the `ROM00:32F0` 9.92 ms bit-6 wait, raised for the remainder of the ~93.75 ms retry interval), and toggled around each received frame. Its electrical meaning — RX enable, RX interrupt enable, mode, or ack — is **Provisional** ([memory map](../reference/memory-map.md)); "disabled" here denotes the firmware's latch state only.
 
 **8. State cells referenced — CONFIRMED (label only what the code shows):**
 
