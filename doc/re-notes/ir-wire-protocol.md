@@ -617,6 +617,61 @@ SUSPECTED, pending Phase 0/2.
 | **C** | Does the controller's **receive path** use the same HDLC sense, data polarity, and clock phase as its transmit path? | **Not ROM-derivable**; needs a hardware sweep of return-path stimuli (see Phase 2). |
 | **D** | With the Arduino **silent** and the arm held, does the controller's **own transmission** raise `LINK_STATUS` bit 4 / the link IRQ (self-reception/crosstalk in the shared optical window)? | `LINK_STATUS` bit-4 poll and `ISRC` bit 2 with no peer stimulus. |
 
+### Receive-chain state map — CONFIRMED (static, `ROM00`; Phase-1)
+
+Byte-verified in `ROM00`. Static Phase-1 map of the ROM's receive chain as coded; it does not claim how the controller ASIC drives `LINK_STATUS`/`LINK_CTRL` electrically. All code addresses `ROM00:`; data cells are `ram:` unless noted.
+
+**1. Entry — the link IRQ (source 2), `Link_IrqPollArmOrService` (`ROM00:31B6`) — CONFIRMED:**
+
+* `ROM00:31B6` `CALL 34D2` — clear `LINK_CTRL` bits 6/7;
+* `ROM00:31B9` `CALL 34E7` — `IN A,(4Bh); AND 10h` = `LINK_STATUS` bit 4;
+* bit 4 clear → `ROM00:31C2` `CALL 34BD` (set 6/7) and return — nothing to receive; re-arm the receiver;
+* bit 4 set → `ROM00:31BE` `CALL 2FBD` (`LinkRxDispatcher`) and return.
+
+**2. `LinkRxDispatcher` (`ROM00:2FBD`–`3065`) — CONFIRMED:**
+
+* `ROM00:2FBD` `LD HL,(FDDC)`; `PUSH HL`; `CALL 3378` (`LinkBlockRx`) — read the frame; `POP HL`.
+* carry → `ROM00:2FC5` → `ROM00:3010` (`CALL 34BD`; `RET`): re-enable RX and discard.
+* `ROM00:2FC7` `INC HL` ×2; `LD A,(HL)`; `INC HL`; `LD L,(HL)`; `LD H,A`; `CALL 30DC` (`LinkValidateFrameHeader`). Carry or `NZ` → `ROM00:3010`.
+* valid (`Z`, no carry) → `ROM00:2FD4` `LD HL,FDCE`; `CALL 21BA` (cancel a queued work item); then dispatch on the transport state `ram:FDD5` and on `ram:FDE6` (see 5).
+
+**3. `LinkBlockRx` (`ROM00:3378`) — CONFIRMED:**
+
+* RX arm, `ROM00:3378`–`33A6`: clear `LINK_CTRL` bit 0; set bit 5; dummy `IN A,(4Eh)` (`LINK_RXD`) at `ROM00:338C`; set bit 4; settle `LD B,20h`/`DJNZ`; clear bit 5. Same bit-5/bit-4 shape as the TX arm `ROM00:32CC`–`32EE`, plus the dummy `LINK_RXD` read.
+* byte loop `ROM00:33CF`: `IN A,(4Bh); RRCA; JR NC,33E0` waits for `LINK_STATUS` bit 0, `INI` reads `LINK_RXD` (`4Eh`) into `(HL)`. Timeouts return carry with `A=0xEE` (`ROM00:33EB`), `0xED` (`ROM00:3414`) or `0xEC` (`ROM00:341C`).
+
+**4. `LinkValidateFrameHeader` (`ROM00:30DC`) — CONFIRMED:**
+
+* reject (carry) if frame length `DE` < 6 (`ROM00:30E2`–`30E6`);
+* reject (carry) if embedded length at `HL+?` does not match the byte count (`ROM00:30E7`–`30EF`, `ROM00:30FA`);
+* reject (`NZ`) if byte +4 does not equal the active link id `ram:FDD4` (`ROM00:30F3`–`30F9`);
+* accept otherwise (`Z`, no carry). This matches the existing note about frames under six bytes / mismatched embedded length / wrong link id.
+
+**5. Dispatcher branches after a valid frame (`ROM00:3002`–`3078`, `ROM00:3084`–`30DB`) — CONFIRMED:**
+
+* `ROM00:3002` reads `ram:FDE6`: 4 → `ROM00:3084`; 2 → `ROM00:302C`; else → `ROM00:306C` (error).
+* `ROM00:3010` `CALL 34BD`; `RET` (RX re-enable).
+* `ROM00:3014` tests `ram:FDD7` → `ROM00:3023` (`LD A,2; LD (FDD5),A; CALL 34BD`) or `ROM00:2EF3`.
+* `ROM00:302C` sets `ram:FDEA=0`, `ram:FDD5=3`, `ram:FDD6=0x14`, `ram:FDD8=3`, `ram:FDDC=FE32`, `CALL 2F86`, `CALL 34BD`.
+* `ROM00:305A`/`3060`/`3066`/`306C`/`3072` load error codes and `JP 3078`, which stores the code word at `ram:FE14` and returns `HL=FFFF`.
+* `ROM00:3084`–`30DB` (command-frame path): `ROM00:31A1` reads the per-link slot byte; `ram:FDE7`/`ram:FDCB` compares; `ROM00:31AB` increments the slot; `ROM00:30AD` sets `ram:FDD5=4`; `ROM00:30B3` `CALL 34D2` (clear 6/7); `ROM00:30BD` sets `ram:FBC9` bit 0 (the reader-completion event); `ROM00:30C5` clears `ram:FDD7`/`ram:FBCB`/`ram:FDCA`; `ROM00:30CF` `HL=(FE14)`; push `ROM00:30DB`; `JP (FDD2)` (coroutine dispatch).
+
+**6. Per-link slot helper — CONFIRMED:**
+
+* `ROM00:3192` computes `HL = FE43 + (FDD4 AND 3F)`; `ROM00:31A1` returns `(HL)`, `ROM00:31A6` stores `A` there, `ROM00:31AB` increments it. `LinkInitSlots` (`ROM00:317B`) initialises the `0x40`-byte table at `ram:FE43`.
+
+> **NOTE — CONFIRMED:** The exerciser replaces the cold boot and never calls `LinkInitSlots` or any of these routines; its own IM-1 ISR (`analysis/rom_exerciser`) is separate.
+
+**7. `LINK_CTRL` bits 6/7 set/clear points (complete) — CONFIRMED:**
+
+* SET (`ROM00:34BD`): IRQ idle path `ROM00:31C2`; `LinkRxDispatcher` `ROM00:3010`/`3028`/`3056`; `LinkTransferService` `ROM00:2FAE` (immediately after the TX transaction returns).
+* CLEAR (`ROM00:34D2`): IRQ entry `ROM00:31B6`; `LinkBlockTx` entry `ROM00:327D`; `LinkProcessCommandFrame` `ROM00:30B3`; `LinkTransportOpen` `ROM00:2EC2`; `LinkHandleIdle` `ROM00:2ED4`; `LinkProbe` `ROM00:34B7`.
+* Reading: the 6/7 pair is the receive-arm/interrupt-enable; it is cleared for the whole TX transaction and restored by `LinkTransferService` after it, and is toggled around each received frame.
+
+**8. State cells referenced — CONFIRMED (label only what the code shows):**
+
+`ram:FDD5` transport state; `ram:FDD4` active link id; `ram:FDD6` retry count; `ram:FDD7` a flag; `ram:FDD8`; `ram:FDCA`/`ram:FDCB` status/mode; `ram:FDDC` current descriptor/frame pointer; `ram:FDE6`/`ram:FDE7` received type/sequence; `ram:FDEA`; `ram:FE14` last error word; `ram:FBC9` bit 0 reader-completion event.
+
 ## There is exactly one path to the wire — CONFIRMED
 
 Byte-verified across both 32K images:
