@@ -675,21 +675,17 @@ there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
 displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 **OPEN**.
 
-### Session-module senders and status fields — 2026-09-12 (parent-adjudicated, bytes verified)
+### Session-module senders and status fields — 2026-09-17 (parent-adjudicated, bytes verified; supersedes 2026-09-12 RECORD-vs-BLOCK framing)
 
-* **Senders `Session_Tx4Param`/`Session_Tx5Param` (CONFIRMED mechanics;
-  RECORD vs BLOCK mapping OPEN).** `ROM00:5669` (4 stack args: 1 word +
-  3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result
-  word `g_wTxBlock4Result` at `ram:e64e`); `ROM00:56A4` (5 byte args)
-  calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result word
-  `g_wTxBlock5Result` at `ram:e65a`). Both builders also reachable via
-  `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 →
-  `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`). `TxBlock4`
-  fills `ram:e650`-`ram:e656` (first stack word argument `==1` selects
-  device `63h` else `43h` → `ram:e52e`; `ram:e658=8`); `TxBlock5` fills
-  `ram:e65c`-`ram:e668`. Whether `Tx4Param` vs `Tx5Param` is RECORD vs
-  BLOCK remains OPEN (discriminator: correlate one wrapper with a captured
-  RECORD/BLOCK UI transaction). See `research/TASKS.md` 2026-09-12 entry.
+* **RECORD vs BLOCK transmit — the `C-TX-REC` / `C-TX-BLK` pair and shared stream path (CONFIRMED, `ROM00`).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8120/8121) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8140/8141), per the `452D` call-site table already in this page (wrappers `50F3`/`51F2` indexing the `C-*` name table at `ROM00:6B67`). **Both** transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer whose pointer is at `SP+0x0C`, comparing with `E0E7` and appending each byte via `ROM00:3D9B`. `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
+
+* **RECORD/BLOCK difference is pre-walk setup, not wire chunking (CONFIRMED, `ROM00`).** `C-TX-REC` pre-seeds the accumulator with `3D9B` of `0x1E` at `ROM00:5107` before walking; `C-TX-BLK` calls `ROM00:3CF7` (`Session_InitAndRunTx`, which calls `ROM00:3CEA` then `ROM00:5834` -> `ROM00:60D6`) at `ROM00:5210` before walking. `C-END-FILE` (`ROM00:517F`) also appends via `3D9B` at `ROM00:5193`.
+
+* **RX mirror (CONFIRMED, `ROM00`).** `C-RX-BLK` (`ROM00:4F5A`, wrapper `4F60`) uses the RX stream walker `ROM00:3E6A` at `ROM00:4FB9`; `ROM00:3E6A` consumes via `ROM00:3DCB`. No `3E14`/`3E6A` cross-use.
+
+* **Transfer-vector exposure of the stream primitives (CONFIRMED).** `ROM00:3E14` via `ROM00:7DD2` / `ram:edb0`; `ROM00:3E6A` via `ROM00:7DBA` / `ram:ed80`; `ROM00:3D9B` via `ROM00:7DD4` / `ram:edb4`; `ROM00:3D11` via `ROM00:7DB6` / `ram:ed78`; `ROM00:3CF7` via `ROM00:7DC4` / `ram:ed94`.
+
+* **CORRECTION — `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; supersedes "Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN").** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders remain reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`), plus `TxBlock4` fills `ram:e650`-`ram:e656` (first stack word `==1` selects device `63h` else `43h` → `ram:e52e`; `ram:e658=8`) and `TxBlock5` fills `ram:e65c`-`ram:e668` as before. Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong. See `research/TASKS.md` 2026-09-17 entry.
 
 * **RCV1/RCV2 snapshots (CONFIRMED).** `ram:e701` (`g_wSessRcv1`) and
   `ram:e6ff` (`g_wSessRcv2`) are display snapshots of the last-consumed

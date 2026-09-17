@@ -138,7 +138,9 @@ State: continuously updated as work progresses.
 - **DONE 2026-09-13 — Finish the static receive-chain state map (Phase 1):** the `2FBD` -> `LINK_STATUS`-compare -> `LinkRxDispatcher` (`ROM00:3002`-`3078`) path and `ROM00:30DC`, and the exact `LINK_CTRL` 6/7 raise/lower points around a transaction. (The `LinkTransferService` gating at `ROM00:2FAE` is already CONFIRMED.) — completed this pass as `re-notes/ir-wire-protocol.md` § *Receive-chain state map* (static, `ROM00`; byte-verified); see session log 2026-09-13.
 - **DONE 2026-09-17 — Emulator demonstration of the handshake gating (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion (one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout) then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (`42h`, `0C2h`) — hypothesis "never reaches `2FAE` RX-enable" is FALSE: carry is ignored. Gating is temporal: the firmware holds `LINK_CTRL` 6/7 clear for the whole transaction and raises them after it (~10–12 ms window: 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry). *Harness detail:* stub `RET` at `0F54Eh` (resident-kernel helper absent from flat memory). Validates firmware latch writes only; controller model is synthetic, and whether 6/7 gates the receiver (vs only its interrupt) is Provisional. Witness fix: earlier exerciser builds left `LINK_CTRL` 6/7 clear so the link RX interrupt was never enabled; witness now sets them (`ctrl_or 40h`/`80h` as `34BD`/`2FAE` does) — new witness `2E3E`, 824 bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`); default `2609` unchanged; 65 tests pass.
 
-1. **Keep the existing static backlog** — now the top no-hardware item — (session-module RECORD-vs-BLOCK mapping, runtime loader `ram:D370`, guarded structural repairs, deferred final annotation sweep).
+1. **Runtime loader `ram:D370` — resolve the physical/session input-provider path** (CONFIRMED open; next static-backlog item). Trace the provider around `ROM01:0C12`/`ROM01:0CE7`/`ram:D370` with a crafted DIP/COM in emulation, watch the chunked `Program_ConsumeInputChunk` / `Program_FinalizeInput` flow, and capture the remaining `0x00FF`/`0x0080` object-size field behaviour. This was the next item behind the now-closed RECORD-vs-BLOCK mapping.
+2. **Guarded structural repairs** — `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus the `ROM00:7409`/`7472` module-A deferred sites. Diff-guarded, one at a time.
+3. **Deferred final annotation sweep** — the end-game naming/plate/comment/data-typing pass (TASKS §12 FINAL PASS), held until the remaining open items close. Covers the last `FUN_*` plate pass, legacy-name hygiene, and `research/gap-analysis.md` refresh.
 
 ### Hardware-dependent priorities (unchanged)
 
@@ -4523,20 +4525,20 @@ run and is also retired; see the later hardware-result entry.
   display remains OPEN.
 
 * **A2 — RECORD/BLOCK senders via `Session_Tx4Param`/`Session_Tx5Param`
-  (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN).**
-  `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
-  `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
-  `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
-  (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
-  `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
-  also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
-  (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
-  `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
-  argument `==1` selects device `63h` else `43h` → `ram:e52e`;
-  `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
-  `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN;
-  discriminator is to correlate one wrapper with a captured RECORD/BLOCK
-  UI transaction.
+   (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN at that date — SUPERSEDED 2026-09-17, see new entry below).**
+   `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
+   `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
+   `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
+   (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
+   `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
+   also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
+   (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
+   `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
+   argument `==1` selects device `63h` else `43h` → `ram:e52e`;
+   `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
+   `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN at that date;
+   discriminator is to correlate one wrapper with a captured RECORD/BLOCK
+   UI transaction. **2026-09-17 correction:** the premise is discarded; see next entry — the real RECORD/BLOCK senders are `C-TX-REC`/`C-TX-BLK` via `ROM00:3E14`/`ROM00:3D9B`, not `Session_Tx4Param`/`Session_Tx5Param`.
 
 * **A3 — `SessionRxStateMachine` (`ROM00:5A81`) Out contract corrected
   (CONFIRMED).** Seeds `ram:e646` from zero-extended received type byte
@@ -4696,3 +4698,16 @@ No Ghidra changes; docs only.
 * **Correction to re-framing (CONFIRMED firmware write pattern; consequence Provisional):** `conn3`–`conn13` Arduino replies were sent ~1–9 ms after the handheld's burst, i.e. inside the window in which the firmware holds LINK_CTRL 6/7 clear (~10–12 ms: 620×59 T ~=9.92 ms at `ROM00:32F0`). Firmware holds 6/7 clear for that window then raises them via `34BD` at `2FAE` after every attempt (CONFIRMED) — so wording implying "the RX was never enabled" is refuted. Whether framed data could be received inside that window depends on the Provisional 6/7 reading: IF 6/7 gates the receiver the replies were missed and the optical reaction was a front-end/cadence effect, ELSE the failure is framing/convention (question C). Either way, a reply timed after the transaction is the safe choice.
 * **Code fix (CONFIRMED by emulator):** every exerciser build left `LINK_CTRL` 6/7 clear so RX IRQ could never fire (`ISRC` bit 2 inert). Witness now sets them before listening (`ctrl_or 40h` then `ctrl_or 80h`, as `34BD`/`2FAE` does). New witness image: sum16 `2E3E`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`, 812 bytes, `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`); default `2609` unchanged; 65 exerciser tests pass.
 * **Docs updated:** `re-notes/ir-wire-protocol.md` (Finding 4 extended + re-framing corrected + state-map 7 updated), `re-notes/exerciser-test-plan.md` (witness fingerprint updated + `LINK_CTRL` 6/7 enable noted + Phase 0/2 timing: stimulus must arrive after ~10 ms TX window), `analysis/rom_exerciser/README.md` (witness fingerprint + enable + temporal note), `research/TASKS.md` (Next: emulator DONE 2026-09-17, top no-hardware now static backlog; hardware priorities unchanged). `TASKS` also refreshed witness to `2E3E` in Next hardware gate. No Ghidra changes; evidence tags preserved.
+
+### 2026-09-17 — session-module RECORD-vs-BLOCK mapping resolved (CONFIRMED, `ROM00`; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
+
+* **Resolves the "session-module RECORD-vs-BLOCK mapping" open item** carried in `Next` static backlog and in the 2026-09-12 A2 entry ("whether Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN"). All addresses below byte-verified in `ROM00`.
+* **Finding 1 — the commands (CONFIRMED).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8120/8121) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8140/8141), per the `452D` call-site table already in `re-notes/commstar-evidence.md` (wrappers `50F3`/`51F2` vs `ROM00:6B67` `C-*` name table; cf. error-decade table in that page).
+* **Finding 2 — shared TX stream walker (CONFIRMED).** Both transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer (pointer at `SP+0x0C`), comparing with `E0E7` and appending each byte via `ROM00:3D9B`.
+* **Finding 3 — the accumulator and 128-byte chunking (CONFIRMED).** `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
+* **Finding 4 — RECORD/BLOCK difference is pre-walk setup, not wire chunking (CONFIRMED).** `C-TX-REC` pre-seeds the accumulator with `3D9B` of `0x1E` at `ROM00:5107` before walking; `C-TX-BLK` calls `ROM00:3CF7` (`Session_InitAndRunTx`, which calls `ROM00:3CEA` then `ROM00:5834` -> `ROM00:60D6`) at `ROM00:5210` before walking. `C-END-FILE` (`ROM00:517F`) also appends via `3D9B` at `ROM00:5193`.
+* **Finding 5 — RX mirror (CONFIRMED).** `C-RX-BLK` (`ROM00:4F5A`, wrapper `4F60`) uses the RX stream walker `ROM00:3E6A` at `ROM00:4FB9`; `ROM00:3E6A` consumes via `ROM00:3DCB`. No `3E14`/`3E6A` cross-use.
+* **Finding 6 — stub exposure (CONFIRMED).** Stream primitives are exposed as transfer-vector services: `3E14` via `ROM00:7DD2` / `ram:edb0`; `3E6A` via `ROM00:7DBA` / `ram:ed80`; `3D9B` via `ROM00:7DD4` / `ram:edb4`; `3D11` via `ROM00:7DB6` / `ram:ed78`; `3CF7` via `ROM00:7DC4` / `ram:ed94`.
+* **Finding 7 — CORRECTION: `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; discard the earlier framing).** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong.
+* **Docs updated:** `re-notes/commstar-evidence.md` (Session-module senders block corrected to Findings 1-7; RCV1/RCV2 and `e6fc` bullets retained), `research/TASKS.md` (A2 entry marked superseded; `Next` refreshed so top no-hardware item is `ram:D370` runtime loader, followed by guarded structural repairs and the deferred final annotation sweep; this log entry). No Ghidra changes.
+* **Next:** `ram:D370` provider trace is now the top no-hardware item; hardware priorities unchanged.
