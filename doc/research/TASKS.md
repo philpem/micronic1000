@@ -140,7 +140,7 @@ State: continuously updated as work progresses.
 
 - **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
 
-1. **Guarded structural repairs** — `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus the `ROM00:7409`/`7472` module-A deferred sites. Diff-guarded, one at a time.
+1. **Guarded structural repairs** — `6e77` inline-data repair **DONE 2026-09-17** (see 8a); `ROM01:6431` re-check **partially done** (`ROM01:642F`-`6431` = `LD HL,0x000C`; the operand is now a 3-byte data item with a PRE comment, because Ghidra's stale boundary at `6430` cannot be cleared — no clear-data tool is exposed); remaining: `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus the `ROM00:7409`/`7472` module-A deferred sites. Diff-guarded, one at a time.
 2. **Deferred final annotation sweep** — the end-game naming/plate/comment/data-typing pass (TASKS §12 FINAL PASS), held until the remaining open items close. Covers the last `FUN_*` plate pass, legacy-name hygiene, and `research/gap-analysis.md` refresh.
 
 ### Hardware-dependent priorities (unchanged)
@@ -194,10 +194,13 @@ current priority order; the concise lists above are authoritative.
 8. **Residual inverted-dispatcher doc claims — CLOSED 2026-08-28.** Active
    documentation now uses the corrected model: fn <25h -> F1EB; F3h-FFh ->
    F1D1 wrap via DEC B; unmatched 25h-F2h -> wild pointer, nothing rejected.
-8a. **6e77 guarded repair needed**: its function body contains inline
-    data (FF FF FF FF at 6EA5-6EA8, 7F at 6ED1) misdisassembled as
-    RST 38h / LD A,A — run the diff-guarded clear-flow repair on
-    6E77-6EEE before attempting a name (plate marked PROVISIONAL).
+8a. **6e77 inline-data repair — DONE 2026-09-17.** The four inline operand
+    spans in `Session_EvalRecordSteps` (`ROM01:6E77`) are now defined as
+    `uint` data and labelled `tbl_corstep_0`..`3` (`ROM01:6E81`, `6EA5`,
+    `6EB4`, `6ED1`); flow resumes correctly at `6E85`/`6EAA`/`6EB8`/`6ED5`.
+    The inline bytes are the operands of the `CALL DC37`/`DC23`/`DC30`
+    frame-op idiom (consumed 4-byte parameters).  Function count unchanged
+    (1101) and the program was saved.  See the 2026-09-17 session entry.
 8b. **ram:pending compiler-runtime page**: e020-e0aa helpers
     (AND16/NOT16/OR16/XOR16/cmp at e04b/e05a, neg at e0a0, e0e7/e0e8,
     memmove at ram:d9a0) and thunks — label + plate them from the
@@ -4725,3 +4728,10 @@ No Ghidra changes; docs only.
 * **Finding 7 — `Ui_FormExitDispatchNext` (CONFIRMED).** `ROM01:06D3` pumps five handler slots at `D081` via `ram:D828`.
 * **Docs updated:** `re-notes/os-diposb.md` (Runtime program loading: replaced "`ram:D370` is `g_pProgramLoaderContinuation` … not an input-provider pointer; upstream provider remains OPEN" with findings 1-4 and 6 — loader is coroutine-driven, `D370` is the peer rendezvous slot with no external refs, feeder is session program-data receive, exact staging cell remains OPEN), `manual/programmer-guide.md` (§7b source-bytes sentence updated to same), `research/TASKS.md` (runtime loader marked substantially advanced 2026-09-17 with findings 1-4; `Next` refreshed so top no-hardware item is now the guarded structural repairs, followed by the deferred final annotation sweep; hardware-dependent priorities unchanged; this log entry). No Ghidra changes; evidence tags preserved; style preserved; no new inference.
 * **Next:** top no-hardware item is now guarded structural repairs (`e020`-`e0aa` plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus `ROM00:7409`/`7472` module-A deferred sites; diff-guarded, one at a time), followed by the deferred final annotation sweep (TASKS §12 FINAL PASS); the loader's exact staging cell remains the remaining **OPEN** for that item; hardware priorities unchanged.
+
+### 2026-09-17 — guarded structural repairs: 6e77 inline data fixed, 6431 operand documented (Ghidra saved; function count stable)
+
+* **`Session_EvalRecordSteps` (`ROM01:6E77`) inline-data repair — DONE.** The four 4-byte inline operand spans (the consumed parameters of the `CALL DC37`/`DC23`/`DC30` frame-op idiom, which pops the return address and copies 4 bytes to `E3B1`/`E3B9`) were misdisassembled as instructions (`00 00 00 00` NOPs at `6E81`; `FF FF FF FF` RST 38h at `6EA5`; `07 00 00 00` at `6EB4`; `7F 00 00 00` at `6ED1`). Each is now a `uint` data item with a label `tbl_corstep_0`..`tbl_corstep_3`; flow resumes correctly at `6E85`/`6EAA`/`6EB8`/`6ED5`. CONFIRMED: `CALL DC23`/`DC30`/`DC37` (`ram:DC23`-`ram:DC44`) pop the return, compute return+4, push it, and copy four bytes from the inline operand.
+* **`ROM01:642F`-`6431` re-check — partially done.** The bytes `21 0C 00` are `LD HL,0x000C` (the `ADD HL,SP` at `6432` then reads a stack argument); Ghidra has a stale instruction boundary at `6430` showing `INC C; NOP`. No clear-data tool is exposed and `clear_flow_and_repair` cannot free a data-blocked boundary, so the three operand bytes are now a single `byte[3]` data item at `ROM01:642F` with a PRE comment recording the true instruction. A full clear-flow repair remains OPEN (needs a Ghidra script; the inline-script path is broken — the shared `~/ghidra_scripts` bundle has pre-existing compile errors).
+* **Validation:** function count `1101` before and after; `save_program` succeeded. The 2026-08-25 note's "6e77 REPAIRED" had left the inline operands still misdecoded; this pass is the actual fix.
+* **Remaining in the guarded-repairs item:** `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, `ROM00:7409`/`7472` module-A deferred sites.
