@@ -509,6 +509,205 @@ attempt, first request to give-up, and not a window into a longer one.
 Confirming test: re-arm for ≥64 segments and check the count is exactly 50
 again, and that the 50th burst coincides with the banner.
 
+## The receive path and the awaited status bit
+
+Byte-verified in `ROM00` (link transaction and receive code). This section
+records what the firmware *does* with `LINK_STATUS` (`4Bh`) bit 6 and
+`LINK_CTRL` (`4Ah`) bits 6/7, what it does *not* do, and what remains to be
+measured on hardware. Finding 4 and the re-framing below are analysis of these
+CONFIRMED facts.
+
+### Finding 1 — `LINK_STATUS` bit 6 is a transmit-path-only wait — CONFIRMED
+
+`LINK_STATUS` bit 6 is tested CLEAR in **exactly two places**, both inside
+`LinkBlockTx` (`ROM00:3277`):
+
+* `ROM00:32F3` (`BIT 6,(HL)` → `JR Z` to the handshake arm) — the first
+  `LINK_STATUS` bit-6-clear wait after the `LINK_CTRL` bit-5/bit-4 arm.
+* `ROM00:3336` (`BIT 6,(HL)` with the same poll) — the second bit-6-clear wait
+  on the retry/error path.
+
+Both time out to `ROM00:3356` which returns `A=0xEE` (carry set). The `EE`
+value therefore does **not** distinguish the two waits.
+
+There is **no `LINK_STATUS` bit-6 test anywhere in the receive path**. The other
+`LINK_STATUS` (`4Bh`) readers are:
+
+| Bit | ROM00 | Behaviour |
+|---|---|---|
+| 4 | `ROM00:32BB` (`CPL` / `AND 10h`, waits clear before the arm) | pre-arm `RXBUSY` gate |
+| 4 | `ROM00:34E7` (`AND 10h`, the IRQ decision at `ROM00:31B6`) | `Link_IrqPollArmOrService` dispatch |
+| 7 | `ROM00:3318` (`RLCA`, per-byte wait) | first `TXRDY` wait for the payload stream |
+| 7 | `ROM00:34FB` (`AND 80h`, `LinkWaitReady`) | `TXRDY` poll (`DE=02DAh`, 9.70 ms) |
+| 0 | `ROM00:33CF` (`RRCA`, gates the `INI` loop) | `RX byte ready` in `LinkBlockRx` |
+| — | `ROM00:34BA` (`IN A,(4Bh)`) | `LinkProbe` returns the raw `LINK_STATUS` byte |
+
+Byte-verified across the image; no indirect `IN` on `4Bh` was found elsewhere.
+
+### Finding 2 — `LINK_CTRL` bits 6/7 are an RX-arm pair — CONFIRMED
+
+`LINK_CTRL` (`4Ah`) bits 6 and 7 are driven as a pair:
+
+* `ROM00:34BD` (`LinkPortLatchSetHi`) **sets both**.
+* `ROM00:34D2` (`LinkPortLatchClr`) **clears both**.
+
+`LinkBlockTx` clears both at entry (`ROM00:327D`: `RES 6` / `RES 7` on the
+`F794` shadow then `OUT (4Ah)`) and **never raises them again** during the
+transaction.
+
+They are set by:
+
+* the IRQ handler when `LINK_STATUS` bit 4 is clear (`ROM00:31C2`: the
+  `Link_IrqPollArmOrService` idle path);
+* `LinkRxDispatcher` (`ROM00:3010` / `ROM00:3028` / `ROM00:3056`); and
+* `LinkTransferService` (`ROM00:2FAE`).
+
+### Finding 3 — `LinkBlockRx` mirrors the transmit arm — CONFIRMED
+
+`LinkBlockRx` (`ROM00:3378`) opens with the **same** `LINK_CTRL` bit-5/bit-4
+arm as `LinkBlockTx` (`ROM00:32CC`-`ROM00:32EE`) but inserts a dummy read:
+
+* `ROM00:338C` (`IN A,(4Eh)`) — reads `LINK_RXD` **before** setting `LINK_CTRL`
+  bit 4.
+
+The byte path thereafter uses `LINK_STATUS` bit 4 for the IRQ decision and
+`LINK_STATUS` bit 0 to gate the `INI` loop, reading data from `LINK_RXD`
+(`4Eh`). No `LINK_STATUS` bit-6 test occurs.
+
+### Finding 4 — the link is firmware-managed half-duplex at the interrupt level — LIKELY
+
+**What is byte-verified (CONFIRMED):** the firmware holds the `LINK_CTRL`
+6/7 pair clear during a transmit transaction and raises it again afterwards.
+`LinkBlockTx` clears both at `ROM00:327D` and has no 6/7 writer inside it;
+`LinkTransferService` (`ROM00:2F58`) calls `LinkBlockTx` at `ROM00:2F9A` and
+then `ROM00:34BD` at `ROM00:2FAE` before returning at `ROM00:2FB1`; the IRQ
+poll clears 6/7 on entry (`ROM00:31B6`) and raises them on the idle path
+(`ROM00:31C2`); `LinkProbe` clears them (`ROM00:34B7`). So the firmware treats
+6/7 as something to hold clear while transmitting and to restore when idle.
+
+**What is NOT established — the electrical meaning is Provisional.** No
+measurement shows the *controller* stops receiving while 6/7 are clear. The
+project's own port table marks every `4Ah` bit role "Provisional"
+([memory map](../reference/memory-map.md)). Candidate readings the ROM cannot
+separate: an **RX-path enable**, an **RX interrupt enable** (data path still
+live, only the IRQ suppressed), a link-online/mode bit, or an
+acknowledge/strobe pair. "RX is disabled" therefore means only "the firmware
+holds the 6/7 pair clear", not "the controller cannot receive" — LIKELY at
+best, and then only if 6/7 gates the receive path and not merely its
+interrupt. Also note bits 5/4 are the *arm* (shared with TX); 6/7 is a
+separate pair, not the arm.
+
+**Emulator demonstration — CONFIRMED (firmware side only):** with a synthetic
+controller whose `LINK_STATUS` bit 6 never clears, the stock
+`LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx`
+(`ROM00:3277`) to completion — one `LINK_CMD`=`81h` write, one `LINK_TXD`=`03h`
+write, `LINK_CTRL` 6/7 clear throughout — and returns with `A=0EEh`/carry set
+(the `ROM00:3356` error). It then calls `ROM00:34BD` at `ROM00:2FAE` and
+raises `LINK_CTRL` 6/7 (observed writes `42h`, `0C2h`). So the "stock firmware
+never reaches the `2FAE` RX-enable" hypothesis is **FALSE** (the carry is
+ignored and the pair is restored). This is a *firmware latch-write* result:
+the emulator's controller is synthetic, so it says nothing about whether the
+controller's receiver was actually inhibited. *Harness detail, not a firmware
+finding:* the demo needed a stub `RET` at the resident-kernel helper `0F54Eh`
+(absent from flat emulated memory).
+
+**Temporal pattern — CONFIRMED for the firmware, controller effect SUSPECTED:**
+6/7 are cleared for the whole `LinkBlockTx` transaction and restored after it,
+on success or the `0EEh` timeout. The firmware therefore holds the pair clear
+for the transaction itself — the bit-6 wait is 620 iterations of a 59 T loop
+≈ 9.92 ms at 3.6864 MHz (`ROM00:32F0`), within a ~93.75 ms retry interval, so
+roughly the first ~10–12 ms of each attempt. Whether the controller's receiver
+is actually inhibited for that window is unmeasured (see above).
+
+The name `HSBUSY` for `LINK_STATUS` bit 6 is the **project's coinage**, not
+ROM-derived. The firmware only waits for the bit to be clear after the arm;
+whether it reports handshake, TX-complete, or another controller condition
+remains OPEN — see questions A/B below.
+
+### Re-framing the `conn3`-`conn13` negatives — analysis (corrected, SUSPECTED)
+
+The Arduino replies in `conn3`-`conn13` were sent ~1–9 ms after the
+handheld's burst, i.e. inside the window in which the firmware holds
+`LINK_CTRL` 6/7 clear. **If** clearing 6/7 inhibits the controller's receiver
+(see above — the electrical meaning is Provisional), the framed data could
+not be received, and the optical reaction those runs measured was a
+front-end/cadence effect rather than a framed receive. **If instead** 6/7
+gates only the RX interrupt, the data path may still have received and the
+failure would lie in framing/convention (question C) instead. Both readings
+are consistent with the bytes, and the emulator cannot separate them.
+
+What *is* settled: the pair is restored after every attempt (at `ROM00:2FAE`
+via `ROM00:34BD`, CONFIRMED), so any earlier wording implying "the RX was
+never enabled" is discarded. What remains SUSPECTED is the narrower claim
+that the replies were missed *because the receiver was disabled* — it rests on
+the Provisional 6/7 reading. Resolve with Phase 2: send a framed reply while
+6/7 are clear and while they are set (the witness now drives them) and watch
+`LINK_STATUS` bit 4 / bit 0 and `ISRC` bit 2.
+
+### Open questions for hardware
+
+| # | Question | Discriminating observation |
+|---|---|---|
+| **A** | Is `LINK_STATUS` bit 6 a **transmit-complete** condition (clears a few hundred µs after the arm with no peer) or a **handshake/peer** condition (stays set until the far end supplies something)? | The exerciser's per-record `OR`/`AND` of `LINK_STATUS` with the arm held and **no peer**. If it sets then clears with no peer, it is transmit-side; if it stays set, the peer-handshake reading survives. |
+| **B** | When is the **receive window** opened relative to the transmit transaction, and does the far end's reply have to arrive inside it? | `LINK_CTRL` 6/7 sequencing (Finding 2) plus `LINK_STATUS` bit-4 / IRQ-source-2 timing around the arm. |
+| **C** | Does the controller's **receive path** use the same HDLC sense, data polarity, and clock phase as its transmit path? | **Not ROM-derivable**; needs a hardware sweep of return-path stimuli (see Phase 2). |
+| **D** | With the Arduino **silent** and the arm held, does the controller's **own transmission** raise `LINK_STATUS` bit 4 / the link IRQ (self-reception/crosstalk in the shared optical window)? | `LINK_STATUS` bit-4 poll and `ISRC` bit 2 with no peer stimulus. |
+
+### Receive-chain state map — CONFIRMED (static, `ROM00`; Phase-1)
+
+Byte-verified in `ROM00`. Static Phase-1 map of the ROM's receive chain as coded; it does not claim how the controller ASIC drives `LINK_STATUS`/`LINK_CTRL` electrically. All code addresses `ROM00:`; data cells are `ram:` unless noted.
+
+**1. Entry — the link IRQ (source 2), `Link_IrqPollArmOrService` (`ROM00:31B6`) — CONFIRMED:**
+
+* `ROM00:31B6` `CALL 34D2` — clear `LINK_CTRL` bits 6/7;
+* `ROM00:31B9` `CALL 34E7` — `IN A,(4Bh); AND 10h` = `LINK_STATUS` bit 4;
+* bit 4 clear → `ROM00:31C2` `CALL 34BD` (set 6/7) and return — nothing to receive; re-arm the receiver;
+* bit 4 set → `ROM00:31BE` `CALL 2FBD` (`LinkRxDispatcher`) and return.
+
+**2. `LinkRxDispatcher` (`ROM00:2FBD`–`3065`) — CONFIRMED:**
+
+* `ROM00:2FBD` `LD HL,(FDDC)`; `PUSH HL`; `CALL 3378` (`LinkBlockRx`) — read the frame; `POP HL`.
+* carry → `ROM00:2FC5` → `ROM00:3010` (`CALL 34BD`; `RET`): re-enable RX and discard.
+* `ROM00:2FC7` `INC HL` ×2; `LD A,(HL)`; `INC HL`; `LD L,(HL)`; `LD H,A`; `CALL 30DC` (`LinkValidateFrameHeader`). Carry or `NZ` → `ROM00:3010`.
+* valid (`Z`, no carry) → `ROM00:2FD4` `LD HL,FDCE`; `CALL 21BA` (cancel a queued work item); then dispatch on the transport state `ram:FDD5` and on `ram:FDE6` (see 5).
+
+**3. `LinkBlockRx` (`ROM00:3378`) — CONFIRMED:**
+
+* RX arm, `ROM00:3378`–`33A6`: clear `LINK_CTRL` bit 0; set bit 5; dummy `IN A,(4Eh)` (`LINK_RXD`) at `ROM00:338C`; set bit 4; settle `LD B,20h`/`DJNZ`; clear bit 5. Same bit-5/bit-4 shape as the TX arm `ROM00:32CC`–`32EE`, plus the dummy `LINK_RXD` read.
+* byte loop `ROM00:33CF`: `IN A,(4Bh); RRCA; JR NC,33E0` waits for `LINK_STATUS` bit 0, `INI` reads `LINK_RXD` (`4Eh`) into `(HL)`. Timeouts return carry with `A=0xEE` (`ROM00:33EB`), `0xED` (`ROM00:3414`) or `0xEC` (`ROM00:341C`).
+
+**4. `LinkValidateFrameHeader` (`ROM00:30DC`) — CONFIRMED:**
+
+* reject (carry) if frame length `DE` < 6 (`ROM00:30E2`–`30E6`);
+* reject (carry) if embedded length at `HL+?` does not match the byte count (`ROM00:30E7`–`30EF`, `ROM00:30FA`);
+* reject (`NZ`) if byte +4 does not equal the active link id `ram:FDD4` (`ROM00:30F3`–`30F9`);
+* accept otherwise (`Z`, no carry). This matches the existing note about frames under six bytes / mismatched embedded length / wrong link id.
+
+**5. Dispatcher branches after a valid frame (`ROM00:3002`–`3078`, `ROM00:3084`–`30DB`) — CONFIRMED:**
+
+* `ROM00:3002` reads `ram:FDE6`: 4 → `ROM00:3084`; 2 → `ROM00:302C`; else → `ROM00:306C` (error).
+* `ROM00:3010` `CALL 34BD`; `RET` (RX re-enable).
+* `ROM00:3014` tests `ram:FDD7` → `ROM00:3023` (`LD A,2; LD (FDD5),A; CALL 34BD`) or `ROM00:2EF3`.
+* `ROM00:302C` sets `ram:FDEA=0`, `ram:FDD5=3`, `ram:FDD6=0x14`, `ram:FDD8=3`, `ram:FDDC=FE32`, `CALL 2F86`, `CALL 34BD`.
+* `ROM00:305A`/`3060`/`3066`/`306C`/`3072` load error codes and `JP 3078`, which stores the code word at `ram:FE14` and returns `HL=FFFF`.
+* `ROM00:3084`–`30DB` (command-frame path): `ROM00:31A1` reads the per-link slot byte; `ram:FDE7`/`ram:FDCB` compares; `ROM00:31AB` increments the slot; `ROM00:30AD` sets `ram:FDD5=4`; `ROM00:30B3` `CALL 34D2` (clear 6/7); `ROM00:30BD` sets `ram:FBC9` bit 0 (the reader-completion event); `ROM00:30C5` clears `ram:FDD7`/`ram:FBCB`/`ram:FDCA`; `ROM00:30CF` `HL=(FE14)`; push `ROM00:30DB`; `JP (FDD2)` (coroutine dispatch).
+
+**6. Per-link slot helper — CONFIRMED:**
+
+* `ROM00:3192` computes `HL = FE43 + (FDD4 AND 3F)`; `ROM00:31A1` returns `(HL)`, `ROM00:31A6` stores `A` there, `ROM00:31AB` increments it. `LinkInitSlots` (`ROM00:317B`) initialises the `0x40`-byte table at `ram:FE43`.
+
+> **NOTE — CONFIRMED:** The exerciser replaces the cold boot and never calls `LinkInitSlots` or any of these routines; its own IM-1 ISR (`analysis/rom_exerciser`) is separate.
+
+**7. `LINK_CTRL` bits 6/7 set/clear points (complete) — CONFIRMED:**
+
+* SET (`ROM00:34BD`): IRQ idle path `ROM00:31C2`; `LinkRxDispatcher` `ROM00:3010`/`3028`/`3056`; `LinkTransferService` `ROM00:2FAE` (immediately after the TX transaction returns — CONFIRMED by emulator to fire even after the `0EEh` timeout, raising `42h`/`0C2h`).
+* CLEAR (`ROM00:34D2`): IRQ entry `ROM00:31B6`; `LinkBlockTx` entry `ROM00:327D`; `LinkProcessCommandFrame` `ROM00:30B3`; `LinkTransportOpen` `ROM00:2EC2`; `LinkHandleIdle` `ROM00:2ED4`; `LinkProbe` `ROM00:34B7`.
+* Reading: bits 5/4 are the *arm* (shared with the TX arm `ROM00:32CC`); the 6/7 pair is separate, cleared for the whole TX transaction and restored after it (firmware write pattern CONFIRMED; cleared ~10–12 ms covering the `ROM00:32F0` 9.92 ms bit-6 wait, raised for the remainder of the ~93.75 ms retry interval), and toggled around each received frame. Its electrical meaning — RX enable, RX interrupt enable, mode, or ack — is **Provisional** ([memory map](../reference/memory-map.md)); "disabled" here denotes the firmware's latch state only.
+
+**8. State cells referenced — CONFIRMED (label only what the code shows):**
+
+`ram:FDD5` transport state; `ram:FDD4` active link id; `ram:FDD6` retry count; `ram:FDD7` a flag; `ram:FDD8`; `ram:FDCA`/`ram:FDCB` status/mode; `ram:FDDC` current descriptor/frame pointer; `ram:FDE6`/`ram:FDE7` received type/sequence; `ram:FDEA`; `ram:FE14` last error word; `ram:FBC9` bit 0 reader-completion event.
+
 ## There is exactly one path to the wire — CONFIRMED
 
 Byte-verified across both 32K images:
