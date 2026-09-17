@@ -219,6 +219,28 @@ and there is one symbol table.
 
 **716 bytes differ from the original.** One chip: `ROM01` is untouched.
 
+### Two build variants — record-stream and witness (CONFIRMED)
+
+`analysis/rom_exerciser/build.py` builds two variants from the one source (CONFIRMED):
+
+* **Default — record-stream (`2609`):** unchanged — 32768 bytes, sum16 `2609`, 716 changed bytes, SHA-256 `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72` (`micron1_exerciser.bin`).
+* **Witness — `micron1_witness.bin` (`2DA4`):** built with `--witness` — 32768 bytes, sum16 `2DA4`, 812 changed bytes, SHA-256 `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`.
+
+Both live in the same reclaimed `scr` region at `0250-02FD`; the default build strips the witness code and stays byte-identical to `2609` (CONFIRMED).
+
+The witness variant does the stock opening (LinkProbe, top-V24 port select, control setup), writes the flag via LinkPresent, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then **STOPS transmitting** and watches the receive path. It never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` after the arm, so nothing it sends can disturb the receive path being measured (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, the arm values `23h`/`33h`/`13h`, then silence).
+
+Witness LCD row: `W` then six hex bytes `OR AND ISRC IRQN ARMD HB`. `OR`/`AND` are `LINK_STATUS` (`4Bh`) over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` are sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` is a heartbeat. Reset only by power-cycling; the IR channel is being listened to, so the LCD is the only readout.
+
+Pairing: use the witness ROM with the Arduino `RX_SWEEP` mode (`analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` with `RX_SWEEP 1`, all other mode flags `0`) to sweep receive conventions and read the controller's reaction from the witness LCD (`LINK_STATUS` `OR`/`AND`, `ISRC`). The Arduino answers each handheld burst with one combination of flag sense, data polarity, phase and content and prints the parameters; it does not score itself. Emulator tests lock the witness fingerprint and verify `test_witness_stops_transmitting_after_the_arm` (65 exerciser tests pass, CONFIRMED).
+
+Build:
+
+```
+analysis/venv/bin/python analysis/rom_exerciser/build.py            # default record-stream
+analysis/venv/bin/python analysis/rom_exerciser/build.py --witness  # witness variant
+```
+
 ## The LCD, first
 
 It initialises the display and **puts the first ten fields of every record on

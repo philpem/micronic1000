@@ -509,6 +509,114 @@ attempt, first request to give-up, and not a window into a longer one.
 Confirming test: re-arm for ≥64 segments and check the count is exactly 50
 again, and that the 50th burst coincides with the banner.
 
+## The receive path and the awaited status bit
+
+Byte-verified in `ROM00` (link transaction and receive code). This section
+records what the firmware *does* with `LINK_STATUS` (`4Bh`) bit 6 and
+`LINK_CTRL` (`4Ah`) bits 6/7, what it does *not* do, and what remains to be
+measured on hardware. Finding 4 and the re-framing below are analysis of these
+CONFIRMED facts.
+
+### Finding 1 — `LINK_STATUS` bit 6 is a transmit-path-only wait — CONFIRMED
+
+`LINK_STATUS` bit 6 is tested CLEAR in **exactly two places**, both inside
+`LinkBlockTx` (`ROM00:3277`):
+
+* `ROM00:32F3` (`BIT 6,(HL)` → `JR Z` to the handshake arm) — the first
+  `LINK_STATUS` bit-6-clear wait after the `LINK_CTRL` bit-5/bit-4 arm.
+* `ROM00:3336` (`BIT 6,(HL)` with the same poll) — the second bit-6-clear wait
+  on the retry/error path.
+
+Both time out to `ROM00:3356` which returns `A=0xEE` (carry set). The `EE`
+value therefore does **not** distinguish the two waits.
+
+There is **no `LINK_STATUS` bit-6 test anywhere in the receive path**. The other
+`LINK_STATUS` (`4Bh`) readers are:
+
+| Bit | ROM00 | Behaviour |
+|---|---|---|
+| 4 | `ROM00:32BB` (`CPL` / `AND 10h`, waits clear before the arm) | pre-arm `RXBUSY` gate |
+| 4 | `ROM00:34E7` (`AND 10h`, the IRQ decision at `ROM00:31B6`) | `Link_IrqPollArmOrService` dispatch |
+| 7 | `ROM00:3318` (`RLCA`, per-byte wait) | first `TXRDY` wait for the payload stream |
+| 7 | `ROM00:34FB` (`AND 80h`, `LinkWaitReady`) | `TXRDY` poll (`DE=02DAh`, 9.70 ms) |
+| 0 | `ROM00:33CF` (`RRCA`, gates the `INI` loop) | `RX byte ready` in `LinkBlockRx` |
+| — | `ROM00:34BA` (`IN A,(4Bh)`) | `LinkProbe` returns the raw `LINK_STATUS` byte |
+
+Byte-verified across the image; no indirect `IN` on `4Bh` was found elsewhere.
+
+### Finding 2 — `LINK_CTRL` bits 6/7 are an RX-arm pair — CONFIRMED
+
+`LINK_CTRL` (`4Ah`) bits 6 and 7 are driven as a pair:
+
+* `ROM00:34BD` (`LinkPortLatchSetHi`) **sets both**.
+* `ROM00:34D2` (`LinkPortLatchClr`) **clears both**.
+
+`LinkBlockTx` clears both at entry (`ROM00:327D`: `RES 6` / `RES 7` on the
+`F794` shadow then `OUT (4Ah)`) and **never raises them again** during the
+transaction.
+
+They are set by:
+
+* the IRQ handler when `LINK_STATUS` bit 4 is clear (`ROM00:31C2`: the
+  `Link_IrqPollArmOrService` idle path);
+* `LinkRxDispatcher` (`ROM00:3010` / `ROM00:3028` / `ROM00:3056`); and
+* `LinkTransferService` (`ROM00:2FAE`).
+
+### Finding 3 — `LinkBlockRx` mirrors the transmit arm — CONFIRMED
+
+`LinkBlockRx` (`ROM00:3378`) opens with the **same** `LINK_CTRL` bit-5/bit-4
+arm as `LinkBlockTx` (`ROM00:32CC`-`ROM00:32EE`) but inserts a dummy read:
+
+* `ROM00:338C` (`IN A,(4Eh)`) — reads `LINK_RXD` **before** setting `LINK_CTRL`
+  bit 4.
+
+The byte path thereafter uses `LINK_STATUS` bit 4 for the IRQ decision and
+`LINK_STATUS` bit 0 to gate the `INI` loop, reading data from `LINK_RXD`
+(`4Eh`). No `LINK_STATUS` bit-6 test occurs.
+
+### Finding 4 — the link is firmware-managed half-duplex at the interrupt level — LIKELY
+
+The transmit transaction clears the `LINK_CTRL` 6/7 pair (the RX interrupt
+enable) for its whole duration, so a peer reply arriving **during** the
+controller's own TX cannot raise the RX interrupt. The interrupt poll
+re-arms `LINK_CTRL` bits 6/7 only when the link is otherwise idle
+(`ROM00:31B6` `RXBUSY` clear path).
+
+**CONFIRMED ordering:** `LinkTransferService` (`ROM00:2F58`) calls
+`LinkBlockTx` at `ROM00:2F9A`, then calls `ROM00:34BD` — raising `LINK_CTRL`
+bits 6/7 — at `ROM00:2FAE`, immediately after the transmit transaction
+returns, and returns at `ROM00:2FB1`. `LinkBlockTx` has no writer for the 6/7
+pair inside it. So the receive path is re-enabled only once the transmit
+transaction has completed: the receive window follows the transmit
+transaction, and a reply cannot be serviced while the controller still
+declares its own transmit busy.
+
+The name `HSBUSY` for `LINK_STATUS` bit 6 is the **project's coinage**, not
+ROM-derived. The firmware only waits for the bit to be clear after the arm;
+whether it reports handshake, TX-complete, or another controller condition
+remains OPEN — see questions A/B below.
+
+### Re-framing the `conn3`-`conn13` negatives — analysis
+
+The Arduino replies in `conn3`-`conn13` were delivered to a controller whose
+`LINK_STATUS` bit-6 wait had **never completed**. The exerciser `2726` that
+produced `EE04580302` (no optical emission) omitted the `ROM00:32CC`-`ROM00:32EE`
+arm entirely; build `2609` restores it (see
+[exerciser test plan](exerciser-test-plan.md)). If the firmware's receive
+window only opens **after** the transmit transaction completes (Finding 4),
+those negatives are SUSPECT — they exercised a return path while the
+controller's TX was still declared busy — and should not be treated as settled.
+SUSPECTED, pending Phase 0/2.
+
+### Open questions for hardware
+
+| # | Question | Discriminating observation |
+|---|---|---|
+| **A** | Is `LINK_STATUS` bit 6 a **transmit-complete** condition (clears a few hundred µs after the arm with no peer) or a **handshake/peer** condition (stays set until the far end supplies something)? | The exerciser's per-record `OR`/`AND` of `LINK_STATUS` with the arm held and **no peer**. If it sets then clears with no peer, it is transmit-side; if it stays set, the peer-handshake reading survives. |
+| **B** | When is the **receive window** opened relative to the transmit transaction, and does the far end's reply have to arrive inside it? | `LINK_CTRL` 6/7 sequencing (Finding 2) plus `LINK_STATUS` bit-4 / IRQ-source-2 timing around the arm. |
+| **C** | Does the controller's **receive path** use the same HDLC sense, data polarity, and clock phase as its transmit path? | **Not ROM-derivable**; needs a hardware sweep of return-path stimuli (see Phase 2). |
+| **D** | With the Arduino **silent** and the arm held, does the controller's **own transmission** raise `LINK_STATUS` bit 4 / the link IRQ (self-reception/crosstalk in the shared optical window)? | `LINK_STATUS` bit-4 poll and `ISRC` bit 2 with no peer stimulus. |
+
 ## There is exactly one path to the wire — CONFIRMED
 
 Byte-verified across both 32K images:

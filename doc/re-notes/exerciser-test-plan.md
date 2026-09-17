@@ -353,6 +353,73 @@ everything since `conn3` has been mis-aimed.
   record, that cannot hide an event — but it is why `ISTAT` is sampled in the
   handler rather than inferred from the polled accumulators.
 
+## IR handshake investigation plan (Phases 0–3)
+
+This plan records the **already-established** receive-path findings and the
+next hardware/software steps without new inference. It is the reference for the
+open questions described in
+[IR wire protocol — The receive path and the awaited status bit](ir-wire-protocol.md#the-receive-path-and-the-awaited-status-bit).
+
+### Phase 0 — hardware gate (already prepared)
+
+* **Burn build `2609`**, Arduino `LISTEN_ONLY` + `RECORD_READOUT`, press ENTER,
+  decode with `decode_records.py`.
+* Holds the `ROM00:32CC`-`ROM00:32EE` arm (raise `LINK_CTRL` bit 5, then bit 4,
+  32-iteration settle ~0.11 ms, drop bit 5 leaving bit 4 SET) and samples
+  `LINK_STATUS` (`4Bh`) as per-record `OR`/`AND` plus `ISRC` bit 2.
+* **Witness variant as independent Phase-0 read (CONFIRMED):** `micron1_witness.bin` (`2DA4`, built with `build.py --witness`, 812 changed bytes, SHA-256 `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`) does the same stock opening (LinkProbe, top-V24 port select, control setup), writes the flag via LinkPresent, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then stops transmitting and watches the receive path. It never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` after the arm, so nothing it sends can disturb the receive path (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, arm values `23h`/`33h`/`13h`, then silence). Its LCD row is `W` `OR AND ISRC IRQN ARMD HB` — `OR`/`AND` are `LINK_STATUS` over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` heartbeat; reset only by power-cycling. The default `2609` record-stream build stays byte-identical when the witness code is stripped; both live in the same reclaimed `scr` region at `0250-02FD` (CONFIRMED). The witness also serves as an independent Phase-0 read for `LINK_STATUS` bit 6 with no peer.
+* **Discriminator:**
+  * If `LINK_STATUS` bit 6 sets then **clears with no peer**, it is a
+    **transmit-complete** condition — go to Phase 3.
+  * If it **stays set with no peer**, the **peer-handshake** reading survives —
+    go to Phase 2.
+
+### Phase 1 — offline, partly done
+
+Finish mapping the receive chain (`ROM00:2FBD`, `LinkRxDispatcher` at
+`ROM00:3010`/`3028`/`3056`, `ROM00:30DC` `LinkValidateFrameHeader`) and where
+`LINK_CTRL` bits 6/7 are raised/lowered relative to the transmit handshake
+(`ROM00:34BD` / `ROM00:34D2` pair; `LinkBlockTx` clears at `ROM00:327D`; IRQ
+poll re-arms at `ROM00:31C2`). Records the window ordering from static code.
+
+### Phase 2 — hardware: receive-convention sweep
+
+Hold the arm, then **stop transmitting** and sample `LINK_STATUS` (`OR`/`AND`)
+and the link IRQ source while the Arduino sends return-path stimuli sweeping:
+
+* **(a) flag sense:** `1000_0001` vs `0111_1110`;
+* **(b) data polarity** (inverted vs non-inverted);
+* **(c) data/clock phase** sign and magnitude (`+/-1/4` and `+/-1/8` cell);
+* **(d) delivery:** continuous idling flags vs a burst timed after the
+  handheld's burst;
+* **(e) content:** bare flag → flag+address → flag+prelude `03h`.
+
+**Witness + Arduino `RX_SWEEP` pairing (CONFIRMED code, syntax-checked with host stub, no AVR toolchain in CI):** the witness ROM (`2DA4`, `build.py --witness`) is the Phase-0/Phase-2 instrument that removes the record-stream build's TX confound — it stops transmitting after the arm and reports `LINK_STATUS` `OR`/`AND` (current ~0.1 s window, live) and sticky `ISRC` on the LCD (`W` `OR AND ISRC IRQN ARMD HB`). The Arduino sketch `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` gains `RX_SWEEP` (set `RX_SWEEP 1`, all other mode flags `0`). It answers each handheld burst with one combination of: flag sense `{0x81, 0x7E}`; data polarity `{normal, complemented}`; data-to-clock phase `{-4,-2,0,+2,+4}` eighths of a cell (transmit convention is a −2/8-cell data lead); content `{flag only, flag+03h, flag+03h+legal body+flag}`. Reply ~3 ms after the handheld burst; one combination advances per burst and the parameters are printed. It does NOT score itself: the controller's reaction is read from the witness ROM (`LINK_STATUS` `OR`/`AND`, `ISRC`).
+
+**Discriminator:** any of `LINK_STATUS` bit 6 **clear**, `LINK_STATUS` bit 4
+**set**, or **IRQ source 2** asserting identifies the receive convention.
+This answers open questions **C** and **D** and, if bit 6 clears, **A/B**.
+
+### Phase 3 — redo the `conn`-style reply with a completed handshake
+
+With a completed transmit handshake (Phase 0 outcome) and — if Phase 2 finds one
+— the correct return convention, redo the `conn`-style reply and hunt for the
+post-handshake payload. `micronic.peer.CommstarPeer` already covers the session
+layer above that boundary. This answers **B**.
+
+### Offline work available (no hardware)
+
+1. **Static receive-chain map (Phase 1)** — partly done above; finish the
+   `2FBD`/`LinkRxDispatcher`/`30DC` walk and the `LINK_CTRL` 6/7 raise/clear
+   ordering relative to the transmit handshake.
+2. **Emulator traces of the firmware's TX/RX enable ordering** (`analysis/boot_hw.py`)
+   to confirm the window ordering; note the controller model is synthetic, so
+   this validates **control flow only**, not electrical timing.
+3. **"RX witness" exerciser variant (CONFIRMED, done)** — `micron1_witness.bin` (`2DA4`, `build.py --witness`) performs the transmit opening+arm once, then stops transmitting and samples `LINK_STATUS` (`OR`/`AND`) and the link IRQ source over a long window, reporting on the **LCD** (`W` `OR AND ISRC IRQN ARMD HB`, `OR`/`AND` per-window live, `ISRC`/`IRQN` sticky, `ARMD` post-arm sample) — the IR channel cannot be used while listening. Emulator-validatable; no IR emission during the listen window (CONFIRMED: one `0x81`/`0xA5` + arm `23h`/`33h`/`13h`, then silence). Default `2609` stays byte-identical.
+4. **Arduino Phase-2 receive-convention sweep modes (CONFIRMED, done)** — `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` now has `RX_SWEEP` (flag sense `{0x81,0x7E}`, data polarity `{normal, complemented}`, phase `{-4,-2,0,+2,+4}` eighths, content `{flag only, flag+03h, flag+03h+legal body+flag}`, ~3 ms reply, one combination per burst, parameters printed; syntax-checked with host stub, no AVR toolchain in CI).
+5. **Write the Phase-2 bench procedure** (wiring, sweep order, capture length,
+   decode steps, and the per-record `OR`/`AND`/`ISRC` decision table).
+
 ## After this run
 
 The follow-up burn should be **steerable** rather than fixed, and the keypad

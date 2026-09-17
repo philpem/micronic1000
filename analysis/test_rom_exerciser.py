@@ -15,38 +15,29 @@ sys.path.insert(0, str(ANALYSIS))
 
 from micronic.z80asm import assemble
 
+import importlib.util
 
-ASM = ANALYSIS / "rom_exerciser" / "exerciser.asm"
+_SPEC = importlib.util.spec_from_file_location(
+    "rxbuild", ANALYSIS / "rom_exerciser" / "build.py")
+build = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(build)
+
 ROM = ANALYSIS.parent / "micronic" / "micron1.bin"
-REGIONS = (
-    (0x0047, 0x0065, "isr_end"),
-    (0x0069, 0x007F, "nmi_end"),
-    (0x00A2, 0x00FF, "vec_end"),
-    (0x0250, 0x02FD, "scr_end"),
-    (0x724C, 0x7302, "lo_end"),
-    (0x7CE0, 0x7D0F, "mid_end"),
-    (0x7E96, 0x7FF9, "hi_end"),
-)
 
 
-def _assembled():
-    return assemble(ASM.read_text(), origin=0x0047)
+def _assembled(witness=False):
+    return assemble(build.exerciser_source(witness), origin=0x0047)
 
 
-def _burn_image():
-    code, sym = _assembled()
-    image = bytearray(ROM.read_bytes())
-    for start, _, end_symbol in REGIONS:
-        end = sym[end_symbol]
-        image[start:end] = code[start - 0x0047:end - 0x0047]
-    image[0x014B:0x014E] = bytes([0xC3]) + sym["start"].to_bytes(2, "little")
-    return image, sym
+def _burn_image(witness=False):
+    image, sym, _ = build.build_image(witness)
+    return bytearray(image), sym
 
 
 def test_exerciser_fits_all_guarded_regions():
     code, sym = _assembled()
     assert code
-    for start, end, end_symbol in REGIONS:
+    for name, start, end, end_symbol in build.REGIONS:
         assert start <= sym[end_symbol] <= end + 1
 
 
@@ -60,6 +51,21 @@ def test_burn_image_has_a_locked_fingerprint():
     assert hashlib.sha256(image).hexdigest() == (
         "ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72"
     )
+
+
+def test_witness_image_has_a_locked_fingerprint():
+    stock = ROM.read_bytes()
+    image, sym = _burn_image(witness=True)
+
+    assert len(image) == 0x8000
+    assert sum(a != b for a, b in zip(image, stock)) == 812
+    assert sum(image) & 0xFFFF == 0x2DA4
+    assert hashlib.sha256(bytes(image)).hexdigest() == (
+        "863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887"
+    )
+    # The witness build carries the hand-off wrapper and the loop, and still
+    # inherits the arm.
+    assert {"arm_tx", "arm_witness", "witness"} <= set(sym)
 
 
 def test_lcd_powerup_delegates_to_the_complete_stock_initializer():
@@ -507,3 +513,58 @@ def test_decoder_does_not_invent_phases_for_startup_diagnostic(capsys):
     assert "TX armed" not in output
     assert "RX armed" not in output
     assert "CTRL sweep" not in output
+
+
+@pytest.mark.skipif(z80 is None, reason="needs the z80 module")
+def test_witness_stops_transmitting_after_the_arm():
+    image, sym = _burn_image(witness=True)
+    mem = bytearray([0xA5] * 0x10000)
+    mem[:0x8000] = image
+    drive, data, commands, controls = [0], [], [], []
+
+    def input_port(port):
+        port &= 0xFF
+        if port == 0:
+            return 8 if drive[0] == 16 else 0   # ENTER at the contrast screen
+        if port == 0x4B:
+            return 0x80                          # TXRDY ready, nothing else
+        return 0
+
+    def output_port(port, value):
+        port &= 0xFF
+        if port == 2:
+            drive[0] = value
+        elif port == 0x4A:
+            controls.append(value)
+        elif port == 0x4C:
+            commands.append(value)
+        elif port == 0x4D:
+            data.append(value)
+
+    machine = z80.Z80Machine()
+    machine.set_memory_block(0, bytes(mem))
+    machine.set_read_callback(lambda a: mem[a & 0xFFFF])
+    machine.set_write_callback(
+        lambda a, v: mem.__setitem__(a & 0xFFFF, v & 0xFF))
+    machine.set_input_callback(input_port)
+    machine.set_output_callback(output_port)
+    machine.pc = 0x014B
+
+    machine.set_breakpoint(sym["witness"])
+    for _ in range(2000):
+        machine.ticks_to_stop = 50000
+        machine.run()
+        if machine.pc == sym["witness"]:
+            break
+    assert machine.pc == sym["witness"], "witness loop never entered"
+
+    # In the witness loop it must never transmit again: exactly the one
+    # LinkPresent flag and the one first data byte, then silence.
+    machine.clear_breakpoint(sym["witness"])
+    for _ in range(400):
+        machine.ticks_to_stop = 50000
+        machine.run()
+    assert data == [0xA5]
+    assert commands == [0x81]
+    assert {0x23, 0x33, 0x13} <= set(controls)   # the arm strobed
+    assert set(controls) <= {0, 1, 2, 3, 0x13, 0x23, 0x33}
