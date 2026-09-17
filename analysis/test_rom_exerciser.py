@@ -58,10 +58,10 @@ def test_witness_image_has_a_locked_fingerprint():
     image, sym = _burn_image(witness=True)
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 812
-    assert sum(image) & 0xFFFF == 0x2DA4
+    assert sum(a != b for a, b in zip(image, stock)) == 824
+    assert sum(image) & 0xFFFF == 0x2E3E
     assert hashlib.sha256(bytes(image)).hexdigest() == (
-        "863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887"
+        "aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0"
     )
     # The witness build carries the hand-off wrapper and the loop, and still
     # inherits the arm.
@@ -567,4 +567,6 @@ def test_witness_stops_transmitting_after_the_arm():
     assert data == [0xA5]
     assert commands == [0x81]
     assert {0x23, 0x33, 0x13} <= set(controls)   # the arm strobed
-    assert set(controls) <= {0, 1, 2, 3, 0x13, 0x23, 0x33}
+    # ...and it enables the receive path (LINK_CTRL 6/7) before listening.
+    assert any(c & 0x40 for c in controls) and any(c & 0x80 for c in controls)
+    assert set(controls) <= {0, 1, 2, 3, 0x13, 0x23, 0x33, 0x53, 0xD3}
