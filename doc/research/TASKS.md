@@ -140,7 +140,7 @@ State: continuously updated as work progresses.
 
 - **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
 
-1. **Guarded structural repairs** — `6e77` inline-data repair **DONE 2026-09-17** (see 8a); `ROM01:6431` re-check **partially done** (`ROM01:642F`-`6431` = `LD HL,0x000C`; the operand is now a 3-byte data item with a PRE comment, because Ghidra's stale boundary at `6430` cannot be cleared — no clear-data tool is exposed); remaining: `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus the `ROM00:7409`/`7472` module-A deferred sites. Diff-guarded, one at a time.
+1. **Guarded structural repairs** — `6e77` inline-data repair **DONE 2026-09-17** (see 8a); `e020`-`e0aa` compiler-runtime plates **DONE 2026-09-17** (all helpers already labelled; `Lib_Not16`/`Lib_Neg16` plates added, the rest carry at least SHORT-form plates); `ROM01:6431` re-check **partial** and `ROM01:7580`-`7670` data-typing **blocked by tooling** — both are misdecoded regions whose instruction boundaries `apply_data_type` cannot clear over a multi-instruction range and `clear_flow_and_repair` cannot free (no clear-region/clear-data tool is exposed; the inline-script path is broken). `ROM00:7409`/`7472` are **deferred by design** (they are ROM images of RAM module A, `ram:D8CE`/`ram:D937`, whose internal addresses resolve against the wrong space). Remaining: code-gap and data-typing tail. Diff-guarded, one at a time.
 2. **Deferred final annotation sweep** — the end-game naming/plate/comment/data-typing pass (TASKS §12 FINAL PASS), held until the remaining open items close. Covers the last `FUN_*` plate pass, legacy-name hygiene, and `research/gap-analysis.md` refresh.
 
 ### Hardware-dependent priorities (unchanged)
@@ -201,11 +201,16 @@ current priority order; the concise lists above are authoritative.
     The inline bytes are the operands of the `CALL DC37`/`DC23`/`DC30`
     frame-op idiom (consumed 4-byte parameters).  Function count unchanged
     (1101) and the program was saved.  See the 2026-09-17 session entry.
-8b. **ram:pending compiler-runtime page**: e020-e0aa helpers
-    (AND16/NOT16/OR16/XOR16/cmp at e04b/e05a, neg at e0a0, e0e7/e0e8,
-    memmove at ram:d9a0) and thunks — label + plate them from the
-    2026-08-25 analysis notes; then da13 semantics (constructor vs
-    stream-read) decides the 6A36/6AA9 interpretation.
+8b. **ram:pending compiler-runtime page — label + plate DONE 2026-09-17.** All
+    helpers are already labelled (`Lib_And16` `e023`, `Lib_Not16` `e02b`,
+    `Lib_Or16` `e033`, `Lib_Xor16` `e03b`, `Lib_Lnot16` `e043`, `Lib_Eq16`
+    `e04b`, `Lib_Ne16` `e05a`, `Lib_SignedLe16` `e06a`, `Lib_SignedGe16`
+    `e06b`, `Lib_SignedGt16` `e085`, `Lib_SignedLt16` `e086`, `Lib_Neg16`
+    `e09f`, `Lib_Sub16` `e0a9`, `Lib_Unsigned*` `e0d9`/`e0da`/`e0e7`/`e0e8`,
+    memmove at `ram:d9a0`).  Plates added for the two that had none
+    (`Lib_Not16`, `Lib_Neg16`); the trivial logic ops carry SHORT-form plates.
+    Still OPEN: `da13` semantics (constructor vs stream-read) deciding the
+    `6A36`/`6AA9` interpretation.
 8c. **Static writers of d2dc/d2de (06d3 globals)** and of the EA14/
     EA1C chunk-state blocks — not in defined code post-repair;
     re-check after the thunk-sweep and get_callers pass.
@@ -4735,3 +4740,11 @@ No Ghidra changes; docs only.
 * **`ROM01:642F`-`6431` re-check — partially done.** The bytes `21 0C 00` are `LD HL,0x000C` (the `ADD HL,SP` at `6432` then reads a stack argument); Ghidra has a stale instruction boundary at `6430` showing `INC C; NOP`. No clear-data tool is exposed and `clear_flow_and_repair` cannot free a data-blocked boundary, so the three operand bytes are now a single `byte[3]` data item at `ROM01:642F` with a PRE comment recording the true instruction. A full clear-flow repair remains OPEN (needs a Ghidra script; the inline-script path is broken — the shared `~/ghidra_scripts` bundle has pre-existing compile errors).
 * **Validation:** function count `1101` before and after; `save_program` succeeded. The 2026-08-25 note's "6e77 REPAIRED" had left the inline operands still misdecoded; this pass is the actual fix.
 * **Remaining in the guarded-repairs item:** `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, `ROM00:7409`/`7472` module-A deferred sites.
+
+### 2026-09-17 — guarded structural repairs, part 2: compiler-runtime plates done; large data regions blocked by tooling
+
+* **`e020`-`e0aa` compiler-runtime page — label + plate DONE.** Every helper is already labelled (`Lib_And16` `e023`, `Lib_Not16` `e02b`, `Lib_Or16` `e033`, `Lib_Xor16` `e03b`, `Lib_Lnot16` `e043`, `Lib_Eq16` `e04b`, `Lib_Ne16` `e05a`, `Lib_SignedLe16` `e06a`, `Lib_SignedGe16` `e06b`, `Lib_SignedGt16` `e085`, `Lib_SignedLt16` `e086`, `Lib_Neg16` `e09f`, `Lib_Sub16` `e0a9`, `Lib_Unsigned*` `e0d9`/`e0da`/`e0e7`/`e0e8`).  The two with no plate were plated: `Lib_Not16` (`ram:E02B`-`E032`, `HL=~HL`, Z iff input FFFFh) and `Lib_Neg16` (`ram:E09F`-`E0A8`, `HL=-HL`, Z iff input 0).  The trivial logic ops keep SHORT-form plates.  Still OPEN: `da13` constructor-vs-stream-read semantics for `6A36`/`6AA9`.
+* **`ROM01:7580`-`7670` data-typing — BLOCKED by tooling.** The region is a config-descriptor table misdecoded as code (pointers into ROM01, high byte `75`/`79`/`7a`).  `apply_data_type` with `clear_existing` clears only the single code unit at the start address and then conflicts on the next defined instruction (`Conflicting instruction exists at ROM01::7589`), so a multi-instruction data range cannot be defined; `clear_flow_and_repair` does not free a data/instruction-blocked boundary.  No clear-region/clear-data tool is exposed and the inline-script path is broken (the shared `~/ghidra_scripts` bundle has pre-existing compile errors).  Region remains bookmarked.  Same limitation blocks the `ROM01:6431` full repair.
+* **`ROM00:7409`/`7472` — deferred by design.** They are the ROM images of RAM module A (`ram:D8CE`, `ram:D937`), whose internal addresses resolve against the wrong space; not a repair target.
+* **Validation:** function count `1101` unchanged; `save_program` succeeded.
+* **Docs updated:** `research/TASKS.md` (items 1 and 8b updated; this entry).  No code changes.
