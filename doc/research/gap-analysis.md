@@ -1,6 +1,6 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-08-30 (11th audit, bounded form-4 service-33/link IRQ transaction), firmware
+Status: 2026-09-18 (12th audit, refreshed coverage after gated defines), firmware
 `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
 This is a **documentation-coverage** audit: which functions have *we* named
 and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
@@ -9,38 +9,26 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 524 | **81** | 443 |
-| ROM01 | 208 | **67** | 141 |
-| ram | 186 | **11** | 175 |
+| ROM00 | 574 | **105** | 469 |
+| ROM01 | 329 | **145** | 184 |
+| ram | 195 | **2** | 193 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total** | **919** | **159** | **760 (82.7 %)** |
+| **Total** | **1099** | **252** | **847 (77.1 %)** |
 
-**Refreshed directly from Ghidra on 2026-08-30 (guarded 919).** Increase
-from 916 is the recovered labelled state-machine body at `5A81`
-(`SessionRxStateMachine`, via thunk `5A63` `Session_RxStateMachineThunk`
-which already existed) plus the two new confirmed callback functions at
-`2E72` (`Device_Service33Timeout`) and `2E85`
-(`Device_Service33Complete`, via `ram:FDD2` `g_pSvc33Callback`). Ghidra
-saved. The prior audit reported 916 total / 159 `FUN_*` / 757 named
-(82.6 %); earlier audits (849/142, 935, etc.) are history. The 159
+**Refreshed directly from Ghidra on 2026-09-18 (1099).** Increase from
+the 2026-08-30 audit (919 total / 159 `FUN_*` / 760 named, 82.7 %)
+reflects functions defined since then, not new coverage. The 252
 auto-named functions are the remaining analysis backlog, not completed
-coverage. Renames in this pass: `Lib_MaxS16` -> `Lib_MinS16` at
-`ROM00:5944`; `UiDialogCommitPair` -> `Program_StreamChunkCallbacks` at
-`ROM01:0741` (128-byte callback-driven copy, `D2E2` state, mechanics-only);
-`UiDialogDrawBlock` -> `Program_BridgeHandlerTables` at `ROM01:07EE`
-(seven-slot handler-table bridge into `D0F0`, mechanics-only); `5A81`
-plate corrected. Do not assert a service-33 provider link.
+coverage.
 
-The three internal address spaces contain 918 functions. Ghidra's guarded
+The three internal address spaces contain 1098 functions. Ghidra's guarded
 total also includes the existing external import `EXT_FUN_ram_0010` at
 `EXTERNAL:00000001`, which accounts for the remaining named function.
 
-Plate completeness was not recomputed in this pass. The loader functions,
-`Program_FinalizeInput`, `Device_Service33Timeout`/`Complete`, and the
-recovered `SessionRxStateMachine` carry plates; the 159 auto-named
+Plate completeness was not recomputed in this pass. The 252 auto-named
 functions remain undocumented by definition.
 
-Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916) are history.
+Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919) are history.
 
 ## Notes
 
@@ -52,11 +40,13 @@ Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916) are history.
   over `ram`; MCP cannot read uninit overlay bytes - load a hardware
   RAM dump in the GUI to visualise a RAM bank page.
 - Loader docs are now closed for file format (see
-  `manual/program-formats.md`); the **open item is the upstream
-  physical/session provider** — `ram:D370` is
-  `g_pProgramLoaderContinuation` (`Coroutine_SwapContinuation` `ram:D9F9`),
-  not an input-provider pointer, and the complete Commstar provider/session
-  semantics remain **OPEN**.
+  `manual/program-formats.md`); the upstream physical/session provider
+  for the loader is now substantially advanced (see
+  `re-notes/os-diposb.md`) — `ram:D370` is the loader's coroutine
+  peer/rendezvous slot (`Coroutine_SwapContinuation` `ram:D9F9`), fed by
+  the session program-data receive (`Session_ReadStreamChunk`
+  `ROM00:3E6A`); only the exact staging cell/buffer the peer fills
+  remains **OPEN**.
 
 ## Known ghost: ram:8c0c
 
