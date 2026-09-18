@@ -30,6 +30,38 @@ CALL E0B2
 * **Clobbers:** `AF`, `DE`, `HL`. `BC` is preserved (`PUSH BC` at `E0B4`,
   `POP BC` at `E0D7`).
 
+## Structural treatment — hybrid label model (CONFIRMED, standard)
+
+**CONFIRMED standard (2026-09-18).** An inline-switch dispatch
+(`CALL ram:e0b2` `InlineTableDispatch` + inline table + `JP(HL)`)
+case is a **basic block of the owning routine**, kept as **one
+function**; navigation is restored with **labels** (not functions)
+at each case target and at the shared continuation. Rationale: the
+case blocks have no prologue and use the parent's frame, so naming
+them as functions asserts a false ABI; labels give the greppable
+name without that.
+
+ROM01 audit complete 2026-09-18 — **14 sites = all ROM01
+`CALL ram:e0b2` sites**: Half A (7 owners, 27 case functions
+merged + labelled: `Program_LoadDipOrCom 0CE7-0FE5`,
+`Field_ResetCounterDispatch 10CF-1176`,
+`Session_AdvanceStageOnZero 14CF-153D`,
+`Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
+`SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`;
+40 labels + 37 EOL comments) and Half B (7 already-merged sites
+`3b53`/`45d1`/`4a2d`/`581f`/`5991`/`5e2e`/`66ec`; 33 labels, no
+merges; `5e41` `CmdHandlerCount` → `FieldFormat_Default`). Guarded
+total 1028 → 1001 internal (1002 guarded); all owners byte-verified
+(`11 00 00 CD 37 D8` prologue → final `C9`). The superseded
+`257f` handlers (`Field_StepMode1 2569`, `Field_StepMode2 2572`,
+`Field_ApplyStepMode 2593`) are blocks of the routine at `254b`
+→ `JP 257c` → `2593` → `RET 2658` and were absorbed/labelled in
+Half A. Full per-target maps in
+`/tmp/opencode/rom01_dispatch_auditA.md` and
+`/tmp/opencode/rom01_dispatch_auditB.md`. **Remaining:** ROM00 has
+25 `CALL ram:e0b2` sites not yet audited (same hybrid to apply;
+source the list via `CALL 0xe0b2` search in ROM00).
+
 ## Matching
 
 The comparison is two-stage: `E0C1-E0C3` compares the low byte, and only on a

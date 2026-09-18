@@ -1,38 +1,35 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-18 (12th audit, refreshed coverage after gated defines), firmware
-`micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram` resident kernel).
-This is a **documentation-coverage** audit: which functions have *we* named
-and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
+Status: 2026-09-18 (13th audit, ROM01 dispatch-case label pass),
+firmware `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram`
+resident kernel). This is a **documentation-coverage** audit: which
+functions have *we* named and commented, versus the auto-named `FUN_*`
+that Ghidra merely detected.
 
 ## Headline
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
 | ROM00 | 574 | **23** | 551 |
-| ROM01 | 259 | **17** | 242 |
+| ROM01 | 232 | **17** | 215 |
 | ram | 195 | **2** | 193 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total (guarded)** | **1029** | **42** | **987** |
-| **Total (internal)** | **1028** | **42** | **986 (95.9 %)** |
+| **Total (guarded)** | **1002** | **42** | **960** |
+| **Total (internal)** | **1001** | **42** | **959 (95.8 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after final-sweep ROM01
-Part B (1028 internal / 1029 guarded total).** Auto `FUN_*` = 42
-(ROM00 23, ROM01 17, ram 2); named = 986 internal (95.9 %; 987 guarded).
-ROM01 dropped 84 → 17. The 17 are the 12 Part-A `(retain)` entries plus
-the 5 B1 `(retain)` shells. Part B completed the ROM01 cluster: 32
-compiler-prologue shells (`LD DE,0 / CALL ram:d837`) extended to their
-full bodies (27 named, 5 retained); 38 computed-dispatch blocks and 12
-named interior fragments absorbed into parents and deleted;
-`FUN_7599`/`FUN_7e14` deleted as data; `ROM01::3add` `FieldPadValue`
-deleted as a mid-instruction banking artifact (`ROM01::0040`/`ROM00::0040`
-both select bank 0, so `ROM01::0044`'s `JP 3ADD` resolves physically to
-`ROM00::3add`). Guarded total 1093 → 1029 (−64; internal 1092 → 1028).
-Increase from the 2026-08-30 audit (919 / 159 / 760, 82.7 %) reflects
-functions defined since then, not new coverage. See session log
-2026-09-18 Part B for the structural model and superseded names.
+**Refreshed directly from Ghidra on 2026-09-18 — after ROM01
+dispatch-case label pass (1001 internal / 1002 guarded total).**
+Auto `FUN_*` = 42 (ROM00 23, ROM01 17, ram 2); named = 959 internal
+(95.8 %; 960 guarded). Function count dropped because **27**
+dispatch-case functions were absorbed as **labels** (not a coverage
+loss). Guarded total 1029 → 1002 (−27; internal 1028 → 1001).
+Earlier ROM01 drop 84 → 17 (12 Part-A `(retain)` + 5 B1 `(retain)`)
+remains; Part B's 32 compiler-prologue shells, 38 computed-dispatch
+blocks and `FUN_7599`/`FUN_7e14`/`ROM01::3add` deletions are unchanged.
+See session log 2026-09-18 Part B and the dispatch-case label pass for
+the structural model and superseded names.
 
-The three internal address spaces contain 1028 functions. Ghidra's
+The three internal address spaces contain 1001 functions. Ghidra's
 guarded total also includes the existing external import
 `EXT_FUN_ram_0010` at `EXTERNAL:00000001`, which accounts for the
 remaining named function.
@@ -45,16 +42,24 @@ Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919,
 
 ## Structural model (CONFIRMED for this codebase)
 
-An inline-switch case reached via `CALL ram:e0b2`
-(`InlineTableDispatch`) + `JP(HL)` is a **basic block of the routine
-that owns the table**, not an independent function. Example
-(CONFIRMED): `3a04` `SessionFieldDispatch` runs its prologue, computes
-the switch value, `JP 3b53` (dispatcher); table `3b56` cases
-(`01→3acb`, `02/80→3a1c`, `04→3a99`, `08→3a40`, `10→3a75`, `20→3a51`,
-`40→3ab2`) each `JP 3b7a` (the routine `RET`). So `3a04`'s body
-legitimately spans `3a04-3b7a` and the cases are blocks. Part B merges
-below apply this model; see `TASKS.md` 2026-09-18 Part B for the full
-cluster list and the open audit of Part-A's `257f` case targets.
+**Hybrid model — standard for this codebase (CONFIRMED).**
+An inline-switch dispatch (`CALL ram:e0b2` `InlineTableDispatch` +
+inline table + `JP(HL)`) case is a **basic block of the routine that
+owns the table**, kept as **one function**; navigation is restored
+with **labels** (not functions) at each case target and at the shared
+continuation. Rationale: the case blocks have no prologue and use
+the parent's frame, so naming them as functions asserts a false ABI;
+labels give the greppable name without that.
+
+Example (CONFIRMED): `3a04` `SessionFieldDispatch` runs its prologue,
+computes the switch value, `JP 3b53` (dispatcher); table `3b56`
+cases (`01→3acb`, `02/80→3a1c`, `04→3a99`, `08→3a40`, `10→3a75`,
+`20→3a51`, `40→3ab2`) each `JP 3b7a` (the routine `RET`). So `3a04`'s
+body legitimately spans `3a04-3b7a` and the cases are blocks. Part B
+merges below and the ROM01 dispatch-case label pass apply this model;
+see `TASKS.md` 2026-09-18 Part B and the 2026-09-18 dispatch-case
+label pass for the full site lists. The earlier "audit `257f` OPEN"
+item is now **resolved** under this model (see below).
 
 ## Part B cluster merges (CONFIRMED)
 
@@ -77,14 +82,49 @@ callers and none are referenced in `doc/` — grep verified): `3a1c`
 `62ca`, `66ec`, `6707`, `6b0d`, `6b53`. The 38 computed-dispatch blocks
 and these 12 fragments are not missing functions; they are blocks.
 
-**Flag for follow-up (OPEN):** Part A named dispatch-case targets of
-table `257f` as separate functions (`Field_StepForward 2569`,
-`Field_StepBackward 2572`, `Field_StepNoop 257b`, `Field_StepRender
-2593`) and `Field_FlagHandler3a1c`. Under this model those are LIKELY
-the same mis-split (Ghidra auto-functions at `JP(HL)` case targets) and
-should be audited. Do NOT change them now; see `TASKS.md` open item
-with discriminating check (whether the `257f` targets are `JP(HL)` case
-blocks of a table-owning routine).
+## ROM01 dispatch-case label pass (CONFIRMED, 2026-09-18)
+
+**ROM01 audit complete — 14 sites = all ROM01 `CALL ram:e0b2`
+sites.** Owners byte-verified (`11 00 00 CD 37 D8` prologue →
+final `C9`); external xrefs `7571→0DEF` and `767D→10EF` were
+descriptor-data misdecodes, not callers.
+
+* **Half A — 7 owners, 27 case functions merged + labelled, 40
+  labels + 37 EOL comments:** `Program_LoadDipOrCom 0CE7-0FE5`,
+  `Field_ResetCounterDispatch 10CF-1176`,
+  `Session_AdvanceStageOnZero 14CF-153D`,
+  `Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
+  `SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`.
+  See `/tmp/opencode/rom01_dispatch_auditA.md` for the per-target
+  label map.
+
+* **Half B — 7 already-merged sites, 33 labels, no merges:**
+  `3b53` `SessionFieldDispatch`, `45d1` `SessionRedrawField`,
+  `4a2d` `Field_MatchPictureChar`, `581f` `CmdDispatchSub`, `5991`
+  `CmdDispatchWrap`, `5e2e` `Field_FormatThreeAttempts`,
+  `66ec` `Ui_PostDescriptor`. `5e41` `CmdHandlerCount` renamed
+  `FieldFormat_Default`. See
+  `/tmp/opencode/rom01_dispatch_auditB.md`.
+
+Guarded total 1028 → 1001 internal (1002 guarded) because 27 case
+functions were absorbed as labels — not a coverage loss.
+
+**Superseded Part-A `257f` handlers — RESOLVED (CONFIRMED):**
+`Field_StepMode1 2569`, `Field_StepMode2 2572`,
+`Field_ApplyStepMode 2593` (and `Field_StepNoop 257b`) are blocks of
+the routine at `254b` (prologue `11 00 00 CD 37 D8` → `JP 257c`
+dispatcher → `2593` shared continuation → `RET 2658`). The earlier
+"audit `257f` OPEN" item is closed; the functions were absorbed and
+labelled under the Half-A model (owner `14CF`/`10CF` region — exact
+owner/labels in the Half-A audit file above).
+
+## Remaining structural work
+
+**ROM00 has 25 `CALL ram:e0b2` dispatch sites not yet audited**
+(same hybrid to apply). Source the site list by searching
+`CALL 0xe0b2` in ROM00 (`analysis/decode_inline_tables.py` or
+`doc/re-notes/inline-dispatch.md` table) — this is the next
+structural item.
 
 ## Notes
 

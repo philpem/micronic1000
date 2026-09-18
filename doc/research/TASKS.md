@@ -4875,24 +4875,95 @@ No Ghidra changes; docs only.
 
 ## Open questions / do-not-regress
 
-* **OPEN — Part-A dispatch-case audit:** Part A named `257f` case
-  targets as functions (`Field_StepForward 2569`,
-  `Field_StepBackward 2572`, `Field_StepNoop 257b`, `Field_StepRender
-  2593`) and `Field_FlagHandler3a1c`. Under the 2026-09-18 structural
-  model these are LIKELY `JP(HL)` case blocks of a table-owning routine,
-  not independent functions. Discriminating check: whether each target
-  is reached only via `CALL ram:e0b2` + `JP(HL)` through table `257f`
-  (and `3b56` for `3a1c`), has no external caller, and the owning
-  routine's body legitimately spans the case. Do NOT rename/delete now;
-  audit in a later pass.
+* **RESOLVED 2026-09-18 — Part-A dispatch-case audit (was OPEN):**
+  Part A had named `257f` case targets as separate functions
+  (`Field_StepMode1 2569`, `Field_StepMode2 2572`,
+  `Field_ApplyStepMode 2593` — previously `Field_StepForward` etc.,
+  plus `Field_StepNoop 257b` and `Field_FlagHandler3a1c`). **CONFIRMED
+  now:** they are blocks of the routine at `254b` (prologue
+  `11 00 00 CD 37 D8` → `JP 257c` dispatcher → `2593` shared
+  continuation → `RET 2658`). The earlier "audit `257f` OPEN" item is
+  closed; the functions were absorbed/labelled in Half A (owner
+  `14CF`/`10CF` region — exact owner/labels in
+  `/tmp/opencode/rom01_dispatch_auditA.md`). The inline-switch cases
+  are basic blocks, not functions (hybrid label model, standard).
+
+* **OPEN — ROM00 dispatch audit:** ROM00 has **25 `CALL ram:e0b2`
+  dispatch sites not yet audited** (same hybrid to apply).
+  Source the site list by searching `CALL 0xe0b2` in ROM00
+  (`analysis/decode_inline_tables.py` / `re-notes/inline-dispatch.md`
+  table). Next structural item.
 
 ## Do not regress
 
 * Structural model 2026-09-18: inline-switch `JP(HL)` cases are blocks,
   not functions — do not re-split the Part B merges.
+* Hybrid label model 2026-09-18: inline-switch cases are basic blocks
+  of the owning routine kept as one function; navigation via labels
+  (not functions) — do not re-create case blocks as functions.
 * Superseded names above (`3a1c`/`3b53`/`3b7a`/`581f`/`5991`/`62a9`/
   `62b6`/`62ca`/`66ec`/`6707`/`6b0d`/`6b53`) were case blocks; do not
-  recreate as functions.
+  recreate as functions. The `257f` handlers (`2569`/`2572`/`257b`/
+  `2593`) are blocks of `254b` → `257c` → `2593` → `2658`; do not
+  recreate.
 * `ROM01::3add` `FieldPadValue` is a mid-instruction banking artifact
   (`ROM01::0044` → `ROM00::3add`), not a ROM01 function — do not
   recreate.
+
+### 2026-09-18 — ROM01 dispatch-case label model applied
+
+* **Hybrid model now the standard (CONFIRMED).** Inline-switch
+  dispatch (`CALL ram:e0b2` `InlineTableDispatch` + inline table +
+  `JP(HL)`) cases are **basic blocks of the owning routine**, kept as
+  one function; navigation is restored with **labels** (not functions)
+  at each case target and shared continuation. Rationale: case blocks
+  have no prologue and use the parent's frame, so naming them as
+  functions asserts a false ABI; labels give the greppable name
+  without that. Recorded in `re-notes/inline-dispatch.md` and
+  `research/gap-analysis.md`. No new inference; no Ghidra edits in
+  this docs pass — findings are parent-verified.
+
+* **ROM01 dispatch audit complete — 14 sites = all ROM01
+  `CALL ram:e0b2` sites (CONFIRMED).** Half A (7 owners, 27 case
+  functions merged + labelled): `Program_LoadDipOrCom 0CE7-0FE5`,
+  `Field_ResetCounterDispatch 10CF-1176`,
+  `Session_AdvanceStageOnZero 14CF-153D`,
+  `Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
+  `SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`;
+  40 labels + 37 EOL comments. Half B (7 already-merged sites
+  `3b53`/`45d1`/`4a2d`/`581f`/`5991`/`5e2e`/`66ec`): 33 labels, no
+  merges; `5e41` `CmdHandlerCount` renamed `FieldFormat_Default`.
+  Guarded total 1028 → 1001 internal (1002 guarded). All owners
+  byte-verified (`11 00 00 CD 37 D8` prologue → final `C9`); the two
+  flagged external xrefs (`7571→0DEF`, `767D→10EF`) were confirmed
+  descriptor-data misdecodes, not callers. Full maps in
+  `/tmp/opencode/rom01_dispatch_auditA.md` and
+  `/tmp/opencode/rom01_dispatch_auditB.md`.
+
+* **Superseded Part-A separate-handler names — RESOLVED (CONFIRMED).**
+  The `257f` handlers (`Field_StepMode1 2569`,
+  `Field_StepMode2 2572`, `Field_ApplyStepMode 2593`) are blocks of
+  the routine at `254b` (prologue) → `JP 257c` dispatcher → `2593`
+  shared continuation → `RET 2658`. The earlier "audit `257f` OPEN"
+  item is closed; the functions were absorbed/labelled in Half A
+  (owner `14CF`/`10CF` region — exact owner/labels in the Half-A
+  audit file). `Field_FlagHandler3a1c` likewise a case block.
+
+* **Coverage now (CONFIRMED):** internal **1001** / guarded **1002**;
+  auto `FUN_*` = **42** (ROM00 23, ROM01 17, ram 2); named **959
+  (95.8 %)**. Updated in `research/gap-analysis.md` headline +
+  paragraph (from 1028 / 42 / 986). Count dropped because 27
+  dispatch-case functions were absorbed as labels — not a coverage
+  loss.
+
+* **Remaining (OPEN):** ROM00 has **25 `CALL ram:e0b2` dispatch sites
+  not yet audited** (same hybrid to apply); record as the next
+  structural item with site-list source (search `CALL 0xe0b2` in
+  ROM00). See "Open questions" above.
+
+* **Docs updated:** `research/gap-analysis.md` (headline, structural
+  model, ROM01 label-pass section, remaining ROM00 note),
+  `re-notes/inline-dispatch.md` (hybrid model standard),
+  `research/TASKS.md` (this entry + resolved `257f` + ROM00 open).
+  `mkdocs build --strict` (site_dir `site-mkdocs`) run; no Ghidra
+  edits.
