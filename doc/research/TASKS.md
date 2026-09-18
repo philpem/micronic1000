@@ -4801,14 +4801,98 @@ No Ghidra changes; docs only.
   (`ROM01::0020 → ram:f5ea → ram:f64d`, no inline operand); `14cf` rejects a
   **nonzero** argument; `13d8` returns the processed count (`original −
   remaining`).
-* **Coverage:** auto `FUN_*` = **109** (ROM00 **23** — the prior 21 was an
-  estimate, ROM01 84, ram 2); named **984 (90.0 %)**.
-* **Part B (remaining 72 ROM01 `FUN_*`) in progress:** all structural (32
-  compiler-prologue shells, 38 computed-dispatch blocks, 2 data functions);
-  review returned REVISE and is **blocked on enumerating named functions that
-  may lie inside the 32 shell body ranges**; the `3acb`/`FieldPadValue`
-  banking-artifact conclusion depends on the open page-zero-banking question.
+* **Coverage (Part A snapshot):** auto `FUN_*` = **109** (ROM00 **23** —
+  the prior 21 was an estimate, ROM01 84, ram 2); named **984 (90.0 %)**.
+* **Part B — DONE 2026-09-18 (see next entry).** The REVISE review's
+  block on "enumerating named functions inside the 32 shell body ranges"
+  is resolved: no such overlap was found and none of the 12 superseded
+  names had external callers. The `3acb`/`FieldPadValue` page-zero
+  banking question is resolved: `ROM01::0040`/`ROM00::0040` both select
+  bank 0, so `ROM01::0044`'s `JP 3ADD` resolves physically to
+  `ROM00::3add`; `ROM01::3add` `FieldPadValue` deleted as a
+  mid-instruction banking artifact (CONFIRMED). Coverage now: auto
+  `FUN_*` = **42** (ROM00 23, ROM01 17, ram 2); named **986 (95.9 %
+  internal)**; see `gap-analysis.md` headline (internal 1028 / guarded
+  1029; ROM01 84→17).
 * **Process:** `AGENTS.md` updated on **master** (`20dba56`) — diagnose
   listing pollution by function-list delta (not close/reopen); closing a
   program without saving is GUI-only; read-only agents may still write
   findings/verdict files.
+
+### 2026-09-18 — final-sweep ROM01 Part B
+
+* **Part B applied (Ghidra saved) — ROM01 cluster finished
+  (CONFIRMED).** 32 compiler-prologue shells (`LD DE,0 / CALL
+  `ram:d837``) extended to their full bodies (27 named, 5 retained);
+  38 computed-dispatch blocks and 12 named interior fragments absorbed
+  into their parent routines and deleted; `FUN_7599`/`FUN_7e14` deleted
+  as data; `ROM01::3add` `FieldPadValue` deleted as a mid-instruction
+  banking artifact (`ROM01::0040`/`ROM00::0040` both select bank 0, so
+  `ROM01::0044`'s `JP 3ADD` resolves physically to `ROM00::3add`).
+  Guarded total 1093 → 1029; internal 1092 → 1028.
+
+* **Cluster merges (CONFIRMED):** parents extended and their
+  inline-switch case blocks absorbed — `3a04` `SessionFieldDispatch`
+  (→`3b7a`), `444f` `SessionRedrawField` (→`463e`), `576c`
+  `CmdDispatchSub` (→`5839`), `583a` `CmdDispatchWrap` (→`59a8`),
+  `6292` `Ui_PostKeyedEntry` (→`62e4`), `6633` `Ui_PostDescriptor`
+  (→`6759`), `6aa9` `Ui_RecordMatchAndPost` (→`6b6c`). All 12 interior
+  adjudications were **MERGE** (internal-only callers, no external
+  references).
+
+* **Structural model decision (CONFIRMED — record prominently):** an
+  inline-switch case reached via `CALL ram:e0b2`
+  (`InlineTableDispatch`) + `JP(HL)` is a **basic block of the routine
+  that owns the table**, not an independent function. Example: `3a04`
+  runs its prologue, computes the switch value, `JP 3b53`
+  (dispatcher); table `3b56` cases (`01→3acb`, `02/80→3a1c`, `04→3a99`,
+  `08→3a40`, `10→3a75`, `20→3a51`, `40→3ab2`) each `JP 3b7a` (the routine
+  `RET`). So `3a04`'s body legitimately spans `3a04-3b7a` and the cases
+  are blocks.
+
+* **Superseded Part-A names (12), deleted in Part B because they were
+  case blocks, not functions (CONFIRMED — no external callers, grep
+  verified no `doc/` refs):** `3a1c` `Field_FlagHandler3a1c`, `3b7a`,
+  `3b53` `SessionCommandDispatchStub_3B53`, `581f`, `5991`, `62a9`,
+  `62b6`, `62ca`, `66ec`, `6707`, `6b0d`, `6b53`.
+
+* **Coverage now (CONFIRMED, Ghidra):** internal 1028 / guarded 1029
+  total; auto `FUN_*` = **42** (ROM00 23, ROM01 17, ram 2); named
+  **986 (95.9 % internal)**. ROM01 dropped 84→17; the 17 are the 12
+  Part-A `(retain)` entries + 5 B1 `(retain)` shells. See
+  `research/gap-analysis.md` headline + cluster section.
+
+* **Flag for follow-up (OPEN):** Part A named dispatch-case targets of
+  table `257f` as separate functions (`Field_StepForward 2569`,
+  `Field_StepBackward 2572`, `Field_StepNoop 257b`, `Field_StepRender
+  2593`) and `Field_FlagHandler3a1c`. Under this model those are LIKELY
+  the same mis-split (Ghidra auto-functions at `JP(HL)` case targets)
+  and should be audited in a later pass. Do NOT change them now.
+  Discriminating check: whether the `257f` targets are `JP(HL)` case
+  blocks of a table-owning routine (record the owning routine and that
+  no external caller reaches the target except via the table).
+  Added to open questions below.
+
+## Open questions / do-not-regress
+
+* **OPEN — Part-A dispatch-case audit:** Part A named `257f` case
+  targets as functions (`Field_StepForward 2569`,
+  `Field_StepBackward 2572`, `Field_StepNoop 257b`, `Field_StepRender
+  2593`) and `Field_FlagHandler3a1c`. Under the 2026-09-18 structural
+  model these are LIKELY `JP(HL)` case blocks of a table-owning routine,
+  not independent functions. Discriminating check: whether each target
+  is reached only via `CALL ram:e0b2` + `JP(HL)` through table `257f`
+  (and `3b56` for `3a1c`), has no external caller, and the owning
+  routine's body legitimately spans the case. Do NOT rename/delete now;
+  audit in a later pass.
+
+## Do not regress
+
+* Structural model 2026-09-18: inline-switch `JP(HL)` cases are blocks,
+  not functions — do not re-split the Part B merges.
+* Superseded names above (`3a1c`/`3b53`/`3b7a`/`581f`/`5991`/`62a9`/
+  `62b6`/`62ca`/`66ec`/`6707`/`6b0d`/`6b53`) were case blocks; do not
+  recreate as functions.
+* `ROM01::3add` `FieldPadValue` is a mid-instruction banking artifact
+  (`ROM01::0044` → `ROM00::3add`), not a ROM01 function — do not
+  recreate.
