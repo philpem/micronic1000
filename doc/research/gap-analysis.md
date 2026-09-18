@@ -11,21 +11,21 @@ that Ghidra merely detected.
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
 | ROM00 | 487 | **1** | 486 |
-| ROM01 | 232 | **8** | 224 |
+| ROM01 | 232 | **2** | 230 |
 | ram | 195 | **1** | 194 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total (guarded)** | **915** | **10** | **905** |
-| **Total (internal)** | **914** | **10** | **904 (98.9 %)** |
+| **Total (guarded)** | **915** | **4** | **911** |
+| **Total (internal)** | **914** | **4** | **910 (99.6 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after residual
-`FUN_*` pass and `ROM01:757F-768E` data-typing (914 internal / 915
-guarded total).** Auto `FUN_*` = 10 (ROM00 1, ROM01 8, ram 1);
-named = 904 internal (98.9 %; 905 guarded). Previous audit was
-914 / 24 / 890 (97.4 %); reduction is 14 renamed functions (not a
-coverage loss from absorbed labels). The earlier 1002 → 915 (−87)
-drop from dispatch-case absorptions remains. See session log
-2026-09-18 residual `FUN_*` pass and `ROM01:757F-768E` notes below
-and `re-notes/inline-dispatch.md` for the structural model.
+**Refreshed directly from Ghidra on 2026-09-18 — after tail:
+compiler-runtime plates, module-A images, retained stubs
+resolved; code-gap model corrected (914 internal / 915
+guarded total).** Auto `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1);
+named = 910 internal (99.6 %; 911 guarded). Previous audit was
+914 / 10 / 904 (98.9 %); reduction is 6 renamed functions. The
+earlier 1002 → 915 (−87) drop from dispatch-case absorptions
+remains. See session log 2026-09-18 tail and
+`re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import
@@ -235,18 +235,85 @@ broken). Now **unblocked** via an inline script using
   `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
 
 * **Unresolved (OPEN/SUSPECTED):** the `E1` prefix at `757F`,
-  the `F479` header pointer (**SUSPECTED** bank-qualified),
-  exact field semantics, and the end boundary above `768E`.
+   the `F479` header pointer (**SUSPECTED** bank-qualified),
+   exact field semantics, and the end boundary above `768E`.
+
+## Tail — compiler-runtime plates, module-A images, retained
+stubs resolved (CONFIRMED, 2026-09-18)
+
+**Item A — compiler-runtime plates `ram:e020-e0aa`
+(CONFIRMED).** 7 plates added: `Lib_And16` (`e023`),
+`Lib_Or16` (`e033`), `Lib_Xor16` (`e03b`), `Lib_Lnot16`
+(`e043`), `Lib_SignedLe16` (`e06a`), `Lib_SignedGe16`
+(`e06b`), `Lib_SignedLt16` (`e086`). 6 others in the range
+were already plated. Ghidra saved.
+
+**Item B — module-A ROM images (CONFIRMED).**
+`ROM00:7409` and `ROM00:7472` are compiled-C prologues
+(`11 00 00 CD 37 D8`) with zero `ROM00`-space xrefs that
+reference `ram`-space addresses (`ram:d837`, `ram:e104`) —
+i.e. module-A code destined for battery RAM. Labelled as
+data (`tbl_ModuleA_RomImage_7409`,
+`tbl_ModuleA_RomImage_7472`); **no functions created**.
+Deferred by design (wrong address space if created in
+`ROM00`).
+
+**Item C — retained `FUN_*` resolved (CONFIRMED).**
+6 renamed: `ROM01:156f`→`SessionObj_Method_6784`,
+`1664`→`SessionObj_Method_6b6d`,
+`168e`→`SessionObj_Method_6c84`,
+`16b8`→`SessionObj_Method_696f` (each prologue → `CALL` a
+work function → tail-call `ROM01:1548`),
+`4d86`→`SessionObj_BuildTextBuf1`,
+`4e79`→`SessionObj_BuildTextBuf2` (text-buffer builders,
+`COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with
+plates: `ROM01:1177` (trivial stub), `ROM00:441b`
+(zero-xref dead, sibling `443c` used), `ram:d937`
+(zero-xref bit-flag dispatcher over `ram:e104`),
+`ROM01:0904` (alignment padding).
+
+Coverage after Items A–C is the headline above: auto
+`FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910
+(99.6 %).
+
+## Code-gap model corrected — do not regress
+(CONFIRMED, 2026-09-18)
+
+`find_code_gaps` reports **121 gaps (~13.6 KB)** in
+`ROM01`/`ROM00`. A first-pass classification labelled ~83
+as "real missed functions", but this is **WRONG**: spot-
+check showed e.g. `ROM01:1b83` is the **body continuation**
+of `Ui_RecordEditModal` (a 6-byte `11 00 00 CD 37 D8`
+prologue shell at `1b7d`), not a new function. The gaps
+are overwhelmingly **truncated-body continuations** of the
+preceding compiled routine — the same idiom as the Part
+A/B shell extensions.
+
+Correct action per gap (CONFIRMED):
+
+* if the gap start **lacks** the `11 00 00 CD 37 D8`
+  prologue it is a continuation → **extend the preceding
+  function's body** (via `ExtendFunctionBody.java`);
+* if it **has** the prologue it is a separate routine;
+* if it decodes as strings or pointer tables it is data
+  (e.g. `ROM01:73E4-7FFF` is the UI/config data region,
+  not code).
+
+**Do NOT create functions from this gap list.**
+This correction was made by the parent before any mass
+write, and nothing was mass-applied.
 
 ## Remaining structural work
 
 **ROM01 and ROM00 dispatch models are now both applied
-(CONFIRMED).** No `CALL ram:e0b2` site remains unaudited (ROM01 14,
-ROM00 25). Remaining coverage work is the **10 retained `FUN_*`**
-(ROM00 1, ROM01 8, ram 1) with documented open questions (see
-2026-09-18 residual pass) plus the code-gap and data-typing tail
-(excluding `ROM01:757F-768E`, now defined as
-`undefined[272]` — see below).
+(CONFIRMED).** No `CALL ram:e0b2` site remains unaudited
+(ROM01 14, ROM00 25). **Remaining structural work is the
+code-gap sweep — 121 gaps with the corrected
+absorb-continuations model above (CONFIRMED).**
+Data-typing `ROM01:757F-768E` is now `undefined[272]`
+(see above) and the 4 retained `FUN_*` (ROM00 1,
+ROM01 2, ram 1) are documented retains, not missing
+coverage.
 
 ## Notes
 

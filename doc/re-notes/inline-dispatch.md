@@ -85,10 +85,13 @@ check; only `3f20` had `11 00 00 CD 37 D8` among interiors),
 `5346`, `4c3a`, `ROM00::7dbe`, `ram:ed88`); residual ROM00
 `FUN_*` = 5 deferred (`2da5`, `4333`, `441b`, `44ed`, `450d`);
 guarded 1002 → 915 (−87; internal 1001 → 914, labels not loss).
-**Remaining:** no `CALL ram:e0b2` site remains unaudited
-(ROM01 14, ROM00 25 both closed); coverage tail is the 24
-residual `FUN_*` (ROM00 5, ROM01 17, ram 2) plus code-gap and
-data-typing.
+**Remaining (2026-09-18):** no `CALL ram:e0b2` site remains
+unaudited (ROM01 14, ROM00 25 both closed); `ROM01:757F-768E`
+now `undefined[272]`; 10 `FUN_*` were reduced to 4 (ROM00 1,
+ROM01 2, ram 1) by the tail pass — see
+`research/gap-analysis.md`. Coverage tail is the code-gap
+sweep with the corrected absorb-continuations model
+(see `research/gap-analysis.md`).
 
 ## Matching
 

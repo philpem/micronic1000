@@ -5188,14 +5188,90 @@ new inference; parent-verified)
   914 / 24 / 890). The `ROM01:7580-7670` blocked item was
   removed from the remaining list.
 
-* **Remaining tail (OPEN):** only the `ram:e020-e0aa`
-  compiler-runtime plates (residual, `da13` semantics OPEN),
-  `ROM00:7409`/`7472` module-A sites (deferred by design),
-  the code-gap tail, and the 10 documented retains remain.
+* **Remaining tail (OPEN):** the code-gap sweep (now
+   with the corrected absorb-continuations model, 121 gaps)
+   is the only structural item left.
 
 * **Docs updated:** `research/gap-analysis.md` (headline,
-  paragraph, residual pass + `757F-768E` sections, remaining
-  work), `research/TASKS.md` (this entry + remaining-tail
-  update). No Ghidra edits in this docs pass; no new
-  inference; evidence tags preserved.
+   paragraph, residual pass + `757F-768E` sections, remaining
+   work), `research/TASKS.md` (this entry + remaining-tail
+   update). No Ghidra edits in this docs pass; no new
+   inference; evidence tags preserved.
+   `mkdocs build --strict` (site_dir `site-mkdocs`) run.
+
+### 2026-09-18 — tail: compiler-runtime plates, module-A
+images, retained stubs resolved; code-gap model corrected
+(docs only, no new inference, no Ghidra; parent-verified,
+Ghidra saved)
+
+* **Item A — compiler-runtime plates `ram:e020-e0aa`
+  (CONFIRMED, Ghidra saved).** 7 plates added:
+  `Lib_And16` (`e023`), `Lib_Or16` (`e033`),
+  `Lib_Xor16` (`e03b`), `Lib_Lnot16` (`e043`),
+  `Lib_SignedLe16` (`e06a`), `Lib_SignedGe16` (`e06b`),
+  `Lib_SignedLt16` (`e086`). 6 others in the range were
+  already plated.
+
+* **Item B — module-A ROM images (CONFIRMED, Ghidra
+  saved).** `ROM00:7409` and `ROM00:7472` are compiled-C
+  prologues (`11 00 00 CD 37 D8`) with zero `ROM00`-space
+  xrefs that reference `ram`-space addresses
+  (`ram:d837`, `ram:e104`) — i.e. module-A code destined
+  for battery RAM. Labelled as data
+  (`tbl_ModuleA_RomImage_7409`,
+  `tbl_ModuleA_RomImage_7472`); **no functions created**.
+  Deferred by design (wrong address space if created in
+  `ROM00`).
+
+* **Item C — retained `FUN_*` resolved (CONFIRMED, Ghidra
+  saved).** 6 renamed:
+  `ROM01:156f`→`SessionObj_Method_6784`,
+  `1664`→`SessionObj_Method_6b6d`,
+  `168e`→`SessionObj_Method_6c84`,
+  `16b8`→`SessionObj_Method_696f` (each prologue → `CALL`
+  a work function → tail-call `ROM01:1548`),
+  `4d86`→`SessionObj_BuildTextBuf1`,
+  `4e79`→`SessionObj_BuildTextBuf2` (text-buffer builders,
+  `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained
+  with plates: `ROM01:1177` (trivial stub),
+  `ROM00:441b` (zero-xref dead, sibling `443c` used),
+  `ram:d937` (zero-xref bit-flag dispatcher over
+  `ram:e104`), `ROM01:0904` (alignment padding).
+
+* **Coverage now (CONFIRMED, Ghidra):** internal **914** /
+  guarded **915**; auto `FUN_*` = **4** (ROM00 1,
+  ROM01 2, ram 1); named **910 (99.6 %)**. Updated in
+  `research/gap-analysis.md` headline + paragraph (from
+  914 / 10 / 904).
+
+* **Code-gap model corrected — record prominently (do not
+  regress) (CONFIRMED).** `find_code_gaps` reports 121
+  gaps (~13.6 KB) in `ROM01`/`ROM00`. A first-pass
+  classification labelled ~83 as "real missed functions",
+  but this is **WRONG**: spot-check showed e.g.
+  `ROM01:1b83` is the **body continuation** of
+  `Ui_RecordEditModal` (a 6-byte `11 00 00 CD 37 D8`
+  prologue shell at `1b7d`), not a new function. The gaps
+  are overwhelmingly **truncated-body continuations** of
+  the preceding compiled routine (the same idiom as the
+  Part A/B shell extensions). Correct action per gap: if
+  the gap start lacks the `11 00 00 CD 37 D8` prologue
+  it is a continuation → **extend the preceding
+  function's body** (via `ExtendFunctionBody.java`); if it
+  has the prologue it is a separate routine; if it decodes
+  as strings/pointer tables it is data (e.g.
+  `ROM01:73E4-7FFF` is the UI/config data region, not
+  code). **Do NOT create functions from this list.** This
+  correction was made by the parent before any mass write,
+  and nothing was mass-applied.
+
+* **Remaining (OPEN) — updated 2026-09-18:** the code-gap
+  sweep (now with the corrected absorb-continuations
+  model, 121 gaps) is the only structural item left.
+
+* **Docs updated:** `research/gap-analysis.md` (headline +
+  paragraph + tail + code-gap model sections + remaining
+  work), `research/TASKS.md` (this entry + remaining
+  line). No Ghidra edits; no new inference; evidence
+  tags preserved; ~70-col wrapping.
   `mkdocs build --strict` (site_dir `site-mkdocs`) run.
