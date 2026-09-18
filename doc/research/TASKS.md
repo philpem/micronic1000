@@ -4888,19 +4888,43 @@ No Ghidra changes; docs only.
   `/tmp/opencode/rom01_dispatch_auditA.md`). The inline-switch cases
   are basic blocks, not functions (hybrid label model, standard).
 
-* **OPEN — ROM00 dispatch audit:** ROM00 has **25 `CALL ram:e0b2`
-  dispatch sites not yet audited** (same hybrid to apply).
-  Source the site list by searching `CALL 0xe0b2` in ROM00
-  (`analysis/decode_inline_tables.py` / `re-notes/inline-dispatch.md`
-  table). Next structural item.
+* **RESOLVED 2026-09-18 — ROM00 dispatch audit (CONFIRMED):**
+  ROM00 has **25 `CALL ram:e0b2` dispatch sites — all audited**
+  (same hybrid as ROM01). Owners 23 routines (sites 8+9 share
+  `Session_CmdCommand 4ae0-4d28`, sites 17+18 share
+  `Session_CmdEndTx 52a5-5427`); key extents
+  `Session_TxAppendString 3ede-3f1f`, `Session_CoroJumpTx 3f20-4009`,
+  `Session_InitCommsCmd 4563-46e8`, `Session_InitState 46e9-47f5`,
+  `Session_LogonMode0Or2Callback 47f6-48be`,
+  `Session_CmdAnswer 48bf-4973`, `Session_CmdManual 4974-4a24`,
+  `Session_CmdDropLine 4a25-4adf`, `Session_CmdCommand 4ae0-4d28`,
+  `Session_CmdShutDown 4d75-4e6c`, `Session_CmdRxRec 4e6d-4f59`,
+  `Session_ReceiveProgram 4f5a-5033`,
+  `Session_CmdBeginFile 5034-50ec`, `Session_CmdTxRec 50ed-5178`,
+  `Session_CmdEndFile 5179-51eb`, `Session_CmdTxBlk 51ec-52a4`,
+  `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
+  `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
+  `Session_AnswerConnect 573d-578e`,
+  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
+  `SessionTxStringSender 5f58-606b`; site-1 corrected to `3f20`
+  (see below); ~89 case-block functions absorbed, ~113 labels
+  created; residual ROM00 `FUN_*` = 5 deferred (`2da5`, `4333`,
+  `441b`, `44ed`, `450d`). Full maps in Ghidra (labels) and audit
+  notes.
+
+* **Remaining (OPEN):** ROM01 and ROM00 dispatch models are now
+  both applied (CONFIRMED — 14 + 25 sites). **24 residual
+  `FUN_*`** (ROM00 5, ROM01 17, ram 2) plus the code-gap and
+  data-typing tail remain.
 
 ## Do not regress
 
 * Structural model 2026-09-18: inline-switch `JP(HL)` cases are blocks,
   not functions — do not re-split the Part B merges.
-* Hybrid label model 2026-09-18: inline-switch cases are basic blocks
-  of the owning routine kept as one function; navigation via labels
-  (not functions) — do not re-create case blocks as functions.
+* Hybrid label model 2026-09-18 (ROM01 14 + ROM00 25 sites,
+  CONFIRMED): inline-switch cases are basic blocks of the owning
+  routine kept as one function; navigation via labels (not
+  functions) — do not re-create case blocks as functions.
 * Superseded names above (`3a1c`/`3b53`/`3b7a`/`581f`/`5991`/`62a9`/
   `62b6`/`62ca`/`66ec`/`6707`/`6b0d`/`6b53`) were case blocks; do not
   recreate as functions. The `257f` handlers (`2569`/`2572`/`257b`/
@@ -4909,6 +4933,25 @@ No Ghidra changes; docs only.
 * `ROM01::3add` `FieldPadValue` is a mid-instruction banking artifact
   (`ROM01::0044` → `ROM00::3add`), not a ROM01 function — do not
   recreate.
+* ROM00 dispatch owners (CONFIRMED, 2026-09-18): 23 routines
+  `3ede-3f1f`, `3f20-4009`, `4563-46e8`, `46e9-47f5`, `47f6-48be`,
+  `48bf-4973`, `4974-4a24`, `4a25-4adf`, `4ae0-4d28`, `4d75-4e6c`,
+  `4e6d-4f59`, `4f5a-5033`, `5034-50ec`, `50ed-5178`, `5179-51eb`,
+  `51ec-52a4`, `52a5-5427`, `5469-54e4`, `5542-5668`, `56e7-573c`,
+  `573d-578e`, `578f-5829`, `59fb-5b57`, `5f58-606b`; sites 8+9 and
+  17+18 share owners as above; site-1 is `3f20` (not `3ede`);
+  residual `FUN_*` = `2da5`, `4333`, `441b`, `44ed`, `450d`
+  (deferred) — do not re-split or recreate the ~89 absorbed
+  case-block functions.
+* Process — Ghidra function-body extension (CONFIRMED, 2026-09-18):
+  `create_function` cannot extend a body past a computed jump;
+  body extension must use Ghidra's `Function.setBody(AddressSet)`
+  (script), and `FunctionManager.removeFunction` takes an entry
+  **Address**, not a Function. The ROM00 pass was saved only after
+  a manual `setBody` completion — the annotate stage had left
+  owners as 6-byte shells and 2 epilogue functions were briefly
+  lost, then recovered by the extension. Do not use
+  `create_function` to grow a hybrid owner.
 
 ### 2026-09-18 — ROM01 dispatch-case label model applied
 
@@ -4967,3 +5010,78 @@ No Ghidra changes; docs only.
   `research/TASKS.md` (this entry + resolved `257f` + ROM00 open).
   `mkdocs build --strict` (site_dir `site-mkdocs`) run; no Ghidra
   edits.
+
+### 2026-09-18 — ROM00 InlineTableDispatch hybrid pass complete
+(Ghidra saved, docs only in this pass, no new inference;
+parent-verified)
+
+* **ROM00 dispatch pass complete (CONFIRMED).** All 25 ROM00
+  `CALL ram:e0b2` (`InlineTableDispatch`) sites audited and
+  converted to the hybrid model: one function per
+  prologue-delimited routine + **labels** at case
+  targets/continuations.
+
+* **Owners extended — 23 routines (CONFIRMED; sites 8+9 share
+  `Session_CmdCommand 4ae0-4d28`, sites 17+18 share
+  `Session_CmdEndTx 52a5-5427`).** Key extents:
+  `Session_TxAppendString 3ede-3f1f`,
+  `Session_CoroJumpTx 3f20-4009`, `Session_InitCommsCmd 4563-46e8`,
+  `Session_InitState 46e9-47f5`,
+  `Session_LogonMode0Or2Callback 47f6-48be`,
+  `Session_CmdAnswer 48bf-4973`, `Session_CmdManual 4974-4a24`,
+  `Session_CmdDropLine 4a25-4adf`, `Session_CmdCommand 4ae0-4d28`,
+  `Session_CmdShutDown 4d75-4e6c`, `Session_CmdRxRec 4e6d-4f59`,
+  `Session_ReceiveProgram 4f5a-5033`,
+  `Session_CmdBeginFile 5034-50ec`, `Session_CmdTxRec 50ed-5178`,
+  `Session_CmdEndFile 5179-51eb`, `Session_CmdTxBlk 51ec-52a4`,
+  `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
+  `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
+  `Session_AnswerConnect 573d-578e`,
+  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
+  `SessionTxStringSender 5f58-606b`. All owners byte-verified
+  (`11 00 00 CD 37 D8` prologue → final `C9`); interiors
+  discriminated by that prologue check.
+
+* **Site-1 owner correction (CONFIRMED).** The audit first named
+  `3ede` as owner of the `3fec` dispatcher, but `ROM00::3f20`
+  (`Session_CoroJumpTx`) is itself a prologue entry
+  (`11 00 00 CD 37 D8`) with real external callers (`5346`, `4c3a`,
+  `ROM00::7dbe` vector, `ram:ed88`). Corrected: `3f20` is the
+  dispatcher's owning routine (`3f20-4009`); `3ede` is a separate
+  routine ending at `3f1f`.
+
+* **Absorbed (CONFIRMED):** ~89 case-block functions deleted (12
+  from the audit Deletion List + 77 interior blocks found by a
+  prologue check). Discriminator: only real routine entries start
+  with `11 00 00 CD 37 D8`; among all interiors only `3f20` did —
+  all others were blocks (no external callers). ~113 labels created
+  at case targets.
+
+* **Coverage now (CONFIRMED, Ghidra):** internal **914** / guarded
+  **915**; auto `FUN_*` = **24** (ROM00 5, ROM01 17, ram 2); named
+  **890 (97.4 %)**. Updated in `research/gap-analysis.md` headline
+  + paragraph (from 1001 / 42 / 959). Count dropped because ~89
+  dispatch-case functions were absorbed as labels — not a coverage
+  loss. ROM00 residual `FUN_*` = 5 deferred (`2da5`, `4333`,
+  `441b`, `44ed`, `450d`).
+
+* **Process note — do not regress (CONFIRMED):** `create_function`
+  cannot extend a body past a computed jump; body extension must use
+  Ghidra's `Function.setBody(AddressSet)` (script), and
+  `FunctionManager.removeFunction` takes an entry **Address**, not a
+  Function. The ROM00 pass was saved only after a manual `setBody`
+  completion — the annotate stage left owners as 6-byte shells and
+  2 epilogue functions were briefly lost, then recovered by the
+  extension.
+
+* **Remaining (OPEN):** ROM01 and ROM00 dispatch models are now
+  both applied (CONFIRMED — 14 + 25 sites). **24 residual `FUN_*`**
+  (ROM00 5, ROM01 17, ram 2) plus the code-gap and data-typing tail
+  remain.
+
+* **Docs updated:** `research/gap-analysis.md` (headline + paragraph
+  + new ROM00 section + remaining work), `re-notes/inline-dispatch.md`
+  (ROM00 completed, residual note), `research/TASKS.md` (this entry
+  + Open questions resolved + Do not regress process note).
+  `mkdocs build --strict` (site_dir `site-mkdocs`) run; no Ghidra edits
+  in this docs pass — findings are parent-verified.

@@ -1,7 +1,7 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-18 (13th audit, ROM01 dispatch-case label pass),
-firmware `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram`
+Status: 2026-09-18 (14th audit, ROM00 InlineTableDispatch hybrid
+pass), firmware `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram`
 resident kernel). This is a **documentation-coverage** audit: which
 functions have *we* named and commented, versus the auto-named `FUN_*`
 that Ghidra merely detected.
@@ -10,35 +10,35 @@ that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 574 | **23** | 551 |
+| ROM00 | 487 | **5** | 482 |
 | ROM01 | 232 | **17** | 215 |
 | ram | 195 | **2** | 193 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total (guarded)** | **1002** | **42** | **960** |
-| **Total (internal)** | **1001** | **42** | **959 (95.8 %)** |
+| **Total (guarded)** | **915** | **24** | **891** |
+| **Total (internal)** | **914** | **24** | **890 (97.4 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after ROM01
-dispatch-case label pass (1001 internal / 1002 guarded total).**
-Auto `FUN_*` = 42 (ROM00 23, ROM01 17, ram 2); named = 959 internal
-(95.8 %; 960 guarded). Function count dropped because **27**
+**Refreshed directly from Ghidra on 2026-09-18 — after ROM00
+InlineTableDispatch hybrid pass (914 internal / 915 guarded total).**
+Auto `FUN_*` = 24 (ROM00 5, ROM01 17, ram 2); named = 890 internal
+(97.4 %; 891 guarded). Function count dropped because **~89**
 dispatch-case functions were absorbed as **labels** (not a coverage
-loss). Guarded total 1029 → 1002 (−27; internal 1028 → 1001).
-Earlier ROM01 drop 84 → 17 (12 Part-A `(retain)` + 5 B1 `(retain)`)
-remains; Part B's 32 compiler-prologue shells, 38 computed-dispatch
-blocks and `FUN_7599`/`FUN_7e14`/`ROM01::3add` deletions are unchanged.
-See session log 2026-09-18 Part B and the dispatch-case label pass for
-the structural model and superseded names.
+loss) — 12 from the audit Deletion List plus 77 interior blocks
+identified by a prologue check. Guarded total 1002 → 915 (−87;
+internal 1001 → 914); earlier ROM01 drop 84 → 17 (12 Part-A
+`(retain)` + 5 B1 `(retain)`) remains. See session log 2026-09-18
+ROM00 dispatch pass and `re-notes/inline-dispatch.md` for the
+structural model, owner extents, and superseded names.
 
-The three internal address spaces contain 1001 functions. Ghidra's
+The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import
 `EXT_FUN_ram_0010` at `EXTERNAL:00000001`, which accounts for the
 remaining named function.
 
-Plate completeness was not recomputed in this pass. The 42 auto-named
+Plate completeness was not recomputed in this pass. The 24 auto-named
 functions remain undocumented by definition.
 
 Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919,
-1093/109) are history.
+1093/109, 1028/42, 1001/42) are history.
 
 ## Structural model (CONFIRMED for this codebase)
 
@@ -118,13 +118,62 @@ dispatcher → `2593` shared continuation → `RET 2658`). The earlier
 labelled under the Half-A model (owner `14CF`/`10CF` region — exact
 owner/labels in the Half-A audit file above).
 
+## ROM00 dispatch label pass (CONFIRMED, 2026-09-18)
+
+**ROM00 audit complete — 25 sites = all ROM00 `CALL ram:e0b2`
+sites, hybrid model applied (CONFIRMED).** Each site audited and
+converted to **one function per prologue-delimited routine +
+labels** at case targets and shared continuations. Total owners
+**23 routines** (two shared: sites 8+9 share `Session_CmdCommand
+4ae0-4d28`, sites 17+18 share `Session_CmdEndTx 52a5-5427`). All
+owners byte-verified (`11 00 00 CD 37 D8` prologue → final `C9`);
+interiors discriminated by that prologue check.
+
+* Owners extended: `Session_TxAppendString 3ede-3f1f`,
+  `Session_CoroJumpTx 3f20-4009`, `Session_InitCommsCmd 4563-46e8`,
+  `Session_InitState 46e9-47f5`,
+  `Session_LogonMode0Or2Callback 47f6-48be`,
+  `Session_CmdAnswer 48bf-4973`, `Session_CmdManual 4974-4a24`,
+  `Session_CmdDropLine 4a25-4adf`, `Session_CmdCommand 4ae0-4d28`,
+  `Session_CmdShutDown 4d75-4e6c`, `Session_CmdRxRec 4e6d-4f59`,
+  `Session_ReceiveProgram 4f5a-5033`,
+  `Session_CmdBeginFile 5034-50ec`, `Session_CmdTxRec 50ed-5178`,
+  `Session_CmdEndFile 5179-51eb`, `Session_CmdTxBlk 51ec-52a4`,
+  `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
+  `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
+  `Session_AnswerConnect 573d-578e`,
+  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
+  `SessionTxStringSender 5f58-606b`.
+
+* **Site-1 owner correction (CONFIRMED):** the audit first named
+  `3ede` as owner of the `3fec` dispatcher, but `ROM00::3f20`
+  (`Session_CoroJumpTx`) is itself a prologue entry
+  (`11 00 00 CD 37 D8`) with real external callers (`5346`, `4c3a`,
+  `ROM00::7dbe` vector, `ram:ed88`). Corrected: `3f20` is the
+  owning routine (`3f20-4009`); `3ede` is a separate routine ending
+  at `3f1f`.
+
+* **Absorbed:** ~89 case-block functions deleted (12 from the audit
+  Deletion List + 77 interior blocks found by a prologue check).
+  Discriminator: only real routine entries start with
+  `11 00 00 CD 37 D8`; among interiors only `3f20` did — all
+  others were blocks (no external callers). ~113 labels created at
+  case targets.
+
+* **Residual ROM00 `FUN_*` = 5 (CONFIRMED deferred):** `2da5`,
+  `4333`, `441b`, `44ed`, `450d` — left for a later pass; not
+  InlineTableDispatch cases.
+
+Guarded total 1002 → 915 (−87) because 89 case-block functions
+were absorbed as labels — not a coverage loss.
+
 ## Remaining structural work
 
-**ROM00 has 25 `CALL ram:e0b2` dispatch sites not yet audited**
-(same hybrid to apply). Source the site list by searching
-`CALL 0xe0b2` in ROM00 (`analysis/decode_inline_tables.py` or
-`doc/re-notes/inline-dispatch.md` table) — this is the next
-structural item.
+**ROM01 and ROM00 dispatch models are now both applied
+(CONFIRMED).** No `CALL ram:e0b2` site remains unaudited (ROM01 14,
+ROM00 25). Remaining coverage work is the **24 residual `FUN_*`**
+(ROM00 5, ROM01 17, ram 2) plus the code-gap and data-typing tail —
+same tail as before, now with both hybrid passes closed.
 
 ## Notes
 
