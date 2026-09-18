@@ -603,10 +603,27 @@ Efficiency:
 - **Serialize Ghidra-write agents; save between them.** Parallel agent
   rounds with MCP bursts cost ~124 in-memory functions on 2026-08-26
   (client-side timeouts executing server-side + AAM churn). Run ONE
-  Ghidra-writing agent at a time, `save_program` after each, and if
-  `get_function_count` drops unexpectedly mid-session STOP: do not
-  save, exit without saving, and reopen the last disk state (the
-  conversation log holds enough to re-apply anything decided later).
+  Ghidra-writing agent at a time and `save_program` after each.
+- **Diagnose listing pollution by function-list delta — not by
+  close/reopen.** If any agent may have decoded or written (including a
+  read-only agent that ran a non-`dry_run` disassemble), dump the
+  function list (space/address/name) and diff it against the last saved
+  snapshot. The added/moved entries *are* the pollution and their
+  addresses name exactly what to delete or repair — fix that directly;
+  the delta is also the check for anything auto-analysis found that you
+  missed. Do not reach for close/reopen: **closing a program without
+  saving is a GUI-only action** — MCP `close_program` reports success
+  but does not discard the in-memory domain object (`closed_count: 0`),
+  so never route a rollback through it; if a clean rollback is truly
+  needed, stop and ask the owner to close it in the GUI. Instruct
+  read-only agents that `disassemble_bytes` and `clear_flow_and_repair`
+  MUST use `dry_run=true`.
+- **Read-only agents may still write files.** "Read-only" means no
+  Ghidra writes; investigators and reviewers should still write their
+  full findings/verdict to a file under `/tmp/opencode/` and return
+  only a compact summary, keeping the parent context small. State this
+  explicitly in the prompt (a reviewer otherwise refuses to write its
+  verdict).
 
 ---
 
