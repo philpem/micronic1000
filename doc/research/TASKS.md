@@ -1613,15 +1613,22 @@ current priority order; the concise lists above are authoritative.
     0xfffe. TemplateBuilder (0271) is used ONLY for these 3 form templates;
     the MENU (ROM01:7860) is a different structure (menu item records
     {string, action}) rendered by a separate handler.
-  * FIELD VALIDATION (investigate agent, byte-verified key claims): four
-    field-type validators (ROM00 582a/5834/583e/5848) + Session_FieldParse
-    Validate (612a: numeric parse vs limit table e34f by field idx e88f);
-    they return HL=0 on rejection and do NOT raise the banner. "Invalid
-    reply"/"Invalid data stream" are session PROTOCOL errors dispatched by
+  * FIELD VALIDATION (investigate agent, byte-verified key claims):
+    Session_FieldParseValidate (612a: numeric parse vs limit table e34f by
+    field idx e88f) returns HL=0 on rejection and does NOT raise the banner;
+    the four ROM00 slots previously described here (582a/5834/583e/5848) are
+    session TX paths, not field validators (CONFIRMED, byte-verified):
+    `ROM00:582A` `Session_CoroTxFrameAndRx` -> `60CC` (`Session_TxFrameAndRx`),
+    `ROM00:5834` `Session_CoroTxFrame33` -> `60D6`
+    (`Session_TxFrame33Transaction`), `ROM00:583E` `Session_CoroReturnZero` ->
+    `6120` (`Session_ReturnZero`), `ROM00:5848` `Session_TxRecordData`
+    forwards two stack args to `6181`. "Invalid reply"/"Invalid data stream"
+    are session PROTOCOL errors dispatched by
     Session_ProtocolErrorDispatch (4f37): 0x09->"Not available"(8102),
     0x0A->"Invalid data stream"(8101). "Invalid command" (6dfa) is DEAD
     (zero refs). Er007 error list updated with 8101/8102; forms-ui.md now
-    documents the template struct + validation.
+    documents the template struct + validation. **CORRECTION 2026-09-18:**
+    the four-slot validator description is superseded as above.
   * OPEN (menu): decode the menu-item record format (ROM01:7860) and its
     per-item handlers - separate sub-project, still pending.
 - 2026-08-27 (menu record format decoded):
@@ -4711,7 +4718,7 @@ No Ghidra changes; docs only.
 ### 2026-09-17 — session-module RECORD-vs-BLOCK mapping resolved (CONFIRMED, `ROM00`; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
 
 * **Resolves the "session-module RECORD-vs-BLOCK mapping" open item** carried in `Next` static backlog and in the 2026-09-12 A2 entry ("whether Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN"). All addresses below byte-verified in `ROM00`.
-* **Finding 1 — the commands (CONFIRMED).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8120/8121) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8140/8141), per the `452D` call-site table already in `re-notes/commstar-evidence.md` (wrappers `50F3`/`51F2` vs `ROM00:6B67` `C-*` name table; cf. error-decade table in that page).
+* **Finding 1 — the commands (CONFIRMED).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8130/8131) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8150/8151), per the `452D` call-site table already in `re-notes/commstar-evidence.md` (wrappers `50F3`/`51F2` vs `ROM00:6B67` `C-*` name table; cf. error-decade table in that page). **CORRECTION 2026-09-18:** was 8120/8121 and 8140/8141 (shifted one command; byte literals `0x1FC2`/`0x1FC3`=8130/8131 and `0x1FD6`/`0x1FD7`=8150/8151).
 * **Finding 2 — shared TX stream walker (CONFIRMED).** Both transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer (pointer at `SP+0x0C`), comparing with `E0E7` and appending each byte via `ROM00:3D9B`.
 * **Finding 3 — the accumulator and 128-byte chunking (CONFIRMED).** `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
 * **Finding 4 — RECORD/BLOCK difference is pre-walk setup, not wire chunking (CONFIRMED).** `C-TX-REC` pre-seeds the accumulator with `3D9B` of `0x1E` at `ROM00:5107` before walking; `C-TX-BLK` calls `ROM00:3CF7` (`Session_InitAndRunTx`, which calls `ROM00:3CEA` then `ROM00:5834` -> `ROM00:60D6`) at `ROM00:5210` before walking. `C-END-FILE` (`ROM00:517F`) also appends via `3D9B` at `ROM00:5193`.
@@ -4764,3 +4771,15 @@ No Ghidra changes; docs only.
 * **Deferred in batch 1 (left as `FUN_*`):** `ram:d7c5`, `ROM00:4333`, `ROM00:44ed`, `ROM00:450d`, `ROM00:2da5` — to be worked in later batches.
 * **Remaining:** 252 auto `FUN_*` (ROM00 105, ROM01 145, ram 2), to be worked in further batches (investigate -> review -> annotate), plus the code-gap/data-typing tail and the deferred final sub-items (TASKS §12 FINAL PASS).
 * **Reviewer correction noted:** the existing `ram:df36` plate ("strictly-greater-than") is correct; `ram:df18` was the misnamed one (corrected to Lib_UnsignedLt32 in this batch).
+
+### 2026-09-18 — final-sweep batch 2: 84 renames + doc corrections (docs only, reviewer-approved scope; no new inference)
+
+* **Batch 2 of the final naming sweep (84 functions renamed+plated):** C-* wrappers, result-switch arms, connect dispatchers, tails, trampolines/workers, stubs — including `ROM00:582A` `Session_CoroTxFrameAndRx` (trampoline to `60CC` `Session_TxFrameAndRx`), `ROM00:5834` `Session_CoroTxFrame33` (to `60D6` `Session_TxFrame33Transaction`), `ROM00:583E` `Session_CoroReturnZero` (to `6120` `Session_ReturnZero`), `ROM00:5848` `Session_TxRecordData` (forwards two stack args to `6181`), plus remaining C-* dispatch scaffolding. No new inference; plates carry CONFIRMED mechanics and In/Out/Clobbers per §6/§8.
+* **Deferred in batch 2 (left as `FUN_*`):** `ram:d7c5`, `ROM00:4333`, `ROM00:44ed`, `ROM00:450d`, `ROM00:2da5` — to be worked in later batches.
+* **Doc corrections applied in this pass (parent-adjudicated, bytes verified):**
+  1. `re-notes/commstar-evidence.md` — session error-decade table corrected (row was shifted one command from C-BEGIN-FILE onward): C-BEGIN-FILE `0x1FB8`/`0x1FB9` = 8120/8121, C-TX-REC `0x1FC2`/`0x1FC3` = 8130/8131, C-END-FILE `0x1FCC`/`0x1FCD` = 8140/8141, C-TX-BLK `0x1FD6`/`0x1FD7` = 8150/8151; duplicate paragraph at `RECORD vs BLOCK` and `TASKS` Finding 1 updated to same.
+  2. `re-notes/forms-ui.md` + `research/TASKS.md` field-validation paragraph — removed the four field-type validator description for `ROM00:582A`/`5834`/`583E`/`5848`; re-described as session TX paths above (batch-2 names `Session_CoroTxFrameAndRx`, `Session_CoroTxFrame33`, `Session_CoroReturnZero`, `Session_TxRecordData`).
+  3. `reference/commstar-api.md` — qualified `ram:EE00-EE4F` static bytes: twenty `LD HL,1; RET` no-op slots (4 bytes each, `21 01 00 C9`), **not** `RST 10h; db bank; dw target` thunks in the static image; computed-call xrefs (e.g. `ram:EE04 -> ROM00:48BF`) describe intended/runtime-populated routing; whether/when they become `RST 10h` thunks at runtime is **OPEN**; kept `ROM00:7DFA` 20-word source-table description and noted RAM arena is patched at runtime.
+  4. `research/gap-analysis.md` — headline refreshed to 168 auto `FUN_*` (was 252); total functions 1099; named = 931 (84.7 %).
+* **Remaining:** 168 auto `FUN_*` (ROM00 21, ROM01 145, ram 2), to be worked in further batches; code-gap/data-typing tail and deferred final sub-items (TASKS §12 FINAL PASS) remain.
+* **Function count:** 1099 stable (no creates/deletes in this docs pass; batch-2 Ghidra edits applied separately).

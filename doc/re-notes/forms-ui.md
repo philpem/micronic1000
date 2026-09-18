@@ -126,16 +126,22 @@ entry point.)
 
 ## Field validation
 
-Typed input is validated per field type by four field-type validators
-(ROM00:582a / 5834 / 583e / 5848) plus `Session_FieldParseValidate`
+Typed input is validated by `Session_FieldParseValidate`
 (ROM01:612a, numeric parse against the limit table `e34f` indexed by
-`e88f`). Validators **return HL=0 on rejection** — they do not raise an
-error banner themselves; the caller handles the display. "Invalid
-reply"/"Invalid data stream" are session *protocol* errors, not field
-validation messages, and "Invalid command" is an unreferenced (dead) string.
-The protocol errors are dispatched by `Session_ProtocolErrorDispatch`
-(ROM00:4f37): selectors 0x09→"Not available" (8102), 0x0A→"Invalid data
-stream" (8101).
+`e88f`). It **returns HL=0 on rejection** — it does not raise an error
+banner itself; the caller handles the display. The four ROM00 slots
+previously described as field-type validators are session TX paths, not
+field validators (CONFIRMED, byte-verified): `ROM00:582A`
+`Session_CoroTxFrameAndRx` is a coroutine trampoline to `ROM00:60CC`
+(`Session_TxFrameAndRx`), `ROM00:5834` `Session_CoroTxFrame33` to
+`ROM00:60D6` (`Session_TxFrame33Transaction`), `ROM00:583E`
+`Session_CoroReturnZero` to `ROM00:6120` (`Session_ReturnZero`), and
+`ROM00:5848` `Session_TxRecordData` forwards two stack arguments to
+`ROM00:6181`. "Invalid reply"/"Invalid data stream" are session
+*protocol* errors, not field validation messages, and "Invalid command"
+is an unreferenced (dead) string. The protocol errors are dispatched by
+`Session_ProtocolErrorDispatch` (ROM00:4f37): selectors 0x09→"Not
+available" (8102), 0x0A→"Invalid data stream" (8101).
 
 ## The device list
 

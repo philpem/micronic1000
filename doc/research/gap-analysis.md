@@ -9,17 +9,19 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 574 | **105** | 469 |
+| ROM00 | 574 | **21** | 553 |
 | ROM01 | 329 | **145** | 184 |
 | ram | 195 | **2** | 193 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total** | **1099** | **252** | **847 (77.1 %)** |
+| **Total** | **1099** | **168** | **931 (84.7 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 (1099).** Increase from
-the 2026-08-30 audit (919 total / 159 `FUN_*` / 760 named, 82.7 %)
-reflects functions defined since then, not new coverage. The 252
-auto-named functions are the remaining analysis backlog, not completed
-coverage.
+**Refreshed directly from Ghidra on 2026-09-18 — after final-sweep batch 2
+(1099 total).** Auto `FUN_*` = 168 (was 252); named = 931 (84.7 %). Per-space
+split: ROM00 21 (drop of 84, approximating the ~68 guidance), ROM01 unchanged
+145, ram 2. The 168 auto-named functions are the remaining analysis backlog,
+not completed coverage. Increase from the 2026-08-30 audit (919 total /
+159 `FUN_*` / 760 named, 82.7 %) reflects functions defined since then, not
+new coverage.
 
 The three internal address spaces contain 1098 functions. Ghidra's guarded
 total also includes the existing external import `EXT_FUN_ram_0010` at

@@ -500,10 +500,10 @@ from `6B8D`). Every call site of `452D` in the image, with its selector:
 | `4D7B` | 8 | `C-SHUT-DOWN` | — | |
 | `4E73` | 9 | `C-RX-REC` | — | 8090, 8091 |
 | `4F60` | 10 | `C-RX-BLK` | — | 8100-8102 |
-| `503A` | 11 | `C-BEGIN-FILE` | — | 8110, 8111 |
-| `50F3` | 12 | `C-TX-REC` | — | 8120, 8121 |
-| `517F` | 13 | `C-END-FILE` | — | 8130, 8131 |
-| `51F2` | 14 | `C-TX-BLK` | — | 8140, 8141 |
+| `503A` | 11 | `C-BEGIN-FILE` | — | 8120, 8121 |
+| `50F3` | 12 | `C-TX-REC` | — | 8130, 8131 |
+| `517F` | 13 | `C-END-FILE` | — | 8140, 8141 |
+| `51F2` | 14 | `C-TX-BLK` | — | 8150, 8151 |
 | `52EB` | 15 | `C-END-TX` | — | |
 | `546F` | 16 | `C_ABORT` | — | |
 
@@ -677,7 +677,7 @@ displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 
 ### Session-module senders and status fields — 2026-09-17 (parent-adjudicated, bytes verified; supersedes 2026-09-12 RECORD-vs-BLOCK framing)
 
-* **RECORD vs BLOCK transmit — the `C-TX-REC` / `C-TX-BLK` pair and shared stream path (CONFIRMED, `ROM00`).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8120/8121) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8140/8141), per the `452D` call-site table already in this page (wrappers `50F3`/`51F2` indexing the `C-*` name table at `ROM00:6B67`). **Both** transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer whose pointer is at `SP+0x0C`, comparing with `E0E7` and appending each byte via `ROM00:3D9B`. `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
+* **RECORD vs BLOCK transmit — the `C-TX-REC` / `C-TX-BLK` pair and shared stream path (CONFIRMED, `ROM00`).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8130/8131) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8150/8151), per the `452D` call-site table already in this page (wrappers `50F3`/`51F2` indexing the `C-*` name table at `ROM00:6B67`). **Both** transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer whose pointer is at `SP+0x0C`, comparing with `E0E7` and appending each byte via `ROM00:3D9B`. `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
 
 * **RECORD/BLOCK difference is pre-walk setup, not wire chunking (CONFIRMED, `ROM00`).** `C-TX-REC` pre-seeds the accumulator with `3D9B` of `0x1E` at `ROM00:5107` before walking; `C-TX-BLK` calls `ROM00:3CF7` (`Session_InitAndRunTx`, which calls `ROM00:3CEA` then `ROM00:5834` -> `ROM00:60D6`) at `ROM00:5210` before walking. `C-END-FILE` (`ROM00:517F`) also appends via `3D9B` at `ROM00:5193`.
 

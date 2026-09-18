@@ -22,9 +22,14 @@ session mode at **0**; you do not need to suppress validation for either.
 
 ## Entry points
 
-Each entry is four bytes at a fixed address in battery-backed RAM. Call it
-like an ordinary subroutine; see the calling convention below for the
-important caveat.
+Each entry occupies four bytes at a fixed address in battery-backed RAM.
+Call it like an ordinary subroutine; see the calling convention below for
+the important caveat. In the static image `ram:EE00-EE4F` holds twenty
+`LD HL,1; RET` no-op slots (4 bytes each, `21 01 00 C9`), **not** `RST 10h`
+thunks — the `RST 10h` form is the runtime-populated shape (see below);
+the ROM source table at `ROM00:7DFA` (20 words) feeds the arena, which is
+patched at runtime. Computed-call xrefs such as `ram:EE04 -> ROM00:48BF`
+describe intended routing; whether/when a slot becomes a thunk is **OPEN**.
 
 | Address | Routine | Command dispatched | Session screen |
 |---|---|---|---|
@@ -154,9 +159,15 @@ any of these entry points must address the **fixed upper 32K**
 the space a CP/M-style COM has above its code — is **invisible to the
 routine**.
 
-The reason is the call mechanism. Each entry point is a four-byte thunk
-`RST 10h ; db bank ; dw target`, and `RST 10h` (`ROM00:0010`) compares the
-target bank against the current one:
+The reason is the call mechanism. At runtime each entry point is a four-byte
+thunk `RST 10h ; db bank ; dw target`, and `RST 10h` (`ROM00:0010`) compares
+the target bank against the current one. In the static image
+`ram:EE00-EE4F` ships as twenty `LD HL,1; RET` no-op slots (4 bytes each,
+`21 01 00 C9`), **not** `RST 10h` thunks — the computed-call xrefs (e.g.
+`ram:EE04 -> ROM00:48BF`) describe intended/runtime-populated routing, and
+the ROM source table at `ROM00:7DFA` (20 words, slot *i* at `7DFA+2*i`)
+supplies those targets; whether/when the arena becomes `RST 10h` thunks at
+runtime is **OPEN**. The arena is patched at runtime:
 
 ```text
 ROM00:0010  POP  HL            ; HL = the inline operands
