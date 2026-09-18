@@ -446,10 +446,18 @@ Loader entry points (stable):
 `Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
 `Program_RunByName` (`106F`), `Program_NormalizeLoadRange` (`0AE3`),
 `Program_ReportLoadError` (`0CCB`), final transfer `ROM01:10C6 -> ram:D7F0`
-(`RunLoadedProgram`). Source bytes arrive via coroutine/provider machinery
-around `0C12`/`0CE7` and `ram:D370`; the exact physical source-reader is
-**not** identified — BDOS `open`/`read`/`search` are generic FCB services,
-there is no BDOS execute function.
+(`RunLoadedProgram`). Source bytes arrive via coroutine rendezvous (CONFIRMED): the loader is
+coroutine-driven (`LD DE,0; CALL ROM01:D837` enter, `LD HL,D370; CALL
+ROM01:D9F9` yield), `ram:D370` is the peer/rendezvous slot (byte search
+`70 D3` finds only loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`;
+no code outside the loader touches `D370`), and the loader request protocol
+sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370` for the peer to fill
+(`Program_ConsumeInputChunk` `ROM01:0BAC` consumes `min(D36C,D393)`).
+The feeder is the session program-data receive path (state-44 →
+`Session_ReadStreamChunk` `ROM00:3E6A` → staging buffer →
+`Program_ConsumeInputChunk`); the exact staging cell/buffer remains
+**OPEN** — BDOS `open`/`read`/`search` are generic FCB services, there is
+no BDOS execute function.
 
 Fallback to COM (stable): if the first chunk is **<14 bytes** or its
 first word **`!= 0xC8C9`**, the loader treats input as **raw COM**, copies

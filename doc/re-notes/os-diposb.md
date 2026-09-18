@@ -409,10 +409,30 @@ TWO roles:
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
   run-bank `0`, entry `0x0100`. See [Program file formats](../reference/program-formats.md).
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
-  services. `ram:D370` is `g_pProgramLoaderContinuation`, a coroutine
-  continuation exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not
-  an input-provider pointer; the upstream physical/session provider remains
-  **OPEN** (not identified).
+   services. **Loader coroutine rendezvous (CONFIRMED):** the runtime
+   Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — its
+   routines enter via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`,
+   `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9`
+   (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED). `Coroutine_SwapContinuation`
+   (`ram:D9F9`-`ram:DA0A`) swaps the current continuation with the 16-bit
+   word at the address in `HL`, then returns: `Z` when the peer slot was
+   empty (the caller continues), `NZ` when it yielded to the peer
+   (`EX SP,HL; LD HL,1; RET`) (CONFIRMED). `ram:D370` is the loader's
+   peer/rendezvous slot — a byte search for the address (`70 D3`) finds it
+   ONLY inside the loader region at `ROM01:0BA3`, `ROM01:0CEE`,
+   `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`;
+   no code outside the loader writes or reads `D370`, so the peer is
+   resumed by the coroutine scheduler rather than registered by a distinct
+   ROM routine (CONFIRMED). **Loader request protocol (CONFIRMED):** the
+   loader sets `D368` (destination offset), `D36A` (destination pointer),
+   `D36C` (requested byte count), `D36E` (delivered count), then swaps
+   `D370`; the peer fills the bytes and swaps back.
+   `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)`
+   and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`). The feeder
+   is the session program-data receive path already documented (state-44 →
+   `Session_ReadStreamChunk` `ROM00:3E6A` → the Load/Run staging buffer →
+   `Program_ConsumeInputChunk`) (CONFIRMED); the exact staging cell/buffer
+   the loader's peer fills remains **OPEN**.
 * **Service-33 identities (CONFIRMED):** actual service-33 entry is
   `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
   `Device_Service33Timeout`, not the entry; `ROM00:2E85` is

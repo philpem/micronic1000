@@ -135,93 +135,20 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-1. **Continue static session-module and UI analysis.** RECORD/BLOCK/
-   C-COMMAND payload construction and consumption remains partly **OPEN**.
-   `ram:e701`/`ram:e6ff` (`g_wSessRcv1`/`g_wSessRcv2`) are **CONFIRMED**
-   display snapshots (not counters; see 2026-09-12 entry below) — CLOSED.
-   RECORD/BLOCK builder mechanics are **CONFIRMED** via `ROM00:5669`
-   `Session_Tx4Param` → `Session_TxBlock4` (`ROM00:5BF7`) and `ROM00:56A4`
-   `Session_Tx5Param` → `Session_TxBlock5` (`ROM00:5CD7`), plus
-   `Session_RuntimeStubSourceTable` entries `ROM00:7D96`/`7D98`; whether
-   `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains **OPEN**
-   (discriminator: correlate one wrapper with a captured RECORD/BLOCK UI
-   transaction). `ram:e48c` error-code cell mechanics are **CONFIRMED**
-   (17 readers, indirect write via `ROM00:454B` → `ROM00:3C06` →
-   `SessionCoroJumpTable` `ROM00:692A`) but its full runtime-writer map
-   remains **OPEN**. `ram:e6fc` (`g_bSessZeroLengthWaitSec`) threshold
-   mechanics are **CONFIRMED** (see 2026-09-12 entry); 55 s semantics
-   **LIKELY**. `ram:e085` `Lib_SignedGt16` polarity
-   (`HL_out = (signed HL > signed DE) ? 1 : 0`) is now **CONFIRMED** —
-   CLOSED (was OPEN at `ROM00:5AB7` negative-length check).
-2. **Resolve the runtime loader input-provider path.** Trace the coroutine/
-   provider behind `ram:D370` and its callers around `ROM01:0C12/0CE7`; the
-   COM/DIP file grammar and host-side validator are already complete.
-3. **Recover responder-source provenance.** The raw `conn3`-`conn13` captures
-   are now audited from their decoded waveforms (SHA-256 banked in
-   `re-notes/ir-wire-protocol.md`), but the exact per-run Arduino source
-   snapshot used for each early capture remains **OPEN** and not archived
-   (raw captures only in `$HOME/micronic-scope-traces`). The current
-   on-disk `m1000_ir_probe.ino` is a single mutually-exclusive-mode build
-   (`LADDER_TEST` currently defined; `#error` guards at `.ino:108-128`);
-   a run→mode map inferred from decoded-contents strings vs sketch mode
-   structures is **SUSPECTED** only (see 2026-09-12 entry). Preserve a
-   versioned `.ino` per run or the `setup()` Serial banner if found; do
-   not infer build modes from capture filenames or segment numbers
-   (filename digit is run index, not mode).
-4. **Finish guarded structural repairs before semantic naming.** Repair the
-   `ROM01:6E77-6EEE` inline-data body with the required function-list diff
-   guard, then address the pending compiler-runtime page and unresolved
-   `d2dc/d2de` / `EA14/EA1C` writers.
-5. **Final annotation and typing sweep (deferred).** Name/plate remaining
-   `FUN_*` functions, repair data/table types, and refresh the canonical
-   `research/gap-analysis.md` inventory only after semantic work stabilises.
+- **DONE 2026-09-13 — Finish the static receive-chain state map (Phase 1):** the `2FBD` -> `LINK_STATUS`-compare -> `LinkRxDispatcher` (`ROM00:3002`-`3078`) path and `ROM00:30DC`, and the exact `LINK_CTRL` 6/7 raise/lower points around a transaction. (The `LinkTransferService` gating at `ROM00:2FAE` is already CONFIRMED.) — completed this pass as `re-notes/ir-wire-protocol.md` § *Receive-chain state map* (static, `ROM00`; byte-verified); see session log 2026-09-13.
+- **DONE 2026-09-17 — Emulator demonstration of the handshake gating (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion (one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout) then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (`42h`, `0C2h`) — hypothesis "never reaches `2FAE` RX-enable" is FALSE: carry is ignored. Gating is temporal: the firmware holds `LINK_CTRL` 6/7 clear for the whole transaction and raises them after it (~10–12 ms window: 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry). *Harness detail:* stub `RET` at `0F54Eh` (resident-kernel helper absent from flat memory). Validates firmware latch writes only; controller model is synthetic, and whether 6/7 gates the receiver (vs only its interrupt) is Provisional. Witness fix: earlier exerciser builds left `LINK_CTRL` 6/7 clear so the link RX interrupt was never enabled; witness now sets them (`ctrl_or 40h`/`80h` as `34BD`/`2FAE` does) — new witness `2E3E`, 824 bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`); default `2609` unchanged; 65 tests pass.
 
-### Hardware-dependent priorities
+- **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
 
-1. **Run startup diagnostic `2726` to locate the post-ENTER stall.** The owner has now
-   validated `2D4D` heartbeat, idle, NO/YES and release behaviour on hardware.
-   Decreasing the contrast byte darkens the screen; `A4h` is preferred.
-   After ENTER the `2D4D` screen freezes, NO/YES stop responding, no error
-   marker or Arduino output appears. Candidate `2726` adds stages and bounded
-   ready waits with visible error status, keeping validated setup and `A4h`.
-   Capture its full error row or last stage; this run is fixed top V24,
-   baseline only, wire version `0Eh`. Earlier sweep instructions are deferred.
-   The `1E3E` hardware run produced both beeps and a uniformly clear LCD,
-   confirming that stock `LcdInit` returns, but not isolating contrast
-   polarity. `27E8` starts `g_bLcdContrast` and port `46h` at `C0h`, displays
-   the live value as `CONTRASTC0`, continuously polls NO/YES through the stock
-   shadow-preserving adjusters, and waits for ENTER before touching the IR
-   link. Set a readable contrast first, then start `LISTEN_ONLY`, press ENTER,
-   and check specifically for preamble `A5 5A 0D 80 80`.
-2. **Measure the completion-relative receive-arm window on hardware.** The
-   synthetic peer succeeds without RAM/PC visibility by waiting 500 ms from
-   supplying the preceding type-4 completion; PLINTH/V24 and single-/multi-
-   chunk emulator coverage is complete. Physical testing must establish the
-   wire-relative epoch and any upper acceptance deadline.
-3. **Capture a successful bidirectional IR byte exchange.** The stock
-   handheld's outbound 8192-bit/s synchronous delimiter/prelude is already
-   captured. Establish the return-side handshake, a full logical frame, and
-   whether the controller-queue sync/trailer bytes exist on the wire.
-4. **Capture RECORD/BLOCK payload bytes live** (hardware bus capture on
-   4Dh/4Eh, or full UI/Commstar emulation to a live transfer) — the
-   one remaining runtime item for the file-transfer tool.
-5. **Capture the electrical timing and meanings of the link status/control
-   bits.** The ROM branch mapping and 4Ah strobe ordering are now CONFIRMED;
-   a hardware trace is still required to map 4Bh/4Ah bits to electrical
-   functions and to measure connector-facing timing.
-6. **Confirm the complementary port state and EXT STORAGE attachment.** The
-   top mapping is closed: V24 Load/Run uses wire-ID bit 5 clear, which sets
-   `LINK_CTRL` bit 1 and port `2Ch` bit 5, and was captured at the top window.
-   Observe the wire-ID-bit-5-set exerciser phase, which clears both outputs,
-   at the back PLINTH window directly; then confirm where the EXT STORAGE
-   ADAPTER attaches.
-7. **Fallback: capture `LINK_STATUS` on the stock-ROM Z80 bus.** If the
-   exerciser cannot return usable records, probe address A0-A7, data D0-D7,
-   `/IORQ`, and `/RD` while replaying conn13 silent, early, and late stimuli.
-   This directly distinguishes `LINK_STATUS` bits 4, 6, and 7, but owner-supplied
-   mechanical constraints make it harder than programming the ROM.
-8. **Acquire a representative banked-RAM dump** for `RAM02` so runtime-only
-   modules/state can be compared with the static overlays.
+1. **Guarded structural repairs** — `ram:pending` compiler-runtime page (`e020`-`e0aa`) plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus the `ROM00:7409`/`7472` module-A deferred sites. Diff-guarded, one at a time.
+2. **Deferred final annotation sweep** — the end-game naming/plate/comment/data-typing pass (TASKS §12 FINAL PASS), held until the remaining open items close. Covers the last `FUN_*` plate pass, legacy-name hygiene, and `research/gap-analysis.md` refresh.
+
+### Hardware-dependent priorities (unchanged)
+
+1. **Phase 0 gate:** run the `2609` record-stream build (and/or the `2E3E` witness build — 824 bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0`) and read LINK_STATUS bit 6 behaviour with no peer.
+2. **Phase 2:** receive-convention sweep with the witness ROM (`2E3E`, now raises LINK_CTRL 6/7) + the Arduino `RX_SWEEP` mode — the firmware holds 6/7 clear for the ~10 ms TX transaction and raises them after; whether the controller's receiver is inhibited during that window is Provisional, so a reply timed after the transaction is the safe choice either way (a burst-timed reply at ~1–9 ms lands inside the window in which the firmware holds 6/7 clear).
+3. **Phase 3:** bidirectional payload with `micronic.peer.CommstarPeer`.
+4. **Keep the existing remaining hardware items** (4Bh/4Ah electrical mapping, complementary port state + EXT STORAGE attachment, banked-RAM dump, Z80-bus fallback).
 
 ### Detailed and historical backlog
 
@@ -4599,20 +4526,20 @@ run and is also retired; see the later hardware-result entry.
   display remains OPEN.
 
 * **A2 — RECORD/BLOCK senders via `Session_Tx4Param`/`Session_Tx5Param`
-  (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN).**
-  `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
-  `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
-  `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
-  (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
-  `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
-  also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
-  (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
-  `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
-  argument `==1` selects device `63h` else `43h` → `ram:e52e`;
-  `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
-  `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN;
-  discriminator is to correlate one wrapper with a captured RECORD/BLOCK
-  UI transaction.
+   (CONFIRMED mechanics; RECORD vs BLOCK mapping OPEN at that date — SUPERSEDED 2026-09-17, see new entry below).**
+   `ROM00:5669` `Session_Tx4Param` (4 stack args: 1 word + 3 byte; direct
+   `CALL Session_TxBlock4` `ROM00:5BF7` at `ROM00:5699`; result word
+   `g_wTxBlock4Result` at `ram:e64e`) and `ROM00:56A4` `Session_Tx5Param`
+   (5 byte args; direct `CALL Session_TxBlock5` `ROM00:5CD7` at
+   `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders
+   also reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96`
+   (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`).
+   `TxBlock4` fills payload cells `ram:e650`-`ram:e656` (first stack word
+   argument `==1` selects device `63h` else `43h` → `ram:e52e`;
+   `ram:e658=8`); `TxBlock5` fills `ram:e65c`-`ram:e668`. Whether
+   `Tx4Param`/`Tx5Param` map to RECORD vs BLOCK remains OPEN at that date;
+   discriminator is to correlate one wrapper with a captured RECORD/BLOCK
+   UI transaction. **2026-09-17 correction:** the premise is discarded; see next entry — the real RECORD/BLOCK senders are `C-TX-REC`/`C-TX-BLK` via `ROM00:3E14`/`ROM00:3D9B`, not `Session_Tx4Param`/`Session_Tx5Param`.
 
 * **A3 — `SessionRxStateMachine` (`ROM00:5A81`) Out contract corrected
   (CONFIRMED).** Seeds `ram:e646` from zero-extended received type byte
@@ -4673,3 +4600,128 @@ run and is also retired; see the later hardware-result entry.
 Cross-links: `re-notes/commstar-evidence.md` (senders, snapshots,
 threshold) and `re-notes/ir-wire-protocol.md` (SUSPECTED run→mode map).
 No Ghidra changes; docs only.
+
+### 2026-09-13 — transmit arm added (`2609` supersedes `2726`)
+
+* **Hardware result `2726` (CONFIRMED):** `EE04580302` — stage `04`,
+  `RR=0x58`, `CC=03h`, `NN=02` — with no emission on either port; controller
+  accepted `LINK_TXD` writes but the existing hardware run showed nothing
+  optically. Diagnosis (CONFIRMED): missing stock handshake arm — the ROM
+  exerciser's transmit path omitted the `ROM00:32CC-32EE` arm that raises
+  `LINK_CTRL` bit 5 then bit 4, settles, then drops bit 5 leaving bit 4 SET.
+* **Fix (CONFIRMED):** new code `arm_tx` at `0x0250` replicates that sequence
+  exactly (raise bit 5, then bit 4, 32-iteration settle ~0.11 ms at 3.6864 MHz,
+  drop bit 5; bit 4 left SET so `CTRL_SHADOW` is `13h` after the arm vs `03h`
+  before). Called in preamble after first byte `A5` (mirroring stock order
+  flag→byte→arm) and at each record-frame start (`COUNT` multiple of 64, just
+  after `COUNT`); preserves `B`/`E` (record loop `OR`/`AND` snapshot) using
+  `D` for its settle. Two dead writes (`V_ID`/`V_BASE`) removed to make room.
+* **Reclaimed guarded region `scr` at `0250-02FD` (CONFIRMED):** overwrites the
+  stock cold-boot/banner flow reached only by fall-through from warm-boot entry
+  `024D` (this ROM never runs it) and never CALLed (Ghidra xrefs: none; byte
+  scan for `CALL`/`JP` into the range finds only a self-jump at `0x02E2`).
+  Build refuses unless untouched stock bytes at `0250-02FD` hash to SHA-256
+  `826a1915a2f2ec88fe5e8d25cc1c8d5d89d9327a1b544d45d2680f7346694364`.
+* **Build `2609` (CONFIRMED):** 32768 bytes, sum16 `2609` (was `2726`),
+  716 changed bytes vs stock (was 698), SHA-256
+  `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72` (was
+  `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`); old image
+  `2726` 698-byte diff retired. Wire version stays `0Eh`, record layout
+  unchanged (arm is ROM-side only).
+* **Tests (CONFIRMED):** 63 exerciser tests pass; full suite 152 passed / 33
+   skipped (71 subtests passed). No Ghidra changes; docs updated
+   (`analysis/rom_exerciser/README.md`, `doc/re-notes/exerciser-test-plan.md`).
+
+### 2026-09-13 — receive path, awaited `LINK_STATUS` bit 6, and re-framing of `conn3`–`conn13` (parent-adjudicated, bytes verified; docs only, no new inference, no Ghidra)
+
+* **Findings 1–4 — `LINK_STATUS` bit 6 and `LINK_CTRL` bits 6/7 (CONFIRMED unless noted):**
+  1. `LINK_STATUS` bit 6 is polled CLEAR in exactly two places, both inside
+     `LinkBlockTx` — `ROM00:32F3` and `ROM00:3336`; timeout to `ROM00:3356`
+     with `A=0xEE`. **No** bit-6 test exists in the receive path. Other
+     readers: bit 4 at `ROM00:32BB` (`CPL`/`AND 10h`, waits clear) and
+     `ROM00:34E7` (`AND 10h`, IRQ decision); bit 7 at `ROM00:3318` (`RLCA`,
+     per-byte) and `ROM00:34FB` (`AND 80h`, `LinkWaitReady`); bit 0 at
+     `ROM00:33CF` (`RRCA`, gates `INI` loop); `ROM00:34BA` returns raw byte
+     (`LinkProbe`). 2. `LINK_CTRL` bits 6 and 7 are the `ROM00:34BD` (sets both)
+     / `ROM00:34D2` (clears both) pair; `LinkBlockTx` clears both at entry
+     (`ROM00:327D`) and never raises them during the transaction; they are set
+     by the IRQ handler when `LINK_STATUS` bit 4 is clear (`ROM00:31C2`), by
+     `LinkRxDispatcher` (`ROM00:3010`/`3028`/`3056`), and by `LinkTransferService`
+     (`ROM00:2FAE`). 3. `LinkBlockRx` (`ROM00:3378`) opens with the same
+     bit-5/bit-4 arm as `LinkBlockTx` (`ROM00:32CC`–`32EE`) but inserts a dummy
+     `IN A,(4Eh)` (`LINK_RXD`) before setting bit 4 (`ROM00:338C`); byte path uses
+     `LINK_STATUS` bit 4 (IRQ) and bit 0 (`INI` gate) reading `LINK_RXD` (`4Eh`).
+  4. **CONFIRMED ordering:** `LinkTransferService` (`ROM00:2F58`) calls
+     `LinkBlockTx` at `ROM00:2F9A` and then calls `ROM00:34BD` (raise
+     `LINK_CTRL` 6/7) at `ROM00:2FAE`, immediately after the transmit
+     transaction returns, returning at `ROM00:2FB1`; `LinkBlockTx` itself has
+     no 6/7 writer. So the receive path is re-enabled only after the transmit
+     transaction completes. **LIKELY:** at the interrupt level the link is
+     firmware-managed and half-duplex — the transmit transaction clears the
+     `LINK_CTRL` 6/7 pair (RX interrupt enable) for its duration, so a peer
+     reply during the controller's own TX cannot raise the RX interrupt. Name
+     `HSBUSY` for `LINK_STATUS` bit 6 is the project's coinage, not
+     ROM-derived; firmware only waits for it to clear after the arm.
+* **Re-framing (analysis, SUSPECTED):** `conn3`–`conn13` Arduino replies were
+  delivered while the controller's `LINK_STATUS` bit-6 wait had never completed
+  (exerciser `2726` omitted the arm; `2609` restores it). If the receive window
+  only opens after the transmit transaction completes, those negatives are
+  **SUSPECT** and should not be treated as settled.
+* **Open questions A–D and plan Phases 0–3 recorded in docs:** A — is bit 6
+  transmit-complete (clears in a few hundred µs with no peer) or handshake/peer?
+  Discriminator: `2609` `OR`/`AND` with arm held and no peer. B — when is the
+  receive window opened relative to the transaction, and must the reply arrive
+  inside it? C — does the receive path use the same HDLC sense/polarity/phase?
+  Not ROM-derivable; needs a hardware sweep. D — does own TX raise `LINK_STATUS`
+  bit 4 / link IRQ with no peer? See
+  `doc/re-notes/ir-wire-protocol.md#the-receive-path-and-the-awaited-status-bit`
+  and
+   `doc/re-notes/exerciser-test-plan.md#ir-handshake-investigation-plan-phases-03`
+   for the full phase definitions and the offline work list (static map, emulator
+   traces, RX-witness exerciser variant, Arduino sweep modes, bench procedure).
+   No Ghidra changes; `mkdocs build --strict` gated.
+
+### 2026-09-13 — witness build and RX sweep (CONFIRMED, emulator/syntax validated; docs only, no new inference, no Ghidra)
+
+* **Witness build (CONFIRMED):** `analysis/rom_exerciser/build.py` now builds two variants from the one source — default record-stream (`micron1_exerciser.bin`, 32768 bytes, sum16 `2609`, 716 changed bytes, SHA-256 `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`) unchanged, and with `--witness` `micron1_witness.bin` (32768 bytes, sum16 `2DA4`, 812 changed bytes, SHA-256 `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`). Both live in the same reclaimed `scr` region at `0250-02FD`; default build strips the witness code and stays byte-identical to `2609` (CONFIRMED). The witness does the stock opening (LinkProbe, top-V24 port select, control setup), writes the flag via LinkPresent, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then STOPS transmitting and watches the receive path. It never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` after the arm, so nothing it sends can disturb the receive path being measured (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, the arm values `23h`/`33h`/`13h`, then silence). Witness LCD row: `W` then six hex bytes `OR AND ISRC IRQN ARMD HB` — `OR`/`AND` are `LINK_STATUS` over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` heartbeat; reset only by power-cycling; the IR channel is being listened to, so the LCD is the only readout.
+* **Arduino `RX_SWEEP` mode (CONFIRMED code; syntax-checked with host stub, no AVR toolchain in CI):** `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` gains `RX_SWEEP` (set `RX_SWEEP 1`, all other mode flags `0`). It answers each handheld burst with one combination of: flag sense `{0x81, 0x7E}`; data polarity `{normal, complemented}`; data-to-clock phase `{-4,-2,0,+2,+4}` eighths of a cell (transmit convention is a −2/8-cell data lead); content `{flag only, flag+03h, flag+03h+legal body+flag}`. Reply ~3 ms after the handheld burst; one combination advances per burst and the parameters are printed. It does NOT score itself: the controller's reaction is read from the witness ROM (`LINK_STATUS` `OR`/`AND`, `ISRC`).
+* **Validation (CONFIRMED):** emulator tests lock the witness fingerprint and verify `test_witness_stops_transmitting_after_the_arm` (65 exerciser tests pass); Arduino sketch syntax-checked with host stub, no AVR toolchain in CI. Docs updated (`analysis/rom_exerciser/README.md`, `doc/re-notes/exerciser-test-plan.md`, `doc/research/TASKS.md`); `Next` priority lists refreshed. No Ghidra changes.
+
+### 2026-09-13 — static receive-chain state map (docs only, no new inference, no Ghidra; parent-adjudicated, bytes verified)
+
+* **Static map added (CONFIRMED, `ROM00`):** `re-notes/ir-wire-protocol.md` § *Receive-chain state map* records the ROM's receive chain byte-for-byte: `Link_IrqPollArmOrService` (`ROM00:31B6` clear 6/7, test `LINK_STATUS` bit 4, dispatch or re-arm), `LinkRxDispatcher` (`ROM00:2FBD` `LinkBlockRx` at `3378`, validate at `30DC`, cancel at `21BA`, dispatch on `FDD5`/`FDE6`), `LinkBlockRx` arm (`3378`–`33A6` with dummy `LINK_RXD` at `338C`) and byte loop (`33CF` `RRCA` on `LINK_STATUS` bit 0, `INI` on `4Eh`, timeouts `EE`/`ED`/`EC`), `LinkValidateFrameHeader` (`30DC` length <6 / embedded-length mismatch / link-id +4 vs `FDD4`), dispatcher branches (`3002` on `FDE6`, `302C` setup, error `FE14`/`FFFF`, command path `3084`–`30DB` with per-link slot at `FE43+(FDD4&3F)`, `FDD5=4`, `FBC9` bit 0, `JP (FDD2)`), slot helper `3192`/`31A1`/`31A6`/`31AB` and `317B` table, complete `LINK_CTRL` 6/7 SET (`34BD`: `31C2`/`3010`/`3028`/`3056`/`2FAE`) and CLEAR (`34D2`: `31B6`/`327D`/`30B3`/`2EC2`/`2ED4`/`34B7`) points, and state cells (`FDD5`/`FDD4`/`FDD6`/`FDD7`/`FDD8`/`FDCA`/`FDCB`/`FDDC`/`FDE6`/`FDE7`/`FDEA`/`FE14`/`FBC9` bit 0). Exerciser note: its own IM-1 ISR never calls `LinkInitSlots`; separate.
+* **TASKS update:** `Next` No-hardware priority 1 marked **DONE 2026-09-13** (this pass); renumbered so top is now the emulator demonstration of the handshake gating, followed by the static backlog; hardware priorities unchanged (Phase 0 `2609`/`2DA4`, Phase 2 witness+`RX_SWEEP`, Phase 3 `CommstarPeer`). No new inference; evidence tags preserved.
+
+### 2026-09-17 — emulator handshake-gating demonstration and witness RX-enable fix (CONFIRMED, emulator; docs only, no Ghidra, no new inference)
+
+* **Finding 1 — emulator trace (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion — one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout — returns `A=0EEh`/carry set (`ROM00:3356`), then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (observed `42h`, `0C2h`). So "stock firmware never reaches the `2FAE` RX-enable" is FALSE: carry is ignored. *Harness detail:* stub `RET` at resident-kernel helper `0F54Eh` (absent from flat memory), not a firmware finding.
+* **Finding 2 — temporal gating (CONFIRMED firmware write pattern):** gating is temporal, not permanent. `LINK_CTRL` 6/7 cleared for the whole `LinkBlockTx` transaction and restored by `34BD` at `2FAE` after it, on success or `0EEh` timeout. Firmware holds 6/7 clear for ~10–12 ms (bit-6 wait is 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry) then raises them for the remainder (CONFIRMED firmware latch writes). Whether the controller's receiver is inhibited during that window is Provisional (see Finding 4); IF 6/7 gates the receiver the `conn3`–`conn13` replies inside that window were missed, ELSE the failure is framing/convention.
+* **Correction to re-framing (CONFIRMED firmware write pattern; consequence Provisional):** `conn3`–`conn13` Arduino replies were sent ~1–9 ms after the handheld's burst, i.e. inside the window in which the firmware holds LINK_CTRL 6/7 clear (~10–12 ms: 620×59 T ~=9.92 ms at `ROM00:32F0`). Firmware holds 6/7 clear for that window then raises them via `34BD` at `2FAE` after every attempt (CONFIRMED) — so wording implying "the RX was never enabled" is refuted. Whether framed data could be received inside that window depends on the Provisional 6/7 reading: IF 6/7 gates the receiver the replies were missed and the optical reaction was a front-end/cadence effect, ELSE the failure is framing/convention (question C). Either way, a reply timed after the transaction is the safe choice.
+* **Code fix (CONFIRMED by emulator):** every exerciser build left `LINK_CTRL` 6/7 clear so RX IRQ could never fire (`ISRC` bit 2 inert). Witness now sets them before listening (`ctrl_or 40h` then `ctrl_or 80h`, as `34BD`/`2FAE` does). New witness image: sum16 `2E3E`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`, 812 bytes, `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`); default `2609` unchanged; 65 exerciser tests pass.
+* **Docs updated:** `re-notes/ir-wire-protocol.md` (Finding 4 extended + re-framing corrected + state-map 7 updated), `re-notes/exerciser-test-plan.md` (witness fingerprint updated + `LINK_CTRL` 6/7 enable noted + Phase 0/2 timing: stimulus must arrive after ~10 ms TX window), `analysis/rom_exerciser/README.md` (witness fingerprint + enable + temporal note), `research/TASKS.md` (Next: emulator DONE 2026-09-17, top no-hardware now static backlog; hardware priorities unchanged). `TASKS` also refreshed witness to `2E3E` in Next hardware gate. No Ghidra changes; evidence tags preserved.
+
+### 2026-09-17 — session-module RECORD-vs-BLOCK mapping resolved (CONFIRMED, `ROM00`; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
+
+* **Resolves the "session-module RECORD-vs-BLOCK mapping" open item** carried in `Next` static backlog and in the 2026-09-12 A2 entry ("whether Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN"). All addresses below byte-verified in `ROM00`.
+* **Finding 1 — the commands (CONFIRMED).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8120/8121) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8140/8141), per the `452D` call-site table already in `re-notes/commstar-evidence.md` (wrappers `50F3`/`51F2` vs `ROM00:6B67` `C-*` name table; cf. error-decade table in that page).
+* **Finding 2 — shared TX stream walker (CONFIRMED).** Both transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer (pointer at `SP+0x0C`), comparing with `E0E7` and appending each byte via `ROM00:3D9B`.
+* **Finding 3 — the accumulator and 128-byte chunking (CONFIRMED).** `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
+* **Finding 4 — RECORD/BLOCK difference is pre-walk setup, not wire chunking (CONFIRMED).** `C-TX-REC` pre-seeds the accumulator with `3D9B` of `0x1E` at `ROM00:5107` before walking; `C-TX-BLK` calls `ROM00:3CF7` (`Session_InitAndRunTx`, which calls `ROM00:3CEA` then `ROM00:5834` -> `ROM00:60D6`) at `ROM00:5210` before walking. `C-END-FILE` (`ROM00:517F`) also appends via `3D9B` at `ROM00:5193`.
+* **Finding 5 — RX mirror (CONFIRMED).** `C-RX-BLK` (`ROM00:4F5A`, wrapper `4F60`) uses the RX stream walker `ROM00:3E6A` at `ROM00:4FB9`; `ROM00:3E6A` consumes via `ROM00:3DCB`. No `3E14`/`3E6A` cross-use.
+* **Finding 6 — stub exposure (CONFIRMED).** Stream primitives are exposed as transfer-vector services: `3E14` via `ROM00:7DD2` / `ram:edb0`; `3E6A` via `ROM00:7DBA` / `ram:ed80`; `3D9B` via `ROM00:7DD4` / `ram:edb4`; `3D11` via `ROM00:7DB6` / `ram:ed78`; `3CF7` via `ROM00:7DC4` / `ram:ed94`.
+* **Finding 7 — CORRECTION: `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; discard the earlier framing).** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong.
+* **Docs updated:** `re-notes/commstar-evidence.md` (Session-module senders block corrected to Findings 1-7; RCV1/RCV2 and `e6fc` bullets retained), `research/TASKS.md` (A2 entry marked superseded; `Next` refreshed so top no-hardware item is `ram:D370` runtime loader, followed by guarded structural repairs and the deferred final annotation sweep; this log entry). No Ghidra changes.
+* **Next:** `ram:D370` provider trace is now the top no-hardware item; hardware priorities unchanged.
+
+### 2026-09-17 — runtime loader `ram:D370` coroutine rendezvous substantially advanced (CONFIRMED, ROM01/ram; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
+
+* **Advances the "runtime loader `ram:D370` input-provider path" open item** carried in `Next` static backlog. Byte-verified in `ROM01`/`ram`. All tags CONFIRMED unless noted.
+* **Finding 1 — coroutine-driven loader (CONFIRMED).** The runtime Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven. Its routines enter via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`).
+* **Finding 2 — `Coroutine_SwapContinuation` (CONFIRMED).** `ram:D9F9`-`ram:DA0A` swaps the current continuation with the 16-bit word at the address in `HL`, then returns: `Z` when the peer slot was empty (the caller continues), `NZ` when it yielded to the peer (`EX SP,HL; LD HL,1; RET`).
+* **Finding 3 — `ram:D370` is the loader's peer/rendezvous slot (CONFIRMED).** A byte search for the address (`70 D3`) finds it ONLY inside the loader region: `ROM01:0BA3`, `ROM01:0CEE`, `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`. No code outside the loader writes or reads `D370`, so the peer is resumed by the coroutine scheduler rather than registered by a distinct ROM routine.
+* **Finding 4 — loader request protocol (CONFIRMED).** The loader sets `D368` (destination offset), `D36A` (destination pointer), `D36C` (requested byte count), `D36E` (delivered count), then swaps `D370`; the peer fills the bytes and swaps back. `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)` and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`).
+* **Finding 5 — `Program_LoadDipOrCom` routing (CONFIRMED).** `ROM01:0CE7` requests 14 bytes (`D36C=0x0E` at `ROM01:0D08`-`ROM01:0D0B`), routes on the first little-endian word (`0xC8C9` → DIP at `ROM01:0DD7`) and on the first-chunk length (`D399 < 14` → raw COM at `ROM01:0D3B`). The DIP header/block parser is `ROM01:0E40`-`ROM01:0F80` (reads the serialized header at `D39B` +0/+4/+6/…). This matches the existing "Loader-stream boundary" text.
+* **Finding 6 — feeder is the session program-data receive (CONFIRMED); exact staging cell remains OPEN.** The feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → the Load/Run staging buffer → `Program_ConsumeInputChunk`). The exact staging cell/buffer the loader's peer fills remains **OPEN**.
+* **Finding 7 — `Ui_FormExitDispatchNext` (CONFIRMED).** `ROM01:06D3` pumps five handler slots at `D081` via `ram:D828`.
+* **Docs updated:** `re-notes/os-diposb.md` (Runtime program loading: replaced "`ram:D370` is `g_pProgramLoaderContinuation` … not an input-provider pointer; upstream provider remains OPEN" with findings 1-4 and 6 — loader is coroutine-driven, `D370` is the peer rendezvous slot with no external refs, feeder is session program-data receive, exact staging cell remains OPEN), `manual/programmer-guide.md` (§7b source-bytes sentence updated to same), `research/TASKS.md` (runtime loader marked substantially advanced 2026-09-17 with findings 1-4; `Next` refreshed so top no-hardware item is now the guarded structural repairs, followed by the deferred final annotation sweep; hardware-dependent priorities unchanged; this log entry). No Ghidra changes; evidence tags preserved; style preserved; no new inference.
+* **Next:** top no-hardware item is now guarded structural repairs (`e020`-`e0aa` plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus `ROM00:7409`/`7472` module-A deferred sites; diff-guarded, one at a time), followed by the deferred final annotation sweep (TASKS §12 FINAL PASS); the loader's exact staging cell remains the remaining **OPEN** for that item; hardware priorities unchanged.
