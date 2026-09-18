@@ -624,6 +624,19 @@ Efficiency:
   only a compact summary, keeping the parent context small. State this
   explicitly in the prompt (a reviewer otherwise refuses to write its
   verdict).
+- **Use the named scripts for body repair and diff guards.** Growing a
+  function body past a computed jump (`CALL ram:e0b2`) is impossible
+  with the MCP `create_function` tool; use
+  `~/ghidra_scripts/ExtendFunctionBody.java` (arg
+  `SPACE:entry:end[,SPACE:entry:end...]`), which calls
+  `Function.setBody(AddressSet)`. `FunctionManager.removeFunction` takes
+  an entry **Address**, not a Function. For the before/after diff guard,
+  `~/ghidra_scripts/DumpFunctions.java` (arg: output path) writes
+  `space::address name` per line. A broken `.java` in the bundle breaks
+  named-script resolution and spams every tool output — move it to
+  `/tmp/opencode/ghidra_scripts_broken/` rather than leaving it in
+  place. Do not accept an annotate agent's "saved" claim without
+  measuring the function list yourself.
 
 ---
 
