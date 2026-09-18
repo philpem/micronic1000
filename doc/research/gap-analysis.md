@@ -10,35 +10,34 @@ that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 487 | **5** | 482 |
-| ROM01 | 232 | **17** | 215 |
-| ram | 195 | **2** | 193 |
+| ROM00 | 487 | **1** | 486 |
+| ROM01 | 232 | **8** | 224 |
+| ram | 195 | **1** | 194 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total (guarded)** | **915** | **24** | **891** |
-| **Total (internal)** | **914** | **24** | **890 (97.4 %)** |
+| **Total (guarded)** | **915** | **10** | **905** |
+| **Total (internal)** | **914** | **10** | **904 (98.9 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after ROM00
-InlineTableDispatch hybrid pass (914 internal / 915 guarded total).**
-Auto `FUN_*` = 24 (ROM00 5, ROM01 17, ram 2); named = 890 internal
-(97.4 %; 891 guarded). Function count dropped because **~89**
-dispatch-case functions were absorbed as **labels** (not a coverage
-loss) — 12 from the audit Deletion List plus 77 interior blocks
-identified by a prologue check. Guarded total 1002 → 915 (−87;
-internal 1001 → 914); earlier ROM01 drop 84 → 17 (12 Part-A
-`(retain)` + 5 B1 `(retain)`) remains. See session log 2026-09-18
-ROM00 dispatch pass and `re-notes/inline-dispatch.md` for the
-structural model, owner extents, and superseded names.
+**Refreshed directly from Ghidra on 2026-09-18 — after residual
+`FUN_*` pass and `ROM01:757F-768E` data-typing (914 internal / 915
+guarded total).** Auto `FUN_*` = 10 (ROM00 1, ROM01 8, ram 1);
+named = 904 internal (98.9 %; 905 guarded). Previous audit was
+914 / 24 / 890 (97.4 %); reduction is 14 renamed functions (not a
+coverage loss from absorbed labels). The earlier 1002 → 915 (−87)
+drop from dispatch-case absorptions remains. See session log
+2026-09-18 residual `FUN_*` pass and `ROM01:757F-768E` notes below
+and `re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import
 `EXT_FUN_ram_0010` at `EXTERNAL:00000001`, which accounts for the
 remaining named function.
 
-Plate completeness was not recomputed in this pass. The 24 auto-named
-functions remain undocumented by definition.
+Plate completeness was not recomputed in this pass. The 10 retained
+auto-named functions remain with plates but kept symbols (documented
+open questions — see residual pass below).
 
 Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919,
-1093/109, 1028/42, 1001/42) are history.
+1093/109, 1028/42, 1001/42, 914/24) are history.
 
 ## Structural model (CONFIRMED for this codebase)
 
@@ -160,20 +159,94 @@ interiors discriminated by that prologue check.
   others were blocks (no external callers). ~113 labels created at
   case targets.
 
-* **Residual ROM00 `FUN_*` = 5 (CONFIRMED deferred):** `2da5`,
-  `4333`, `441b`, `44ed`, `450d` — left for a later pass; not
-  InlineTableDispatch cases.
+* **Residual ROM00 `FUN_*` now = 1 (CONFIRMED retained):**
+  `441b` — zero xrefs, dead coroutine yield; documented open
+  question (see session log 2026-09-18 residual pass). Previous
+  5-deferred set resolved: `2da5`, `4333`, `44ed`, `450d` renamed
+  (see below).
 
 Guarded total 1002 → 915 (−87) because 89 case-block functions
 were absorbed as labels — not a coverage loss.
+
+## Residual `FUN_*` pass — 14 renamed, 10 retained (CONFIRMED,
+2026-09-18)
+
+**24 targets: 14 renamed + plates, 10 retained with plates and
+kept symbols.** All byte-verified; Ghidra saved.
+
+* **Renamed (14):** `SessionConfigShow` (`ROM00:2DA5`),
+  `Session_CoroYield` (`ROM00:4333`, prologue 5-byte
+  `11 00 00 CD 37 D8`), `Session_Yield` (`ROM00:44ED`),
+  `Session_CmdCommandYield` (`ROM00:450D`),
+  `Session_ReturnTruePop` (`ROM01:0406`),
+  `Session_SetEditState` (`ROM01:2132`),
+  `Session_SetEditState2` (`ROM01:213F`),
+  `Session_StoreFieldState` (`ROM01:2159`),
+  `Session_StoreFieldState2` (`ROM01:216B`),
+  `Session_HandleFieldNavRx` (`ROM01:2806`),
+  `Field_ReturnOneStub1` (`ROM01:4A41`),
+  `Field_ReturnOneStub2` (`ROM01:4A67`),
+  `Field_ReturnOneStub3` (`ROM01:4B5F`),
+  `ChecksumThunk_MemMove` (`ram:D7C5`).
+
+* **Correction (CONFIRMED):** the
+  `Field_ValidateAlwaysPass*` name/evidence was wrong — the
+  pointers sit at odd offsets (`ROM01:7E87`/`7E8B`/`7E8D`), so the
+  names were changed to the mechanics
+  `Field_ReturnOneStub1/2/3` and the table described as the
+  `ROM01:7E87` pointer table. The "7E85 vtable" claim is
+  **withdrawn**; the validator role is **SUSPECTED** only.
+
+* **Retained (10) with documented open questions (CONFIRMED
+  retained, plates set, symbols kept):**
+  `ROM00:441B` (zero xrefs, dead coroutine yield);
+  `ROM01:0904` (alignment padding `NOP; NOP; RET`);
+  `ROM01:1177`/`156F`/`1664`/`168E`/`16B8` (compiler retain
+  stubs reachable only via session-object dispatch — need
+  vtable mapping);
+  `ROM01:4D86`/`4E79` (text-buffer builders; compiler-frame
+  args `SP+0x0E`–`0x16` undecoded);
+  `ram:D937` (zero xrefs, dead stub).
+
+## Data-typing — `ROM01:757F-768E` UI form-template nodes
+(CONFIRMED, 2026-09-18)
+
+Previously **blocked by tooling** (`apply_data_type` could not
+clear a multi-instruction range; the inline-script path was
+broken). Now **unblocked** via an inline script using
+`Listing.clearCodeUnits(start,end,false)` + `ArrayDataType`.
+
+* **Range retyped:** `ROM01:757F-768E` is `undefined[272]` with
+  labels `tbl_UiCfgTemplates` (`757F`),
+  `tbl_UiCfgNode0_DeviceSelect` (`758B`),
+  `tbl_UiCfgNode1_BaudSelect` (`75EB`),
+  `tbl_UiCfgNode2_Toggle` (`760D`),
+  `tbl_UiCfgNode3_PortSelect` (`764F`),
+  `tbl_UiCfgNode4_MasterConfig` (`7669`), and
+  `str_cfg_option_pool` (`79F4`) (`79F4-7A82`).
+
+* **Structure (CONFIRMED mechanics):** five variable-length UI
+  form-template nodes (20-byte header
+  `EC EF F8 F0 98 EF D8 EF` + fields + LE self-backlink at
+  `+12h`) whose string pointers reference the shared option pool
+  at `79F4-7A82` (`"PLINTH"`, `"V24 ADAPTOR"`, `"LOCAL LINK"`,
+  baud rates, `ON`/`OFF`). Referenced from `FieldConfigLoad`
+  (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
+  `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
+
+* **Unresolved (OPEN/SUSPECTED):** the `E1` prefix at `757F`,
+  the `F479` header pointer (**SUSPECTED** bank-qualified),
+  exact field semantics, and the end boundary above `768E`.
 
 ## Remaining structural work
 
 **ROM01 and ROM00 dispatch models are now both applied
 (CONFIRMED).** No `CALL ram:e0b2` site remains unaudited (ROM01 14,
-ROM00 25). Remaining coverage work is the **24 residual `FUN_*`**
-(ROM00 5, ROM01 17, ram 2) plus the code-gap and data-typing tail —
-same tail as before, now with both hybrid passes closed.
+ROM00 25). Remaining coverage work is the **10 retained `FUN_*`**
+(ROM00 1, ROM01 8, ram 1) with documented open questions (see
+2026-09-18 residual pass) plus the code-gap and data-typing tail
+(excluding `ROM01:757F-768E`, now defined as
+`undefined[272]` — see below).
 
 ## Notes
 

@@ -140,7 +140,21 @@ State: continuously updated as work progresses.
 
 - **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
 
-1. **Guarded structural repairs** — `6e77` inline-data repair **DONE 2026-09-17** (see 8a); `e020`-`e0aa` compiler-runtime plates **DONE 2026-09-17**; `ROM01:6431` re-check **DONE 2026-09-17** and `ROM01:7580`-`7670` data-typing **DONE 2026-09-17** (both completed by a Ghidra script after the shared `~/ghidra_scripts` bundle was cleaned of 15 broken `.java` files, restoring the inline-script path); `ROM00:7409`/`7472` are **deferred by design** (ROM images of RAM module A). Remaining: code-gap and data-typing tail. Diff-guarded, one at a time.
+1. **Guarded structural repairs** — `6e77` inline-data repair
+   **DONE 2026-09-17** (see 8a); `e020`-`e0aa` compiler-runtime
+   plates **DONE 2026-09-17** (small helpers plated; `Lib_Not16`
+   `E02B`/`Lib_Neg16` `E09F` added, `da13` semantics OPEN);
+   `ROM01:6431` re-check **DONE 2026-09-17** and
+   `ROM01:7580`-`7670` data-typing **DONE 2026-09-18** (now
+   `757F-768E` `undefined[272]` with `tbl_UiCfg*` +
+   `str_cfg_option_pool` labels via
+   `Listing.clearCodeUnits`+`ArrayDataType` script after the
+   `~/ghidra_scripts` bundle was cleaned of 15 broken `.java`
+   files); `ROM00:7409`/`7472` are **deferred by design** (ROM
+   images of RAM module A). Remaining: `ram:e020-e0aa`
+   compiler-runtime plates (residual), `ROM00:7409`/`7472`
+   module-A sites, code-gap tail, and 10 documented retained
+   `FUN_*`. Diff-guarded, one at a time.
 2. **Deferred final annotation sweep** — the end-game naming/plate/comment/data-typing pass (TASKS §12 FINAL PASS), held until the remaining open items close. Covers the last `FUN_*` plate pass, legacy-name hygiene, and `research/gap-analysis.md` refresh.
 
 ### Hardware-dependent priorities (unchanged)
@@ -4912,10 +4926,14 @@ No Ghidra changes; docs only.
   `441b`, `44ed`, `450d`). Full maps in Ghidra (labels) and audit
   notes.
 
-* **Remaining (OPEN):** ROM01 and ROM00 dispatch models are now
-  both applied (CONFIRMED — 14 + 25 sites). **24 residual
-  `FUN_*`** (ROM00 5, ROM01 17, ram 2) plus the code-gap and
-  data-typing tail remain.
+* **Remaining (OPEN) — updated 2026-09-18:** ROM01 and ROM00
+  dispatch models are now both applied (CONFIRMED — 14 + 25
+  sites). **10 retained `FUN_*`** (ROM00 1, ROM01 8, ram 1)
+  with documented open questions plus the tail: only
+  `ram:e020-e0aa` compiler-runtime plates (residual),
+  `ROM00:7409`/`7472` module-A sites, and the code-gap tail
+  remain ( `ROM01:757F-768E` now done — see 2026-09-18
+  residual/`757F` entry).
 
 ## Do not regress
 
@@ -5074,10 +5092,13 @@ parent-verified)
   2 epilogue functions were briefly lost, then recovered by the
   extension.
 
-* **Remaining (OPEN):** ROM01 and ROM00 dispatch models are now
-  both applied (CONFIRMED — 14 + 25 sites). **24 residual `FUN_*`**
-  (ROM00 5, ROM01 17, ram 2) plus the code-gap and data-typing tail
-  remain.
+* **Remaining (OPEN) — updated 2026-09-18:** ROM01 and ROM00
+  dispatch models are now both applied (CONFIRMED — 14 + 25
+  sites). **10 retained `FUN_*`** (ROM00 1, ROM01 8, ram 1)
+  with documented open questions plus the tail: only
+  `ram:e020-e0aa` compiler-runtime plates (residual),
+  `ROM00:7409`/`7472` module-A sites, and the code-gap tail
+  remain (`ROM01:757F-768E` now done — see next entry).
 
 * **Docs updated:** `research/gap-analysis.md` (headline + paragraph
   + new ROM00 section + remaining work), `re-notes/inline-dispatch.md`
@@ -5085,3 +5106,96 @@ parent-verified)
   + Open questions resolved + Do not regress process note).
   `mkdocs build --strict` (site_dir `site-mkdocs`) run; no Ghidra edits
   in this docs pass — findings are parent-verified.
+
+### 2026-09-18 — residual `FUN_*` finished; `ROM01:7580`
+data-typing unblocked (Ghidra saved; docs only in this pass, no
+new inference; parent-verified)
+
+* **Residual `FUN_*` pass complete (CONFIRMED, Ghidra saved).**
+  24 targets: **14 renamed + plated, 10 retained with plates
+  (symbols kept).**
+
+  * **Renamed (14, CONFIRMED):**
+    `SessionConfigShow` (`ROM00:2DA5`),
+    `Session_CoroYield` (`ROM00:4333`, prologue 5-byte
+    `11 00 00 CD 37 D8`), `Session_Yield` (`ROM00:44ED`),
+    `Session_CmdCommandYield` (`ROM00:450D`),
+    `Session_ReturnTruePop` (`ROM01:0406`),
+    `Session_SetEditState` (`ROM01:2132`),
+    `Session_SetEditState2` (`ROM01:213F`),
+    `Session_StoreFieldState` (`ROM01:2159`),
+    `Session_StoreFieldState2` (`ROM01:216B`),
+    `Session_HandleFieldNavRx` (`ROM01:2806`),
+    `Field_ReturnOneStub1` (`ROM01:4A41`),
+    `Field_ReturnOneStub2` (`ROM01:4A67`),
+    `Field_ReturnOneStub3` (`ROM01:4B5F`),
+    `ChecksumThunk_MemMove` (`ram:D7C5`).
+
+  * **Retained (10, CONFIRMED retained, plates set, symbols
+    kept) with documented open questions:**
+    `ROM00:441B` (zero xrefs, dead coroutine yield);
+    `ROM01:0904` (alignment padding `NOP; NOP; RET`);
+    `ROM01:1177`/`156F`/`1664`/`168E`/`16B8` (compiler retain
+    stubs reachable only via session-object dispatch — need
+    vtable mapping);
+    `ROM01:4D86`/`4E79` (text-buffer builders; compiler-frame
+    args `SP+0x0E`–`0x16` undecoded);
+    `ram:D937` (zero xrefs, dead stub).
+
+  * **Correction applied during review (CONFIRMED):** the
+    `Field_ValidateAlwaysPass*` name/evidence was wrong — the
+    pointers sit at odd offsets (`ROM01:7E87`/`7E8B`/`7E8D`), so
+    the names were changed to the mechanics
+    `Field_ReturnOneStub1/2/3` and the table described as the
+    `ROM01:7E87` pointer table. The "7E85 vtable" claim is
+    **withdrawn**; the validator role is **SUSPECTED** only.
+    `Session_CoroYield`'s prologue is the 5-byte
+    `11 00 00 CD 37 D8` (CONFIRMED).
+
+* **Data-typing tail — `ROM01:7580-7670` UNBLOCKED and applied
+  (CONFIRMED, Ghidra saved).** Previously "blocked by tooling"
+  (`apply_data_type` could not clear a multi-instruction range;
+  the inline-script path was broken). Now fixed via an inline
+  script using `Listing.clearCodeUnits(start,end,false)` +
+  `ArrayDataType`:
+
+  * `ROM01:757F-768E` is retyped `undefined[272]` with labels
+    `tbl_UiCfgTemplates` (`757F`),
+    `tbl_UiCfgNode0_DeviceSelect` (`758B`),
+    `tbl_UiCfgNode1_BaudSelect` (`75EB`),
+    `tbl_UiCfgNode2_Toggle` (`760D`),
+    `tbl_UiCfgNode3_PortSelect` (`764F`),
+    `tbl_UiCfgNode4_MasterConfig` (`7669`), and
+    `str_cfg_option_pool` (`79F4`).
+
+  * **Structure (CONFIRMED mechanics):** five variable-length UI
+    form-template nodes (20-byte header
+    `EC EF F8 F0 98 EF D8 EF` + fields + LE self-backlink at
+    `+12h`) whose string pointers reference the shared option
+    pool at `79F4-7A82` (`"PLINTH"`, `"V24 ADAPTOR"`,
+    `"LOCAL LINK"`, baud rates, `ON`/`OFF`). Referenced from
+    `FieldConfigLoad` (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
+    `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
+
+  * **Unresolved (OPEN/SUSPECTED):** the `E1` prefix at `757F`,
+    the `F479` header pointer (**SUSPECTED** bank-qualified),
+    exact field semantics, and the end boundary above `768E`.
+
+* **Coverage now (CONFIRMED, Ghidra):** internal **914** /
+  guarded **915**; auto `FUN_*` = **10** (ROM00 1, ROM01 8,
+  ram 1); named **904 (98.9 %)**. Updated in
+  `research/gap-analysis.md` headline + paragraph (from
+  914 / 24 / 890). The `ROM01:7580-7670` blocked item was
+  removed from the remaining list.
+
+* **Remaining tail (OPEN):** only the `ram:e020-e0aa`
+  compiler-runtime plates (residual, `da13` semantics OPEN),
+  `ROM00:7409`/`7472` module-A sites (deferred by design),
+  the code-gap tail, and the 10 documented retains remain.
+
+* **Docs updated:** `research/gap-analysis.md` (headline,
+  paragraph, residual pass + `757F-768E` sections, remaining
+  work), `research/TASKS.md` (this entry + remaining-tail
+  update). No Ghidra edits in this docs pass; no new
+  inference; evidence tags preserved.
+  `mkdocs build --strict` (site_dir `site-mkdocs`) run.
