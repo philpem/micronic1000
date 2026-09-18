@@ -4783,3 +4783,32 @@ No Ghidra changes; docs only.
   4. `research/gap-analysis.md` — headline refreshed to 168 auto `FUN_*` (was 252); total functions 1099; named = 931 (84.7 %).
 * **Remaining:** 168 auto `FUN_*` (ROM00 21, ROM01 145, ram 2), to be worked in further batches; code-gap/data-typing tail and deferred final sub-items (TASKS §12 FINAL PASS) remain.
 * **Function count:** 1099 stable (no creates/deletes in this docs pass; batch-2 Ghidra edits applied separately).
+
+### 2026-09-18 — final-sweep ROM01 Part A: 61 renames + 6 structural repairs (Ghidra saved; count 1099 → 1093)
+
+* **Part A of the ROM01 cluster (73 targeted):** 61 functions renamed+plated,
+  12 `(retain)` plated-only (symbols kept — no unproven identity).
+* **Structural (diff-guarded, Appendix-justified):** 50 compiler-prologue
+  shells (`LD DE,0 / CALL ram:d837`, body at entry+6) extended to their real
+  bodies; the duplicate heads `ROM01::0115`/`01e6` merged into the existing
+  `StrTrimInsert`/`StrCopyPad`; the mid-instruction fragments `ROM01::0303`
+  (`StrTrimDispatch`, inside `02f9`) and `ROM01::13ef` (`FieldFillBuffer`,
+  inside `13d8`) deleted. Guarded total 1099 → 1093.
+* **Corrections (byte-verified, cross-reviewed):** `0x2335` (9013)
+  `"Source not available"` (table → `ram:d284`) and `0x2336` (9014)
+  `"Dest. not available"` (→ `ram:d299`) are **mapped**, not unmapped;
+  `Session_StateMachine2806`'s inline-data hazard is void
+  (`ROM01::0020 → ram:f5ea → ram:f64d`, no inline operand); `14cf` rejects a
+  **nonzero** argument; `13d8` returns the processed count (`original −
+  remaining`).
+* **Coverage:** auto `FUN_*` = **109** (ROM00 **23** — the prior 21 was an
+  estimate, ROM01 84, ram 2); named **984 (90.0 %)**.
+* **Part B (remaining 72 ROM01 `FUN_*`) in progress:** all structural (32
+  compiler-prologue shells, 38 computed-dispatch blocks, 2 data functions);
+  review returned REVISE and is **blocked on enumerating named functions that
+  may lie inside the 32 shell body ranges**; the `3acb`/`FieldPadValue`
+  banking-artifact conclusion depends on the open page-zero-banking question.
+* **Process:** `AGENTS.md` updated on **master** (`20dba56`) — diagnose
+  listing pollution by function-list delta (not close/reopen); closing a
+  program without saving is GUI-only; read-only agents may still write
+  findings/verdict files.

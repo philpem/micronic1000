@@ -9,25 +9,29 @@ and commented, versus the auto-named `FUN_*` that Ghidra merely detected.
 
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
-| ROM00 | 574 | **21** | 553 |
-| ROM01 | 329 | **145** | 184 |
+| ROM00 | 574 | **23** | 551 |
+| ROM01 | 323 | **84** | 239 |
 | ram | 195 | **2** | 193 |
 | EXTERNAL | 1 | **0** | 1 |
-| **Total** | **1099** | **168** | **931 (84.7 %)** |
+| **Total** | **1093** | **109** | **984 (90.0 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after final-sweep batch 2
-(1099 total).** Auto `FUN_*` = 168 (was 252); named = 931 (84.7 %). Per-space
-split: ROM00 21 (drop of 84, approximating the ~68 guidance), ROM01 unchanged
-145, ram 2. The 168 auto-named functions are the remaining analysis backlog,
-not completed coverage. Increase from the 2026-08-30 audit (919 total /
-159 `FUN_*` / 760 named, 82.7 %) reflects functions defined since then, not
-new coverage.
+**Refreshed directly from Ghidra on 2026-09-18 — after final-sweep ROM01
+Part A (1093 total).** Auto `FUN_*` = 109 (was 252); named = 984 (90.0 %).
+Part A renamed 61 functions and applied 6 Appendix-justified structural
+repairs (two duplicate-head merges `0115`/`01e6` into `StrTrimInsert`/
+`StrCopyPad`, plus deletion of the mid-instruction fragments `0303` and
+`13ef`), taking the guarded total 1099 → 1093. Per-space: ROM00 23,
+ROM01 84, ram 2. ROM00 is **23**, not the 21 the prior estimate recorded.
+ROM01 Part B (72 remaining `FUN_*`, structurally shells/fragments) is
+pending and not reflected here. Increase from the 2026-08-30 audit
+(919 total / 159 `FUN_*` / 760 named, 82.7 %) reflects functions defined
+since then, not new coverage.
 
-The three internal address spaces contain 1098 functions. Ghidra's guarded
+The three internal address spaces contain 1092 functions. Ghidra's guarded
 total also includes the existing external import `EXT_FUN_ram_0010` at
 `EXTERNAL:00000001`, which accounts for the remaining named function.
 
-Plate completeness was not recomputed in this pass. The 252 auto-named
+Plate completeness was not recomputed in this pass. The 109 auto-named
 functions remain undocumented by definition.
 
 Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919) are history.
