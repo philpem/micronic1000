@@ -5188,9 +5188,10 @@ new inference; parent-verified)
   914 / 24 / 890). The `ROM01:7580-7670` blocked item was
   removed from the remaining list.
 
-* **Remaining tail (OPEN):** the code-gap sweep (now
-   with the corrected absorb-continuations model, 121 gaps)
-   is the only structural item left.
+* **Remaining tail — superseded 2026-09-18:** the code-gap
+   sweep is now **complete (121 → 12)** — see next entry;
+   no structural items remain beyond the 12 non-code
+   gaps and the 4 documented `FUN_*` retains.
 
 * **Docs updated:** `research/gap-analysis.md` (headline,
    paragraph, residual pass + `757F-768E` sections, remaining
@@ -5265,9 +5266,10 @@ Ghidra saved)
   correction was made by the parent before any mass write,
   and nothing was mass-applied.
 
-* **Remaining (OPEN) — updated 2026-09-18:** the code-gap
-  sweep (now with the corrected absorb-continuations
-  model, 121 gaps) is the only structural item left.
+* **Remaining (OPEN) — updated 2026-09-18:** code-gap
+  sweep complete (121 → 12) — no structural items
+  remain beyond the 12 non-code gaps and the 4
+  documented `FUN_*` retains; see next entry.
 
 * **Docs updated:** `research/gap-analysis.md` (headline +
   paragraph + tail + code-gap model sections + remaining
@@ -5275,3 +5277,81 @@ Ghidra saved)
   line). No Ghidra edits; no new inference; evidence
   tags preserved; ~70-col wrapping.
   `mkdocs build --strict` (site_dir `site-mkdocs`) run.
+
+### 2026-09-18 — code-gap sweep complete (121 → 12;
+truncated-body continuations absorbed)
+
+* **Code-gap sweep complete (CONFIRMED, Ghidra saved).**
+  `find_code_gaps` dropped **121 → 12**. The gaps were
+  overwhelmingly **truncated-body continuations** of
+  compiled routines — Ghidra stopped at the
+  non-returning `CALL ram:d837`, leaving a 6-byte
+  prologue shell (`11 00 00 CD 37 D8`) — **not** new
+  functions.
+
+  Applied (count unchanged, internal 914):
+
+  * **209 shells extended** to their continuation (gap
+    ends in `RET`, no prologue inside) via
+    `Function.setBody` (`ExtendFunctionBody.java`);
+  * **4 tail-`JP` continuations extended**
+    (`ROM01:254b`→`2568`, `2659`→`2805`,
+    `2e6f`→`2f74`, `07ee`→`0903`) — these end in a
+    tail-call `JP` rather than `RET`, so the first
+    pass missed them;
+  * **`ROM01:73de` `Ui_TableRenderRev` extended to
+    `7544`** (its continuation; `73e4` is not a
+    function entry but the body after the shell
+    prologue).
+
+  **No functions created or deleted**; count
+  unchanged (internal 914).
+
+* **Remaining 12 gaps — all non-code, expected**
+  (CONFIRMED):
+
+  * six page-zero RST-vector areas
+    (`ROM01:0001-0007`, `000b-001f`, `0023-0027`,
+    `002b-002f`, `0033-0037`, `003b-00ff`);
+  * `ROM01:257c-2592` — the inline
+    `CALL ram:e0b2` dispatcher belonging to the
+    `254b` routine;
+  * small padding/data (`03e9-0405`, `09c8-09d0`,
+    `09ee`, `6f60`);
+  * `ROM01:7545-7FFF` — the UI/config data region
+    (descriptors/strings/tables, partly typed:
+    `tbl_UiCfgTemplates` at `757F`,
+    `str_cfg_option_pool` at `79F4`, etc.).
+
+  These are data/vector regions, not missed code,
+  and `find_code_gaps` flags uncovered executable
+  memory including data.
+
+* **Model — do not regress (CONFIRMED):** code gaps
+  in this firmware are truncated-body continuations;
+  the correct fix is **body extension**
+  (`ExtendFunctionBody.java` / `Function.setBody`),
+  never creating functions from the gap list.
+  Discriminator: gap start lacks the
+  `11 00 00 CD 37 D8` prologue → continuation; a
+  continuation may end in `RET` or a tail-`JP`.
+
+* **Coverage unchanged (CONFIRMED):** internal 914 /
+  guarded 915; auto `FUN_*` = 4; named 910
+  (99.6 %). The sweep changed function *bodies*,
+  not the count.
+
+* **Remaining (CONFIRMED):** no structural analysis
+  items remain beyond the 12 non-code gaps and the
+  4 documented `FUN_*` retains. Dispatch models
+  (ROM01 14 + ROM00 25) and code-gap sweep are
+  closed.
+
+* **Docs updated:** `research/gap-analysis.md`
+  (headline, code-gap sweep 121→12, remaining
+  gaps, model, remaining work),
+  `research/TASKS.md` (this entry). No Ghidra
+  edits; no new inference; evidence tags
+  preserved; ~70-col wrapping.
+  `mkdocs build --strict` (site_dir `site-mkdocs`)
+  run.

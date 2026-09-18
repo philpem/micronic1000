@@ -1,9 +1,10 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-18 (14th audit, ROM00 InlineTableDispatch hybrid
-pass), firmware `micron1.bin` (overlay spaces `ROM00`/`ROM01`, `ram`
-resident kernel). This is a **documentation-coverage** audit: which
-functions have *we* named and commented, versus the auto-named `FUN_*`
+Status: 2026-09-18 (15th audit, code-gap sweep complete
+121 → 12), firmware `micron1.bin` (overlay spaces
+`ROM00`/`ROM01`, `ram` resident kernel). This is a
+**documentation-coverage** audit: which functions have
+*we* named and commented, versus the auto-named `FUN_*`
 that Ghidra merely detected.
 
 ## Headline
@@ -17,14 +18,14 @@ that Ghidra merely detected.
 | **Total (guarded)** | **915** | **4** | **911** |
 | **Total (internal)** | **914** | **4** | **910 (99.6 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after tail:
-compiler-runtime plates, module-A images, retained stubs
-resolved; code-gap model corrected (914 internal / 915
-guarded total).** Auto `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1);
-named = 910 internal (99.6 %; 911 guarded). Previous audit was
-914 / 10 / 904 (98.9 %); reduction is 6 renamed functions. The
-earlier 1002 → 915 (−87) drop from dispatch-case absorptions
-remains. See session log 2026-09-18 tail and
+**Refreshed directly from Ghidra on 2026-09-18 — after
+code-gap sweep complete (121 → 12; bodies extended,
+914 internal / 915 guarded total).** Auto `FUN_*` = 4
+(ROM00 1, ROM01 2, ram 1); named = 910 internal
+(99.6 %; 911 guarded). The sweep changed function
+*bodies*, not the count. Previous audit was 914 / 4 /
+910; dispatch-case absorptions (1002 → 915, −87) remain.
+See session log 2026-09-18 code-gap sweep and
 `re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
@@ -276,44 +277,76 @@ Coverage after Items A–C is the headline above: auto
 `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910
 (99.6 %).
 
-## Code-gap model corrected — do not regress
-(CONFIRMED, 2026-09-18)
+## Code-gap sweep complete — 121 → 12 (CONFIRMED,
+2026-09-18)
 
-`find_code_gaps` reports **121 gaps (~13.6 KB)** in
-`ROM01`/`ROM00`. A first-pass classification labelled ~83
-as "real missed functions", but this is **WRONG**: spot-
-check showed e.g. `ROM01:1b83` is the **body continuation**
-of `Ui_RecordEditModal` (a 6-byte `11 00 00 CD 37 D8`
-prologue shell at `1b7d`), not a new function. The gaps
-are overwhelmingly **truncated-body continuations** of the
-preceding compiled routine — the same idiom as the Part
-A/B shell extensions.
+`find_code_gaps` dropped **121 → 12** gaps. The 121
+were overwhelmingly **truncated-body continuations**
+of compiled routines — Ghidra stopped at the
+non-returning `CALL ram:d837` (`LD DE,0 /
+CALL ram:d837` prologue is `11 00 00 CD 37 D8`) and
+left a 6-byte prologue shell — **not** new
+functions.
 
-Correct action per gap (CONFIRMED):
+Applied (Ghidra saved, count unchanged):
 
-* if the gap start **lacks** the `11 00 00 CD 37 D8`
-  prologue it is a continuation → **extend the preceding
-  function's body** (via `ExtendFunctionBody.java`);
-* if it **has** the prologue it is a separate routine;
-* if it decodes as strings or pointer tables it is data
-  (e.g. `ROM01:73E4-7FFF` is the UI/config data region,
-  not code).
+* **209 shells extended** to their continuation
+  (gap ends in `RET`, no prologue inside) via
+  `Function.setBody` (`ExtendFunctionBody.java`);
+* **4 tail-`JP` continuations extended**
+  (`ROM01:254b`→`2568`, `2659`→`2805`,
+  `2e6f`→`2f74`, `07ee`→`0903`) — these end in a
+  tail-call `JP` rather than `RET`, so the first
+  pass missed them;
+* **`ROM01:73de` `Ui_TableRenderRev` extended to
+  `7544`** (its continuation; `73e4` is not a
+  function entry but the body after the shell
+  prologue).
 
-**Do NOT create functions from this gap list.**
-This correction was made by the parent before any mass
-write, and nothing was mass-applied.
+**No functions created or deleted**; count
+unchanged (internal 914).
+
+Remaining **12 gaps — all non-code, expected**
+(CONFIRMED):
+
+* six page-zero RST-vector areas
+  (`ROM01:0001-0007`, `000b-001f`, `0023-0027`,
+  `002b-002f`, `0033-0037`, `003b-00ff`);
+* `ROM01:257c-2592` — the inline
+  `CALL ram:e0b2` dispatcher belonging to the
+  `254b` routine;
+* small padding/data (`03e9-0405`, `09c8-09d0`,
+  `09ee`, `6f60`);
+* `ROM01:7545-7FFF` — the UI/config data region
+  (descriptors/strings/tables, partly typed:
+  `tbl_UiCfgTemplates` at `757F`,
+  `str_cfg_option_pool` at `79F4`, etc.).
+
+These are data/vector regions, not missed code,
+and `find_code_gaps` flags uncovered executable
+memory including data.
+
+## Model — do not regress (CONFIRMED)
+
+Code gaps in this firmware are **truncated-body
+continuations**; the correct fix is **body
+extension** (`ExtendFunctionBody.java` /
+`Function.setBody`), **never** creating functions
+from the gap list.
+
+Discriminator (CONFIRMED): gap start lacks the
+`11 00 00 CD 37 D8` prologue → continuation; a
+continuation may end in `RET` or a tail-`JP`.
 
 ## Remaining structural work
 
-**ROM01 and ROM00 dispatch models are now both applied
-(CONFIRMED).** No `CALL ram:e0b2` site remains unaudited
-(ROM01 14, ROM00 25). **Remaining structural work is the
-code-gap sweep — 121 gaps with the corrected
-absorb-continuations model above (CONFIRMED).**
-Data-typing `ROM01:757F-768E` is now `undefined[272]`
-(see above) and the 4 retained `FUN_*` (ROM00 1,
-ROM01 2, ram 1) are documented retains, not missing
-coverage.
+**No structural analysis items remain** beyond the
+12 non-code gaps above and the 4 documented
+`FUN_*` retains (ROM00 1, ROM01 2, ram 1) —
+see residual pass. Dispatch models (ROM01 14 +
+ROM00 25) and the code-gap sweep are closed.
+Data-typing `ROM01:757F-768E` is `undefined[272]`
+(see above) and the retains are expected.
 
 ## Notes
 
