@@ -295,9 +295,23 @@ State: continuously updated as work progresses.
      `ROM01:7C80` / `ram:D128` / `D130`; `28 d1`
      hits at `ROM01:2A22`/`3412` falsified as
      `CALL 28FE`/`POP DE` CONFIRMED) failed due to
-     double indirection. Residual OPEN is only the
-     witnessed `D7` stub-patch (DIP/COM).
-     The 12 non-code code gaps (page-zero RST
+      double indirection. Residual OPEN is only the
+      witnessed `D7` stub-patch (DIP/COM) — **OPEN
+      as a harness-instrumentation gap (CONFIRMED,
+      emulator `analysis/boot_hw.py`):**
+      `--watch-mem` (and by extension `--watch-read`)
+      is not active during the post-load `Run` of the
+      loaded COM, so loaded-program stores are
+      unwatched (control `E000` likewise shows only
+      boot writes `pc-after=D723x4`); `EE00:EE4F`
+      harness run showed 160 boot-bulk writes
+      (`pc-after=D6D6/D736/D73B/D73E/D740`) and no
+      bank-2 PC write of `D7 00 BF 48`; patch
+      *mechanism* stays **CONFIRMED possible** (DIP
+      type-0 dest with no range check; COM overwrite);
+      `D7` witness needs watch armed for the
+      loaded-program run + `--dump-mem` capture.
+      The 12 non-code code gaps (page-zero RST
      vectors, the `254b` inline dispatcher,
      padding, and the `7545-7FFF` data region),
      and `ROM00:7409`/`7472` (module-A ROM
@@ -646,10 +660,18 @@ State: continuously updated as work progresses.
       (`ram:D36A`/`D36C`/`D368`/`D393` and targets
       `ram:ECDC` / `ram:D39B` / `ram:D372`/
       `0x0100+D399`) per TASKS `RESOLVED ram:D36A`
-      pointer protocol. Observables as above; no
-      `D7` patch seen — **mechanically possible
-      and unobserved** "load-time patch farm"
-      remains OPEN until witnessed.
+       pointer protocol. Observables as above; no
+       `D7` patch seen to date — **mechanically
+       possible and unobserved** "load-time patch
+       farm" remains **OPEN as a harness-
+       instrumentation gap (CONFIRMED, emulator
+       `analysis/boot_hw.py`):** `--watch-mem`
+       (and by extension `--watch-read`) needs
+       to be armed/scoped for the loaded-program
+       `Run` (see 2026-09-19 harness-scope entry);
+       control `E000` shows watch misses
+       loaded-program stores; witness needs watch
+       armed for that phase + `--dump-mem` capture.
 
     Sequencing: Phase 1 (coverage) → Phase 2
    (vtable big-endian decode) → Phase 3 (boot
@@ -7397,23 +7419,87 @@ names renamed, 144 unplated functions plated)
   located the reader.
 
 * **TASKS.md:** closed vtable-reader OPEN item
-  wherever it appeared — `Minor / deferred`
-  retain notes, Phase 2 reader bullet, and
-  `gap-analysis.md` retained sections marked
-  **RESOLVED** with reader + `D081`/`D12F`
-  facts; residual OPEN is only the witnessed
-  `D7` stub-patch (DIP/COM) (mechanically
-  possible and unobserved — needs witnessed
-  `D7` write + `--dump-mem` capture).
+   wherever it appeared — `Minor / deferred`
+   retain notes, Phase 2 reader bullet, and
+   `gap-analysis.md` retained sections marked
+   **RESOLVED** with reader + `D081`/`D12F`
+   facts; residual OPEN is only the witnessed
+   `D7` stub-patch (DIP/COM) — **OPEN as a
+   harness-instrumentation gap (CONFIRMED,
+   emulator `analysis/boot_hw.py`):**
+   `--watch-mem` (and by extension `--watch-read`)
+   not observing loaded-program stores (control
+   `E000` shows only boot writes
+   `pc-after=D723x4`); `EE00:EE4F` run showed 160
+   boot-bulk writes
+   (`pc-after=D6D6/D736/D73B/D73E/D740`) and no
+   bank-2 PC write of `D7 00 BF 48`; patch
+   *mechanism* stays **CONFIRMED possible** (DIP
+   type-0 dest with no range check; COM
+   overwrite); witness needs watch armed for the
+   loaded-program run + `--dump-mem` capture.
 
 * **Docs updated in this pass:**
-  `research/TASKS.md` (closed OPEN + this
-  entry), `research/gap-analysis.md` (retained
-  sections RESOLVED + reader facts), and
-  `analysis/README.md` (harness `--watch-read`
-  docs). No Ghidra edits in this docs pass
-  beyond the saved plates/xref above; no new
-  inference; evidence tags preserved; ~70-col
-  wrapping. `mkdocs build --strict` (site_dir
-  `site-mkdocs`) run — see below.
+   `research/TASKS.md` (closed OPEN + this
+   entry), `research/gap-analysis.md` (retained
+   sections RESOLVED + reader facts), and
+   `analysis/README.md` (harness `--watch-read`
+   docs). No Ghidra edits in this docs pass
+   beyond the saved plates/xref above; no new
+   inference; evidence tags preserved; ~70-col
+   wrapping. `mkdocs build --strict` (site_dir
+   `site-mkdocs`) run — see below.
+
+### 2026-09-19 — D7 patch witness blocked by harness
+ scope (loaded-program writes unwatched) (emulator
+ `analysis/boot_hw.py`; docs only, no Ghidra, no
+ new inference; parent-verified)
+
+* **Attempt to witness `D7` stub-patch failed for a
+   harness reason, not an analysis reason
+   (CONFIRMED, emulator `analysis/boot_hw.py`).**
+   A crafted 15-byte COM
+   (`LD HL,0xEE00; LD (HL),0xD7; INC HL;
+   LD (HL),0x00; INC HL; LD (HL),0xBF; INC HL;
+   LD (HL),0x48; RET`, i.e. writes thunk
+   `D7 00 BF 48` into `EE00`-`EE03`) was uploaded
+   via `--upload` with `--watch-mem EE00:EE4F`.
+   The upload ran (`upload_status=succeeded`,
+   `execution entered bank 2 at 0100`) but **no
+   write from the loaded program was observed** —
+   the arena's 160 writes all came from the boot
+   bulk copy (`pc-after=D6D6/D736/D73B/D73E/D740`),
+   none from a bank-2 PC.
+
+* **Control confirms the harness gap (CONFIRMED).**
+   A minimal COM writing `0xAA` to `E000`
+   (`LD HL,0xE000; LD (HL),0xAA; RET`) run with
+   `--watch-mem E000:E003` likewise shows only the
+   boot writes (`pc-after=D723x4`) — **the loaded
+   program's stores are not seen by `--watch-mem`**.
+   So the watch is not active (or not applied)
+   during the post-load `Run` execution of the
+   loaded COM in this harness.
+
+* **Conclusion (OPEN as a harness-instrumentation
+   gap).** The witnessed `D7` patch remains **OPEN
+   as a harness gap**: `--watch-mem` (and by
+   extension `--watch-read`) needs to be
+   armed/scoped so it observes writes/reads during
+   the loaded-program run, not just the boot phase.
+   The patch *mechanism* stays **CONFIRMED possible**
+   (DIP type-0 dest with no range check; COM
+   overwrite); only the witness is blocked. This
+   does **not** affect any Ghidra annotation.
+
+* **TASKS.md:** updated the residual `D7`-patch OPEN
+   item to record the harness gap (watch not
+   observing loaded-program stores; control at
+   `E000`) as the blocker.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (residual OPEN updated + this entry). No Ghidra
+   edits; no new inference; evidence tags preserved;
+   ~70-col wrapping. `mkdocs build --strict`
+   (site_dir `site-mkdocs`) run — see below.
 
