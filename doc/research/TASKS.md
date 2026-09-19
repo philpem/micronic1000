@@ -149,8 +149,15 @@ State: continuously updated as work progresses.
   plates 82 KEEP / 59 upgraded), 4 (comment-style
   137+127 rewrites, 90 labels, `Boot_entry+1`
   fixes, pointer-indirected `g_wCoroutineStepResult`
-  at `ram:EA24` — `E73E` refuted), 5-substantially,
-  6 (`research/gap-analysis.md` refresh). Removed
+  at `ram:EA24` — `E73E` refuted), 5 (data-typing —
+  types + 41 `tbl_` labels, `UiCfgHeader` 20 B,
+  `tbl_UiCfgRegionPrefix`/`tbl_UiCfgNamePointers`/
+  `tbl_UiCfgTemplateHeaders`/`str_cfg_option_pool`/
+  `tbl_FontCharWidth`/`tbl_StubTablePrefix`/
+  `tbl_SessionRuntimeStubSources`/
+  `tbl_FnPtrDispatch7E50`/`g_abFontCharWidth`/
+  `g_abErrorStringTable`, DONE 2026-09-19), 6
+  (`research/gap-analysis.md` refresh). Removed
   from the backlog; see §12 entries 2026-09-19
   and `research/gap-analysis.md` headline. No
   further work scheduled there.
@@ -243,22 +250,17 @@ State: continuously updated as work progresses.
   of a stub farm). Comment at `ram:EE00`. Removed
   from the backlog.
 
-1. **Data-typing backlog (§12 item 5 remainder,
-   OPEN).** `ROM01:7545`–`7FFF`
-   descriptor-record format (needs the
-   `TemplateBuilder` decode); `ROM00:7D80` /
-   `7E50` fn-ptr tables; `7C50` / `7C30` font
-   metrics; `ram:E105` font copy; `ram:D0E0`
-   error-string table; `tbl_` labels +
-   index→handler plates for the dispatch tables.
-
-2. **Minor / deferred (OPEN, low priority).**
+1. **Minor / deferred (OPEN, low priority —
+   nothing actionable without new data).**
    4 documented retained `FUN_*` with open
-   questions, the 12 non-code code gaps
-   (page-zero vectors, inline dispatchers,
-   padding/data, `ROM01:7545`–`7FFF` region),
-   and `ROM00:7409` / `7472` (deferred by
-   design — ROM images of RAM module A).
+   questions needing emulator coverage / vtable
+   mapping, the 12 non-code code gaps
+   (page-zero RST vectors, the `254b` inline
+   dispatcher, padding, and the `7545-7FFF`
+   data region), and `ROM00:7409`/`7472`
+   (module-A ROM images, deferred by design);
+   all recorded as such — no further action
+   (CONFIRMED).
 
 ### Hardware-dependent priorities (unchanged)
 
@@ -587,15 +589,43 @@ current priority order; the concise lists above are authoritative.
          `g_wCoroutineStepResult` pointer-indirected
          buffer is the final closure; E73E hypothesis
          **refuted**.
-    5. **Data-typing backlog — substantially done** (see
-       gap-analysis: `ROM01:757F-768E` typed as
-       `undefined[272]`, `ROM00:7409`/`7472` deferred by
-       design (wrong address space), code-gap sweep 121→12;
-       residual `ROM00:7D80` etc. as listed there).
-    6. **Refresh `research/gap-analysis.md` — DONE
-       2026-09-18** (single coverage tracker; headline
-       914/915, 99.6 % named; plate coverage updated
-       2026-09-19).
+     5. **Data-typing backlog — DONE 2026-09-19
+        (CONFIRMED, Ghidra saved; function list
+        unchanged — 915; no new inference).** Types +
+        labels created: `ROM01:7545` `ushort[4]`
+        `tbl_UiCfgRegionPrefix`; `ROM01:757F`
+        `ushort[6]` `tbl_UiCfgNamePointers` (5 name
+        pointers + `0000` terminator — the earlier
+        `ushort[136]` estimate was corrected);
+        `ROM01:758B`/`75EB`/`760D` each typed
+        `UiCfgHeader` (new 20-byte struct:
+        `EC EF F8 F0 98 EF D8 EF` magic +0..+7,
+        fields, LE backlink +12h) as
+        `tbl_UiCfgTemplateHeaders` (non-contiguous,
+        so individual items); `ROM01:79F4`
+        `char[1547]` `str_cfg_option_pool` (existing
+        label kept); `ROM00:7C30` `byte[256]`
+        `tbl_FontCharWidth` (note `7C50` is offset
+        +0x20 within it, not a separate table);
+        `ROM00:7D80` `ushort[4]` `tbl_StubTablePrefix`;
+        `ROM00:7D88` `ushort[60]`
+        `tbl_SessionRuntimeStubSources` (renamed);
+        `ROM00:7E50` `ushort[34]`
+        `tbl_FnPtrDispatch7E50` (FFFF-terminated);
+        `ram:E105` `byte[256]` `g_abFontCharWidth`;
+        `ram:D0E0` `byte[448]` `g_abErrorStringTable`;
+        41 dispatch-table labels created (16 `ROM01` +
+        25 `ROM00`), all `tbl_Dispatch_<name>` —
+        previously only 1 of 41 sites had a `tbl_`
+        label; 11 plate/repeatable comments set.
+        Function list unchanged (915); saved. The
+        `ushort[136]` estimate for `757F` and the
+        `7C50` separate-table claim are superseded.
+     6. **Refresh `research/gap-analysis.md` — DONE
+        2026-09-19** (single coverage tracker; headline
+        914/915, 99.6 % named; plate coverage updated
+        2026-09-19; data-typing + annotation tail
+        refreshed 2026-09-19).
 
     Sequencing: one Ghidra-writing agent at a time,
     `save_program` between, and diff-guard the function
@@ -6543,8 +6573,70 @@ names renamed, 144 unplated functions plated)
   modified.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-  (this entry + two RESOLVED rewrites) and
-  `reference/commstar-api.md` (two passages). No
-  Ghidra edits; no new inference; evidence tags
-  preserved; ~70-col wrapping. `mkdocs build
-  --strict` (site_dir `site-mkdocs`) run — see below.
+   (this entry + two RESOLVED rewrites) and
+   `reference/commstar-api.md` (two passages). No
+   Ghidra edits; no new inference; evidence tags
+   preserved; ~70-col wrapping. `mkdocs build
+   --strict` (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — data-typing backlog applied
+ (types + 41 `tbl_` labels) (docs only, no Ghidra,
+ no new inference; parent-verified, Ghidra saved)
+
+* **Data-typing backlog applied (CONFIRMED,
+   Ghidra saved; function list unchanged — 915).**
+   Types + labels created:
+   `ROM01:7545` `ushort[4]` `tbl_UiCfgRegionPrefix`;
+   `ROM01:757F` `ushort[6]` `tbl_UiCfgNamePointers`
+   (5 name pointers + `0000` terminator — the
+   earlier `ushort[136]` estimate was corrected);
+   `ROM01:758B`/`75EB`/`760D` each typed
+   `UiCfgHeader` (new 20-byte struct:
+   `EC EF F8 F0 98 EF D8 EF` magic +0..+7,
+   fields, LE backlink +12h) as
+   `tbl_UiCfgTemplateHeaders` (non-contiguous, so
+   individual items); `ROM01:79F4` `char[1547]`
+   `str_cfg_option_pool` (existing label kept);
+   `ROM00:7C30` `byte[256]` `tbl_FontCharWidth`
+   (note `7C50` is offset +0x20 within it, not a
+   separate table); `ROM00:7D80` `ushort[4]`
+   `tbl_StubTablePrefix`; `ROM00:7D88`
+   `ushort[60]` `tbl_SessionRuntimeStubSources`
+   (renamed); `ROM00:7E50` `ushort[34]`
+   `tbl_FnPtrDispatch7E50` (FFFF-terminated);
+   `ram:E105` `byte[256]` `g_abFontCharWidth`;
+   `ram:D0E0` `byte[448]` `g_abErrorStringTable`;
+   41 dispatch-table labels created (16 `ROM01` +
+   25 `ROM00`), all `tbl_Dispatch_<name>` —
+   previously only 1 of 41 sites had a `tbl_`
+   label; 11 plate/repeatable comments set.
+   Function list unchanged (915); saved.
+
+* **Minor / deferred — no further action
+   (CONFIRMED):** the 4 retained `FUN_*`
+   (documented retains with open questions needing
+   emulator coverage / vtable mapping), the 12
+   non-code code gaps (page-zero RST vectors, the
+   `254b` inline dispatcher, padding, and the
+   `7545-7FFF` data region), and `ROM00:7409`/
+   `7472` (module-A ROM images, deferred by design)
+   are all recorded as such; nothing actionable
+   remains there (CONFIRMED; see `Next`
+   no-hardware priorities and §12 item 5).
+
+* **TASKS.md:** marked §12 item 5 DONE with the
+   types + labels above; updated the `Next`
+   no-hardware list so only the minor/deferred
+   item remains (data-typing removed); updated
+   the §12 FINAL PASS headline to list item 5 as
+   DONE; added this session entry.
+
+* **Docs updated in this pass:** `research/
+   TASKS.md` (this entry + §12 item 5 DONE +
+   `Next` refreshed + §12 FINAL PASS headline) and
+   `research/gap-analysis.md` (data-typing section
+   + annotation tail refreshed — see there). No
+   Ghidra edits; no new inference; evidence tags
+   preserved; ~70-col wrapping. `mkdocs build
+   --strict` (site_dir `site-mkdocs`) run — see
+   below.

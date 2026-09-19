@@ -1,11 +1,20 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (18th audit — §12 FINAL PASS
-fully CLOSED: 3 labels pinned, 7 Boot_entry fixes,
-5 magic numbers decoded, `g_wCoroutineStepResult`
+Status: 2026-09-19 (19th audit — §12 FINAL PASS
+fully CLOSED + data-typing backlog applied:
+`ROM01:7545` `ushort[4]`, `757F` `ushort[6]`
+(corrected from `ushort[136]`), `758B`/`75EB`/
+`760D` `UiCfgHeader` 20 B, `79F4` `char[1547]`,
+`ROM00:7C30` `byte[256]` (7C50 is +0x20), `7D80`
+`ushort[4]`, `7D88` `ushort[60]`, `7E50`
+`ushort[34]`, `ram:E105` `byte[256]`, `ram:D0E0`
+`byte[448]`, 41 `tbl_Dispatch` labels, 11
+comments; 3 labels pinned, 7 Boot_entry fixes, 5
+magic numbers decoded, `g_wCoroutineStepResult`
 RESOLVED pointer-indirected at `ram:EA24`, E73E
 refuted; no OPEN items; plate coverage 100 %,
-no SHORT-form remains that §8 would reject), firmware
+no SHORT-form remains that §8 would reject),
+firmware
 `micron1.bin` (overlay
 spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
 a **documentation-coverage** audit: which functions have
@@ -28,15 +37,19 @@ code-gap sweep complete (121 → 12; bodies extended,
 914 internal / 915 guarded total)** — function counts
 unchanged through 2026-09-19 (item 2b 5 renames, 144
 unplated plated, item 3 short-plate review 82 KEEP /
-59 upgraded, and item 4 residual 127 rewrites — all
-plate/comment-only, no function renamed/created/deleted
+59 upgraded, item 4 127 rewrites + 90 labels +
+`Boot_entry+1` fixes + pointer-indirected
+`g_wCoroutineStepResult`, and data-typing backlog
+types + 41 `tbl_` labels — all plate/comment/data-
+type-only, no function renamed/created/deleted
 except the 5 item-2b renames, which do not change the
 count). Auto `FUN_*` = 4
 (ROM00 1, ROM01 2, ram 1); named = 910 internal
 (99.6 %; 911 guarded). Previous audit was 914 / 4 /
 910; dispatch-case absorptions (1002 → 915, −87) remain.
-See session log 2026-09-19 (items 2b, unplated, and
-short-plate) and 2026-09-18 code-gap sweep and
+See session log 2026-09-19 (items 2b, unplated,
+short-plate, comment-style, data-typing) and
+2026-09-18 code-gap sweep and
 `re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
@@ -242,35 +255,70 @@ kept symbols.** All byte-verified; Ghidra saved.
   args `SP+0x0E`–`0x16` undecoded);
   `ram:D937` (zero xrefs, dead stub).
 
-## Data-typing — `ROM01:757F-768E` UI form-template nodes
-(CONFIRMED, 2026-09-18)
+## Data-typing — `ROM01:7545`/`757F`/`758B`/
+`75EB`/`760D`/`79F4` + `ROM00:7C30`/`7D80`/`7D88`/
+`7E50` + `ram:E105`/`D0E0` + 41 `tbl_Dispatch`
+labels (CONFIRMED, 2026-09-19 — Ghidra saved;
+function list unchanged — 915; no new inference;
+parent-verified)
 
-Previously **blocked by tooling** (`apply_data_type` could not
-clear a multi-instruction range; the inline-script path was
-broken). Now **unblocked** via an inline script using
-`Listing.clearCodeUnits(start,end,false)` + `ArrayDataType`.
+Previously `ROM01:757F-768E` was `undefined[272]`
+with `tbl_UiCfgTemplates` etc. (2026-09-18). Now
+superseded by typed data (CONFIRMED, byte-verified):
 
-* **Range retyped:** `ROM01:757F-768E` is `undefined[272]` with
-  labels `tbl_UiCfgTemplates` (`757F`),
-  `tbl_UiCfgNode0_DeviceSelect` (`758B`),
-  `tbl_UiCfgNode1_BaudSelect` (`75EB`),
-  `tbl_UiCfgNode2_Toggle` (`760D`),
-  `tbl_UiCfgNode3_PortSelect` (`764F`),
-  `tbl_UiCfgNode4_MasterConfig` (`7669`), and
-  `str_cfg_option_pool` (`79F4`) (`79F4-7A82`).
+* **Types + labels created (CONFIRMED, Ghidra
+   saved; function list unchanged — 915):**
+  `ROM01:7545` `ushort[4]` `tbl_UiCfgRegionPrefix`;
+  `ROM01:757F` `ushort[6]` `tbl_UiCfgNamePointers`
+  (5 name pointers + `0000` terminator — the
+  earlier `ushort[136]` estimate was corrected);
+  `ROM01:758B`/`75EB`/`760D` each typed
+  `UiCfgHeader` (new 20-byte struct:
+  `EC EF F8 F0 98 EF D8 EF` magic +0..+7, fields,
+  LE backlink +12h) as `tbl_UiCfgTemplateHeaders`
+  (non-contiguous, so individual items);
+  `ROM01:79F4` `char[1547]` `str_cfg_option_pool`
+  (existing label kept); `ROM00:7C30` `byte[256]`
+  `tbl_FontCharWidth` (note `7C50` is offset
+  +0x20 within it, not a separate table);
+  `ROM00:7D80` `ushort[4]` `tbl_StubTablePrefix`;
+  `ROM00:7D88` `ushort[60]`
+  `tbl_SessionRuntimeStubSources` (renamed);
+  `ROM00:7E50` `ushort[34]`
+  `tbl_FnPtrDispatch7E50` (FFFF-terminated);
+  `ram:E105` `byte[256]` `g_abFontCharWidth`;
+  `ram:D0E0` `byte[448]` `g_abErrorStringTable`;
+  41 dispatch-table labels created (16 `ROM01` +
+  25 `ROM00`), all `tbl_Dispatch_<name>` —
+  previously only 1 of 41 sites had a `tbl_`
+  label; 11 plate/repeatable comments set.
+  Function list unchanged (915); saved. The
+  `ushort[136]` estimate for `757F` and the
+  `7C50` separate-table claim are superseded
+  (CONFIRMED).
 
-* **Structure (CONFIRMED mechanics):** five variable-length UI
-  form-template nodes (20-byte header
-  `EC EF F8 F0 98 EF D8 EF` + fields + LE self-backlink at
-  `+12h`) whose string pointers reference the shared option pool
-  at `79F4-7A82` (`"PLINTH"`, `"V24 ADAPTOR"`, `"LOCAL LINK"`,
-  baud rates, `ON`/`OFF`). Referenced from `Field_ConfigLoad`
-  (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
-  `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
+* **Structure (CONFIRMED mechanics):** the three
+  `UiCfgHeader` items share the 20-byte header
+  `EC EF F8 F0 98 EF D8 EF` + fields + LE
+  self-backlink at `+12h`; their string pointers
+  reference the shared option pool at `79F4`
+  (`"PLINTH"`, `"V24 ADAPTOR"`, `"LOCAL LINK"`,
+  baud rates, `ON`/`OFF`). Referenced from
+  `Field_ConfigLoad` (`ROM01:05E0-06B0`) at `0620
+  LD HL,0x758B`, `0658 LD HL,0x75EB`,
+  `066A LD HL,0x760D`. The five-node
+  `757F-768E` description above is superseded by
+  the three typed headers (the earlier
+  `tbl_UiCfgNode3/4` etc. were the same region
+  under the old `undefined[272]` view).
 
-* **Unresolved (OPEN/SUSPECTED):** the `E1` prefix at `757F`,
-   the `F479` header pointer (**SUSPECTED** bank-qualified),
-   exact field semantics, and the end boundary above `768E`.
+* **Unresolved (OPEN/SUSPECTED — minor):** the
+  `E1` prefix at `757F`, the `F479` header
+  pointer (**SUSPECTED** bank-qualified), exact
+  field semantics, and the end boundary above
+  `768E` remain as before — no new inference
+  here, only the typing/labels above were
+  applied.
 
 ## Tail — compiler-runtime plates, module-A images, retained
 stubs resolved (CONFIRMED, 2026-09-18)
@@ -351,9 +399,14 @@ Remaining **12 gaps — all non-code, expected**
 * small padding/data (`03e9-0405`, `09c8-09d0`,
   `09ee`, `6f60`);
 * `ROM01:7545-7FFF` — the UI/config data region
-  (descriptors/strings/tables, partly typed:
-  `tbl_UiCfgTemplates` at `757F`,
-  `str_cfg_option_pool` at `79F4`, etc.).
+  (descriptors/strings/tables, typed:
+  `tbl_UiCfgRegionPrefix` at `7545` (`ushort[4]`),
+  `tbl_UiCfgNamePointers` at `757F` (`ushort[6]`),
+  `tbl_UiCfgTemplateHeaders` at `758B`/`75EB`/
+  `760D` (`UiCfgHeader` 20 B each),
+  `str_cfg_option_pool` at `79F4` (`char[1547]`),
+  etc.; `ROM00:7409`/`7472` module-A images
+  are separate and deferred by design).
 
 These are data/vector regions, not missed code,
 and `find_code_gaps` flags uncovered executable
@@ -378,8 +431,13 @@ continuation may end in `RET` or a tail-`JP`.
 `FUN_*` retains (ROM00 1, ROM01 2, ram 1) —
 see residual pass. Dispatch models (ROM01 14 +
 ROM00 25) and the code-gap sweep are closed.
-Data-typing `ROM01:757F-768E` is `undefined[272]`
-(see above) and the retains are expected.
+Data-typing is typed (see above:
+`ROM01:7545`/`757F`/`758B`/`79F4`,
+`ROM00:7C30`/`7D80`/`7D88`/`7E50`,
+`ram:E105`/`D0E0`, 41 `tbl_Dispatch` labels;
+`ROM00:7409`/`7472` module-A images remain
+deferred by design — no further action) and the
+retains are expected (CONFIRMED).
 
 Annotation tail per `research/TASKS.md` §12
 (2026-09-19 — §12 FINAL PASS fully CLOSED; no
@@ -458,11 +516,40 @@ confirmed plate at `Lcd_Init` (`ROM00:1EEC`). The
 590-name `Module_Name` mass rename (31-module
 taxonomy, 588 applied in Ghidra + 2 collisions,
 docs synced across 24 files, commit `993a45d`) is
-**DONE** (CONFIRMED). **§12 FINAL PASS is now fully
-CLOSED (CONFIRMED)** — no OPEN items remain (items
-1, 2a, 2b, 3, 4, 5, 6 done); `g_wCoroutineStepResult`
-pointer-indirected buffer was the final OPEN label,
-E73E hypothesis **refuted**.
+**DONE** (CONFIRMED). **Data-typing backlog — DONE
+2026-09-19 (CONFIRMED, Ghidra saved; function list
+unchanged — 915; no new inference; parent-verified):**
+`ROM01:7545` `ushort[4]` `tbl_UiCfgRegionPrefix`;
+`ROM01:757F` `ushort[6]` `tbl_UiCfgNamePointers`
+(5 name pointers + `0000` terminator — the earlier
+`ushort[136]` estimate was corrected);
+`ROM01:758B`/`75EB`/`760D` each `UiCfgHeader`
+(new 20-byte struct: `EC EF F8 F0 98 EF D8 EF`
+magic +0..+7, fields, LE backlink +12h) as
+`tbl_UiCfgTemplateHeaders` (non-contiguous, so
+individual items); `ROM01:79F4` `char[1547]`
+`str_cfg_option_pool` (existing label kept);
+`ROM00:7C30` `byte[256]` `tbl_FontCharWidth` (note
+`7C50` is offset +0x20 within it, not a separate
+table); `ROM00:7D80` `ushort[4]`
+`tbl_StubTablePrefix`; `ROM00:7D88` `ushort[60]`
+`tbl_SessionRuntimeStubSources` (renamed);
+`ROM00:7E50` `ushort[34]` `tbl_FnPtrDispatch7E50`
+(FFFF-terminated); `ram:E105` `byte[256]`
+`g_abFontCharWidth`; `ram:D0E0` `byte[448]`
+`g_abErrorStringTable`; 41 `tbl_Dispatch` labels
+created (16 `ROM01` + 25 `ROM00`), all
+`tbl_Dispatch_<name>` — previously only 1 of 41
+sites had a `tbl_` label; 11 plate/repeatable
+comments set; function list unchanged (915); saved;
+`ushort[136]` and `7C50` separate-table claims
+superseded (CONFIRMED). **§12 FINAL PASS is now
+fully CLOSED (CONFIRMED)** — no OPEN items remain
+(items 1, 2a, 2b, 3, 4, 5, 6 done);
+`g_wCoroutineStepResult` pointer-indirected buffer
+was the final OPEN label, E73E hypothesis
+**refuted**; data-typing supersedes the
+`undefined[272]` view (CONFIRMED).
 
 ## Notes
 
