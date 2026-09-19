@@ -353,29 +353,47 @@ current priority order; the concise lists above are authoritative.
         Fix plates that contradict their own names and
         re-flow to ~70 cols was done as part of that
         review.
-     4. **Comment-style pass — PARTIALLY DONE
-        2026-09-19; 137 REWRITE / 219 KEEP of 356
-        flagged (CONFIRMED; residual OPEN):** of 895
+     4. **Comment-style pass — SUBSTANTIALLY DONE
+        2026-09-19; 264 REWRITE (137 + 127) / 219 KEEP
+        of 356 flagged + residual scan
+        (CONFIRMED; minor residual OPEN):** of 895
         instruction comments, 356 carried
-        raw-address-like tokens — 137 REWRITE (RAM
-        cell / I/O port cited by numeric address, now
-        replaced with the descriptive label; all 137
-        applied in Ghidra; function list unchanged;
-        0 new labels needed — every cited address
-        already had a documented label) and 219 KEEP
-        (flagged token was a value/mask, legitimate
-        cross-reference target, or label already
-        present). Residual OPEN: (a) secondary raw
-        addresses surviving a rewrite (e.g. `(0006)`
-        alongside replaced `d682`); (b) decoding
-        remaining magic numbers / bit masks in place;
-        (c) dropping opcode-restating comments per §8.
+        raw-address-like tokens — 137 REWRITE (first
+        pass, RAM cell / I/O port cited by numeric
+        address → descriptive label; all 137 applied
+        in Ghidra; function list unchanged; 0 new
+        labels needed) and 219 KEEP (value/mask,
+        legitimate cross-reference, or label already
+        present). Second pass found **127** further
+        comments still containing a numeric address
+        cite resolving to a labelled address
+        (secondary cites left by the first pass plus
+        others) — all 127 rewritten: every address
+        cite replaced with its descriptive label,
+        remaining magic numbers / bit masks decoded
+        in place, opcode-restating text dropped;
+        function list unchanged; saved; no new
+        labels needed. **Item 4 now substantially
+        DONE:** raw-address cites (137 + 127)
+        migrated; magic-number decoding and
+        opcode-restating cleanup applied across both
+        passes. Remaining **OPEN (minor):** (a) the
+        `bdos_entry_impl` label proposal for
+        `ROM00:F180` (unlabelled; not yet applied);
+        (b) any deeper magic-number decoding in
+        comments not covered by the two scans.
         **CAUTION (CONFIRMED):** 2-digit hex in RTC
         contexts is ambiguous — RTC register index
         (`01h`/`03h`/`05h`/`07h`) is not I/O port
         `07h` = `CTRL_07` (`RTC_ADDR`/`RTC_DATA` are
-        `08h`/`28h`); the pass corrected these manually
-        — note this hazard for any future comment edit.
+        `08h`/`28h`); both passes corrected these
+        manually — note this hazard for any future
+        comment edit. **Review note (CONFIRMED):**
+        comment at `ROM00:0178` said "keyboard scan
+        init" but the confirmed plate at `Lcd_Init`
+        (`ROM00:1EEC`) says LCD subsystem init, so
+        the old comment was factually wrong and was
+        corrected.
     5. **Data-typing backlog — substantially done** (see
        gap-analysis: `ROM01:757F-768E` typed as
        `undefined[272]`, `ROM00:7409`/`7472` deferred by
@@ -393,14 +411,17 @@ current priority order; the concise lists above are authoritative.
     rather than a moving target.
 
       **Remaining scope after 2026-09-19 (short-plate
-      review done; raw-address cites migrated):**
-      **only item 4 residual** — secondary raw addresses
-      surviving a rewrite (e.g. `(0006)` alongside
-      replaced `d682`), magic-number / bit-mask
-      decoding, opcode-restating comments per §8.
-      Items 2a, 2b, 3 (unplated + short-plate) remain
-      closed; item 4 raw-address migration is closed,
-      residual is OPEN.
+       review done; raw-address cites substantially
+       done — 137 + 127 migrated):**
+       **only item 4 minor residual** — the
+       `bdos_entry_impl` label proposal for
+       `ROM00:F180` and any deeper magic-number
+       decoding in comments not covered by the two
+       scans. Items 2a, 2b, 3 (unplated + short-plate)
+       remain closed; item 4 raw-address cites and
+       opcode-restating/magic-number cleanup are
+       substantially DONE; the two minor items above
+       remain OPEN.
 
 ## Owner corrections to honor
 
@@ -5702,14 +5723,60 @@ names renamed, 144 unplated functions plated)
   decoding, opcode-restating comments per §8.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-  (§12 item 3 DONE — short-plate review
-  141: 82 KEEP / 59 upgraded; §12 remaining scope
-  narrowed to only item 4 residual; this
-  2026-09-19 entry), `research/gap-analysis.md`
-  (headline + plate coverage + annotation tail
-  updated — item 3 DONE, 141 reviewed
-  82/59, no SHORT-form remains). No Ghidra edits in
-  this docs pass; no new inference; evidence tags
-  preserved; ~70-col wrapping. `mkdocs build
-  --strict` (site_dir `site-mkdocs`) run — see
-  below.
+   (§12 item 3 DONE — short-plate review
+   141: 82 KEEP / 59 upgraded; §12 remaining scope
+   narrowed to only item 4 residual; this
+   2026-09-19 entry), `research/gap-analysis.md`
+   (headline + plate coverage + annotation tail
+   updated — item 3 DONE, 141 reviewed
+   82/59, no SHORT-form remains). No Ghidra edits in
+   this docs pass; no new inference; evidence tags
+   preserved; ~70-col wrapping. `mkdocs build
+   --strict` (site_dir `site-mkdocs`) run — see
+   below.
+
+### 2026-09-19 — §12 item 4 residual (127 more comments
+ rewritten; item 4 substantially done)
+
+* **Item 4 residual complete (CONFIRMED, Ghidra
+   saved; function list unchanged; no new inference).**
+   A second pass found **127 instruction comments**
+   that still contained a numeric address cite
+   resolving to a labelled address (secondary cites
+   left by the first 137-rewrite pass, plus others).
+   All 127 were rewritten: every address cite
+   replaced with its descriptive label, remaining
+   magic numbers / bit masks decoded in place,
+   opcode-restating text dropped; function list
+   unchanged; saved; no new labels needed.
+
+* **Two review notes from the pass (CONFIRMED):**
+   (a) `ROM00:F180` is unlabelled and a label
+   `bdos_entry_impl` was proposed (not yet applied);
+   (b) the comment at `ROM00:0178` said "keyboard
+   scan init" but the confirmed plate at `Lcd_Init`
+   (`ROM00:1EEC`) says LCD subsystem init, so the
+   old comment was factually wrong and was corrected.
+   RTC 2-digit ambiguity was handled (register
+   indices not confused with ports).
+
+* **Item 4 is now substantially DONE (CONFIRMED):**
+   raw-address cites (137 + 127) migrated;
+   magic-number decoding and opcode-restating
+   cleanup applied across both passes. Remaining
+   **OPEN (minor):** the `bdos_entry_impl` label
+   proposal for `ROM00:F180`, and any deeper
+   magic-number decoding in comments not covered
+   by the two scans.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (§12 item 4 SUBSTANTIALLY DONE — 264 rewrites
+   with breakdown + review notes + CAUTION retained
+   + remaining scope narrowed to two minor items;
+   this 2026-09-19 entry), `research/gap-analysis.md`
+   (annotation tail updated — item 4 substantially
+   done, 137+127 migrated, residual narrowed).
+   No Ghidra edits in this docs pass; no new
+   inference; evidence tags preserved; ~70-col
+   wrapping. `mkdocs build --strict` (site_dir
+   `site-mkdocs`) run — see below.

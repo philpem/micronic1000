@@ -1,9 +1,10 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (16th audit updated for §12 item 3
-short-plate review — 141 reviewed: 82 KEEP / 59
-upgraded; plate coverage 100 %, no SHORT-form remains
-that §8 would reject), firmware `micron1.bin` (overlay
+Status: 2026-09-19 (16th audit updated for §12 item 4
+residual — 127 more comments rewritten; item 4
+substantially done; plate coverage 100 %, no
+SHORT-form remains that §8 would reject), firmware
+`micron1.bin` (overlay
 spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
 a **documentation-coverage** audit: which functions have
 *we* named and commented, versus the auto-named `FUN_*`
@@ -24,10 +25,11 @@ that Ghidra merely detected.
 code-gap sweep complete (121 → 12; bodies extended,
 914 internal / 915 guarded total)** — function counts
 unchanged through 2026-09-19 (item 2b 5 renames, 144
-unplated plated, and item 3 short-plate review 82 KEEP /
-59 upgraded — all plate-only, no function
-renamed/created/deleted except the 5 item-2b renames,
-which do not change the count). Auto `FUN_*` = 4
+unplated plated, item 3 short-plate review 82 KEEP /
+59 upgraded, and item 4 residual 127 rewrites — all
+plate/comment-only, no function renamed/created/deleted
+except the 5 item-2b renames, which do not change the
+count). Auto `FUN_*` = 4
 (ROM00 1, ROM01 2, ram 1); named = 910 internal
 (99.6 %; 911 guarded). Previous audit was 914 / 4 /
 910; dispatch-case absorptions (1002 → 915, −87) remain.
@@ -379,28 +381,40 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 
 Annotation tail per `research/TASKS.md` §12
 (2026-09-19, short-plate review done; raw-address
-cites migrated): plate coverage 100 % (closed —
-144 unplated plated; **item 3 DONE 2026-09-19 —
-141 reviewed: 82 KEEP / 59 upgraded to full form;
-no SHORT-form remains that §8 would reject**);
-comment-style pass — of 356 flagged instruction
-comments, 137 REWRITE (RAM cell / I/O port by
-numeric address → descriptive label, applied in
-Ghidra) and 219 KEEP (value/mask, legitimate
-cross-reference, or label already present)
-(CONFIRMED; function list unchanged; 0 new labels
-needed); residual **OPEN**: secondary raw addresses
-(e.g. `(0006)` alongside replaced `d682`), decoding
-remaining magic numbers / bit masks, dropping
-opcode-restating comments per §8;
-**CAUTION (CONFIRMED):** 2-digit hex in RTC
-contexts ambiguous — register index
+cites substantially done — 137 + 127 migrated):
+plate coverage 100 % (closed — 144 unplated plated;
+**item 3 DONE 2026-09-19 — 141 reviewed: 82 KEEP /
+59 upgraded to full form; no SHORT-form remains
+that §8 would reject**); comment-style pass —
+of 356 flagged comments, 137 REWRITE (first pass,
+RAM cell / I/O port by numeric address →
+descriptive label, applied in Ghidra) and 219
+KEEP (value/mask, legitimate cross-reference, or
+label already present) (CONFIRMED; function list
+unchanged; 0 new labels needed); second pass
+127 REWRITE (secondary cites + others — every
+address cite → label, magic numbers / bit masks
+decoded, opcode-restating text dropped; function
+list unchanged; saved; no new labels needed)
+(CONFIRMED); **item 4 now substantially DONE:**
+raw-address cites (137 + 127) migrated;
+magic-number decoding and opcode-restating
+cleanup applied across both passes; remaining
+**OPEN (minor):** `bdos_entry_impl` label proposal
+for `ROM00:F180` (unlabelled, not yet applied) and
+any deeper magic-number decoding not covered by
+the two scans; **CAUTION (CONFIRMED):** 2-digit hex
+in RTC contexts ambiguous — register index
 `01h`/`03h`/`05h`/`07h` ≠ I/O port `07h` =
 `CTRL_07`; `RTC_ADDR`/`RTC_DATA` are `08h`/`28h` —
-corrected manually. The 590-name `Module_Name`
-mass rename (31-module taxonomy, 588 applied in
-Ghidra + 2 collisions, docs synced across 24
-files, commit `993a45d`) is **DONE** (CONFIRMED).
+both passes corrected manually; **review note
+(CONFIRMED):** `ROM00:0178` "keyboard scan init"
+corrected to LCD subsystem init per confirmed plate
+at `Lcd_Init` (`ROM00:1EEC`). The 590-name
+`Module_Name` mass rename (31-module taxonomy,
+588 applied in Ghidra + 2 collisions, docs synced
+across 24 files, commit `993a45d`) is **DONE**
+(CONFIRMED).
 
 ## Notes
 
