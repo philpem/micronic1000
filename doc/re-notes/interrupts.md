@@ -11,14 +11,14 @@ always executes `RST 38h` for a maskable interrupt — so the RST7 slot
 doubles as the IRQ entry.
 
 All handler bodies live in the resident kernel, whose image is copied
-from ROM00:369D → F180 by `InstallKernelToRam`; the ROM-side images
+from ROM00:369D → F180 by `Kernel_KernelToRam`; the ROM-side images
 (RAM address minus 0xBAE3) are fully analysable. Handlers are created
-as functions in Ghidra: `NmiHandlerImage` (ROM00:3B13), 
-`IrqCommonHandlerImage` (ROM00:3B6A), `IrqWorkerPollPort5` (ROM00:230A).
+as functions in Ghidra: `Kernel_HandlerImage` (ROM00:3B13), 
+`Kernel_CommonHandlerImage` (ROM00:3B6A), `Kernel_WorkerPollPort5` (ROM00:230A).
 
 ## Maskable IRQ — fully decoded
 
-Path: `INT → 0038 → stub F5F3` (`JP F64D`) → `IrqCommonHandlerImage`.
+Path: `INT → 0038 → stub F5F3` (`JP F64D`) → `Kernel_CommonHandlerImage`.
 `0008 → F180` is the BDOS gate and is separate; only `RST 20h`/`28h`/`30h`/
 `38h` (`F5EA`/`F5ED`/`F5F0`/`F5F3` are `JP F64D`) share the common handler with
 the hardware IRQ, so **those software RSTs and the IRQ share one entry point**
@@ -36,7 +36,7 @@ Common handler logic:
     loading the comms config table.
   * else → clear `g_bIrqServiceArmed` (in-service marker), DI, save current bank,
     switch to bank 0, call worker.
-* Worker = `IrqWorkerPollPort5` (ROM00:230A):
+* Worker = `Kernel_WorkerPollPort5` (ROM00:230A):
   * Read port 05h; keep a copy in f785.
   * Bit 3 of inverted status: if clear, zero fda2/fda3 — tracks a
     carrier/link signal disappearing.
@@ -62,7 +62,7 @@ loaded under port-04h mode bits E0h/FDh.
 
 ## NMI — fully decoded
 
-Path: NMI → 0066 → F5F6 (`NmiHandlerImage`, ROM00:3B13).
+Path: NMI → 0066 → F5F6 (`Kernel_HandlerImage`, ROM00:3B13).
 
 Behaviour keyed on fbd5:
 

@@ -1,6 +1,6 @@
-# InlineTableDispatch: inline switch tables
+# Kernel_TableDispatch: inline switch tables
 
-`InlineTableDispatch` (`ram:E0B2`) is a switch helper whose jump table is
+`Kernel_TableDispatch` (`ram:E0B2`) is a switch helper whose jump table is
 stored **inline, immediately after the CALL** rather than in a separate data
 block. Every call site therefore carries its own table, and Ghidra renders
 those bytes as stray data unless they are decoded deliberately. This page
@@ -33,7 +33,7 @@ CALL E0B2
 ## Structural treatment — hybrid label model (CONFIRMED, standard)
 
 **CONFIRMED standard (2026-09-18).** An inline-switch dispatch
-(`CALL ram:e0b2` `InlineTableDispatch` + inline table + `JP(HL)`)
+(`CALL ram:e0b2` `Kernel_TableDispatch` + inline table + `JP(HL)`)
 case is a **basic block of the owning routine**, kept as **one
 function**; navigation is restored with **labels** (not functions)
 at each case target and at the shared continuation. Rationale: the
@@ -46,8 +46,8 @@ ROM01 audit complete 2026-09-18 — **14 sites = all ROM01
 merged + labelled: `Program_LoadDipOrCom 0CE7-0FE5`,
 `Field_ResetCounterDispatch 10CF-1176`,
 `Session_AdvanceStageOnZero 14CF-153D`,
-`Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
-`SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`;
+`UI_FieldEditGetChoice 1D80-1FF2`, `Session_RxDispatch 2880-28FD`,
+`Session_ConnectCheck 2B43-2C4E`, `Session_CmdWalkTable 2C4F-2CD2`;
 40 labels + 37 EOL comments) and Half B (7 already-merged sites
 `3b53`/`45d1`/`4a2d`/`581f`/`5991`/`5e2e`/`66ec`; 33 labels, no
 merges; `5e41` `CmdHandlerCount` → `FieldFormat_Default`). Guarded
@@ -76,8 +76,8 @@ ROM00 audit complete 2026-09-18 — **25 sites = all ROM00
 `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
 `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
 `Session_AnswerConnect 573d-578e`,
-`Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
-`SessionTxStringSender 5f58-606b`; ~89 case-block functions
+`Session_ManualConnect 578f-5829`, `Session_RxByteLoop 59fb-5b57`,
+`Session_TxStringSender 5f58-606b`; ~89 case-block functions
 absorbed (12 from Deletion List + 77 interior blocks by prologue
 check; only `3f20` had `11 00 00 CD 37 D8` among interiors),
 ~113 labels created; site-1 owner corrected to `3f20-4009`

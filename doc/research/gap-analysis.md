@@ -55,7 +55,7 @@ Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919,
 ## Structural model (CONFIRMED for this codebase)
 
 **Hybrid model — standard for this codebase (CONFIRMED).**
-An inline-switch dispatch (`CALL ram:e0b2` `InlineTableDispatch` +
+An inline-switch dispatch (`CALL ram:e0b2` `Kernel_TableDispatch` +
 inline table + `JP(HL)`) case is a **basic block of the routine that
 owns the table**, kept as **one function**; navigation is restored
 with **labels** (not functions) at each case target and at the shared
@@ -63,7 +63,7 @@ continuation. Rationale: the case blocks have no prologue and use
 the parent's frame, so naming them as functions asserts a false ABI;
 labels give the greppable name without that.
 
-Example (CONFIRMED): `3a04` `SessionFieldDispatch` runs its prologue,
+Example (CONFIRMED): `3a04` `Session_FieldDispatch` runs its prologue,
 computes the switch value, `JP 3b53` (dispatcher); table `3b56`
 cases (`01→3acb`, `02/80→3a1c`, `04→3a99`, `08→3a40`, `10→3a75`,
 `20→3a51`, `40→3ab2`) each `JP 3b7a` (the routine `RET`). So `3a04`'s
@@ -79,13 +79,13 @@ Parents extended and their inline-switch case blocks absorbed; all 12
 interior adjudications were **MERGE** (internal-only callers, no
 external references):
 
-* `3a04` `SessionFieldDispatch` → `3b7a`
-* `444f` `SessionRedrawField` → `463e`
-* `576c` `CmdDispatchSub` → `5839`
-* `583a` `CmdDispatchWrap` → `59a8`
-* `6292` `Ui_PostKeyedEntry` → `62e4`
-* `6633` `Ui_PostDescriptor` → `6759`
-* `6aa9` `Ui_RecordMatchAndPost` → `6b6c`
+* `3a04` `Session_FieldDispatch` → `3b7a`
+* `444f` `Session_RedrawField` → `463e`
+* `576c` `Session_DispatchSub` → `5839`
+* `583a` `Session_DispatchWrap` → `59a8`
+* `6292` `UI_PostKeyedEntry` → `62e4`
+* `6633` `UI_PostDescriptor` → `6759`
+* `6aa9` `UI_RecordMatchAndPost` → `6b6c`
 
 Superseded Part-A names deleted as case blocks (12, none had external
 callers and none are referenced in `doc/` — grep verified): `3a1c`
@@ -105,16 +105,16 @@ descriptor-data misdecodes, not callers.
   labels + 37 EOL comments:** `Program_LoadDipOrCom 0CE7-0FE5`,
   `Field_ResetCounterDispatch 10CF-1176`,
   `Session_AdvanceStageOnZero 14CF-153D`,
-  `Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
-  `SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`.
+  `UI_FieldEditGetChoice 1D80-1FF2`, `Session_RxDispatch 2880-28FD`,
+  `Session_ConnectCheck 2B43-2C4E`, `Session_CmdWalkTable 2C4F-2CD2`.
   See `/tmp/opencode/rom01_dispatch_auditA.md` for the per-target
   label map.
 
 * **Half B — 7 already-merged sites, 33 labels, no merges:**
-  `3b53` `SessionFieldDispatch`, `45d1` `SessionRedrawField`,
-  `4a2d` `Field_MatchPictureChar`, `581f` `CmdDispatchSub`, `5991`
-  `CmdDispatchWrap`, `5e2e` `Field_FormatThreeAttempts`,
-  `66ec` `Ui_PostDescriptor`. `5e41` `CmdHandlerCount` renamed
+  `3b53` `Session_FieldDispatch`, `45d1` `Session_RedrawField`,
+  `4a2d` `Field_MatchPictureChar`, `581f` `Session_DispatchSub`, `5991`
+  `Session_DispatchWrap`, `5e2e` `Field_FormatThreeAttempts`,
+  `66ec` `UI_PostDescriptor`. `5e41` `CmdHandlerCount` renamed
   `FieldFormat_Default`. See
   `/tmp/opencode/rom01_dispatch_auditB.md`.
 
@@ -154,8 +154,8 @@ interiors discriminated by that prologue check.
   `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
   `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
   `Session_AnswerConnect 573d-578e`,
-  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
-  `SessionTxStringSender 5f58-606b`.
+  `Session_ManualConnect 578f-5829`, `Session_RxByteLoop 59fb-5b57`,
+  `Session_TxStringSender 5f58-606b`.
 
 * **Site-1 owner correction (CONFIRMED):** the audit first named
   `3ede` as owner of the `3fec` dispatcher, but `ROM00::3f20`
@@ -187,7 +187,7 @@ were absorbed as labels — not a coverage loss.
 **24 targets: 14 renamed + plates, 10 retained with plates and
 kept symbols.** All byte-verified; Ghidra saved.
 
-* **Renamed (14):** `SessionConfigShow` (`ROM00:2DA5`),
+* **Renamed (14):** `Session_ConfigShow` (`ROM00:2DA5`),
   `Session_CoroYield` (`ROM00:4333`, prologue 5-byte
   `11 00 00 CD 37 D8`), `Session_Yield` (`ROM00:44ED`),
   `Session_CmdCommandYield` (`ROM00:450D`),
@@ -200,7 +200,7 @@ kept symbols.** All byte-verified; Ghidra saved.
   `Field_ReturnOneStub1` (`ROM01:4A41`),
   `Field_ReturnOneStub2` (`ROM01:4A67`),
   `Field_ReturnOneStub3` (`ROM01:4B5F`),
-  `ChecksumThunk_MemMove` (`ram:D7C5`).
+  `Lib_Thunk_MemMove` (`ram:D7C5`).
 
 * **Correction (CONFIRMED):** the
   `Field_ValidateAlwaysPass*` name/evidence was wrong — the
@@ -243,7 +243,7 @@ broken). Now **unblocked** via an inline script using
   `EC EF F8 F0 98 EF D8 EF` + fields + LE self-backlink at
   `+12h`) whose string pointers reference the shared option pool
   at `79F4-7A82` (`"PLINTH"`, `"V24 ADAPTOR"`, `"LOCAL LINK"`,
-  baud rates, `ON`/`OFF`). Referenced from `FieldConfigLoad`
+  baud rates, `ON`/`OFF`). Referenced from `Field_ConfigLoad`
   (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
   `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
 
@@ -272,13 +272,13 @@ Deferred by design (wrong address space if created in
 `ROM00`).
 
 **Item C — retained `FUN_*` resolved (CONFIRMED).**
-6 renamed: `ROM01:156f`→`SessionObj_Method_6784`,
-`1664`→`SessionObj_Method_6b6d`,
-`168e`→`SessionObj_Method_6c84`,
-`16b8`→`SessionObj_Method_696f` (each prologue → `CALL` a
+6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
+`1664`→`Session_Obj_Method_6b6d`,
+`168e`→`Session_Obj_Method_6c84`,
+`16b8`→`Session_Obj_Method_696f` (each prologue → `CALL` a
 work function → tail-call `ROM01:1548`),
-`4d86`→`SessionObj_BuildTextBuf1`,
-`4e79`→`SessionObj_BuildTextBuf2` (text-buffer builders,
+`4d86`→`Session_Obj_BuildTextBuf1`,
+`4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with
 plates: `ROM01:1177` (trivial stub), `ROM00:441b`
 (zero-xref dead, sibling `443c` used), `ram:d937`
@@ -310,7 +310,7 @@ Applied (Ghidra saved, count unchanged):
   `2e6f`→`2f74`, `07ee`→`0903`) — these end in a
   tail-call `JP` rather than `RET`, so the first
   pass missed them;
-* **`ROM01:73de` `Ui_TableRenderRev` extended to
+* **`ROM01:73de` `UI_TableRenderRev` extended to
   `7544`** (its continuation; `73e4` is not a
   function entry but the body after the shell
   prologue).

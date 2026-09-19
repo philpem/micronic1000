@@ -1,13 +1,13 @@
 # RTC (HD146818) — the indexed peripheral 08h/28h
 
 The HD146818 is on ports 08h (register select / address latch) and
-28h (data). RtcRegWrite: OUT(08)=index, OUT(28)=data. RtcRegRead:
+28h (data). RTC_RegWrite: OUT(08)=index, OUT(28)=data. RTC_RegRead:
 OUT(08)=index, IN(28)=data.
 
 ## The interface (CONFIRMED at byte level)
 
-    RtcRegWrite: OUT(08h)=index(B); OUT(28h)=data(A)
-    RtcRegRead:  OUT(08h)=index(B); IN(28h)=data
+    RTC_RegWrite: OUT(08h)=index(B); OUT(28h)=data(A)
+    RTC_RegRead:  OUT(08h)=index(B); IN(28h)=data
 
 I.e. port 08h = register select (address latch), port 28h = data —
 exactly the 146818 programming model.
@@ -16,26 +16,26 @@ exactly the 146818 programming model.
 
 | Index | Function | Value/evidence |
 |-------|----------|----------------|
-| 00 | seconds | written by RtcWriteTime (22AB) |
-| 01 | alarm seconds | written by RtcSetAlarm (2158-62) |
-| 02 | minutes | written by RtcWriteTime |
-| 03 | alarm minutes | written by RtcSetAlarm |
-| 04 | hours | written by RtcWriteTime |
-| 05 | alarm hours | written by RtcSetAlarm |
-| 06 | day-of-week (weekday) | written by RtcWriteTime |
-| 07 | day-of-month | written by RtcWriteTime |
-| 08 | month | written by RtcWriteTime |
-| 09 | year | written by RtcWriteTime |
+| 00 | seconds | written by RTC_WriteTime (22AB) |
+| 01 | alarm seconds | written by RTC_SetAlarm (2158-62) |
+| 02 | minutes | written by RTC_WriteTime |
+| 03 | alarm minutes | written by RTC_SetAlarm |
+| 04 | hours | written by RTC_WriteTime |
+| 05 | alarm hours | written by RTC_SetAlarm |
+| 06 | day-of-week (weekday) | written by RTC_WriteTime |
+| 07 | day-of-month | written by RTC_WriteTime |
+| 08 | month | written by RTC_WriteTime |
+| 09 | year | written by RTC_WriteTime |
 | 0A | Reg A | 0x26 = 1,024 Hz self-test; 0x2A = 64 Hz normal run; 0x7A divider reset; UIP bit7 polled |
 | 0B | Reg B | 0x40=PIE, 0x46=PIE+24h+binary |
 | 0C | Reg C (IRQ flags, read-clears) | periodic flag drives scheduler; read by clock self-test |
 | 0D | Reg D | unused |
-| 00-09 | time register file | read by RtcReadRegisterFile (20EF) into g_abRtcRegisterSnapshot (FD50) — 10 bytes |
+| 00-09 | time register file | read by RTC_ReadRegisterFile (20EF) into g_abRtcRegisterSnapshot (FD50) — 10 bytes |
 
-`RtcWriteTime` (ROM00:22AB) writes registers 09,08,07,04,02,00,06
+`RTC_WriteTime` (ROM00:22AB) writes registers 09,08,07,04,02,00,06
 (year/month/day-of-month/hours/min/sec/day-of-week) from the caller
 buffer. `RtcSetTimeFromBuffer` (ROM00:20AC) wraps it with the standard
-SET-bit freeze → stop → write → restart → clear step. `RtcInit`
+SET-bit freeze → stop → write → restart → clear step. `RTC_Init`
 (ROM00:2084) writes Reg B <- 0x46 and loads a default time block
 (source ROM00:20A7).
 
@@ -48,7 +48,7 @@ little-endian byte indices in that buffer.
 
 | Offset | BDOS FCh (set, ROM00:1150) | BDOS FDh (get, ROM00:113E) | BDOS FFh (alarm, ROM00:112D) |
 |--------|----------------------------|----------------------------|------------------------------|
-| +0 | metadata: byte copied to RTC scratch state but **RTC ignored** (not written to any RTC register) | metadata: byte returned from `g_bRtcRecordMetadata` (initialized `13h` at `ROM00:2084` / `RtcInit`) | metadata: byte copied but unused (FF path copies it, never programs RTC) — mechanics CONFIRMED, **LIKELY century `19`**, exact meaning **OPEN** |
+| +0 | metadata: byte copied to RTC scratch state but **RTC ignored** (not written to any RTC register) | metadata: byte returned from `g_bRtcRecordMetadata` (initialized `13h` at `ROM00:2084` / `RTC_Init`) | metadata: byte copied but unused (FF path copies it, never programs RTC) — mechanics CONFIRMED, **LIKELY century `19`**, exact meaning **OPEN** |
 | +1 | **year** → RTC reg `09h` | **year** ← RTC reg `09h` | copied unused |
 | +2 | **month** → RTC reg `08h` | **month** ← RTC reg `08h` | software date gate — compared by `RTC_AlarmDateMatches` (`ROM00:223E`, formerly `Link_StatusCompare_FD4B`) against current date via `g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth` |
 | +3 | **day-of-month** → RTC reg `07h` | **day-of-month** ← RTC reg `07h` | software date gate — same `RTC_AlarmDateMatches` comparison |
@@ -59,14 +59,14 @@ little-endian byte indices in that buffer.
 
 **ABI properties (CONFIRMED):**
 
-* Normal initialized ABI is **raw binary, 24-hour**. `RtcInit`
+* Normal initialized ABI is **raw binary, 24-hour**. `RTC_Init`
   (`ROM00:2084`) programs Reg B = `46h` (`PIE | binary | 24h`), and
   firmware performs **no conversion or range validation** on any
   field.
 * Service identities from dispatch bytes (wrapped table `ROM00:36EE` →
   `ram:F1D1`): `FCh=ROM00:1150` set, `FDh=ROM00:113E` get,
   `FEh=ROM00:1122` timed wait (`Bdos_InternalTimedWait`), `FFh=ROM00:112D`
-  alarm (`BdosFfAlarmControl`).
+  alarm (`Bdos_FfAlarmControl`).
 * `FFh` both paths poll UIP: `DE=0` clears `AIE` (Reg B bit5 clear) and
   non-zero `DE` programs alarm regs `01h/03h/05h` then sets `AIE`;
   **both poll `UIP` (Reg A bit7) before touching Reg B** — permanent
@@ -77,31 +77,31 @@ little-endian byte indices in that buffer.
   ineffective because `UIP` is read-only on the HD146818 — the `|80h`
   write has no documented effect — then `2Ah` is written regardless.
 
-Evidence: `RtcInit` `ROM00:2084-20D0` (Reg B `46h`, `g_bRtcRecordMetadata`
+Evidence: `RTC_Init` `ROM00:2084-20D0` (Reg B `46h`, `g_bRtcRecordMetadata`
 init `13h`), `RtcSetTimeFromBuffer` `ROM00:20AC` (SET freeze, Reg A
-`7Ah` stop / `2Ah` start), `RtcWriteTime` `ROM00:22AB` (writes
-`09/08/07/04/02/00/06`), `RtcReadRegisterFile` `ROM00:20EF` (UIP poll,
-reads `00h..09h` → `g_abRtcRegisterSnapshot`), `BdosSetRtcTime`
-`ROM00:1150`, `BdosGetRtcTime` `ROM00:113E`, `Bdos_InternalTimedWait`
-`ROM00:1122`, `BdosFfAlarmControl` `ROM00:112D` (UIP poll both paths,
+`7Ah` stop / `2Ah` start), `RTC_WriteTime` `ROM00:22AB` (writes
+`09/08/07/04/02/00/06`), `RTC_ReadRegisterFile` `ROM00:20EF` (UIP poll,
+reads `00h..09h` → `g_abRtcRegisterSnapshot`), `Bdos_SetRtcTime`
+`ROM00:1150`, `Bdos_GetRtcTime` `ROM00:113E`, `Bdos_InternalTimedWait`
+`ROM00:1122`, `Bdos_FfAlarmControl` `ROM00:112D` (UIP poll both paths,
 `DE=0` clear vs program `01/03/05` + `AIE`), `RTC_AlarmDateMatches`
 `ROM00:223E` (`g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth` date gate),
-`RtcClearAlarmInterrupt` `ROM00:217B` (AIE clear).
+`RTC_ClearAlarmInterrupt` `ROM00:217B` (AIE clear).
 
 ## Key routines
 
-- RtcInit (ROM00:2084): Reg B <- 0x46 (enable periodic IRQ, binary,
+- RTC_Init (ROM00:2084): Reg B <- 0x46 (enable periodic IRQ, binary,
   24h); calls RtcSetTimeFromBuffer with HL=20A7 boot-default block;
   initializes `g_bRtcRecordMetadata` to `13h`.
 - RtcSetTimeFromBuffer (ROM00:20AC): DI; RegB.SET; RegA stop(0x7A);
-  RtcWriteTime; RegA start(0x2A); clear SET; CALL f54e.
-- RtcWriteTime (ROM00:22AB): writes 09,08,07,04,02,00,06.
-- ClockSelftestTickWindow (2828): installs tick handler, counts
+  RTC_WriteTime; RegA start(0x2A); clear SET; CALL f54e.
+- RTC_WriteTime (ROM00:22AB): writes 09,08,07,04,02,00,06.
+- Clock_SelftestTickWindow (2828): installs tick handler, counts
   periodic interrupts from the RTC -> CPU-vs-RTC-rate check.
-- RtcReadRegisterFile (ex-"CommsRxBurst16", 20EF): waits RegA.UIP
+- RTC_ReadRegisterFile (ex-"CommsRxBurst16", 20EF): waits RegA.UIP
   clear, then reads regs 00h..09h (10 bytes, the time file) into
   g_abRtcRegisterSnapshot (FD50).
-- RtcInit path writes Reg B = 0x46 (PIE + binary + 24h).
+- RTC_Init path writes Reg B = 0x46 (PIE + binary + 24h).
 - Wake/resume (1805): reads Reg C (clear pending), then 229E
   enables PIE again (Reg B | 0x40).
 
@@ -115,7 +115,7 @@ Register A (0x0A) rate-select bits drive the periodic interrupt:
   | 0x7A (write-time freeze) | 111 (reset) | - | none |
 
 The owner supplies the **3.6864 MHz** Z80 clock rate (corrected 2026-09-03;
-this passage previously said 3.579545 MHz). ClockSelftestTickWindow verifies
+this passage previously said 3.579545 MHz). Clock_SelftestTickWindow verifies
 the self-test periodic interrupt rate: it arms 130 ticks (fda8) and counts inner-loop
 iterations at `ROM00:2844` (`INC BC / LD A,B / OR C / JP NZ` = 6+4+4+10 =
 24 T-states, byte-verified), requiring the elapsed count to land in
@@ -133,8 +133,8 @@ a usable cross-check on the clock rate in either direction without accounting
 for the ISR, and none is attempted here.
 
 The self-test rate is not the later scheduler rate. Cold boot calls
-`ClockSelftestTickWindow` at `ROM00:0208`, then calls `RtcInit` at
-`ROM00:024A`. `RtcInit` calls `RtcSetTimeFromBlock`, whose final Register A
+`Clock_SelftestTickWindow` at `ROM00:0208`, then calls `RTC_Init` at
+`ROM00:024A`. `RTC_Init` calls `RTC_SetTimeFromBlock`, whose final Register A
 write is `2Ah`; no later boot-time write restores `26h`. **CONFIRMED:** the
 normal post-boot periodic rate is therefore 64 Hz (15.625 ms). A bounded
 300,000-slice `analysis/boot_hw.py` run reaches the banner and independently
@@ -169,7 +169,7 @@ This confirms: 08h=register select, 28h=data, the exact register set
 (09/08/07/04/02/00/06) and the freeze/stop/write/start sequence. The RTC
 periodic interrupt drives the CPU INT (MAME-correct I/O stub returns
 port5=0x19). The emulator follows Register A dynamically: 1,024 Hz lets the
-clock self-test complete, then `RtcInit` changes the running cadence to 64 Hz
+clock self-test complete, then `RTC_Init` changes the running cadence to 64 Hz
 before the banner.
 
 ## Open items
@@ -190,28 +190,28 @@ before the banner.
 
 Note: the external link (PLINTH/V24/side port) does NOT share the
 08/28 RTC bus — it uses the 4x cluster (4Ah ctrl, 4Bh status, 4Dh TX
-data, 4Eh RX data). See io-map.md and LinkBlockTx/LinkBlockRx.
+data, 4Eh RX data). See io-map.md and Link_BlockTx/Link_BlockRx.
 ## Complete RTC register map (CONFIRMED from all call sites)
 
 | Index | HD146818 reg | Access | Code sites |
 |-------|--------------|--------|------------|
-| 00 | seconds | read/write | RtcWriteTime (22AB), RtcReadRegisterFile (20EF) |
-| 01 | alarm-seconds | write | RtcSetAlarm (2158-62, B=5/3/1 loop) |
-| 02 | minutes | read/write | RtcWriteTime, RtcReadRegisterFile |
-| 03 | alarm-minutes | write | RtcSetAlarm |
-| 04 | hours | read/write | RtcWriteTime, RtcReadRegisterFile |
-| 05 | alarm-hours | write | RtcSetAlarm |
-| 06 | day-of-week (weekday) | read/write | RtcWriteTime, RtcReadRegisterFile |
-| 07 | day-of-month | read/write | RtcWriteTime, RtcReadRegisterFile; RTC_AlarmDateMatches date gate |
-| 08 | month | read/write | RtcWriteTime, RtcReadRegisterFile; RTC_AlarmDateMatches date gate |
-| 09 | year | read/write | RtcWriteTime, RtcReadRegisterFile |
+| 00 | seconds | read/write | RTC_WriteTime (22AB), RTC_ReadRegisterFile (20EF) |
+| 01 | alarm-seconds | write | RTC_SetAlarm (2158-62, B=5/3/1 loop) |
+| 02 | minutes | read/write | RTC_WriteTime, RTC_ReadRegisterFile |
+| 03 | alarm-minutes | write | RTC_SetAlarm |
+| 04 | hours | read/write | RTC_WriteTime, RTC_ReadRegisterFile |
+| 05 | alarm-hours | write | RTC_SetAlarm |
+| 06 | day-of-week (weekday) | read/write | RTC_WriteTime, RTC_ReadRegisterFile |
+| 07 | day-of-month | read/write | RTC_WriteTime, RTC_ReadRegisterFile; RTC_AlarmDateMatches date gate |
+| 08 | month | read/write | RTC_WriteTime, RTC_ReadRegisterFile; RTC_AlarmDateMatches date gate |
+| 09 | year | read/write | RTC_WriteTime, RTC_ReadRegisterFile |
 | 0A | Reg A (ctrl) | write 0x26=1,024 Hz self-test / 0x2A=64 Hz normal run / 0x7A stop; poll UIP bit7; read-mod-write `|80h` in FF preamble | 20AC,20D9,2100, FF preamble |
 | 0B | Reg B (ctrl) | write 0x40(PIE)/0x46(PIE+bin+24h); read-mod-write AIE/SET | 2295/229E/20AF,20DD,216D,217B |
 | 0C | Reg C (IRQ flags, read clears) | read (ack + EF00/17FD poke) | 0277,17FD,2206 |
 | 0D | Reg D | unused | - |
 
-Alarm feature: RtcSetAlarm (ROM00:2141) writes alarm regs 05/03/01 and
-sets AIE (Reg B | 0x20); RtcClearAlarmInterrupt (217B) clears AIE.
+Alarm feature: RTC_SetAlarm (ROM00:2141) writes alarm regs 05/03/01 and
+sets AIE (Reg B | 0x20); RTC_ClearAlarmInterrupt (217B) clears AIE.
 The FF alarm path's date fields (+2/+3 month/day-of-month) are
 **software-gated** by `RTC_AlarmDateMatches` (`g_bRtcAlarmDayOfMonth`/
 `g_bRtcAlarmMonth`), not by RTC hardware. The user-visible "alarm

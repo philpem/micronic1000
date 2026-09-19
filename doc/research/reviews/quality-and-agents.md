@@ -26,7 +26,7 @@ contradicted by the firmware**:
    2D front-end"). A device whose *only* handler is an edge-width
    timer with no TX path cannot be a storage adapter.
 2. **The storage devices live in the other table.** The external
-   storage path (Disk* → 0A6D → `LinkTransportOpen` 2EAB) opens its
+   storage path (Disk* → 0A6D → `Link_TransportOpen` 2EAB) opens its
    wire from the **FE93** letter-indexed table (`DeviceTableIndex`
    31FF: index ≥ 'A' → FE93). FE93's non-RAM defaults are **0x73/0x72
    — bit6 set, real 4x transport devices**. The ROM01 menu complex
@@ -77,13 +77,13 @@ one-line answer settles it.
   (`80 AB 63 43 | 80 2B 63 43 | 80 67 63 43 | 80 67 63 43`, source
   ROM00:3267), read through four selector windows of `fbc5`
   (console = entries 1-4, reader-channel = 5-8, punch = direct 1-16,
-  list per BdosListOutChar). The quoted 4 bytes are just entries
+  list per Bdos_ListOutChar). The quoted 4 bytes are just entries
   2/6/10/14. My first review printed the full table; the rewrite
   dropped it.
 * barcode-reader.md §capture step 1 says the caller buffer pointer is
   **`fbc7`** — it is **`fbb7`** (fbc7 is the unrelated BDOS-F9 preset
   byte). One-character typo that sends a reader to the wrong variable.
-* The completion-event follow-up (`LinkResetSession` 30BD does
+* The completion-event follow-up (`Link_ResetSession` 30BD does
   `fbc9 |= 1` and clears fdca) — **verified correct**, good close-out.
 
 ---
@@ -155,8 +155,8 @@ jumps through garbage — do not probe for extensions by calling them.*
   falsifiable rate calculation, and explicit open items.
 * **protocol-comms.md**'s transport/frame sections and
   **os-diposb.md**'s ABI/loader sections are strong.
-* Plates on `RtcWriteTime` (22AB), `TemplateBuilder` (ROM01:0271) and
-  `KernelImage_BdosMain` (36A0, modulo §2.1) are exactly what a plate
+* Plates on `RTC_WriteTime` (22AB), `Form_Builder` (ROM01:0271) and
+  `Kernel_Image_BdosMain` (36A0, modulo §2.1) are exactly what a plate
   should be: purpose, mechanism, cross-references, why.
 
 ---
@@ -171,14 +171,14 @@ places (e.g. `31CA: HL = id table base (2B,2A,23,03,FF); IX =
 handler-ptr table` — genuinely useful). Elsewhere, core functions have
 **nothing**:
 
-* `KeyboardReadChar` (18C0): no plate, no comments — yet it contains
+* `Kbd_ReadChar` (18C0): no plate, no comments — yet it contains
   three things a reader cannot get from the mnemonics:
   `AND 0xFB` / `OR 0x04` on `fbc9` (clear/set the **keyboard event
   bit 2** of the event-pending byte), the key ring pointer `fbf0`,
   and `CP 0xCD / JP Z,3513` — **scancode 0xCD is a hotkey into
-  MonitorEnter**. That last one is a discovery-grade fact sitting
+  Monitor_Enter**. That last one is a discovery-grade fact sitting
   uncommented.
-* `ExtBusAcquireEdge` (13B8): the most intricate routine in the
+* `ExtBus_BusAcquireEdge` (13B8): the most intricate routine in the
   subsystem — **zero inline comments**. It needs perhaps six:
   - `13BB LD (fbbd),SP / LD SP,fbb5` — *SP is repurposed as the
     width-table write pointer; widths are PUSHed downward from FBB3;
@@ -193,24 +193,24 @@ handler-ptr table` — genuinely useful). Elsewhere, core functions have
   - `1458-1467` — the hook dispatch: *BIT 7,H = resident? ;
     CP 0xD7 = target already a RST10 banked stub? else run the
     synthesized stub at fbc0*.
-* `ExtBusComplete` (14A3) and `ExtDecodeHookDiscard` (1567) have **no
+* `ExtBus_BusComplete` (14A3) and `ExtBus_DecodeHookDiscard` (1567) have **no
   plates**. For 1567 the missing one-liner is the single most
   important fact in the subsystem: *"default hook: zeroes the element
   count → every capture is discarded until software installs a real
   decoder at fbc2."*
-* `RtcRegWrite` (22DB): the `OUT (0x28),A` EOL is good, but the
+* `RTC_RegWrite` (22DB): the `OUT (0x28),A` EOL is good, but the
   indirect `OUT (C),B` with C=8 has no comment — precisely the
   indirected-port case AGENTS.md itself flags.
 
 ### 3.2 Stale plates after the mass rename (systemic)
 
 The `Reader*` → `ExtBus*` rename did not touch the plates:
-`ExtBusAcquireEdge`'s plate still opens **"ReaderEdgeDecode:
-barcode/light-pen edge-timing decoder"**, and `ExtBusArm`'s still
+`ExtBus_BusAcquireEdge`'s plate still opens **"ReaderEdgeDecode:
+barcode/light-pen edge-timing decoder"**, and `ExtBus_BusArm`'s still
 opens **"ReaderArmRoute: arm the barcode/light-pen route"** — each
 function now contradicts itself between name and header. Whatever the
 naming outcome of §1, name/plate/docs must move together. (Also fix
-the `LinkBlockTx` plate's confused tail: "See HD146818-style
+the `Link_BlockTx` plate's confused tail: "See HD146818-style
 register/bit naming … datasheet = Micronic 4x link transceiver" —
 there is no such datasheet and the RTC reference is a copy-paste
 artifact.)
@@ -256,7 +256,7 @@ JP   (HL)              ; tail-call the fbc2 decode hook
 
 Anti-patterns to ban explicitly: `LD A,0x14 ; put 14h in A`;
 `INC HL ; next byte`; comments that repeat the label
-(`CALL LinkBlockTx ; call LinkBlockTx`); and *asserting identity in a
+(`CALL Link_BlockTx ; call Link_BlockTx`); and *asserting identity in a
 repeatable comment* (a repeatable propagates to every xref — it
 carries the project's highest burden of proof, see io:002d).
 
@@ -264,8 +264,8 @@ carries the project's highest burden of proof, see io:002d).
 
 1. Fix the io:002d repeatable and the two stale ExtBus plates (§1,
    §3.2) — these actively mislead today.
-2. Plates for `ExtDecodeHookDiscard`, `ExtBusComplete`,
-   `KeyboardReadChar`, `BdosPunchOutChar`, and the fbc0/fbc1/fbc2
+2. Plates for `ExtBus_DecodeHookDiscard`, `ExtBus_BusComplete`,
+   `Kbd_ReadChar`, `Bdos_PunchOutChar`, and the fbc0/fbc1/fbc2
    cells (labels exist; the cells still have no comments — get_comment
    returns empty on all three).
 3. Inline-comment pass over 13B8/12EC/1317/1443-14A2 per §3.1.
@@ -300,9 +300,9 @@ discipline are all right. Recommended changes:
    name + plate first line + doc mentions + TASKS entry, in one pass;
    grep the docs for the old name before finishing.*
 4. **Plate-required rule**: a function is not "named" until it has at
-   least a one-line plate. (Prevents the ExtBusComplete/1567 gaps and
+   least a one-line plate. (Prevents the ExtBus_BusComplete/1567 gaps and
    makes the coverage tracker honest.)
-5. **Comment examples**: replace the single LinkBlockTx example with a
+5. **Comment examples**: replace the single Link_BlockTx example with a
    good/bad table like §3.3 — branch-meaning, bit-naming,
    magic-number, idiom, computed-flow examples, plus the explicit
    anti-patterns. This is the highest-leverage edit for the stated

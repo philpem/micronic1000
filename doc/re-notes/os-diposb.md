@@ -62,11 +62,11 @@ references:
    number; handler = word[d6f4 + fn×2], tail-jumped via
    `EX (SP),HL / RET`. The copied block's table holds exactly three
    loader primitives:
-    * 0 = D6FA `SyscallMemset` — zero-fill a block (fn=0x0000,
+    * 0 = D6FA `Syscall_Memset` — zero-fill a block (fn=0x0000,
       `{fn, addr, count}`); was mis-named SyscallLoadBlockToMem
-    * 1 = D713 `SyscallMoveBlockAlt` — block move, swapped operands
+    * 1 = D713 `Syscall_MoveBlockAlt` — block move, swapped operands
       (fn=0x0001, `{fn, src, dst, count}`)
-    * 2 = D727 `SyscallQueueBankedBlock` — append deferred-call records
+    * 2 = D727 `Syscall_QueueBankedBlock` — append deferred-call records
       `{D7h, bank, addrL, addrH}` to a queue at (d684); each record is
       itself an RST10 banked-call stub ("call address X in bank Y later")
       (fn=0x0002, `{fn, N, addr[N]}`); `fn=FFFF` terminates the stream.
@@ -88,10 +88,10 @@ Hardware IRQ (IM 1)       : 0038 -> F5F3        NMI: 0066 -> F5F6
 
 ## BDOS function set (CONFIRMED — from the ROM-resident kernel image)
 
-`InstallKernelToRam` copies the kernel from **ROM00:369D → F180**
+`Kernel_KernelToRam` copies the kernel from **ROM00:369D → F180**
 (0x50D bytes), so the entire kernel is statically analysable in ROM00.
 The image begins with 3 NOPs; the dispatcher proper is at F183
-(ROM00:36A0, function `KernelImage_BdosMain`).
+(ROM00:36A0, function `Kernel_Image_BdosMain`).
 
 Dispatch: function number in `C`.
 * `00h-24h`: handler = `word[F1EB + fn*2]` — table source at `ROM00:3708`
@@ -134,7 +134,7 @@ fn 1B=1D share (static vector returns), and the disk-oriented stubs
 
 ## Local terminal escape protocol
 
-`tty_out_char` (`ROM00:1BEB`) interprets `ESC` followed by a byte from the
+`Tty_out_char` (`ROM00:1BEB`) interprets `ESC` followed by a byte from the
 computed table at `ROM00:2050`. Its parallel handler-word table starts at
 `ROM00:2062`: the dispatcher pre-increments its handler pointer twice, so
 the apparent `2060` base is two bytes early.
@@ -162,7 +162,7 @@ records mechanics only; it does not imply an ANSI or VT-family protocol.
 
 Note on addressing: handlers below 8000 live in the banked window
 and require ROM bank 0 mapped during service — which is exactly what
-`BankedCallBankZeroWrapper` (ROM00:3ADD) arranges before work happens.
+`Kernel_CallBankZeroWrapper` (ROM00:3ADD) arranges before work happens.
 
 ## Workstation object system (decoded)
 
@@ -175,9 +175,9 @@ tables section in [Memory and I/O map](../reference/memory-map.md)):
 * config/type bytes (`01 08 20 01` vs `…00`), prev/next links
 * arrays of item-name pointers (menu/submenu titles)
 
-`TemplateBuilder` (ROM01:0271) processes a block:
+`Form_Builder` (ROM01:0271) processes a block:
 
-1. `CoroutineTaskSwitch(0)` — yield to the scheduler first
+1. `Coroutine_TaskSwitch(0)` — yield to the scheduler first
 2. `dbee` (=ROM00:759D, inside chain-loaded module A) — text-format
    interpreter: decimal accumulation (×10+digit), space/tab/slash
    dispatch — parses the runtime text associated with the block,
@@ -223,7 +223,7 @@ alternate entry. The dispatcher saves the function to `fefc`, sets
 
 ### 2. Fast kernel jump table (fn 1-18)
 
-`SessionBdosCall`/`Kernel_DeferStagedCall` (module helpers): for functions
+`Session_BdosCall`/`Kernel_DeferStagedCall` (module helpers): for functions
 1-18 the payload jumps to **`(word@0002) + (fn-1)*3`** — a 3-byte
 `JP handler` table in the kernel at the reset-vector page (JP F238
 target: table at ram:F238, source ROM00:3755). Decoded entries:
@@ -255,7 +255,7 @@ dispatcher; `0066 -> F5F6` is NMI.
 
 **The whole kernel is installed from ROM on every cold boot.**
 A factory-fresh unit reaches the menu on new batteries because
-`InstallKernelToRam` (ROM00:02FE) copies the resident kernel into
+`Kernel_KernelToRam` (ROM00:02FE) copies the resident kernel into
 battery RAM before anything calls it:
 
 * Source ROM00:369D → destination ram:F180, length 0x50D bytes
@@ -358,7 +358,7 @@ Combined coverage: bank-0 writes **D893-E704**, bank-1 writes
 The fn=2 records build a 1124-byte table at ED1C-F17F of executable
 {RST10h, bank, target} far-call stubs — and this table serves
 TWO roles:
-  1. **Task list**: `CoroutineTaskSwitch` (ram:D837) runs entries
+  1. **Task list**: `Coroutine_TaskSwitch` (ram:D837) runs entries
      cooperatively (emulation-confirmed; tasks observed at the
      enqueued targets)
   2. **Transfer vector table**: Workstation UI object vtables
@@ -383,7 +383,7 @@ TWO roles:
   vectors reach the resident kernel from any bank.
 * The warm-restart tail ends with `CALL F54E` — resuming whatever sits
   in top RAM, which only works because of the battery backup.
-* ROM00:3ADD `BankedCallBankZeroWrapper`: reached from both banks'
+* ROM00:3ADD `Kernel_CallBankZeroWrapper`: reached from both banks'
   RST2 tails; saves current bank, switches to bank 0, calls kernel
   (F54E) then bank-0 worker (2C00), restores bank, re-notifies kernel.
 
@@ -391,7 +391,7 @@ TWO roles:
 
 * Loader: **ROM01:0A67-10CE** via `ram:D081` (`g_apScreenHandlerTables`) →
   `ram:D0F0` (`g_apLoadRunHandlers`), entered through
-  `Ui_FormExitDispatchNext` (ROM01:06D3). Key routines:
+  `UI_FormExitDispatchNext` (ROM01:06D3). Key routines:
   `Program_PrepareLoadGeometry` (`0A67`), `Program_NormalizeLoadRange`
   (`0AE3`), `Program_GenerateBlockChecksums` (`0957`),
   `Program_VerifyBlockChecksums` (`09C2`), `Program_LoadByName` (`0B82`),
@@ -400,7 +400,7 @@ TWO roles:
   (`ROM01:1002`) — zero completion finalizes state, generates DIP block
   checksums when needed, and sets loader state `3` (nonzero status follows
   `0x2330` error path), `Program_RunByName` (`106F`),
-  final transfer `10C6 → ram:D7F0` (`RunLoadedProgram`).
+  final transfer `10C6 → ram:D7F0` (`Program_LoadedProgram`).
 * **DIP vs COM**: magic `0xC8C9` (`C9 C8`) at `+0`, system ID `0`/`0x00E5`,
   14-byte header, max 5 blocks, type `0`=direct copy / `1`=RST 10h
   trampoline expansion, 8-byte serialized prefix in a 10-byte descriptor
@@ -411,7 +411,7 @@ TWO roles:
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
    services. **Loader coroutine rendezvous (CONFIRMED):** the runtime
    Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — its
-   routines enter via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`,
+   routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_TaskSwitch`,
    `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9`
    (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED). `Coroutine_SwapContinuation`
    (`ram:D9F9`-`ram:DA0A`) swaps the current continuation with the 16-bit
@@ -434,7 +434,7 @@ TWO roles:
    `Program_ConsumeInputChunk`) (CONFIRMED); the exact staging cell/buffer
    the loader's peer fills remains **OPEN**.
 * **Service-33 identities (CONFIRMED):** actual service-33 entry is
-  `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+  `ROM00:2E02` (`Device_SelectOpen`, retained name); `ROM00:2E72` is
   `Device_Service33Timeout`, not the entry; `ROM00:2E85` is
   `Device_Service33Complete`, the completion callback registered through
   `ram:FDD2` (`g_pSvc33Callback`). Successful type-4 processing falls
@@ -468,8 +468,8 @@ TWO roles:
 
 ## Debug facilities
 
-* **Monitor located**: `MonitorEnter` (ROM00:3513). Reached two ways:
-  * fatal-error handler `FatalErrorHandler` (ROM00:2C00, entered from
+* **Monitor located**: `Monitor_Enter` (ROM00:3513). Reached two ways:
+  * fatal-error handler `Diag_ErrorHandler` (ROM00:2C00, entered from
     the banked-call wrapper after a kernel-notified fault): prompts
     "R key for retry / M key for monitor / Any key for return";
     M (4Dh) or Z (5Ah) saves HL → FEFA and DE:BC → FEF8 then enters
@@ -489,7 +489,7 @@ TWO roles:
   Additional gate: port 49h must read bit0=1 / bit1=0 at reset
   (checked twice before the matrix probes).
   **Effect:** f81d=FF -> at the banner's key-read point (ROM00:0291)
-  the firmware CALLs MonitorEnter (3513) instead of waiting for
+  the firmware CALLs Monitor_Enter (3513) instead of waiting for
   ENTER/keys, i.e. the service combo bypasses normal boot into the
   monitor.
 * `Set Debug Mode` menu option in ROM01 (string @ ROM01:7B52).
@@ -498,7 +498,7 @@ TWO roles:
 
 ## Power on/off (partially decoded)
 
-* **PowerDownSuspend** (ROM00:1721) is the suspend routine, reached
+* **Power_DownSuspend** (ROM00:1721) is the suspend routine, reached
   from the NMI handler — strong evidence the power button is wired
   to NMI:
   * saves SP and 8 bytes of state (fbf3 → fbfb)
@@ -527,17 +527,17 @@ HD146818 interface, and the RAM kernel is copied from ROM at cold boot.
 - Battery-RAM vector block: `F5F0 JP 3513` (break/monitor entry),
   `F5F3 JP F64D` (tick/IRQ handler), `F5F6+` inline prologue gating
   on restart flag fbd5.
-- ram:F64D = `IrqCommonHandlerImage` ≡ ROM00:3B6A: ffa8 semaphore
+- ram:F64D = `Kernel_CommonHandlerImage` ≡ ROM00:3B6A: ffa8 semaphore
   (0 = drop IRQ silently; re-armed to 1 after service), bank switch
   to 0, CALL 230A, restore.
-- ram:230A `IrqWorkerPollPort5`: IN(05) snapshot -> f785; walks
+- ram:230A `Kernel_WorkerPollPort5`: IN(05) snapshot -> f785; walks
   event table fd84 {mask,handler} records (template ROM00:2352:
   01→18F0, 02→2206, 04→31B6, 08→2365, 10→2365, term ≥80h). Status
   lines are POLLED per IRQ, not vectored.
 
 ## Clock self-test decoded
 
-ROM00:2828 `ClockSelftestTickWindow` -> result fdb5 ("Clock test"
+ROM00:2828 `Clock_SelftestTickWindow` -> result fdb5 ("Clock test"
 banner line). Hijacks F5F3 with handler 2877, countdown fda8=130
 ticks; each tick pokes peripheral reg C (IN(05)/OUT(08)=0C/IN(28));
 on expiry POP-IX-unwinds into evaluation: elapsed busy-loop count

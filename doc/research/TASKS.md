@@ -5,7 +5,7 @@ State: continuously updated as work progresses.
 ## Done (verified vs docs + Ghidra + byte-level traces)
 
 1. Map syscall table at ram:d6f4 (3 loader primitives + hidden terminator)
-2. Kernel installers -> InstallKernelToRam (ROM00:02FE),
+2. Kernel installers -> Kernel_KernelToRam (ROM00:02FE),
    CopyKernelDispatchBlock (ROM00:3BAA)
 3. ROM00 gap analysis; ROM01 gap pass 1
 4. Boot load scripts CLOSED (decode_chains.py; grammar fn=0/1/2/FFFF)
@@ -13,12 +13,12 @@ State: continuously updated as work progresses.
    (queue ED1C-F17F doubles as task list AND UI vtable targets)
 6. Template builder / object system decoded (ROM01:0271)
 7. Warm restart path decoded
-8. Monitor located (MonitorEnter ROM00:3513)
+8. Monitor located (Monitor_Enter ROM00:3513)
 9. Keyboard matrix fully decoded (H+L+P = HELP service key;
    drive(02)=col bit, sense(00)=row bit, index=row*6+col)
 10. Interrupt architecture fully decoded (IM1 -> 0038 -> F5F3 -> F64D ->
     polled fd84 event table; NMI -> 0066 -> F5F6)
-11. Clock self-test decoded (ClockSelftestTickWindow ROM00:2828)
+11. Clock self-test decoded (Clock_SelftestTickWindow ROM00:2828)
 12. Session/Commstar reference data located (ROM00:6A50-6E90)
 13. **RTC RESOLVED: 08h/28h indexed pair IS the HD146818** (address
     latch / data). Register map proven from firmware sequences:
@@ -53,12 +53,12 @@ State: continuously updated as work progresses.
 18. **Runtime DIP/COM Load/Run loader — file format CLOSED (2026-08-28)**:
      `ROM01:0A67-10CE` via `ram:D081` (`g_apScreenHandlerTables`, was
      `g_tblFieldTypeRecPtrs`) → `ram:D0F0` (`g_apLoadRunHandlers`),
-     `Ui_FormExitDispatchNext` (ROM01:06D3) double-dereference. Ghidra
+     `UI_FormExitDispatchNext` (ROM01:06D3) double-dereference. Ghidra
      names: `Program_PrepareLoadGeometry` 0A67, `Program_LoadByName` 0B82,
      `Program_ConsumeInputChunk` 0BAC, `Program_LoadDipOrCom` 0CE7,
      `Program_RunByName` 106F, `Program_GenerateBlockChecksums` 0957,
      `Program_VerifyBlockChecksums` 09C2, `Program_NormalizeLoadRange`
-     0AE3, `Program_ReportLoadError` 0CCB, `RunLoadedProgram` ram:D7F0
+     0AE3, `Program_ReportLoadError` 0CCB, `Program_LoadedProgram` ram:D7F0
      (final transfer at 10C6). **No BDOS execute function** — BDOS
      open/read/search are generic FCB services; source bytes via
      coroutine/provider around `0C12`/`0CE7`/`ram:D370`, exact physical
@@ -135,10 +135,10 @@ State: continuously updated as work progresses.
 
 ### No-hardware priorities
 
-- **DONE 2026-09-13 — Finish the static receive-chain state map (Phase 1):** the `2FBD` -> `LINK_STATUS`-compare -> `LinkRxDispatcher` (`ROM00:3002`-`3078`) path and `ROM00:30DC`, and the exact `LINK_CTRL` 6/7 raise/lower points around a transaction. (The `LinkTransferService` gating at `ROM00:2FAE` is already CONFIRMED.) — completed this pass as `re-notes/ir-wire-protocol.md` § *Receive-chain state map* (static, `ROM00`; byte-verified); see session log 2026-09-13.
-- **DONE 2026-09-17 — Emulator demonstration of the handshake gating (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion (one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout) then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (`42h`, `0C2h`) — hypothesis "never reaches `2FAE` RX-enable" is FALSE: carry is ignored. Gating is temporal: the firmware holds `LINK_CTRL` 6/7 clear for the whole transaction and raises them after it (~10–12 ms window: 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry). *Harness detail:* stub `RET` at `0F54Eh` (resident-kernel helper absent from flat memory). Validates firmware latch writes only; controller model is synthetic, and whether 6/7 gates the receiver (vs only its interrupt) is Provisional. Witness fix: earlier exerciser builds left `LINK_CTRL` 6/7 clear so the link RX interrupt was never enabled; witness now sets them (`ctrl_or 40h`/`80h` as `34BD`/`2FAE` does) — new witness `2E3E`, 824 bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`); default `2609` unchanged; 65 tests pass.
+- **DONE 2026-09-13 — Finish the static receive-chain state map (Phase 1):** the `2FBD` -> `LINK_STATUS`-compare -> `LinkRxDispatcher` (`ROM00:3002`-`3078`) path and `ROM00:30DC`, and the exact `LINK_CTRL` 6/7 raise/lower points around a transaction. (The `Link_TransferService` gating at `ROM00:2FAE` is already CONFIRMED.) — completed this pass as `re-notes/ir-wire-protocol.md` § *Receive-chain state map* (static, `ROM00`; byte-verified); see session log 2026-09-13.
+- **DONE 2026-09-17 — Emulator demonstration of the handshake gating (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `Link_TransferService` inner path (`ROM00:2F86`) runs `Link_BlockTx` (`ROM00:3277`) to completion (one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout) then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (`42h`, `0C2h`) — hypothesis "never reaches `2FAE` RX-enable" is FALSE: carry is ignored. Gating is temporal: the firmware holds `LINK_CTRL` 6/7 clear for the whole transaction and raises them after it (~10–12 ms window: 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry). *Harness detail:* stub `RET` at `0F54Eh` (resident-kernel helper absent from flat memory). Validates firmware latch writes only; controller model is synthetic, and whether 6/7 gates the receiver (vs only its interrupt) is Provisional. Witness fix: earlier exerciser builds left `LINK_CTRL` 6/7 clear so the link RX interrupt was never enabled; witness now sets them (`ctrl_or 40h`/`80h` as `34BD`/`2FAE` does) — new witness `2E3E`, 824 bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`); default `2609` unchanged; 65 tests pass.
 
-- **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
+- **SUBSTANTIALLY ADVANCED 2026-09-17 — Runtime loader `ram:D370` input-provider path (CONFIRMED findings 1-4; exact staging cell remains OPEN):** the loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — enters via `LD DE,0; CALL ROM01:D837` (`Coroutine_TaskSwitch`, `ram:D837`) and yields via `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED); `Coroutine_SwapContinuation` (`ram:D9F9`-`ram:DA0A`) swaps the continuation with the word at `HL` and returns `Z` when the peer slot was empty / `NZ` when it yielded (`EX SP,HL; LD HL,1; RET`) (CONFIRMED); `ram:D370` is the loader's peer/rendezvous slot — byte search `70 D3` finds ONLY loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`, no code outside the loader reads/writes `D370`, so the peer is resumed by the coroutine scheduler rather than a distinct ROM routine (CONFIRMED); request protocol sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370`, peer fills and swaps back, `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C,D393)` and advances `D36A`/`D36E` (`ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED); feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → Load/Run staging buffer → `Program_ConsumeInputChunk`) (CONFIRMED). The exact staging cell/buffer the peer fills remains **OPEN**; remaining `0x00FF`/`0x0080` object-size field behaviour still to capture if needed.
 
 1. **Guarded structural repairs** — `6e77` inline-data repair
    **DONE 2026-09-17** (see 8a); `e020`-`e0aa` compiler-runtime
@@ -173,10 +173,10 @@ current priority order; the concise lists above are authoritative.
    countdown-timer/callback table serviced from the RTC wake path, not
    an IRQ dispatcher: RTC_WakeReasonFetch (2206) → Comms_WorkItemSweep
    (224C) → Comms_WorkItemDispatch (2275); register/cancel =
-   CommsWorkItemRegister (2189, CY=full) / CommsWorkItemCancel (21BA;
+   Comms_WorkItemRegister (2189, CY=full) / Comms_WorkItemCancel (21BA;
    listing shows 3 INC IX but bytes are 4 — stride is 4, do not
-   "fix"). ExtBusQueueWorkItem (135C, re-arming poll timer f9ae → 5
-   ticks) / ExtBusPoll (12EC; no-edge path has an OPEN weird DI
+   "fix"). ExtBus_BusQueueWorkItem (135C, re-arming poll timer f9ae → 5
+   ticks) / ExtBus_BusPoll (12EC; no-edge path has an OPEN weird DI
    fallthrough at 1328). RtcAlarmRegWorkItem → RTC_AlarmSleep (21EC,
     pure-timer + HALT-poll on FD4D, caller Bdos_InternalTimedWait 1129).
    FUN_ROM00__35c9 → Sound_Off (2Bh write; quiet-bus before 2Dh
@@ -186,7 +186,7 @@ current priority order; the concise lists above are authoritative.
    fbc9 bit0 → fn03 staging link; whether the alarm handler also
    writes FD4D directly.
    Also named from the repair batch + loaded-symbol recovery: the ROM01
-   UI survivors (see item 6) and Ui_PostDescriptor (6633, posts
+   UI survivors (see item 6) and UI_PostDescriptor (6633, posts
    descriptor's first byte as command id into ram:e0b2).
 6. **Define the orphaned ROM01 code gaps as functions** — **DONE
    (2026-08-25, all three ranges, diff-guarded).** 03C3-0740: bogus
@@ -203,8 +203,8 @@ current priority order; the concise lists above are authoritative.
    **`fbc7/fbc8` consumers** (§6.4, BDOS fn F9 presets) — likely a
    "device" settings screen in ROM01. **CLOSED 2026-08-24 (§6.2)**: the
    reader-completion event bit is `fbc9` bit0, posted by
-   `ExtBusComplete`(14A3)→`LinkResetSession`(30BD); that wakes the
-   fn-03 `EventWaitForLink` HALT (see manual/barcode-reader.md).
+   `ExtBus_BusComplete`(14A3)→`Link_ResetSession`(30BD); that wakes the
+   fn-03 `Link_WaitForLink` HALT (see manual/barcode-reader.md).
 8. **Residual inverted-dispatcher doc claims — CLOSED 2026-08-28.** Active
    documentation now uses the corrected model: fn <25h -> F1EB; F3h-FFh ->
    F1D1 wrap via DEC B; unmatched 25h-F2h -> wild pointer, nothing rejected.
@@ -245,7 +245,7 @@ current priority order; the concise lists above are authoritative.
      ROM00:7310 (tbl_sess_status_fmt) with field names RCV1/RCV2/SEND/
       LOAD/PROG/TIME/ENDC. Open: runtime meaning of RCV1/RCV2 (SUSPECTED
       receive counters; writer trace agent looped - still open) +
-      FileSearchNextCb renamed FormatDecU16 (2026-08-27, below).
+      FileSearchNextCb renamed Lib_DecU16 (2026-08-27, below).
 
 ### 12. FINAL PASS — complete annotation + naming cleanup (defer
     until the reverse-engineering is done; owner-decision
@@ -268,18 +268,18 @@ current priority order; the concise lists above are authoritative.
           mass rename is worse than none.
        b. **Wrong names — DONE 2026-09-19 (5, byte-
           verified, docs synced):** `ROM00:3BB8`
-          `CoroutineTaskSwitch` → `Coroutine_IndexedLookup_6A4A`
+          `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
           (indexed lookup into table at `6A4A`; real
-          `CoroutineTaskSwitch` is `ram:D837` — duplicate
+          `Coroutine_TaskSwitch` is `ram:D837` — duplicate
           mis-name corrected), `ROM00:3BD0`
-          `CoroutineSessionMul16` →
+          `Coroutine_SessionMul16` →
           `Coroutine_IndexedLookup_6B67` (into `6B67`),
           `ROM00:7C14` `Session_Cmp16Bit` →
           `Session_CmpLeU16` (HL=1 iff HL<=DE unsigned),
           `ROM00:7C22` `Session_Cmp16BitB` →
           `Session_CmpGtU16` (HL=1 iff HL>DE unsigned),
-          `ROM01:6F29` `ServiceCall_Id2Byte` →
-          `ServiceCall_BdosFn2` (calls `SessionBdosCall`
+          `ROM01:6F29` `Syscall_Call_Id2Byte` →
+          `ServiceCall_BdosFn2` (calls `Session_BdosCall`
           `ram:DA13` with fn 2). Grep confirms 0 stale
           mentions in `doc/`.
     3. **Plate-quality pass**
@@ -331,10 +331,10 @@ current priority order; the concise lists above are authoritative.
 
 ## Do not regress
 
-- 08/28 device is the RTC: keep Rtc* names (RtcRegWrite/RtcRegRead/
-  RtcInit/RtcWriteTime/RtcSetTimeFromBuffer/RtcReadRegisterFile).
+- 08/28 device is the RTC: keep Rtc* names (RTC_RegWrite/RTC_RegRead/
+  RTC_Init/RTC_WriteTime/RtcSetTimeFromBuffer/RTC_ReadRegisterFile).
 - 4x cluster is the external data link: keep Link* names
-  (LinkBlockTx/LinkBlockRx/LinkTransferService/Link*). No RTC or
+  (Link_BlockTx/Link_BlockRx/Link_TransferService/Link*). No RTC or
   "comms" naming there.
 - RST vector 0010 = Rst2Dispatch (banked dispatch), 0020/0038 =
   Rst4IrqPoll/Rst7IrqPoll, 0028 = Rst5FatalScreen, 0030 = Rst6ZeroRet.
@@ -344,17 +344,17 @@ current priority order; the concise lists above are authoritative.
   SessionNeg32/SessionTestCarry/...); empty dispatch slots keep
   SessionOpStub_<addr>.
 - External-device bus naming (2026-08-24): port 2Dh = `EXTBUS_EDGE`;
-  the 120F-14EE handlers stay `ExtBus*` (ExtBusArm/ExtBusAcquireEdge/
-  ExtBusComplete/...). The user **decode-hook socket** keeps neutral
+  the 120F-14EE handlers stay `ExtBus*` (ExtBus_BusArm/ExtBus_BusAcquireEdge/
+  ExtBus_BusComplete/...). The user **decode-hook socket** keeps neutral
   labels: `fbc0` = RST10 stub, `fbc1` = bank byte, `fbc2` = hook ptr;
-  `ExtDecodeHookInstall` (156E) / `ExtDecodeHookDiscard` (1567)
+  `ExtBus_DecodeHookInstall` (156E) / `ExtBus_DecodeHookDiscard` (1567)
   default it. **SUPERSEDED by owner adjudication (2026-08-24, AGENTS.md
   §3): the side port was used with a barcode pen; the 2D edge-capture
   subsystem IS the barcode reader front end, and `Barcode_` is the
   module prefix for NEW names there.** Existing `ExtBus*` names are
   grandfathered until a deliberate rename pass; do NOT flip back to
   `Reader*`, and do NOT reassign the disproven "EXT STORAGE ADAPTER"
-  identity. `BdosReaderInChar` (1080) is genuinely the CP/M fn-03 RDR
+  identity. `Bdos_ReaderInChar` (1080) is genuinely the CP/M fn-03 RDR
   path either way.
 18. **Annotation coverage tracker**: **593/593 (100%) named** (Pass A
     complete as of this session). All ROM00 + ROM01 + RAM kernel stubs
@@ -363,9 +363,9 @@ current priority order; the concise lists above are authoritative.
     Rst4IrqPoll/Rst5FatalScreen/Rst6ZeroRet/Rst7IrqPoll; ROM01 banked
     thunks BankedRst08/20/28; cold start ROM00:01BE =
     ColdStartSelfTestBanner; link RX ROM00:2FBD = LinkRxDispatcher;
-    ROM01 field/dialog layer = FieldSelectWalk/FieldConfigLoad/
-    SessionFieldEditLoop/StrToNumberParse/NumberAccumulate/
-    StrTableLookup/TextOut*; RAM dispatch slots SessionOpStub_*.
+    ROM01 field/dialog layer = Field_SelectWalk/Field_ConfigLoad/
+    Session_FieldEditLoop/Lib_ToNumberParse/Lib_Accumulate/
+    Lib_TableLookup/TextOut*; RAM dispatch slots SessionOpStub_*.
     The only auto created `FUN_ram_8c0c` was a false positive over a
     zero buffer (spurious CALL from a jump-table byte) — deleted.
 19. **DIP program format documented** (manual/programmer-guide.md §7b +
@@ -375,7 +375,7 @@ current priority order; the concise lists above are authoritative.
     (multi-bank, init calls, streamable, diagnostics) vs. .COM; exact
     DIP on-disk header left as live-capture item. Loader primitives
     (D6FA/D713/D727/D7F0/D800) annotated to Pass A+B incl. record-walk
-    inline comments + KernelDispatchEntry plate.
+    inline comments + Kernel_DispatchEntry plate.
 20. **Pass A COMPLETE (100%)**: all 593 functions named. Pass B
     (inline comments) started: io:00xx ports labelled + repeatable
     comments; RTC/LCD/link hardware EOL+pre comments use datasheet
@@ -391,7 +391,7 @@ current priority order; the concise lists above are authoritative.
     Further Pass B coverage this session (Pre comments, datasheet
     names): BDOS entry dispatcher (36A0 + specials 2D/2E/30/62/68/69),
     console device I/O (0DE9/0E00/0F37/1166/1170), CP/M line editor
-    (117B), tty_out_char control dispatch (1BEB), select-disk (15B3),
+    (117B), Tty_out_char control dispatch (1BEB), select-disk (15B3),
     DMA set (0CEC), RTC get-time (113E), alarm work-item queue
     (2189/21BA), date-rollover (222E/223B), drive valid (0824).
 
@@ -401,29 +401,29 @@ current priority order; the concise lists above are authoritative.
   owner adjudication + repo facts. IR-port positions settled by owner:
   **V24 ADAPTOR = top, PLINTH = back** (corrected micronic_notes.md,
   internals/os-diposb.md, AGENTS.md §3 — an earlier "bottom/front" reading was
-  discarded); tagged bit5 port-select as byte-verified (LinkBlockTx
-  3278 `AND 0x20` → LinkPortSelect 3454); made `Barcode_` the declared
+  discarded); tagged bit5 port-select as byte-verified (Link_BlockTx
+  3278 `AND 0x20` → Link_PortSelect 3454); made `Barcode_` the declared
   module prefix for the port-2D capture front end everywhere (§3/§7/
   §13, port 2Dh row); corrected tool prefix to `ghidra-mcp_*`; added
   micronic_notes.md + annotate-subagent pointers. SUPERSEDED the old
   "do not rename back to barcode" do-not-regress entry (above)
   accordingly.
 - 2026-08-24 (annotation batch 1 — delegated; verified by spot-check):
-  plates set for ExtDecodeHookDiscard (1567), ExtBusComplete (14A3),
-  KeyboardReadChar (18C0, +3 EOLs on fbc9 bits/0xCD hotkey),
-  LinkPortSelect (3454); 2 PRE + 5 EOL inline comments in
-  ExtBusAcquireEdge (13B8, SP-repurposing, retries, timeout, overflow,
+  plates set for ExtBus_DecodeHookDiscard (1567), ExtBus_BusComplete (14A3),
+  Kbd_ReadChar (18C0, +3 EOLs on fbc9 bits/0xCD hotkey),
+  Link_PortSelect (3454); 2 PRE + 5 EOL inline comments in
+  ExtBus_BusAcquireEdge (13B8, SP-repurposing, retries, timeout, overflow,
   noise filter, <9 reject, hook dispatch); plate comments on fbc0/fbc1/
   fbc2; io:2d repeatable replaced (EXT STORAGE claim removed → barcode
   front end); stale "ReaderArmRoute/"ReaderEdgeDecode" plate first
   lines of 1221/13B8 fixed. All byte-verified at write time; program
   saved.
 - 2026-08-24 (annotation batch 2 — delegated; verified by spot-check):
-  KernelImage_BdosMain (36A0) plate: inverted dispatcher description
+  Kernel_Image_BdosMain (36A0) plate: inverted dispatcher description
   replaced with the corrected model + HAZARD (verified CP 25/JR C,
-  CP F3/JR NC, DEC B, F1EB/2*BC, fn 40h→F06B, F3→F1D1); LinkBlockTx
+  CP F3/JR NC, DEC B, F1EB/2*BC, fn 40h→F06B, F3→F1D1); Link_BlockTx
   (3277) plate tail copy-paste artifact ("Micronic 4x link
-  transceiver datasheet") removed; RtcRegWrite (22DB) indirect OUT
+  transceiver datasheet") removed; RTC_RegWrite (22DB) indirect OUT
   (C),B @22DD got EOL "C=8: RTC_ADDR port". FUN_ram_8c0c (false
   positive over a zero buffer) deleted again — watch for re-creation
   after any run_analysis (research/gap-analysis.md records it). Program saved.
@@ -462,7 +462,7 @@ current priority order; the concise lists above are authoritative.
   re-run under a strict diff guard (baseline list vs post-repair list
   via list_functions_enhanced dumps). Beyond-seed damage again
   deleted 14 functions (incl. NAMED UiDialogOpen3F 0907,
-  UiDialogShowMenu 0A42, SessionHelperRouter6621 6621, TextScreenInit
+  UI_DialogShowMenu 0A42, Session_HelperRouter6621 6621, Text_ScreenInit
   6F61, plus ram session stubs EF08/EF0C/EF1C/EF20 and FUN_1803/659F/
   DFE4). All 14 re-created from surviving symbols and the 8 improved
   ones got honest recovery plates ("original plate lost... recovered
@@ -489,15 +489,15 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-25 (delegated follow-up + ram sweep — 2 agents read-only;
   main agent applied + saved):
   * Follow-ups resolved: ROM01::0038 = BankedRst38 (JP F5F3, mirror of
-    Rst7IrqPoll; renamed). d2dc/d2de writers = Ui_FormExitDispatchNext's
+    Rst7IrqPoll; renamed). d2dc/d2de writers = UI_FormExitDispatchNext's
     own prologue (ROM01::06b9/06cd) - cell comments updated. RegB =
-    0x46 at init -> PIE=1 AIE=0 CONFIRMED (RtcInit 2084; EnablePeriodicIrq
+    0x46 at init -> PIE=1 AIE=0 CONFIRMED (RTC_Init 2084; EnablePeriodicIrq
     OR 0x40; ClearAlarmInterrupt AND 0xDF; no RegA writes) - RTC_WakeReasonFetch
     plate upgraded. fbc9 full bit map CONFIRMED (bit0 session event @30C0,
     bit1 date-changed @2235, bit2 kbd @18E0/1968, bit3 date-wait-ack @170B
     via deferred callback; bits 4-7 unused) - manual/barcode-reader.md updated.
     Descriptor records 7715/7751 NOT yet repeatable-commentable (field
-    layout inconsistent) - trace Ui_PostDescriptor instead.
+    layout inconsistent) - trace UI_PostDescriptor instead.
   * ram sweep applied: runtime page Session_Not16 (was misnamed
     kernel_ui_service), Session_Or16/Xor16/Lnot16/UnsignedGe16/Sub16
     (bodies re-created), Session_UnsignedGt16 (WAS SessionUnsignedLe16,
@@ -530,36 +530,36 @@ current priority order; the concise lists above are authoritative.
     installs JP F238 at 0000 in every bank; f483 helper OPEN),
     Mem_BankSweepPutByte (f46d, 64-bank write, no F791 shadow).
     DELETED data artifacts FUN_ram_f1ef/f206 (F1EB table words).
-  * ROM01 record API: Ui_FindRecordByKey (6909), Ui_RecordBindAndExec
-    (6a36), Ui_RecordMatchAndPost (6aa9; e986/e992 = last-match cache;
-    error ids 0x1773/0x17D4/0x17D5), Ui_IdToRecOffset32 (0ad3),
-    Ui_StateInit (1803), Ui_TableScanMatch (6027), Ui_DescChainInit
+  * ROM01 record API: UI_FindRecordByKey (6909), UI_RecordBindAndExec
+    (6a36), UI_RecordMatchAndPost (6aa9; e986/e992 = last-match cache;
+    error ids 0x1773/0x17D4/0x17D5), UI_IdToRecOffset32 (0ad3),
+    UI_StateInit (1803), Ui_TableScanMatch (6027), UI_DescChainInit
     (659f). Descriptor tables 7715/7751: repeatable comments now carry
     the CONFIRMED cross-links ('1'-'4'/'P'/'<' keys); full field map
     still open (handlers 6319/635e/645d/6464/6588 un-walked).
-  * RtcSetAlarm (2141) verified: RegA=0x2A + RegB |= 0x20 (AIE) &
+  * RTC_SetAlarm (2141) verified: RegA=0x2A + RegB |= 0x20 (AIE) &
     0x7F (clear SET) - the FD4F bit5 wake path is LIVE when armed.
-    LinkStatusWatcher (2468) corrected: polls RTC regs 07/08 (alarm
+    Link_StatusWatcher (2468) corrected: polls RTC regs 07/08 (alarm
     sec/min) -> FD9B/FD9C, NOT Reg C.
   * Docs: internals/cp-m-comparison.md 25h-F2h wild-pointer claim fixed (item 8
     CLOSED); SessionBdosPrep renames propagated (internals/os-diposb.md,
     protocol/commstar.md).
   * Coverage: 686 fns / 672 named (98.0 %), 14 FUN_* left (9 ROM01
-    incl. the five Ui_PostDescriptor case handlers + 6e77; 5 ram
+    incl. the five UI_PostDescriptor case handlers + 6e77; 5 ram
     ee00-eedc/f8ef with empty listings - GUI pass needed).
 - 2026-08-25 (descriptor-op wave — 2 agents read-only; main applied):
-  * Five Ui_PostDescriptor case handlers named + plated:
-    Ui_DescShowFieldChain (6319, key 03), Ui_DescFieldEditMenu (635e,
-    3-byte-stride choice array at D+0Bh), Ui_DescOpNoop (645d),
-    Ui_DescRecordScanLoop (6464, 4-byte-stride scan list at D+0Dh,
+  * Five UI_PostDescriptor case handlers named + plated:
+    UI_DescShowFieldChain (6319, key 03), UI_DescFieldEditMenu (635e,
+    3-byte-stride choice array at D+0Bh), UI_DescOpNoop (645d),
+    UI_DescRecordScanLoop (6464, 4-byte-stride scan list at D+0Dh,
     deliberate SP-discard no-return continuation at 653b - PRE'd),
-    Ui_DescChainNext (6588). Plus Ui_FieldEmptyCheck (62e5),
-    Ui_FieldEditGetChoice (1d80), Ui_SvcCall2_07 (7279, DA13(2,7)
+    UI_DescChainNext (6588). Plus UI_FieldEmptyCheck (62e5),
+    UI_FieldEditGetChoice (1d80), UI_SvcCall2_07 (7279, DA13(2,7)
     fallback; identity SUSPECTED). Descriptor field map consolidated
     and written onto the 7715/7751 repeatables (key addresses
     corrected: '1'@7731...'4'@7740, 5-byte records @772F).
   * Kernel: Kernel_BankedCallReturn (f3c4, epilogue + deferred-chain
-    fdb8/fdba cursor LIKELY); KernBankFnRet (f483) plated (bank-store
+    fdb8/fdba cursor LIKELY); Kernel_BankFnRet (f483) plated (bank-store
     helper); f54e plate CORRECTS the grandfathered name: it is the
     conditional-EI tail (FFA8 = irq-deferred flag LIKELY), NOT a bank
     restore. Syscall_InvokeServiceFB plate corrected: FEFC = syscall
@@ -595,12 +595,12 @@ current priority order; the concise lists above are authoritative.
     (SCF on R/-). Plate updated.
   * RST trampoline family labelled in ram: BankedRst10Stub(F5E1),
     BankedRst20Stub(F5EA), BankedRst28Stub(F5ED), BankedRst30Stub
-    (F5F0), BankedRst38Stub(F5F3), BankedCallCommonEntry(F64D),
+    (F5F0), BankedRst38Stub(F5F3), Kernel_CallCommonEntry(F64D),
     Kernel_NmiVectorStub(F5F6, function). AGENTS.md §5 corrected:
     0008 -> JP F180 (BDOS), not F5Ex (byte-verified).
   * FDBD/FDBE/FEA4 = kernel error-report state (SUSPECTED): FDBD bits
     1/2 gate the error-report display options; FDBE = failing fn#;
-    FEA4 = "error screen active" latch read by MonitorGetChar. Open:
+    FEA4 = "error screen active" latch read by Monitor_GetChar. Open:
     hardware test with controlled D/E via RST 28h.
   * RAM02 overlay: Ghidra 12.2's public API cannot create overlay
     spaces (no addOverlay*/createOverlaySpace on AddressFactory or
@@ -616,13 +616,13 @@ current priority order; the concise lists above are authoritative.
     carries the full map. STAGED-CALL SERVICES RESOLVED: off 2 =
     Kernel_CallBank6_0E00 (the service-2 entry of ServiceCall_BdosFn2
     6f29 -> bank-6:0E00 call), off 7 = Syscall_InvokeServiceFB (the
-    service-7 entry of Ui_SvcCall2_07). d893 plate updated.
+    service-7 entry of UI_SvcCall2_07). d893 plate updated.
   * ROM00::2bee decoded + named Diag_FatalScreenDeferred: stores A
     (bank) -> FDB9, sets FDB8=FF (the deferred-chain marker
     Kernel_BankedCallReturn tests), joins the fatal screen inline.
-    Its wrapper ram:f59f = BdosBankedCall3. ram:f5c0 =
-    BdosBankedCall4 -> FatalErrorHandler (2C00). ROM00::2d83 =
-    KernelErrorReport (FDBE!=0 -> FEA4=FF; fn prefix via 2C67;
+    Its wrapper ram:f59f = Bdos_BankedCall3. ram:f5c0 =
+    Bdos_BankedCall4 -> Diag_ErrorHandler (2C00). ROM00::2d83 =
+    Kernel_ErrorReport (FDBE!=0 -> FEA4=FF; fn prefix via 2C67;
     reg dump 2DD1; "Any key for entry" 2D17; bit2 gate @2DBA).
     The fdb8/fdb9/fdba deferred-chain cells now have a CONFIRMED
     writer - the diag screen scheduling path.
@@ -640,7 +640,7 @@ current priority order; the concise lists above are authoritative.
   * Kernel-image sources named: Boot_BankWalkInitImage (ROM00::3942)
     and Mem_BankSweepPutByteImage (ROM00::398a) - the ROM00 templates
     of the RAM-resident sweepers; both sweep banks 41h..1 = every RAM
-    page. KernSetBankNotify (ram:f41b, slot 20 of tbl_KernelJumps)
+    page. Kernel_SetBankNotify (ram:f41b, slot 20 of tbl_KernelJumps)
     = the generic arbitrary-bank selector (A >= 2 = RAM page). EOLs at
     the sweep sites cite the RAM02 overlay.
   * boot_hw.py gained --dump-bank N (writes analysis/ram_bank_NN.bin;
@@ -650,7 +650,7 @@ current priority order; the concise lists above are authoritative.
     --max-slices 300000 --dump-bank 2`.
   * Still open: RAM-disk driver itself (the Disk*/Fs code that maps
     drive A:/B: blocks to RAM banks) - not yet located; candidates:
-    KernSwapCopySrc (f4a8) + the ROM00 3960/3983/398f region.
+    Kernel_SwapCopySrc (f4a8) + the ROM00 3960/3983/398f region.
 - 2026-08-25 (owner theory tested + refuted as stated; part survives):
   * THEORY: the RAM-resident sweepers size the RAM for a RAM disk,
     upper bound (41h-1) x 32K = 2 MB. RESULT: refuted - the sweeps
@@ -660,24 +660,24 @@ current priority order; the concise lists above are authoritative.
     console-device (FBC5) and disk (FBC6) cells into every bank's page
     zero; Boot_BankWalkInit replicates the RST vectors (JP F238/F180)
     to all 64 banks so IRQs/RSTs work in any selected bank. Real RAM
-    sizing = ram_page_test_4banks (2530, called from reset_entry 01BB,
-    fail flag FDB0) + contig_ram_map_test (267A).
+    sizing = SelfTest_page_test_4banks (2530, called from Boot_entry 01BB,
+    fail flag FDB0) + SelfTest_ram_map_test (267A).
   * SURVIVES (documented in internals/memory-map.md + the four plates): the
     64-bank sweep implies 2 MB of addressable banked-window capacity
     (6-bit bank latch, LIKELY); installed 256K RAM backs part of it.
-  * RAM-disk block I/O LOCATED: BdosReadRecordBlock (ram:f4e7) CALLs
-    KernSwapCopySrc (f49b: select bank A + LDIR across the window) -
+  * RAM-disk block I/O LOCATED: Bdos_ReadRecordBlock (ram:f4e7) CALLs
+    Kernel_SwapCopySrc (f49b: select bank A + LDIR across the window) -
     the storage copy path for drives A:/B:. Write twin still to find.
 - 2026-08-25 (RAM-disk block I/O layer CLOSED; main agent, saved):
-  * Write twin FOUND (already named): BdosPrepWriteBuf (f510: 0x80B
-    record FFA3 -> FEFF staging, banked via f498) + BdosDoneWriteBuf
-    (f523: FEFF -> FFA3). BdosPrepReadFromBuf (f4eb: 0x24B header
-    stage via FF7F) + BdosSwpDirectory (f535: F8B8 dir buffer ->
+  * Write twin FOUND (already named): Bdos_PrepWriteBuf (f510: 0x80B
+    record FFA3 -> FEFF staging, banked via f498) + Bdos_DoneWriteBuf
+    (f523: FEFF -> FFA3). Bdos_PrepReadFromBuf (f4eb: 0x24B header
+    stage via FF7F) + Bdos_SwpDirectory (f535: F8B8 dir buffer ->
     [FFA3] DMA) complete the layer. All five plated; staging cells FF7F/
     FFA3/FFA5/FEFF/F8B8 commented; f498 entry EOL'd (bank arg comes
     from FEFE - the envelope's saved-bank cell is reused as the block
-    I/O bank operand). BdosReadRecordBlock: C = bank, 0x80B read via
-    KernSwapCopySrc. internals/memory-map.md: owner-confirmed rationale for the
+    I/O bank operand). Bdos_ReadRecordBlock: C = bank, 0x80B read via
+    Kernel_SwapCopySrc. internals/memory-map.md: owner-confirmed rationale for the
     per-bank vector replication added (COM not bank-aware, DIP may be;
     IRQ/RST must work in any bank).
   * Open next: 049f/04c8 block-address helpers (f822/f8b0 math) -
@@ -687,15 +687,15 @@ current priority order; the concise lists above are authoritative.
   * The 04B8-052E cluster is the DIPOS filesystem geometry layer -
     already named Fs* by an earlier pass; plates + cell comments added
     and 4 auto-FUN helpers renamed (Util_HlPlus2Cy/HlMinus2Cy,
-    FsHlSubF8b2/FsHlAddF8b2). FsVolumeInit (0509): A = log2 records
+    Fs_HlSubF8b2/Fs_HlAddF8b2). Fs_VolumeInit (0509): A = log2 records
     per block -> f822; f820 = 1<<A, f828 = mask, f82a = A+3 (log2
-    block bytes). FsInitAllocator (05a1): **f8b0 = 0x100 = 256
+    block bytes). Fs_InitAllocator (05a1): **f8b0 = 0x100 = 256
     records per 32K bank page** (32768/128), f8b6 = 0x8000 base -
-    the RAM-disk geometry CONFIRMED. FsBitmapRolExt (049f): 16-bit
-    rotate-left A, carry-out -> RST 28h error trap. DiskDirEntryWalk
+    the RAM-disk geometry CONFIRMED. Fs_BitmapRolExt (049f): 16-bit
+    rotate-left A, carry-out -> RST 28h error trap. Disk_DirEntryWalk
     (04c8): 2-byte-stride dir search over the F8B2 table.
-    BdosReadRecordBlock therefore: bank in C, record -> offset via
-    FsBitmapRolExt(f822), 0x80-byte copy via KernSwapCopySrc.
+    Bdos_ReadRecordBlock therefore: bank in C, record -> offset via
+    Fs_BitmapRolExt(f822), 0x80-byte copy via Kernel_SwapCopySrc.
   * RAM-disk geometry summary (CONFIRMED): 128-byte records, 256 per
     bank page, block size 128 * 2^f822; banks 2+ = data pages.
   * Provider still down (agent spawn failed again) - main agent again.
@@ -712,14 +712,14 @@ current priority order; the concise lists above are authoritative.
     (tbl_FieldOpSlots + repeatable; 32 SessionOpStub plates + 8 farm-B
     plates; ef88 body fixed). The earlier "ee78/ef24/eef0 are real
     helpers" reading REFUTED by bytes (decompiler-context error) -
-    Ui_RecordEditModal and Ui_RedrawIfRequested plates corrected.
+    UI_RecordEditModal and UI_RedrawIfRequested plates corrected.
     No ROM writer found for the slot table (loaded software may patch:
     SUSPECTED).
   * BDOS dispatch arrays UNIFIED: F1D1-F234 = ONE 50-word handler
     array tbl_BdosFnHandlers (image of ROM00:36EE-3748); base F1EB =
     array+0x1A (fn 00-24h); F1D1-F1E9 = wrapped F3-FF view (1FDF/
     1893/1877/15A0/15A4/3237/15CB/3241/3248/1150/113E/1122/112D).
-    ram:f180 rebuilt as BdosDispatchFn (f180-f1d0) with the full
+    ram:f180 rebuilt as Bdos_DispatchFn (f180-f1d0) with the full
     decode plate; Kernel_DispatchCommand (f1a3) retired - it was a
     fragment of the dispatcher. 12 auto labels deleted (table-word
     artifacts), f1c5/f1ce renamed BdosDispatch_TablePath/_GoHandler.
@@ -818,7 +818,7 @@ current priority order; the concise lists above are authoritative.
     ROM01 (~513) and ram (109 outside-fn) batches.
   * NEXT: plate-refinement sweep - remove pseudo-asm restatement and
     caller lists from older wave plates (Kernel_CallBank6_0E00,
-    Syscall_InvokeServiceFB family, BdosBankedCall3/4, envelope
+    Syscall_InvokeServiceFB family, Bdos_BankedCall3/4, envelope
     family, Boot_BankWalkInit, Mem_BankSweepPutByte, RTC/Link/Comms
     plates). Method: script-dump all plates, flag "<-"/opcode-list
     and "Callers:"/"CALLs" patterns, rewrite multi-line.
@@ -833,13 +833,13 @@ current priority order; the concise lists above are authoritative.
     alternate entries). 456 in-fn LAB labels remain for the next
     tranches.
   * MYSTERIES RESOLVED/ADVANCED:
-    - CharOrBeep -> SelfTest_PatternWalk275c: the 2740-2796 cluster is
+    - CharOrBeep -> SelfTest_Test_PatternWalk275c: the 2740-2796 cluster is
       cold-start SELF-TEST (called from ColdStartSelfTestBanner via
       271F), not char output. Its CALLs into f1ef/f1fb/f206 land in
       BDOS-table data in the post-boot dump - SUSPECTED those
       addresses hold self-test stubs EARLY in boot, before the BDOS
       dispatcher+table are built over the same RAM (discriminating
-      tests recorded). KeyCharStore -> SelfTest_NextPatternValue;
+      tests recorded). KeyCharStore -> SelfTest_Test_NextPatternValue;
       CarryBitMacro (2740) bookmarked for rename.
     - F1D1 prefix: CONFIRMED nothing indexes F1D1 directly; F1EB is
       the only live base - consistent with the early-boot picture.
@@ -863,16 +863,16 @@ current priority order; the concise lists above are authoritative.
     Neg32/TestNonzero/CmpCarry32/Cmp4Xor80/Add32/And32/Shl32/Div*
     family/TestCarry/CmpThenDispatch/SetWord32/Mul16Mod16/And16/
     UnsignedCmp16/Neg16/CommandDispatch + SetBdosVectorD681/
-    ChecksumBytes/BankedCallDispatch/JmpMemoryVector/SessionMemMove/
-    SessionBdosCall/da27/da34/ShrFieldE3b4). 498-plateless debt now
+    Lib_Bytes/Kernel_CallDispatch/Kernel_MemoryVector/SessionMemMove/
+    Session_BdosCall/da27/da34/ShrFieldE3b4). 498-plateless debt now
     ~330 (next tranches continue the same pipeline).
   * Small fixes: 62A9/62B6/62CA promoted (Ui_Thunk* trio, vtable-
-    reached); CarryBitMacro -> SelfTest_RamPatternWalk (the
+    reached); CarryBitMacro -> SelfTest_Test_RamPatternWalk (the
     2740-2796 chain CONFIRMED cold-start RAM write-pattern walk);
     5B57 RESOLVED (legal dual entry / mid-instruction view fixed -
     function re-based at 5B57); 19E0-19F0 = keyboard probe table
     (typed byte[17] + records + JR trampolines + manual refs);
-    tty_out_char NOT_CODE "phantoms" were real key handlers - 4
+    Tty_out_char NOT_CODE "phantoms" were real key handlers - 4
     functions created, keys/handlers tables labelled, anomalies
     recorded (key#0 FFxx slots SUSPECTED unreachable).
   * OPEN follow-ups: SessionShl32 cross-store + INC L fold does not
@@ -883,7 +883,7 @@ current priority order; the concise lists above are authoritative.
     ram02:F1FB (self-test store helper) undefined in the dump.
 - 2026-08-26 (plateless tranche 2 + LAB batch 5; agents + annotate, saved):
   * 40 more plates APPLIED (ram bank/syscall/banking layer - BdosBankedCall
-    twins, KernSetBank/KernMemCopy/bank variants, NMI/common-entry, BDOS
+    twins, Kernel_SetBank/Kernel_MemCopy/bank variants, NMI/common-entry, BDOS
     console handlers, ROM01 dialog helpers). Plateless debt ~458 ->
     ~418 substantive.
   * LAB batch 5: 40 ROM01 in-fn labels renamed + commented (list/walk/
@@ -895,15 +895,15 @@ current priority order; the concise lists above are authoritative.
     re-derive the whole second farm's boundaries and rename every
     entry by its true id.
   * NEW follow-ups: FF7F/FFA5 vs FEFF/FFA3 staging pairs -> add a
-    internals/memory-map.md row; BankedCallCommonEntry's ROM00:230A call lands
-    mid-ClockSelftestPeriphCfg - hand-check that boundary;
+    internals/memory-map.md row; Kernel_CallCommonEntry's ROM00:230A call lands
+    mid-Clock_SelftestPeriphCfg - hand-check that boundary;
     ROM01::1b0a nested subroutine = split candidate; the 1fbe EOL
     ("id==13: fall through") may contradict the e04b convention -
     verify pass.
 - 2026-08-26 (DB INCIDENT - in-memory wipe, disk safe):
   * During a three-agent parallel round, the in-memory function count
-    dropped 746 -> 622. Selectively deleted: UiFieldListRender (198e),
-    Ui_RecordEditModal (1b7d) functions, several xrefs (22c0/24fa/28ea
+    dropped 746 -> 622. Selectively deleted: UI_FieldListRender (198e),
+    UI_RecordEditModal (1b7d) functions, several xrefs (22c0/24fa/28ea
     lost their inbound refs), and the ram:ee00 data comments. Most
     functions + data plates intact. Root cause suspected: parallel
     MCP bursts from three agents with client-side timeouts that
@@ -919,7 +919,7 @@ current priority order; the concise lists above are authoritative.
     unexpectedly, STOP, do not save, revert to the disk state.
 - 2026-08-26 (post-recovery: serial application resumed; saved):
   * REVERT VERIFIED: 746 functions restored, all wiped items back
-    (UiFieldListRender, Ui_RecordEditModal, xrefs 22c0/24fa/28ea,
+    (UI_FieldListRender, UI_RecordEditModal, xrefs 22c0/24fa/28ea,
     ram:ee00 comments, f1d1/758b plates).
   * FARM-2 RENAMES APPLIED (descending order, no collisions): the
     InvokeService stubs now carry their TRUE ids - Id06 (was
@@ -930,13 +930,13 @@ current priority order; the concise lists above are authoritative.
     Id45 (f36b, 1587). Cross-ref plates updated (tbl_KernelJumps,
     Kernel_RunStagedCall). ROM01::0030 StrCopyPaste -> BankedRst30
     (misname fixed). 1fce/1fdb EOL polarity comments corrected;
-    ROM00:2306 body-boundary note added (230A is IrqWorkerPollPort5).
+    ROM00:2306 body-boundary note added (230A is Kernel_WorkerPollPort5).
   * QUEUED (next serial batches): LAB batch 6 (40 renames - Agent B
     manifest), tranche-3 plates (~31 + hazard resolutions: delete
     UiDialogDrawBlock2 0879, retype session_router_5994 as data,
-    verify StrTrimDispatch 0303, Ui_LineWalkArgThunk promote).
+    verify StrTrimDispatch 0303, UI_LineWalkArgThunk promote).
 - 2026-08-26 (serial application continued; saved):
-  * LAB batch 6 APPLIED (40 renames: ModalRunLoop/SessionCoroAsync/
+  * LAB batch 6 APPLIED (40 renames: ModalRunLoop/Session_CoroAsync/
     StatusCursor/SleepDelay/PollTick/PollIntrq/RxProcessFrame/RxDispatch
     internals). ~393 ROM01 in-fn LAB labels remain.
   * TRANche-3 APPLIED: 31 plates (Text* cluster, Str* cluster,
@@ -945,16 +945,16 @@ current priority order; the concise lists above are authoritative.
     deleted (mid-body), session_router_5994 re-typed as data
     (tbl_sessionRouter5994), StrTrimDispatch (0303) byte-verified
     mid-operand artifact -> deleted + bookmark; UiOpenSaveDialog
-    (1add) RENAMED to Ui_LineWalkArgThunk - fresh bytes proved it is
+    (1add) RENAMED to UI_LineWalkArgThunk - fresh bytes proved it is
     the field-walk arg-marshalling trampoline, not a dialog routine
     (the old name was an unverified relic of the flow-repair
-    recovery); TextHomeCursor (7121) + StateWordSet_E8D8 (6772)
+    recovery); Text_HomeCursor (7121) + Session_WordSet_E8D8 (6772)
     promoted. Count 745 = 746 -3 deleted +2 created, no losses.
   * Rename candidates queued: SessionNopWaiter (675A, actually a
-    getter) -> StateWordGet_E8D6; ui_OpenSaveDialog doc-grep done
+    getter) -> Session_WordGet_E8D6; ui_OpenSaveDialog doc-grep done
     (only historical TASKS logs).
 - 2026-08-26 (recommended-order rounds; saved serially):
-  * 675A renamed StateWordGet_E8D6 + plate. internals/memory-map.md gained the
+  * 675A renamed Session_WordGet_E8D6 + plate. internals/memory-map.md gained the
     block-I/O staging-cells row (FF7F/FFA5 read pair, FEFF/FFA3 write
     pair, F8B8 dir buffer).
   * LAB batch 7 APPLIED (40 renames: RxIncr/DecrCounter, CountBytes,
@@ -962,31 +962,31 @@ current priority order; the concise lists above are authoritative.
     RxRecordStage, RxEditBuffer internals). ~352 ROM01 in-fn LAB
     labels remain.
   * TRANche-4 APPLIED: 39 plates (9 FB stub templates, 13 ROM01
-    session/coro helpers incl. NumberAccumulate/NumValueTableFetch/
+    session/coro helpers incl. Lib_Accumulate/Lib_ValueTableFetch/
     CmdRetryCounter, 17 ROM00 BDOS fn handlers incl. the version
-    deviation HL=23h, MonitorEnter/PutChar/GetChar routing, kbd row
+    deviation HL=23h, Monitor_Enter/PutChar/GetChar routing, kbd row
     decode, decimal formatter). ROM00::2d82 DEFERRED (body
     mis-bounded - repair first). Plateless ~343 remain. Count 751.
   * NEXT (serial): LAB batch 8 (starts 2f2e; bonus context for
     2f2e-2fec already captured), plateless tranche 5 (unnamed helpers
     cited in tranche 4: ROM01::581F/5991/5E78, ROM00::F4EB/F501/
     F543/F46D + the duplicate-name collisions SessionCommandDispatch
-    x4 / SessionCoroThunk x2 / BdosGetSetUserCode x2 need
+    x4 / SessionCoroThunk x2 / Bdos_GetSetUserCode x2 need
     disambiguation), SessionShl32 anomaly, 2D82 bounds repair.
 - 2026-08-26 (batch 8 + collision fixes; applied serially, saved):
   * LAB batch 8 APPLIED (40 renames: FieldEditLoop scanback +
-    SessionRxProcessLine full editor internals - flags, trim, key
+    Session_RxProcessLine full editor internals - flags, trim, key
     dispatch stages DBh/1Ah/7Fh/20h, delete/insert paths, render
     loop, helper spacer). ~304 ROM01 in-fn LAB labels remain
     (next = 34FD).
   * Collision sweep: 5 SessionCommandDispatchStub_* thunks renamed
     (ROM00:5a66/604e, ROM01:3b53/5e2e/62d1 - all plain CALL ram:e0b2
-    wrappers); BdosGetSetUserCodeRet0Stub_1890 renamed (dead
+    wrappers); Bdos_GetSetUserCodeRet0Stub_1890 renamed (dead
     constant-zero stub, behaviourally different from 0c96); the real
     SessionCommandDispatch (ram:e0b2) has 20 callers - name kept.
     ROM01::00ef SessionCoroThunk DELETED (pad-region artifact; callers
     759F/75B6 use CALL PO) + bookmark with the discriminating test.
-  * Plates: BdosGetSetUserCode (0c96) plated. D660/D681/D686/D6C0
+  * Plates: Bdos_GetSetUserCode (0c96) plated. D660/D681/D686/D6C0
     already plated (skip verified). Entry-validity bookmarks set for
     59fb (RET PE opener), 6431 (leading NOP), 5b58 (name/entry
     off-by-one vs 5B57).
@@ -1001,9 +1001,9 @@ current priority order; the concise lists above are authoritative.
     chain; 34fd comment-only pending cross-space xref check; 3b7a
     kept as pooled RET epilogue with 7 sites). ~258 ROM01 in-fn LAB
     labels remain (re-enumerate before batch 10 - inventory drift).
-  * Tranche 6: 6 new Fs* plates (FsRecCountIncr, FsBitmapRor,
-    FsSetupGeometry, BlockAllocQueryFree, FsDirScanWildcard,
-    FsDirBlockRead). The other proposals were already plated
+  * Tranche 6: 6 new Fs* plates (Fs_RecCountIncr, Fs_BitmapRor,
+    Fs_SetupGeometry, Fs_AllocQueryFree, Fs_DirScanWildcard,
+    Fs_DirBlockRead). The other proposals were already plated
     (skip-verified); ram space effectively saturated. ram:e04b check
     was a false alarm - util_CmpHLDE_Eq exists with plate.
   * Estimate: plateless ~300, concentrated in ROM00 (390 named) and
@@ -1015,10 +1015,10 @@ current priority order; the concise lists above are authoritative.
     key-process, wait-key-state). ~236 ROM01 in-fn LAB labels remain
     above 3da0 (next = 41c0).
   * TRANche-7 = the whole Fs layer completed: 26 plates -
-    FsBlockMapRead, FsRecCountRead, FsBitmapShiftRight, alloc bitmap
-    clear/claim/free, FsDirFormat, FsDirMakeEntry/FindMatch/
-    ResetCursor/EntryAdvance/BlockRead, FsDirIntegrityCheck +
-    BdosExtFn62 shim, FsSearchCommon ('?' extent wildcard), the three
+    Fs_BlockMapRead, Fs_RecCountRead, Fs_BitmapShiftRight, alloc bitmap
+    clear/claim/free, Fs_DirFormat, Fs_DirMakeEntry/FindMatch/
+    ResetCursor/EntryAdvance/BlockRead, Fs_DirIntegrityCheck +
+    Bdos_ExtFn62 shim, Fs_SearchCommon ('?' extent wildcard), the three
     keyed-read variants. The filesystem/BDOS-disk layer is now fully
     documented end-to-end.
   * Plateless re-enumeration (script route repaired): 325 total -
@@ -1038,14 +1038,14 @@ current priority order; the concise lists above are authoritative.
   investigate/investigate_deep/annotate/docs with per-agent models;
   main agent did the work directly, serial, byte-verified, saved):
   * 2D82 BOUNDS REPAIR (last correctness item): the 1-byte shadow
-    function at ROM00::2d82 deleted; the real KernelErrorReport body
+    function at ROM00::2d82 deleted; the real Kernel_ErrorReport body
     is 2d83-2dd0 (intact, fully plated with both entries: bit1 path
     msg@2D17, bit2 path msg@2D04); secondary entry labelled
     report_entry_bit1 at 2d82. SAVED.
   * LAB batch 11 APPLIED directly: 44 labels renamed + commented from
     a fresh script-dump (per-label evidence = containing function +
-    first instruction + incoming branch sites): SessionWaitKeyState,
-    FieldSelectWalk, SessionTableWalkNext, SessionRedrawField,
+    first instruction + incoming branch sites): Session_WaitKeyState,
+    Field_SelectWalk, Session_TableWalkNext, Session_RedrawField,
     SessionDrawFieldLine (incl. cross-fn entry from 75e3). Next batch
     starts at 4730 (~190 remaining).
   * NOTE: the main agent has direct ghidra-mcp tools again, so
@@ -1055,17 +1055,17 @@ current priority order; the concise lists above are authoritative.
   * Enumerator found 40 pseudo-asm offenders, 26 caller-list
     offenders, 147 unwrapped single-liners (of 223 plates).
   * APPLIED: 40 exact multi-line rewrites (no asm restatement, no
-    caller lists; reset_entry, PowerDownSuspend, RtcWriteTime/
-    SetTimeFromBlock, IrqWorkerPollPort5, ClockSelftestTickWindow,
-    FatalErrorHandler, LinkTransferService, LinkProcessCommandFrame,
-    KernelImage_BdosMain, banked wrappers, NMI/IRQ images, session
-    routines, dialog/set-clock entries, ExtBusPoll, EvalRecordSteps,
+    caller lists; Boot_entry, Power_DownSuspend, RTC_WriteTime/
+    SetTimeFromBlock, Kernel_WorkerPollPort5, Clock_SelftestTickWindow,
+    Diag_ErrorHandler, Link_TransferService, Link_ProcessCommandFrame,
+    Kernel_Image_BdosMain, banked wrappers, NMI/IRQ images, session
+    routines, dialog/set-clock entries, ExtBus_BusPoll, EvalRecordSteps,
     dispatcher/loader plates, the runtime-page family, etc.);
     20 caller-list excisions; 60 mechanical re-wraps (~70 cols);
     SessionSub16 (e0a9) flagged as undocumented - plate needed.
   * CORRECTED: an enumeration space-typo (ROM01::12ec) caused a wrong
     function shell (Barcode_PollContinuation) in a legitimate ROM01
-    gap - deleted; the rewrite went to the real ExtBusPoll at
+    gap - deleted; the rewrite went to the real ExtBus_BusPoll at
     ROM00::12ec. Two leftover caller phrases excised (d8ce, e06b).
   * Remaining known debt: ~90 P3-only single-liners beyond the 60-cap
     (next wrap batch), SessionSub16 plate, and any plates still
@@ -1074,16 +1074,16 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-25 (helper-cluster wave + memory-model resolution; 2 agents
   read-only, main applied + saved):
   * UI helper renames (stale names corrected): SessionLinkTx6292 ->
-    Ui_PostKeyedEntry (6292; JP 62A6->62D1 gap flagged), StateVarDispatch
-    -> Ui_RedrawIfRequested (6280, gate cell is eb18 not ebf7),
-    UiHandler1B7D -> Ui_RecordEditModal (1b7d, six stack args, modal
-    loop 1CD6-1D72), SessionCoroWaitByte -> Ui_GetStateWordEc41 (2116),
+    UI_PostKeyedEntry (6292; JP 62A6->62D1 gap flagged), StateVarDispatch
+    -> UI_RedrawIfRequested (6280, gate cell is eb18 not ebf7),
+    UiHandler1B7D -> UI_RecordEditModal (1b7d, six stack args, modal
+    loop 1CD6-1D72), SessionCoroWaitByte -> UI_GetStateWordEc41 (2116),
     TextOutChar -> ServiceCall_BdosFn2 (6f29, DA13(2,arg) shim - the
     TextOut identity was unproven). 183c/198e kept (enriched plates:
     9B->10B field-table build; stride-4/5 item lists).
-    DiagFatalErrorScreen (ROM00::2B55) plated with table contents.
+    Diag_FatalErrorScreen (ROM00::2B55) plated with table contents.
   * FB-service path CLOSED mechanically: RST 28h -> F5ED -> F57E
-    (bank-0 select + F54E) -> BdosBankedCall2 (F590): CALL 2B55;
+    (bank-0 select + F54E) -> Bdos_BankedCall2 (F590): CALL 2B55;
     A=FB IS entry 3 of the 7-byte table @2CA8 (FE FD FC FB EA E9 E0).
     OPEN: whether that path means fatal or service-unavailable -
     decode msgs @2CBF/2CE2/2D04/2D17 next.
@@ -1114,13 +1114,13 @@ current priority order; the concise lists above are authoritative.
   * Enumerated 15 FUN_* (all real, none false-positive): ram:db89 ->
     Util_NulFillCopy (stack-arg dst/src/count NUL-fill copy, Z=dest==0);
     ram:dda4 -> Session_CondNeg32 (reads *(DE+3), falls into SessionNeg32
-    if bit7 set); ram:ee0c/ee20/ee64/ee84 -> SessionOpStub_ee0c/20/64/84
+    if bit7 set); ram:ee0c/ee20/ee64/ee84 -> Session_OpStub_ee0c/20/64/84
     (tbl_FieldOpSlots patch sockets, each has a real CALLer);
     ROM01:0ae3 -> Session_DialogStateCheck; ROM01:254b ->
     Session_CondCommandDispatch (gate on (ec49)+0xC -> inline CALL e0b2
     dispatch at 257c); ROM01:40a2 -> Session_MsgTableBuildIfNeeded;
-    ROM01:65f5 -> StateWordSet_E89A; ROM00:3cea -> Session_CoroInit;
-    ROM00:3cf7 -> Session_InitAndRunTx; ROM00:54e5 -> StateWordSet_E519;
+    ROM01:65f5 -> Session_WordSet_E89A; ROM00:3cea -> Session_CoroInit;
+    ROM00:3cf7 -> Session_InitAndRunTx; ROM00:54e5 -> Session_WordSet_E519;
     ROM00:5834 -> Session_RunTx; ROM00:60d6 ->
     Session_TxFrame33Transaction. All named + plated.
   * Agent correction caught: 60d6 abort condition is e681 == 4 (via
@@ -1131,7 +1131,7 @@ current priority order; the concise lists above are authoritative.
   * Two more FUN_* appeared mid-session (deferred auto-analysis):
     ROM01:7288 -> Session_TableRender7288 and ROM01:73de ->
     Session_TableRender73de (both walk 20-byte records in the ea52 pool,
-    TextPosCursor 70ae + char-emit ServiceCall_BdosFn2 6f29; 73de runs
+    Text_PosCursor 70ae + char-emit ServiceCall_BdosFn2 6f29; 73de runs
     the record cursor one behind via -0x14). FUN_ram_9cf0 = 16 NOP bytes
     -> DELETED. FUN_* back to 0.
   * Coverage re-enumerated: 750 total (ROM00 394 / ROM01 164 / ram 192),
@@ -1144,14 +1144,14 @@ current priority order; the concise lists above are authoritative.
   * ROM01 plateless tranche COMPLETE: 61 plates applied (3 RST thunks
     BankedRst08/20/28 done by main; 58 session/UI functions by three
     parallel investigate agents, byte-verified at application).
-    Callee names cross-checked (UiFindKeyMatch/UiSetDialogId/
-    UiSetAttrCells/UiRenderCharCell/BankedMonoCall/UiFieldLineWalk/
-    CmdDispatchSub/CmdDispatchWrap + the Session 32-bit VM op cluster
+    Callee names cross-checked (UI_FindKeyMatch/UI_SetDialogId/
+    UI_SetAttrCells/UI_RenderCharCell/Kernel_MonoCall/UI_FieldLineWalk/
+    Session_DispatchSub/Session_DispatchWrap + the Session 32-bit VM op cluster
     dc37/dc49/dce9/dca1/ddfa/dc30/e09f/df42/df5b) - all real, no
     hallucination. Coverage: 750 total / FUN=0 / thunk=13 / plateless
     238 (all ROM00; ROM01 now 0, ram saturated).
   * Boundary issue FOUND + bookmarked (not re-based): ROM01::2f74 holds
-    an orphan 11 byte = first byte of LD DE,0x10; SessionFieldEditLoop
+    an orphan 11 byte = first byte of LD DE,0x10; Session_FieldEditLoop
     entry is 2f75 (mid-instruction), yet the CALLer at 75df literally
     targets 0x2f75 (CD 75 2F). SUSPECTED dual entry (2f74 primary / 2f75
     DEC-B secondary). Discriminating test: single-step 75df. Guarded
@@ -1199,10 +1199,10 @@ current priority order; the concise lists above are authoritative.
     KbdDriveAllOn(1a42)=2-byte LD A,0x3F entry that falls into the sense
     routine; KbdDriveWrite(1a44) drives a column AND senses; "ReleaseAll"
     wrote the SAME 0x3F as "AllOn" but without sensing - the real split is
-    sense-vs-no-sense, not on-vs-release. Renamed: KbdSenseAllColumns(1a42),
-    KbdSenseColumn(1a44), KbdDriveSetAll(1a77, 0x3F), KbdDriveClearAll
+    sense-vs-no-sense, not on-vs-release. Renamed: Kbd_SenseAllColumns(1a42),
+    Kbd_SenseColumn(1a44), Kbd_DriveSetAll(1a77, 0x3F), Kbd_DriveClearAll
     (1a81, 0x00). Plates corrected; 2 first-pass byte-range errors fixed
-    (KbdDriveWrite was 1a44-1a76 spanning KbdScanRowDecode; KbdDriveOff
+    (KbdDriveWrite was 1a44-1a76 spanning Kbd_ScanRowDecode; KbdDriveOff
     was 1a81-1a95).
   * LAB batch 12 COMPLETE: all 202 remaining ROM01 in-fn LAB_* labels
     renamed to branch-meaning names (function-prefix + suffix: load_cell/
@@ -1240,7 +1240,7 @@ current priority order; the concise lists above are authoritative.
     file" was an OVER-CLAIM. There is no opcode-interpreter/dispatch loop;
     the E3B1-E3BF cells are a plain 32-bit arithmetic register file
     (accumulator/operand slots, little-endian) driven by direct-CALL
-    routines, used by the session numeric formatter (SessionCmdHandler53C6).
+    routines, used by the session numeric formatter (Session_CmdHandler53C6).
     Historical TASKS entries above still say "VM" - treat as stale wording.
     The 16-bit helpers are genuinely generic (moved to Lib_*); the 32-bit
     cluster IS session-specific, so "Session*32" names stay.
@@ -1255,22 +1255,22 @@ current priority order; the concise lists above are authoritative.
     next function's address). ALL auto-corrected to actual body bounds.
   * FACTUAL verification (4 parallel investigate agents, ~295 plates):
     22 discrepancies found + corrected, all byte-verified before apply:
-    - ROM01 (6): TemplateBuilder CALL-on-Z not NZ; UiDialogListItem JP
-      09db not fall-through; UiDialogLayout does not return HL=1;
-      SessionWaitCharCell returns HL=1 (not 0) on zero arg; SessionField
-      EditLoop has NO 356e call; SessionFieldReady needs (eb53) non-zero
+    - ROM01 (6): Form_Builder CALL-on-Z not NZ; UiDialogListItem JP
+      09db not fall-through; UI_DialogLayout does not return HL=1;
+      Session_WaitCharCell returns HL=1 (not 0) on zero arg; SessionField
+      EditLoop has NO 356e call; Session_FieldReady needs (eb53) non-zero
       too.
     - ROM00 (16): BdosDirSearchHelper extent = f823-f82c (reversed);
-      LinkSelectActiveDevice AND 3 not 7; ExtBusAdvanceTimer fbce +=
-      f9ac (not -=); CommsLineDeassertRd order (2349 first); KbdColumn
-      Strobe branches on Z not carry; LcdCharWrapBound uses BC not HL;
-      lcd_clear_spaces loops 0xA0 (160) not 0x60; RtcPeekDateByte CALL
-      not tail-call; DiagPrintResult 0x80=TIMEOUT else FAIL (swapped);
-      TtyPrintString/LcdPrintString NULL-terminated not $; LinkTransport
-      Call CLEARS fbc9 bit0 while LinkResetSession SETS it (pair was
-      SWAPPED); DescriptorCount16 reads 4 bytes not 16; RtcDateChanged
-      Check sets fbc9 bit1 unconditionally; RtcAlarmWriteCtrl is a 15-byte
-      fragment (real alarm logic in RtcSetAlarm).
+      Link_SelectActiveDevice AND 3 not 7; ExtBus_BusAdvanceTimer fbce +=
+      f9ac (not -=); Comms_LineDeassertRd order (2349 first); KbdColumn
+      Strobe branches on Z not carry; Lcd_CharWrapBound uses BC not HL;
+      Lcd_clear_spaces loops 0xA0 (160) not 0x60; RTC_PeekDateByte CALL
+      not tail-call; Diag_PrintResult 0x80=TIMEOUT else FAIL (swapped);
+      Tty_PrintString/Lcd_PrintString NULL-terminated not $; LinkTransport
+      Call CLEARS fbc9 bit0 while Link_ResetSession SETS it (pair was
+      SWAPPED); UI_Count16 reads 4 bytes not 16; RtcDateChanged
+      Check sets fbc9 bit1 unconditionally; RTC_AlarmWriteCtrl is a 15-byte
+      fragment (real alarm logic in RTC_SetAlarm).
     - Session cluster (ROM00 354c-6811) verified CLEAN (agent found 0).
   * BeepAndLatchWrite (14ff) renamed Barcode_AttentionStrobe (stale
     "ReaderBeepAttention"/"light-pen" plate fixed; drives 2A/2C route
@@ -1282,12 +1282,12 @@ current priority order; the concise lists above are authoritative.
   main, saved):
   * The 5 device names at ROM01:757F are COMM SETUP form labels, not
     drives. Form template at 758B (+0x0C -> 757F), built by
-    Ui_CommSetupFormInit (060B) -> TemplateBuilder (0271).
+    Ui_CommSetupFormInit (060B) -> Form_Builder (0271).
   * Two wire-id tables, one accessor (~ROM00:31FF): FE93 = drive-letter
     -> wire-id (A=0x00 internal, B=0x7F, C=0x73, D=0x72, E-P=0x00);
     FE83 = 4 device slots [0x80,wire,0x63,0x43] = 0xAB/0x2B/0x67/0x67.
     BDOS std file ops (fn<0x25) reject non-zero wire-id -> external probe
-    (DiskKeyedSearch -> LinkTransportOpen). Plates set on FE93/FE83.
+    (Disk_KeyedSearch -> Link_TransportOpen). Plates set on FE93/FE83.
   * `ram:D081` = `g_apScreenHandlerTables` (was `g_tblFieldTypeRecPtrs`): **five
     per-screen handler-table pointers indexed by active-screen selector at
     `ROM01:034B`** (CONFIRMED). Entry 0 = `g_apLoadRunHandlers` at `ram:D0F0`
@@ -1316,15 +1316,15 @@ current priority order; the concise lists above are authoritative.
     labels to delete (ram:f1b2, ram:de6a - auto-symbols, need clear-flow).
   * ACRONYM: 14 32-bit-arithmetic plates corrected - dropped the "VM
     register file" over-claim, now name the concrete E3Bx cells.
-  * EOL: 41 EOL comments on SessionCommandDispatch (e0b2), FsInitAllocator
-    (05a1), Kernel_BankedCallEnvelope (f376), SessionCoroStartTask (3d3c).
+  * EOL: 41 EOL comments on SessionCommandDispatch (e0b2), Fs_InitAllocator
+    (05a1), Kernel_BankedCallEnvelope (f376), Session_CoroStartTask (3d3c).
   * CHURN: 7 FUN_* re-triaged + named: Fs_DirBlockMap (042d),
     Session_DialogIdGet (1548), Kbd_SetKeyState2 (1aec), Kbd_ClearAndPower
-    Bit0 (1b1a), PowerLatchClrBit0 (1b39), SessionDivS32 (ddb0),
+    Bit0 (1b1a), Power_LatchClrBit0 (1b39), SessionDivS32 (ddb0),
     SessionModS32 (ddcb). FUN_* = 0.
   * NEXT: data-type the identified tables; guarded re-bases (2f74/52a5/
     4a25); emulator menu reach (higher slices); apply remaining EOL
-    (SessionCoroJumpTable 3c06).
+    (Session_CoroJumpTable 3c06).
   * COMMENT-STYLE GUIDE added to AGENTS.md §8 (owner-requested): plate
     template (brief/longer/In/Out/Clobbers, MUST be multi-line ASCII -
     never squashed); SHORT form allowed for trivial fns (Lib_SignedLe16);
@@ -1346,7 +1346,7 @@ current priority order; the concise lists above are authoritative.
     Session_FcbParseFilename) and the VM register-file ops. (Nugget:
     the underlying 32-bit divide engine might be general-purpose - open.)
   * RAM SIZE vs SERIAL (CORRECTION, owner-flagged): ram:FEAB is WRITTEN by
-    DelayCountUp (ROM00:271F) at cold start as FEAB = FEA9*0x20 (FEA9 =
+    Util_CountUp (ROM00:271F) at cold start as FEAB = FEA9*0x20 (FEA9 =
     count of 0xFF bytes from the RAM scan) - this is the RAM SIZE code,
     DISPLAYED on the banner as "Ram: NN K.B." - I mistook it for the
     serial number; BOTH are shown on the boot screen. The banner waits
@@ -1378,7 +1378,7 @@ current priority order; the concise lists above are authoritative.
   * NAMING CONVENTION (per owner): RAM stdlib -> Lib_; ROM utilities ->
     omit prefix or _rom0/_rom1 suffix; Session_ only for real session
     handling. APPLIED: 25 renames - 21 Session*32 -> RegFile_* (the
-    E3B1-E3BF register-file arithmetic: RegFile_Add32/And32/Shl32/Neg32/
+    E3B1-E3BF register-file arithmetic: RegFile_File_Add32/And32/Shl32/Neg32/
     CmpCarry32/CmpSigned32/TestNonzero/DivResult/ShiftSubDiv/LoadOp1/2/
     StoreOp1/2/SetWord32/SaveArgs2/Shr32/CondNeg32/DivS32/ModS32/DivShl/
     CmpGtDispatch); SessionAnd16 -> Lib_And16; SessionNeg16 -> Lib_Neg16;
@@ -1399,7 +1399,7 @@ current priority order; the concise lists above are authoritative.
     an analysis/README.md "Emulator" section (options, expect DSL grammar,
     RAM model). Not merged into boot_hw.py yet.
   * ERROR-PATH Q's (investigate): "Plinth not connected" (ROM00:6d6f) =
-    LinkProbe (348a) hardware probe failure - 0x1F->port 4F, LINK_CTRL(4A)
+    Link_Probe (348a) hardware probe failure - 0x1F->port 4F, LINK_CTRL(4A)
     bit5/0/6/7 toggles, read LINK_STATUS(4B); error code 6 in e488; NO
     data packets (4Dh/4Ch) in the probe stage (0xE0/0xEE frames come later
     in the connect handshake). "No program in memory" (ROM01:7d07) and
@@ -1421,23 +1421,23 @@ current priority order; the concise lists above are authoritative.
   * NEXT: proper plates for the 15 SessionSub* + data-typing apply +
     comment-rewrite labels migration; guarded re-bases (2f74/52a5/4a25);
     merge boot_hw_visible.py into boot_hw.py.
-- 2026-08-27 (LinkProbe question + emulator-chase note; documented):
-  * Owner-flagged: LinkProbe (348a) is called ONLY by ColdStartSelftest
+- 2026-08-27 (Link_Probe question + emulator-chase note; documented):
+  * Owner-flagged: Link_Probe (348a) is called ONLY by ColdStartSelftest
     Banner (self-test), so the session-connect "Plinth not connected" must
     use a DIFFERENT probe. OPEN: which fn probes the link during connect
-    (LinkPresent 34ec / LinkWaitReady 34f8 / SessionConnectCheck 2b43?).
+    (Link_Present 34ec / Link_WaitReady 34f8 / Session_ConnectCheck 2b43?).
     Documented in protocol/commstar.md "Error-path triggers".
    * EMULATOR NOTE: chase "No program in memory" by driving Load/Run
      Program in boot_hw_visible.py and tracing which BDOS/session error
      code populates d0e0 and e48d/e488. (Error-code->string table is
      runtime-built; not statically visible.)
 - 2026-08-27 (byte-verify wave-2 fix + boot_hw merge verified; main):
-  * BdosSwpDirectory (ram:f535) plate CORRECTED: copies 0x80 bytes FROM
+  * Bdos_SwpDirectory (ram:f535) plate CORRECTED: copies 0x80 bytes FROM
     the F8B8 directory buffer TO [FFA3] (the BDOS DMA address) - the
     earlier plate had the direction reversed. Byte-verified: HL=[FFA3],
-    EX DE,HL -> HL=F8B8 src, DE=[FFA3] dst, KernMemCopy(HL=src,DE=dst).
+    EX DE,HL -> HL=F8B8 src, DE=[FFA3] dst, Kernel_MemCopy(HL=src,DE=dst).
   * Two data-cell plates corrected in the same pass: FFA3 is a 2-byte
-    DMA POINTER (set by BDOS fn 1A at BdosSetDmaAddress), not a
+    DMA POINTER (set by BDOS fn 1A at Bdos_SetDmaAddress), not a
     "128-byte record cell"; F8B8 = directory buffer that SwpDirectory
     copies OUT of (not into). FEFF staging-buffer plate was already
     correct. TASKS.md 2026-08-25 block-I/O-layer entry updated to match.
@@ -1477,7 +1477,7 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-27 (keyboard keymap + UI field-edit keys; main):
   * KEYMAP TABLE LOCATED: ROM00:1b58 (labelled tbl_kbd_map) is a three
     36-byte-page keymap (base in ram:fbda, set at ColdStartSelfTestBanner
-    / KbdScanRowDecode). Page 0 unshifted (ASCII letters; 'N'=0x4E idx21,
+    / Kbd_ScanRowDecode). Page 0 unshifted (ASCII letters; 'N'=0x4E idx21,
     ENTER=0x0D idx22), page 1 shifted (+0x24), page 2 special (+0x48,
     fbdd==2; 'Z'=0x5A idx21). Function keys use codes 0x01/0x06/0x0b/
     0x0c/0x11/0x12/0x14/0x1a/0xd0. Kbd_ScanMain (18f0) produces the code
@@ -1485,7 +1485,7 @@ current priority order; the concise lists above are authoritative.
   * FIELD-EDIT KEY DISPATCH: Ui_FieldEditPumpLoop (1e0a) reads ec41 and
     tail-jumps to CALL ram:e0b2 with inline dispatch table at ROM01:1f99
     (labelled tbl_fieldkey_dispatch): 0x06/0x0b->1e61, 0x01/0x0c->1ea1,
-    0x11->1ece, 0x12->1eed, default->1f23. SessionKeyProcess (40c4)
+    0x11->1ece, 0x12->1eed, default->1f23. Session_KeyProcess (40c4)
     branches on 0x01/0x06/0x11/0x12.
   * OWNER KEY MAPPING (hardware, for emulator input): N/Z key edits the
     active field value; YES/NO keys move between fields. Codes: N=0x4E,
@@ -1494,18 +1494,18 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-27 (error-screen format CLOSED; investigate + main, applied):
   * TASKS #11 answered (investigate agent, byte-verified by main): the
     "Error 8000 (238/001) Plinth not connected" screen is rendered by
-    SessionStateBuild (4351) via SessionMessageBox (4296). CONFIRMED:
+    Session_StateBuild (4351) via Session_MessageBox (4296). CONFIRMED:
     8000 = major error qualifier literal 0x1F40 (8001 = 0x1F41 for the
     0x0009 connect-check case), 11-digit space-padded; NOT e488 (code 6).
     "(238/001)" = RCV1/RCV2 session status from e701/e6ff (3-digit
     zero-padded), template at ROM00:7310 (now tbl_sess_status_fmt) with
     field names RCV1/RCV2/SEND/LOAD/PROG/TIME/ENDC. Annotated: plates on
-    7310/e488/e701(g_wSessRcv1)/e6ff(g_wSessRcv2)/SessionStateBuild; EOLs
+    7310/e488/e701(g_wSessRcv1)/e6ff(g_wSessRcv2)/Session_StateBuild; EOLs
     at 47ca/47b7/47d0/4380/4399. protocol/commstar.md gained "Error/status
     screen format (CONFIRMED)".
   * MISNOMER FLAGGED: ROM00:403b (named FileSearchNextCb) is actually a
     decimal-to-ASCII formatter (div-10 digit loop + 0x30); used by
-    SessionStateBuild. Rename queued (needs rename-hygiene pass).
+    Session_StateBuild. Rename queued (needs rename-hygiene pass).
   * "No program in memory" emulator chase: partial. General agent booted
     to Load/Run Program (From defaults to PLINTH; ENTER there goes to
     "Log-on information / Mode LOCAL_LINK"). The field-move keys (0x11/
@@ -1520,10 +1520,10 @@ current priority order; the concise lists above are authoritative.
     the physical key matrix / ring bytes to the field-move so the UI can
     be driven without a RAM patch, then re-trace the real qualifier.
 - 2026-08-27 (tie-up: formatter + SessionSub* + dispatcher format; main):
-  * FileSearchNextCb -> FormatDecU16 (ROM00:403b). CONFIRMED decimal
+  * FileSearchNextCb -> Lib_DecU16 (ROM00:403b). CONFIRMED decimal
     formatter (div-10 + 0x30, two-pass leading-zero->pad, null-term at
     [width]); stack args value/dest/width/pad at SP+0x0C/0x0E/0x10/0x12.
-    Callers: SessionStateBuild (error-screen), FileSearchFindNum.
+    Callers: Session_StateBuild (error-screen), Fs_SearchFindNum.
   * SessionSub* naming applied:
     - SessionSub16 -> Lib_Sub16 (ram:e0a9); plate CORRECTED: Z flags the
       FULL 16-bit result (OR L), not just the low byte.
@@ -1531,7 +1531,7 @@ current priority order; the concise lists above are authoritative.
     - SessionSub620C -> plate updated: field loop, SUSPECTED dead code
       (init block 61d0-620b unreachable).
     - DELETED SessionSub5DFD (mis-bounded fragment; real entry 5df2) and
-      SessionSub6431 (basic block inside Ui_DescFieldEditMenu, entry is a
+      SessionSub6431 (basic block inside UI_DescFieldEditMenu, entry is a
       NOP). Function count 779 -> 777, saved.
   * SessionCommandDispatch (ram:e0b2) inline-table format CONFIRMED from
     two dumps: {count:word}{case_lo,case_hi,handler_lo,handler_hi}xN
@@ -1546,15 +1546,15 @@ current priority order; the concise lists above are authoritative.
     0x4E/0x5A exists in the field-edit path, so the owner "N/Z cycles the
     value" is NOT how this firmware build behaves - OPEN to reconcile
     (documented in micronic_notes.md). keymap/dispatch tables annotated.
-- 2026-08-27 (InlineTableDispatch: rename + struct + typed all 26 tables):
-  * ram:e0b2 renamed SessionCommandDispatch -> InlineTableDispatch; plate
+- 2026-08-27 (Kernel_TableDispatch: rename + struct + typed all 26 tables):
+  * ram:e0b2 renamed SessionCommandDispatch -> Kernel_TableDispatch; plate
     and EOL comments thrown out and redone from the code. Format byte-
     verified (NOT the earlier "sentinel" guess): {count: u16le}
     {case: u16le, handler: u16le} x count {default_handler: u16le}. The
     leading count is loaded once and DEC'd per probe; underflow (D<0)
     enters the trailing default. No per-entry sentinel.
   * Defined struct DispatchTableEntry {caseValue: word, handler: word}
-    and typed ALL 26 inline tables after CALL InlineTableDispatch via a
+    and typed ALL 26 inline tables after CALL Kernel_TableDispatch via a
     Ghidra script (clearListing + createWord/array/word), with
     COMPUTED_CALL references added to every handler + default target.
     Function count unchanged (777). Saved. protocol document updated.
@@ -1598,11 +1598,11 @@ current priority order; the concise lists above are authoritative.
     0x11 at idx34 (col5 row4 = no physical key). tbl_kbd_map + 1f99 plates
     corrected.
   * RENAMED: Ui_CommSetupFormInit (060b) -> Form_InitFromTemplates (it is
-    generic form init, builds 3 template instances via TemplateBuilder
+    generic form init, builds 3 template instances via Form_Builder
     0271); FUN_ handlers -> Form_ChoiceNext/Prev/First/Last/LetterMatch,
     all plated. Device-name table at ROM01:757f (WORKSTATION MEMORY,
     WORKSTATION RAMDISK, PLINTH, V24 ADAPTOR, EXT STORAGE ADAPTER),
-    embedded in form template 758b (+0x0c), built by TemplateBuilder.
+    embedded in form template 758b (+0x0c), built by Form_Builder.
   * DOCS: mkdocs restructure adopted. Updated TASKS.md/AGENTS.md doc-path
     references to the new layout; Makefile + BUILD.md are now mkdocs-only;
     deleted legacy build.py, validate-mermaid.mjs, package.json/lock.
@@ -1610,7 +1610,7 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-27 (user guide + forms-UI docs; plan set):
   * Added manual/user-guide.md (boot, keypad, special keys, field
     navigation, menu map, error screens + codes, error list, error
-    recovery) and internals/forms-ui.md (form model, TemplateBuilder,
+    recovery) and internals/forms-ui.md (form model, Form_Builder,
     device table 757f, 1f96 field-edit dispatch, keymap, error renderer).
     Wired into mkdocs nav + README indexes.
   * Error messages enumerated (ROM00:6d40-6e10): Plinth not connected /
@@ -1637,8 +1637,8 @@ current priority order; the concise lists above are authoritative.
     original "Error 8000 (238/001)" question: 8000 = site code,
     (238/001) = RCV1/RCV2 counters, message = class text.
   * Renamed the msg wrappers: Session_ShowLineFailure -> SessionMsgLine
-    Failure; FUN_44a5/44bd/44d5 -> SessionMsgFailedToConnect /
-    SessionMsgInvalidReply / SessionMsgModemFault; SessionShowMessage
+    Failure; FUN_44a5/44bd/44d5 -> Session_MsgFailedToConnect /
+    Session_MsgInvalidReply / Session_MsgModemFault; Session_ShowMessage
     (443c) plate carries the full code->message map. Saved.
   * user-guide.md: complete error list + status lines + loader errors
     (No program in memory / Requested program not in memory / Program not
@@ -1649,7 +1649,7 @@ current priority order; the concise lists above are authoritative.
     menu template at ROM01:7860-78d0 (item strings "Set Debug mode"/"Set
     Debug Mode" 7b52/7b61, "Status" 7b70, "Device" 7b77; embedded
     pointers 7874/789c/78a0 + action bytes 03/05). It is rendered by the
-    same TemplateBuilder (0271) machinery as the form templates. The
+    same Form_Builder (0271) machinery as the form templates. The
     per-item HANDLER addresses (which screen each opens) are inside the
     nested pointer records and need a full menu-template decode - parked
     as a sub-project (ROM-only, no hardware).
@@ -1664,7 +1664,7 @@ current priority order; the concise lists above are authoritative.
     applied to 758b/75eb/760d): {buildStub, stub2, stub3, stub4: pointer}
     {flags: word 0x0801}{count: word 0x0120/0x0020}{dataPtr: pointer -
     the field's choice/string table, 0x757f for the comm form}. Records end
-    0xfffe. TemplateBuilder (0271) is used ONLY for these 3 form templates;
+    0xfffe. Form_Builder (0271) is used ONLY for these 3 form templates;
     the MENU (ROM01:7860) is a different structure (menu item records
     {string, action}) rendered by a separate handler.
   * FIELD VALIDATION (investigate agent, byte-verified key claims):
@@ -1716,13 +1716,13 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-27 (DIP executable format specification):
   * Wrote manual/program-formats.md as the byte-level spec: COM (no
     header, load at 0100h) + DIP. RECORD GRAMMAR CONFIRMED (record
-    dispatcher SyscallDispatch ram:d6db, handler table ram:d6f4): fn=0
+    dispatcher Syscall_Dispatch ram:d6db, handler table ram:d6f4): fn=0
     memset {fn,addr,count}, fn=1 memcpy {fn,src,dst,count}, fn=2 enqueue
     {fn,N,addr[N]} -> N x {0xD7,bank,addr} stubs at queue d684, fn=FFFF
     terminate (wrap d6f4+2*0xFFFF -> d6f2 -> d6ee pop+ret). CHECKSUM
-    CONFIRMED (ChecksumBytes ram:d7d1 = 16-bit additive byte-sum, not CRC).
+    CONFIRMED (Lib_Bytes ram:d7d1 = 16-bit additive byte-sum, not CRC).
     ROM footer 7FF0-7FFF (chain ptr at 7FFA/7FFC; 7FFE = candidate system
-    ID). MISNOMER FIXED: SyscallLoadBlockToMem -> SyscallMemset (it zero-
+    ID). MISNOMER FIXED: SyscallLoadBlockToMem -> Syscall_Memset (it zero-
     fills, not copies); renamed + plated all 5 loader primitives; doc
     mention corrected in os-diposb.md + programmer-guide.md.
   * DIP FILE HEADER still OPEN: the parser is in module A (ROM00:73CE ->
@@ -1800,10 +1800,10 @@ current priority order; the concise lists above are authoritative.
     initialised to "LD HL,1; RET" and later filled by the boot-chain
     deferred-call queue (134+147 constructors). Form builders = ROM01
     functions via d828, NOT battery-RAM code.
-  * Ui_FormExitDispatchNext (ROM01:06d3) = the form-transition loop: walks
+  * UI_FormExitDispatchNext (ROM01:06d3) = the form-transition loop: walks
     a 5-entry double-indirect table at ram:d081 (module B head) and
     bank-calls each callback, then rebuilds the comm form (060b) + posts
-    descriptors 7715/7751 (Ui_PostDescriptor 6633). forms-ui.md updated
+    descriptors 7715/7751 (UI_PostDescriptor 6633). forms-ui.md updated
     (trampoline semantics + new "Screen transition dispatch" section).
   * DIP loader STILL one step out: it is the Load/Run form's submit action
      (ENTER on From), reached through this dispatch/descriptor machinery -
@@ -1820,12 +1820,12 @@ current priority order; the concise lists above are authoritative.
     type 0 direct / type 1 RST10-trampoline expansion; (c) `g_tblFieldTypeRecPtrs`
     as device callbacks — now `g_apScreenHandlerTables` (five per-screen
     tables indexed by selector at `ROM01:034B`, entry 0 → `g_apLoadRunHandlers`
-    at `ram:D0F0`); `Ui_FormExitDispatchNext` double-dereferences; (d)
+    at `ram:D0F0`); `UI_FormExitDispatchNext` double-dereferences; (d)
     `ram:D681` as runtime COM/DIP block — now kernel dispatch/boot-loader
     block, runtime loader is `ROM01:0A67-10CE`; (e) old prose names
     `UiDialogOpen3F`/`UiDialogListItem`/`Dialog_StateCheck`/`UiCloseDialog`/
     `SessionHelperRouter0CE7`/`DialogListAction` superseded by
-    `Program_*`/`Ui_FormExitDispatchNext`/`g_apScreenHandlerTables`; (f)
+    `Program_*`/`UI_FormExitDispatchNext`/`g_apScreenHandlerTables`; (f)
      `Bad DIP file` as bad magic — now `0x232B` (9003), "Bad DIP file." =
      truncated block header/payload; `0x2332` (9010), "Program corrupt." =
      block-checksum mismatch
@@ -1843,7 +1843,7 @@ current priority order; the concise lists above are authoritative.
     `Program_RunByName` `106F`, `Program_NormalizeLoadRange` `0AE3`,
     `Program_ReportLoadError` `0CCB`, `Program_GenerateBlockChecksums`
     `0957`, `Program_VerifyBlockChecksums` `09C2`, final `10C6→ram:D7F0`
-    `RunLoadedProgram`. No BDOS execute; provider around `0C12`/`0CE7`/
+    `Program_LoadedProgram`. No BDOS execute; provider around `0C12`/`0CE7`/
     `ram:D370` still open.
   * **File layout no longer open**; open item updated: physical
     input-provider path / captured real DIP remains open.
@@ -1862,7 +1862,7 @@ current priority order; the concise lists above are authoritative.
   * Header-field use documented: entry-bank offset + image size establish
     the load range relative to `g_wProgramBankBase`; run-bank offset is
     resolved separately before execution; entry address is the Z80 target
-    passed to `RunLoadedProgram`; block count drives 0..5 file-block and
+    passed to `Program_LoadedProgram`; block count drives 0..5 file-block and
     runtime-descriptor iterations.
   * Ghidra: labelled/typed `g_pProgramLoadCeiling`, annotated its startup
     writer, COM remaining-capacity calculation/error path, boot copy record,
@@ -1874,11 +1874,11 @@ current priority order; the concise lists above are authoritative.
     gap, terminology cleanup, and a prioritised roadmap. No firmware finding
     or Ghidra annotation was changed. `mkdocs build --strict` passes.
 - 2026-08-28 (reviewer-approved link transaction byte verification):
-  * **Finding (all ROM00, CONFIRMED mechanical):** `LinkBlockTx` 3277-3377
-    and `LinkBlockRx` 3378-3453 mechanically drive `LINK_CTRL` (4Ah) and
+  * **Finding (all ROM00, CONFIRMED mechanical):** `Link_BlockTx` 3277-3377
+    and `Link_BlockRx` 3378-3453 mechanically drive `LINK_CTRL` (4Ah) and
     poll `LINK_STATUS` (4Bh); no electrical names for status/control bits are
     proven. TX ordered sequence: clear ctrl b0, set b0, clear b4, `B=0x80`
-    DJNZ delay; `LinkPresent`→`LinkWaitReady` polls status b7 `DE=0x02DA`
+    DJNZ delay; `Link_Present`→`Link_WaitReady` polls status b7 `DE=0x02DA`
     then `0x81` to `LINK_CMD`; low five bits of input `A` (held `C`) to
     `LINK_TXD`; wait status b4 `DE=0x026C`; set ctrl b5, set ctrl b4,
     `B=0x20` delay, clear ctrl b5, wait status b6 `DE=0x026C`; each `OUTI`
@@ -1887,7 +1887,7 @@ current priority order; the concise lists above are authoritative.
     clear b5; `INI` from `LINK_RXD` only if status b0 set; if b0 clear,
     b1 set continues b2/b3 decode while b1 clear waits/retries `DE=0x06F9`;
     b2 set extra `INI`; b3 set `EC`; cleanup toggles b1, sets/clears b0,
-    clears b4, toggles b1. `LinkProbe` emits `0x1F` to `LINK_PROBE` then
+    clears b4, toggles b1. `Link_Probe` emits `0x1F` to `LINK_PROBE` then
     latch sequence; physical/reset meaning remains SUSPECTED.
   * **Docs updated:** `protocol/commstar.md` rewritten to list only
     mechanical bit numbers and timeout constants, removing unqualified
@@ -1897,13 +1897,13 @@ current priority order; the concise lists above are authoritative.
     `internals/io-map.md` revised (4Ah/4Bh rows, Interface-shape section,
     Ghidra label table) to report only confirmed drive/poll behaviour.
     Owner statement preserved: link-id bit 5 selects one of two IR line
-    states (V24 ADAPTOR top vs PLINTH back) via `LinkPortSelect`; at this
+    states (V24 ADAPTOR top vs PLINTH back) via `Link_PortSelect`; at this
     session the polarity remained OPEN. **SUPERSEDED 2026-09-06:** fresh UI
     trace plus the owner's top-window capture maps wire-ID bit 5 clear to top
     V24.
    * **Ghidra:** retained the existing `LINK_CTRL`/`LINK_STATUS`/`LINK_CMD`/
-     `LINK_PROBE` labels; added plates and EOL comments to `LinkBlockTx`,
-     `LinkBlockRx`, `LinkWaitReady`, `LinkPresent`, and `LinkProbe` for the
+     `LINK_PROBE` labels; added plates and EOL comments to `Link_BlockTx`,
+     `Link_BlockRx`, `Link_WaitReady`, `Link_Present`, and `Link_Probe` for the
      CONFIRMED mechanical sequence. Electrical semantics remain OPEN and were
      not encoded as repeatable claims. Program saved; function count remained
      827.
@@ -1934,13 +1934,13 @@ current priority order; the concise lists above are authoritative.
      `05 03 04 E0 "reply-to-M"` stream. This does not establish session-level
      compatibility, live RECORD/BLOCK payload content, or physical timing.
 - 2026-08-28 (documentation maintenance — reviewer-verified link header correction, Ghidra-applied):
-   * **CORRECTED off-by-one (CONFIRMED):** `LinkValidateFrameHeader` (ROM00:30DC) compares RX logical offset **+4**, not +5, to `fdd4`. RX header is `+0..1 LE total length; +2 type; +3 per-link sequence; +4 active link id; +5 never read by ROM link code`. Previous docs (commstar.md validated-frame table, io-map.md address-filter line, `micronic/proto.py:validate_header`, `comms_rx_test.py` comment/frame) said +5 — fixed to +4.
-   * **TX prefix (CONFIRMED mechanical, SUSPECTED meaning):** `LinkFramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as `{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. Constant `0x7F` at TX +4 is **SUSPECTED**; do not call it an id or broadcast.
-   * **Transport framing constraints (CONFIRMED):** `LinkBlockTx` prelude is low 5 bits (`link_id & 1Fh`) sent before descriptor bytes and excluded from descriptor counts; `LinkBlockRx` returns `DE = bytes_read - 2` — identity of the two excluded bytes is **OPEN**. Descriptors: RX `FE0E {6->FDE4, 3->FE38, 0}`, RX `FE32 {9->FE3A, 0}`, TX `FDEA {6->FDDE, 0}`.
+   * **CORRECTED off-by-one (CONFIRMED):** `Link_ValidateFrameHeader` (ROM00:30DC) compares RX logical offset **+4**, not +5, to `fdd4`. RX header is `+0..1 LE total length; +2 type; +3 per-link sequence; +4 active link id; +5 never read by ROM link code`. Previous docs (commstar.md validated-frame table, io-map.md address-filter line, `micronic/proto.py:validate_header`, `comms_rx_test.py` comment/frame) said +5 — fixed to +4.
+   * **TX prefix (CONFIRMED mechanical, SUSPECTED meaning):** `Link_FramePrefixWrite` (ROM00:316B) writes TX offsets 0..4 as `{len LE, type, sequence, 0x7F}` and leaves offset +5 untouched. Constant `0x7F` at TX +4 is **SUSPECTED**; do not call it an id or broadcast.
+   * **Transport framing constraints (CONFIRMED):** `Link_BlockTx` prelude is low 5 bits (`link_id & 1Fh`) sent before descriptor bytes and excluded from descriptor counts; `Link_BlockRx` returns `DE = bytes_read - 2` — identity of the two excluded bytes is **OPEN**. Descriptors: RX `FE0E {6->FDE4, 3->FE38, 0}`, RX `FE32 {9->FE3A, 0}`, TX `FDEA {6->FDDE, 0}`.
    * **Sequencing & replies (CONFIRMED):** sequence slot is `FE43h + (fdd4 & 3Fh)`, init 1; mismatch reply `01EF` tied to type-4 sequence check; reply word `03EE` exists along with `01EE,02E0,02EE,04E0,05E0,01EF` (now 7 values).
    * **Inline dispatch (CONFIRMED numeric cases, local control flow only):** `5A69` abort `44,45,60,61,64`; `53C7` `0..5`; `5410` `0,4,8,9`; `5291` `0,4,9` — do not name as wire commands. Table at `6A4A` is **CONFIRMED** 16 state-display pointers, not a wire map. Link path **no checksum verified**.
-   * **Docs updated:** `protocol/commstar.md` (validated-frame table + validation sentence + LinkFramePrefixWrite/TX-0x7F note + LinkBlockRx/Tx prelude/DE-2 + descriptors + sequence slot + 03EE + numeric cases + 6A4A + no-checksum), `internals/io-map.md` (address-filter offset +4 and SUSPECTED/OPEN notes), `analysis/micronic/proto.py` (frame header docstring + `validate_header` offset +4), `analysis/comms_rx_test.py` (comment + RX frame construction to place link id at +4).
-   * **Outstanding (OPEN/SUSPECTED, do not guess):** meaning of TX `0x7F` (SUSPECTED); whether offset +5 may be writable by loaded code (OPEN, never read by ROM); identity of the two bytes excluded from `LinkBlockRx` DE count (OPEN); session payload grammar and per-record/per-block byte content still runtime/open (needs live capture or loaded-module trace); connector mapping and electrical bit meanings remain OPEN.
+   * **Docs updated:** `protocol/commstar.md` (validated-frame table + validation sentence + Link_FramePrefixWrite/TX-0x7F note + Link_BlockRx/Tx prelude/DE-2 + descriptors + sequence slot + 03EE + numeric cases + 6A4A + no-checksum), `internals/io-map.md` (address-filter offset +4 and SUSPECTED/OPEN notes), `analysis/micronic/proto.py` (frame header docstring + `validate_header` offset +4), `analysis/comms_rx_test.py` (comment + RX frame construction to place link id at +4).
+   * **Outstanding (OPEN/SUSPECTED, do not guess):** meaning of TX `0x7F` (SUSPECTED); whether offset +5 may be writable by loaded code (OPEN, never read by ROM); identity of the two bytes excluded from `Link_BlockRx` DE count (OPEN); session payload grammar and per-record/per-block byte content still runtime/open (needs live capture or loaded-module trace); connector mapping and electrical bit meanings remain OPEN.
 - 2026-08-29 (documentation maintenance — reviewer-approved BDOS review corrections, Ghidra-applied):
    * **Applied established findings only (no new inference):** `Bdos_SelectRst28Mode` (`ram:F55A`), `Bdos_UpdateDriveDirectoryMetadata` (`ROM00:0D79`), `Bdos_InternalTimedWait` (`ROM00:1122`), `Kernel_ConditionalEnableInterrupts` (`ram:F54E`), `Device_LookupConfigEntry` (`ROM00:31FF`).
    * **Overturned false interpretation:** `fn04` (`ROM00:10D2`) was previously described as unsafe / non-returning via `RST 38h` with a stack switch — **superseded**. Correct decode is `CALL ROM00:31FF` `Device_LookupConfigEntry`; `E` preserved, `FBC5` high nibble selects `FE83` entry; descriptor `80h` local output else routed; normal `A=00h`, routed terminal error returns a path-dependent nonzero helper status, and both paths may wait/retry. Summary status **CONFIRMED**.
@@ -1950,10 +1950,10 @@ current priority order; the concise lists above are authoritative.
    * **Closed stale BDOS items:** previous "all full cards done" phrasing retired; diagnostic-stub claims and `FD->0DE9` wrapped mappings removed.
 - 2026-08-29 (documentation maintenance — parent-adjudicated RTC record + CP/M links, no new inference, reviewed findings):
    * **Canonical BDOS eight-byte RTC record published** (`doc/internals/rtc.md#bdos-eight-byte-rtc-record`): `+0` metadata (FC copied/RTC ignored, FD from `g_bRtcRecordMetadata` init `13h` LIKELY century `19` exact OPEN, FF copied unused), `+1` year→`09h`, `+2` month→`08h`, `+3` day-of-month→`07h`, `+4` hour→`04h`, `+5` minute→`02h`, `+6` second→`00h`, `+7` day-of-week→`06h` (convention OPEN, `0=Sunday` LIKELY from `1984-01-01` default); raw binary 24-hour (Reg B `46h`), no firmware conversion/range validation; service identities `FCh=1150`/`FDh=113E`/`FEh=1122`/`FFh=112D`; `FFh` `DE=0` clear and program both poll `UIP`, preamble `RegA|80h` likely ineffective then `2Ah`; evidence addresses as listed in `rtc.md`.
-   * **Register-map correction:** rotated HD146818 labels fixed in `rtc.md` and `io-map.md` to `06`=day-of-week, `07`=day-of-month, `08`=month, `09`=year; alarm regs `01/03/05` marked used (RtcSetAlarm `2158-62`); emulator trace labels corrected (`09`=year `54h`, `08`=month `01h`, `07`=day-of-month `01h`, `06`=day-of-week `00h`); `RtcReadRegisterFile` corrected to `00h..09h` (10 bytes) → `g_abRtcRegisterSnapshot` (FD50), not `00h..0Fh`/16 bytes; stale date-gate text corrected to `RTC_AlarmDateMatches` / `g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth`.
-   * **Stale-name correction:** `BdosFcAlarmControl` → `BdosFfAlarmControl` in `cp-m-comparison.md` (and linked purposes to canonical layout); `Link_StatusCompare_FD4B` → `RTC_AlarmDateMatches` in active TASKS naming (historical logs retain former name where clearly historical).
+   * **Register-map correction:** rotated HD146818 labels fixed in `rtc.md` and `io-map.md` to `06`=day-of-week, `07`=day-of-month, `08`=month, `09`=year; alarm regs `01/03/05` marked used (RTC_SetAlarm `2158-62`); emulator trace labels corrected (`09`=year `54h`, `08`=month `01h`, `07`=day-of-month `01h`, `06`=day-of-week `00h`); `RTC_ReadRegisterFile` corrected to `00h..09h` (10 bytes) → `g_abRtcRegisterSnapshot` (FD50), not `00h..0Fh`/16 bytes; stale date-gate text corrected to `RTC_AlarmDateMatches` / `g_bRtcAlarmDayOfMonth`/`g_bRtcAlarmMonth`.
+   * **Stale-name correction:** `BdosFcAlarmControl` → `Bdos_FfAlarmControl` in `cp-m-comparison.md` (and linked purposes to canonical layout); `Link_StatusCompare_FD4B` → `RTC_AlarmDateMatches` in active TASKS naming (historical logs retain former name where clearly historical).
    * **BDOS reference alignment:** `manual/bdos-reference.md` FC/FD/FF cards now link to canonical record and summarize exact field use; FE corrected to `E<<4` interval with low→`(IY+23h)` high→`word[FEFA]` (previously mis-described as low nibble from IY).
-   * **Programmer guide links:** `manual/programmer-guide.md` table entries and command bullets link to canonical record, give compact layout once without ambiguous "`byte +0 OPEN`" without metadata/LIKELY-century context; `2Dh` `E=FFh` wording corrected to "installs `F57B` no-op target"; `2Eh` wording corrected to entering `A=2Ch` error path (not guaranteed returned `A`); added `### CP/M reference manuals` with verified Bitsavers/Gaby links and DIPOS-override note; renamed `BdosFcAlarmControl`→`BdosFfAlarmControl`.
+   * **Programmer guide links:** `manual/programmer-guide.md` table entries and command bullets link to canonical record, give compact layout once without ambiguous "`byte +0 OPEN`" without metadata/LIKELY-century context; `2Dh` `E=FFh` wording corrected to "installs `F57B` no-op target"; `2Eh` wording corrected to entering `A=2Ch` error path (not guaranteed returned `A`); added `### CP/M reference manuals` with verified Bitsavers/Gaby links and DIPOS-override note; renamed `BdosFcAlarmControl`→`Bdos_FfAlarmControl`.
    * **Review update:** `doc/review.md` RTC-incomplete finding marked resolved for byte layout, preserving OPEN `+0`/day-numbering/range-validation.
    * **fn04 alignment verified:** no doc change; `fn04` already aligned to `Device_LookupConfigEntry` findings in prior pass.
    * **Build:** `mkdocs build --strict` (see below); no commit; no new inference.
@@ -1961,13 +1961,13 @@ current priority order; the concise lists above are authoritative.
    * **ROM-visible buffer + TX prefix (CONFIRMED):** RX `+0..1` LE
      embedded length, `+2` numeric type, `+3` sequence byte, `+4`
      active link id, `+5` unread by examined ROM path, payload `+6`;
-     TX prefix `LinkFramePrefixWrite` (ROM00:316B) writes `+0..1`
+     TX prefix `Link_FramePrefixWrite` (ROM00:316B) writes `+0..1`
      descriptor length, `+2` type, `+3` sequence, `+4=0x7F` (**SUSPECTED**
      meaning) and leaves `+5` untouched.
    * **Validation + transport (CONFIRMED unless OPEN):**
-     `LinkValidateFrameHeader` (ROM00:30DC) checks embedded length vs
+     `Link_ValidateFrameHeader` (ROM00:30DC) checks embedded length vs
      caller logical count and `+4` vs active link id `fdd4`, does not
-     inspect `+5`; `LinkBlockRx` success `DE=bytes consumed minus 2`
+     inspect `+5`; `Link_BlockRx` success `DE=bytes consumed minus 2`
      (identities **OPEN**); examined ROM transport/header path has no
      checksum — integrity inside unresolved loaded-session payloads
      remains **OPEN**.
@@ -1986,7 +1986,7 @@ current priority order; the concise lists above are authoritative.
      `03EE` error/reset path ROM00:2E72.
     * **Descriptors + probe + UI fields (CONFIRMED/OPEN):**
       `FE0E {6->FDE4,3->FE38,0}` (structurally mutable), `FE32
-      {9->FE3A,0}`, `FDEA {6->FDDE,0}`; `LinkProbe` ROM00:348A writes
+      {9->FE3A,0}`, `FDEA {6->FDDE,0}`; `Link_Probe` ROM00:348A writes
       `1Fh` to `LINK_PROBE`, physical effect **OPEN**; `E701` is a
       zero-extended snapshot of received numeric frame type `E5BE` before
       local substitutions (transport error may put `EEh` (238) there),
@@ -2011,8 +2011,8 @@ current priority order; the concise lists above are authoritative.
      unsupported `Frame`/`TYPE_*`/reply semantics), and directed link
      harnesses (opaque byte mechanics only).
    * **Ghidra corrected and saved:** independently reviewed status polarity
-     replaced stale `LinkBlockTx`, `LinkWaitReady`, and `LinkPresent`
-     plates/EOLs; `LinkReplyEE03` names the existing direct-call stub at
+     replaced stale `Link_BlockTx`, `Link_WaitReady`, and `Link_Present`
+     plates/EOLs; `Link_ReplyEE03` names the existing direct-call stub at
      ROM00:31B0 without assigning command semantics. Function count stayed
      849 across the save. `research/gap-analysis.md` refreshed to 849 total,
      142 `FUN_*`, 707 named/non-`FUN_*` (83.3%).
@@ -2060,7 +2060,7 @@ current priority order; the concise lists above are authoritative.
       uses real loader callbacks (`Program_LoadByName` `ROM01:0B82` →
       `Program_ConsumeInputChunk` `ROM01:0BAC` chunked by request word
       `D36C` → `Program_FinalizeInput` → `Program_RunByName`/
-      `RunLoadedProgram`) below Commstar; bounded runs verified: 28-byte
+      `Program_LoadedProgram`) below Commstar; bounded runs verified: 28-byte
       COM `14+14`, one-block 50-byte DIP `14+8+28` (both entered `0100h`,
       `Hello World`/`A5` at `0200h`), max `0xCF81` COM
       `14 + 207*256 + 115 = 53121` through `D080` with state `3` in
@@ -2087,7 +2087,7 @@ current priority order; the concise lists above are authoritative.
       only the already documented separate preflight as builder trace 4 does
       (forcing `HL=0` at `5C22`). Mechanically valid firmware exercise only.
     * **Service identities (CONFIRMED):** actual service-33 entry is
-      `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+      `ROM00:2E02` (`Device_SelectOpen`, retained name); `ROM00:2E72` is
       `Device_Service33Timeout`, not entry; `ROM00:2E85` is
       `Device_Service33Complete`, callback registered through `ram:FDD2`
       (`g_pSvc33Callback`). Successful type-4 processing falls through at
@@ -2120,7 +2120,7 @@ current priority order; the concise lists above are authoritative.
       echo reply, `59D0` as post-completion value, and final numeric-result
       via `5B57` — all refuted by bytes.
     * **Excluded-byte placement clarified (CONFIRMED examined-session, OPEN
-      controller reason):** the two bytes excluded from `LinkBlockRx` `DE`
+      controller reason):** the two bytes excluded from `Link_BlockRx` `DE`
       are copies of logical type (`+2`) and sequence (`+3`) in this
       transaction (trailing `02 01`); controller-level reason remains **OPEN**.
       Supersedes wholly-OPEN phrasing in prior docs.
@@ -2231,7 +2231,7 @@ current priority order; the concise lists above are authoritative.
   * **CONFIRMED V24 mode-0 link chain:** mode record `D108` selects shared
     callback `Session_LogonMode0Or2Callback`, session/device selector 4, and
     default wire ID `g_bDeviceWireId4=0x43`. Wire-ID bit 5 is clear, so
-    `LinkBlockTx` takes the wire-ID-bit-5-clear latch path. This is not a
+    `Link_BlockTx` takes the wire-ID-bit-5-clear latch path. This is not a
     physical-port assignment by itself.
     `0x1F40 (8000)` and `0x1F41 (8001)`, both `"Plinth not connected"`, are
     emitted by earlier connection-result dispatchers, not that callback.
@@ -2395,7 +2395,7 @@ current priority order; the concise lists above are authoritative.
     Bit 7 set marks an illegal transition (message box, `ram:E3C2 = 2`);
     bit 7 clear is legal and `entry & 0x7F` is the next state. The `*0x11`
     multiply and the table base are byte-verified at `ROM00:3C06`
-    (`SessionCoroJumpTable`). Extent is exactly 14 states x 17 commands =
+    (`Session_CoroJumpTable`). Extent is exactly 14 states x 17 commands =
     238 bytes, `692A-6A17`; unrelated data begins at `6A18`, so state-name
     entries 14 (`REPLY-START`) and 15 (`REPLY-END`) have no row and are
     display-only. The decoded machine: INIT-COMMS opens, DIAL/ANSWER/MANUAL
@@ -2405,7 +2405,7 @@ current priority order; the concise lists above are authoritative.
     state accepts C-DROP-LINE (to NOT-STARTED) and C_ABORT (to CRASHED).
   * **RECORD=data / BLOCK=program promoted to CONFIRMED (2026-09-01):** was
     recorded as an unproven vocabulary reading. Each of the four transfer
-    operations calls `SessionStartDataMode` (`ROM00:452D`) with its command
+    operations calls `Session_StartDataMode` (`ROM00:452D`) with its command
     index and loads its own display string: cmd 9 `C-RX-REC` ->
     `Receiving data` (`4EA3`), 10 `C-RX-BLK` -> `Receiving prog` (`4F90`),
     11 `C-BEGIN-FILE` -> `Sending data` (`506A`), 14 `C-TX-BLK` ->
@@ -2463,7 +2463,7 @@ current priority order; the concise lists above are authoritative.
     - *String-load containment:* no `RET` between the `CALL 452D` and the
       display-string load in either checked routine (4E77->4EA3, 4F64->4F90),
       so they are the same linear flow. SURVIVES.
-  * **InlineTableDispatch fully decoded (2026-09-01):** format byte-verified
+  * **Kernel_TableDispatch fully decoded (2026-09-01):** format byte-verified
     at `ram:E0B2-E0D8`: `CALL E0B2` followed by `u16 count`,
     `{u16 case, u16 handler} * count`, `u16 default`. Switch value arrives in
     `HL`; the dispatcher tail-jumps (`JP (HL)` at E0D8) so the handler returns
@@ -2495,12 +2495,12 @@ current priority order; the concise lists above are authoritative.
     all three slot->target pairs already recorded (58->48BF, 60->4AE0,
     68->4F5A). The four operations are indices 59 (`5034`, Sending data),
     68 (`4F5A`, Receiving prog), 70 (`4E6D`, Receiving data) and 73 (`51EC`,
-    Sending prog). Also note `SessionStartDataMode` returns early unless
+    Sending prog). Also note `Session_StartDataMode` returns early unless
     `ram:E48D` == 2, so the Load/Run path may run an operation routine
     without driving the state machine at all — which would explain why
     states 4/5/6 are unreachable in the transition table yet the traced
     session performs Program Reception.
-  * **InlineTableDispatch tables defined as data in Ghidra (2026-09-01):**
+  * **Kernel_TableDispatch tables defined as data in Ghidra (2026-09-01):**
     the 45 inline tables were being disassembled as code, producing **279
     bogus instructions** and derailing the surrounding listing.
     `analysis/ghidra/DefineInlineTables.java` is a self-contained Ghidra
@@ -2542,13 +2542,13 @@ current priority order; the concise lists above are authoritative.
     that the session state could therefore only be set through the transition
     path. Wrong inference: the instruction is unique, the *function* is not.
     `ROM00:3BF5` has 46 callers, only one of them (`3C7E`) inside
-    `SessionCoroJumpTable`. 26 pass a literal — and only ever `0`
+    `Session_CoroJumpTable`. 26 pass a literal — and only ever `0`
     NOT-STARTED, `2` CONNECTED or `13` CRASHED; 17 pass `(ram:E48C)` and 2
     pass `(ram:E491)`. `E48C` is the cell the dispatcher writes with
     `entry & 0x7F`, so those sites commit a transition the table staged: the
     dispatcher computes the next state, the caller commits it.
   * **State machine is gated by `ram:E48D` (2026-09-01, CONFIRMED):**
-    `SessionStartDataMode` forwards to the dispatcher only when `E48D == 2`.
+    `Session_StartDataMode` forwards to the dispatcher only when `E48D == 2`.
     A full V24 mode-1 Load/Run trace ends with `E48D = 0` (measured with
     `--dump-mem e48d:1`), so that path never consults the transition table,
     yet `g_bSessionState` still advances `00 -> 02` via literal sets — which
@@ -2651,7 +2651,7 @@ current priority order; the concise lists above are authoritative.
     entry adds a second symbol rather than renaming — use
     `rename_function_by_address`.
   * **CORRECTION — the `E48D` gate polarity is INVERTED (2026-09-01):** two
-    entries above state that `SessionStartDataMode` dispatches "only when
+    entries above state that `Session_StartDataMode` dispatches "only when
     `E48D == 2`". Backwards. The comparison helper `ram:E04B` returns with
     **Z set when its operands differ** (`E055`: `LD HL,0 / XOR A / RET`;
     `E064`: `LD HL,1 / LD A,L / OR H / RET`), and `ROM00:453F` branches
@@ -2664,7 +2664,7 @@ current priority order; the concise lists above are authoritative.
   * **End-to-end confirmation of the state machine (2026-09-01):** a loaded
     COM calling `ram:EE00` (`C_ABORT`) from the boot state puts
     `C_ABORT / called from / NOT-STARTED / Press >> to continue` on the LCD.
-    That is `SessionCoroJumpTable`'s illegal-transition path, and it confirms
+    That is `Session_CoroJumpTable`'s illegal-transition path, and it confirms
     in one live run: the table's row/column indexing, that bit 7 set means
     illegal (row 0 column 16 = `0x80`), that both name tables render the
     message, that `g_bSessionState` is the row index, and that it boots to 0.
@@ -2673,7 +2673,7 @@ current priority order; the concise lists above are authoritative.
     stack-frame prologue: saves `IX`/`IY`, invokes the body through
     `D836` (`JP (HL)`), epilogue at `D84C` restores and returns the result in
     `HL`. The firmware simply stops to talk to the user — an illegal
-    transition raises a message box and waits in `SessionWaitContinue` for a
+    transition raises a message box and waits in `Session_WaitContinue` for a
     keypress. `Session_InitState` similarly displays `Comms in progress` and
     does not return. An application must therefore drive a **legal**
     transition sequence, or satisfy the UI.
@@ -2689,7 +2689,7 @@ current priority order; the concise lists above are authoritative.
   * **The table is a PARTIAL validator, bypassed for everything else
     (2026-09-01, CONFIRMED):** Program Reception — which the firmware plainly
     performs — enters `BLOCK-RX`, a state the table cannot reach. That is
-    what the mode gate is for. With `ram:E48D = 2`, `SessionStartDataMode`
+    what the mode gate is for. With `ram:E48D = 2`, `Session_StartDataMode`
     returns without consulting the table, so an operation runs whatever the
     state. Proven by A/B: an application that sets `E48D = 2` itself and then
     issues `C_ABORT` from `NOT-STARTED` gets no message box and `E512 = 0`
@@ -2713,24 +2713,24 @@ current priority order; the concise lists above are authoritative.
     from the manual pass, including the `C_ABORT` exception (illegal from
     `NOT-STARTED` and `CRASHED`) that the hand reading originally got wrong.
   * **ANSWERED — what an operation routine waits on (2026-09-01):** it waits
-    for the peer. With validation suppressed `SessionStartDataMode` returns 0,
+    for the peer. With validation suppressed `Session_StartDataMode` returns 0,
     and the operation wrapper reads 0 as *proceed*: `ROM00:547C` is
     `JP NZ,54E1` (non-zero exits), so zero falls through to `CALL 593A`, a
-    thin wrapper on `SessionTxRunState65` (`ROM00:5BA6`). That prepares a
-    frame header, calls `SessionSetParams(0x65, 6, 6, 0, 0)`, sends the frame
-    via `SessionTxSendFrame33`, then waits in `SessionRxByteLoop`. So the API
+    thin wrapper on `Session_TxRunState65` (`ROM00:5BA6`). That prepares a
+    frame header, calls `Session_SetParams(0x65, 6, 6, 0, 0)`, sends the frame
+    via `Session_TxSendFrame33`, then waits in `Session_RxByteLoop`. So the API
     operations are **link transactions**, not local calls that happen to
     block — a call made with no host attached cannot return, and that is the
     protocol working correctly rather than a fault. Exercising the API
     therefore needs a responding peer, which is precisely what a Commstar
     server is.
-  * **New wire state value `0x65` (2026-09-01):** passed to `SessionSetParams`
-    and `SessionTxSendFrame33` on the `C_ABORT` path. This is the first direct
+  * **New wire state value `0x65` (2026-09-01):** passed to `Session_SetParams`
+    and `Session_TxSendFrame33` on the `C_ABORT` path. This is the first direct
     evidence that the `44`/`45`/`60`/`61`/`64` family are the parameter an
     operation *transmits*, not merely internal labels.
-  * **Still OPEN:** in the bare-COM test the `LinkBlockTx` (`ROM00:3277`) hit
+  * **Still OPEN:** in the bare-COM test the `Link_BlockTx` (`ROM00:3277`) hit
     counter never fired, so execution blocks between entering
-    `SessionTxRunState65` and reaching the link driver — plausibly because no
+    `Session_TxRunState65` and reaching the link driver — plausibly because no
     session was ever opened. `C-INIT-COMMS` (`ram:EE20`, stub slot 65) is the
     legal first command from `NOT-STARTED` and takes a mode byte on the
     stack; driving that first, with the harness's synthetic peer attached, is
@@ -2835,7 +2835,7 @@ current priority order; the concise lists above are authoritative.
   * **Application-driven upload attempt (2026-09-01):** a COM issuing
     `C-INIT-COMMS` / `C-BEGIN-FILE` / `C-TX-REC` / `C-END-FILE` / `C-END-TX`
     with the four-word argument layout blocks in the **first** call. The
-    screen reaches `Comms in progress`, but `LinkBlockTx` and `LinkOpen` never
+    screen reaches `Comms in progress`, but `Link_BlockTx` and `LinkOpen` never
     fire and the peer sees no traffic at all (`replies=0`), so the session
     stalls before any transmission. The peer and pump are therefore unproven
     against an application-driven session — they are proven only against the
@@ -2853,11 +2853,11 @@ current priority order; the concise lists above are authoritative.
     handheld sends in a request is Provisional and works; a RECORD-mode file
     transfer is still uncaptured. The blanket claim was wrong.
   * **`LINK_CMD` (`4Ch`) has one value (2026-09-01, CONFIRMED):** `81h`,
-    written by `LinkPresent` (`ROM00:34EC`) after `TXRDY`, shadowed at
+    written by `Link_Present` (`ROM00:34EC`) after `TXRDY`, shadowed at
     `ram:F796`. No other value exists in ROM00, ROM01 or the battery RAM, so
     there is nothing to decode from variation — it is a fixed "begin" token,
     not a command byte with fields.
-  * **`LINK_PROBE` (`4Fh`) addresses id `7Fh` (2026-09-01):** `LinkProbe`
+  * **`LINK_PROBE` (`4Fh`) addresses id `7Fh` (2026-09-01):** `Link_Probe`
     computes `7Fh AND 1Fh` — exactly the masking that forms a prelude from a
     link id — and writes the result. So `7Fh` is used **as an id** in at least
     one place, not as arbitrary filler. The earlier "do not call it an id or
@@ -2876,7 +2876,7 @@ current priority order; the concise lists above are authoritative.
     `F797=03h` (the prelude was written to `LINK_TXD`). They differ only in
     the control shadow: Load/Run ends at `F794=02h` (transfer closed, port
     select still set) while the application ends at `F794=C2h` — **bits 6 and
-    7 set, which `LinkBlockTx` never drives**. The peer sees no reply-worthy
+    7 set, which `Link_BlockTx` never drives**. The peer sees no reply-worthy
     traffic because no complete frame was ever streamed.
     *Next:* find what drives `LINK_CTRL` bits 6 and 7 — nothing in the decoded
     transmit path does — and localise the stall between the prelude write and
@@ -2885,24 +2885,24 @@ current priority order; the concise lists above are authoritative.
     real `--watch-pc` using `mach.set_breakpoint` is the tool to add first.
   * **`LINK_CTRL` bits 6+7 identified: the receive-arm (2026-09-01,
     CONFIRMED):** they are always driven as a **pair** — set by
-    `LinkPortLatchSetHi` (`ROM00:34BD`), cleared by `LinkPortLatchClr`
+    `Link_PortLatchSetHi` (`ROM00:34BD`), cleared by `Link_PortLatchClr`
     (`ROM00:34D2`) — and the whole mechanism is the link interrupt poll,
     now `Link_IrqPollArmOrService` (`ROM00:31B6`):
     clear `RXARM`; test `RXBUSY` (status bit 4); if pending, run the receive
     dispatcher (`2FBD`) leaving `RXARM` clear; if idle, set `RXARM`.
     So an idle handheld sits with `RXARM` set, telling the controller it is
-    ready to be given data, and `LinkBlockTx` clears it at `ROM00:327D` for
+    ready to be given data, and `Link_BlockTx` clears it at `ROM00:327D` for
     the duration of a transmit. **For a physical adapter this is the signal
     to watch — `RXARM` set means the handheld is listening**, and
     `LINK_CTRL` is the only place it says so. That completes the `LINK_CTRL`
     bit map: 0, 1, 4, 5, 6, 7 all now have roles; 2 and 3 are never driven.
   * **CORRECTION — `F794 = C2h` is not an anomaly (2026-09-01):** the previous
     entry flagged the application route ending with `LINK_CTRL` bits 6 and 7
-    set as suspicious, "which `LinkBlockTx` never drives". True but
-    misleading: `LinkBlockTx` does not drive them, the interrupt poll does,
+    set as suspicious, "which `Link_BlockTx` never drives". True but
+    misleading: `Link_BlockTx` does not drive them, the interrupt poll does,
     and `C2h` (`RXARM` + `PORTSEL`) is the **normal idle value**. Load/Run
     ends at `02h` only because it stopped inside a transfer, where
-    `LinkBlockTx` had cleared them. The two routes' control shadows are
+    `Link_BlockTx` had cleared them. The two routes' control shadows are
     therefore consistent, and the stall is still unlocalised.
   * **Still OPEN — where the application-route transfer stalls.** Both routes
     reach the present handshake (`F796=81h`) and write the prelude
@@ -3018,7 +3018,7 @@ current priority order; the concise lists above are authoritative.
   * **State `0062` located, not explained (2026-09-01):** the only
     `LD HL,0062` in ROM00 is at `5E16`, in the sequence push 6 / push 6 /
     push 62h / `CALL 5973` — the same shape as
-    `SessionSetParams(0x65, 6, 6, ...)` in `SessionTxRunState65`. So `0062` is
+    `Session_SetParams(0x65, 6, 6, ...)` in `Session_TxRunState65`. So `0062` is
     a session TX parameter emitted by the "state-62 builder" the earlier notes
     mention. What the exchange means is still open.
   * **`C-END-TX` DOES take an argument (2026-09-01, CONFIRMED):** a 16-bit
@@ -3103,7 +3103,7 @@ current priority order; the concise lists above are authoritative.
   and `0000` routines but for the immediate. `C-DIAL` and `C-ANSWER` send it
   when the link type in `ram:E520` is not 6; `C-MANUAL` always does. Only
   link type 6 (a modem) takes the `0060`/`0061` paths, so **an IR peer should
-  expect `0062` and never `0060`.** All twelve `SessionSetParams` call sites
+  expect `0062` and never `0060`.** All twelve `Session_SetParams` call sites
   are now enumerated on the protocol page.
 * **The block commands are the program path.** `C-TX-BLK` passes its buffer
   to `ROM00:3E14`, the same walker `C-TX-REC` uses, so blocks and records
@@ -3193,7 +3193,7 @@ current priority order; the concise lists above are authoritative.
 Built `analysis/ghidra/AnalyseMicronicRom.java`: one self-contained,
 idempotent script replacing the throwaway repair scripts. Five passes —
 frame-helper flow, boot-load chains, `RST 10h` inline operands,
-`InlineTableDispatch` tables, compiler frame prologues. Full write-up in
+`Kernel_TableDispatch` tables, compiler frame prologues. Full write-up in
 `doc/re-notes/ghidra-repair-script.md`.
 
 * **CONFIRMED and consequential: `ram:D837` was flagged no-return, and that
@@ -3204,18 +3204,18 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   every compiled routine's body as dead code. Measured: a run of the other
   four passes with the flag still set created 143 functions and background
   auto-analysis then deleted **61 existing** ones (59 hand-named, incl.
-  `Lib_StrCmp`, `Lib_StrCopy`, `RunLoadedProgram`, `Kernel_RunStagedCall`,
+  `Lib_StrCmp`, `Lib_StrCopy`, `Program_LoadedProgram`, `Kernel_RunStagedCall`,
   most of the `SessionOpStub_*` farm). All 61 were restored from a pre-run
   `list_functions_enhanced` snapshot — the §11 diff-guard rule paid for
   itself. The flag is now clear and pass 1 re-clears it on every run.
-* **PARTIALLY ADDRESSED 2026-09-19 — duplicate `CoroutineTaskSwitch`
+* **PARTIALLY ADDRESSED 2026-09-19 — duplicate `Coroutine_TaskSwitch`
   mis-name fixed; the `ram:D837` naming question stays OPEN.** The
-  duplicate was `ROM00:3BB8` `CoroutineTaskSwitch`, now
+  duplicate was `ROM00:3BB8` `Coroutine_TaskSwitch`, now
   `Coroutine_IndexedLookup_6A4A` (indexed lookup into table `6A4A`;
-  sibling `ROM00:3BD0` `CoroutineSessionMul16` →
+  sibling `ROM00:3BD0` `Coroutine_SessionMul16` →
   `Coroutine_IndexedLookup_6B67`). `ram:D837` remains the name `doc/`
   uses (loader entry `LD DE,0; CALL ram:D837`), but whether
-  `CoroutineTaskSwitch` fits its bytes (an ordinary stack-frame
+  `Coroutine_TaskSwitch` fits its bytes (an ordinary stack-frame
   prologue saving `IX`/`IY`) is **not** resolved by this pass. See §12
   item 2b.
 * **Two bugs fixed from `AnnotateRst10Calls.java`:** enqueued boot-chain
@@ -3234,7 +3234,7 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
 
 * **CORRECTION: the stub-slot table had four slots mislabelled, and there are
   no duplicate wrappers.** Derived properly this time —
-  `SessionStartDataMode` (`ROM00:452D`) has fifteen call sites in ROM00 and
+  `Session_StartDataMode` (`ROM00:452D`) has fifteen call sites in ROM00 and
   each pushes a distinct literal command index, so slot -> command is
   one-to-one and complete. The earlier table listed `C_ABORT` three times and
   `C-SHUT-DOWN` three times and said the duplicates were untold-apart; that
@@ -3281,11 +3281,11 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
     `0062` otherwise). "Answer" means telling the far end to answer a phone.
 * **There is no Plinth detection.** `Plinth not connected.` (`ROM00:6D6F`,
   referenced only at `ROM00:4463`) is the `C-INIT-COMMS` failure message,
-  printed when the peer does not answer — whatever is attached. `LinkProbe`
+  printed when the peer does not answer — whatever is attached. `Link_Probe`
   (`ROM00:348A`) returns a status byte that **both callers discard**
   (`ROM00:0202`, `0229`); it is a cold-boot controller reset. Plinth vs V24
   adaptor is a menu choice (`micron2.bin 0x7663`) that becomes bit 5 of the
-  link id; `LinkPortSelect` (`ROM00:3455`) drives port `2Ch` as well as
+  link id; `Link_PortSelect` (`ROM00:3455`) drives port `2Ch` as well as
   `LINK_CTRL` bit 1. **RESOLVED 2026-09-01**, see below — and "connector" was
   the wrong word: both are IR ports on the handheld. Formerly: which polarity
   is which connector — needs a
@@ -3296,7 +3296,7 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   than 2 or 3 that passes the length and id checks reaches the `JP (HL)`
   through `FDD2`, which is `0000` on a cold machine. **LIKELY** a reset. Do not
   send unsolicited frames; a type-2 frame is the safe probe.
-* **OPEN:** whether the Plinth can assert NMI. `NmiHandlerImage`
+* **OPEN:** whether the Plinth can assert NMI. `Kernel_HandlerImage`
   (`ROM00:3B13`) wakes/aborts the machine and the physical NMI source is
   unrecorded. If the Plinth drives it, a host could at least wake a unit —
   though still not start a session.
@@ -3307,7 +3307,7 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
 mutation" was wrong** (owner correction). It is a *prerequisite*, not a
 mutation: `micron1.bin` holds only the two ROM banks, and everything the ROM
 calls into lives in unpaged battery RAM — `ram:D837` (frame prologue helper),
-`E0B2` (InlineTableDispatch), `DB89`/`E04B`/`DFCC` (string, compare,
+`E0B2` (Kernel_TableDispatch), `DB89`/`E04B`/`DFCC` (string, compare,
 multiply), `D828` (indirect call), `D893` (module A), `F180` (resident
 kernel), and the `ED1C` stub farm. Without it none of that disassembles, and
 the consolidated script's own pass 1 would silently no-op because its byte
@@ -3331,8 +3331,8 @@ Folding it in turned up two defects in the original, both byte-verified:
   deleted every `ram` function at or above `F100` — true of the database it
   was written for, catastrophic now that `F180` holds the kernel. On the
   current database that predicate matches **61 functions**, 58 hand-named,
-  including `BdosDispatchFn`, every `Syscall_InvokeService*`,
-  `Kernel_BankedCallEnvelope`, `KernSetBank`, `BankedCallCommonEntry` and the
+  including `Bdos_DispatchFn`, every `Syscall_InvokeService*`,
+  `Kernel_BankedCallEnvelope`, `Kernel_SetBank`, `Kernel_CallCommonEntry` and the
   `SessionOpStub_*` farm. It now requires both a still-generated `FUN_` name
   and a non-instruction entry. The stub-farm template fill is likewise
   refused if any slot begins with `D7`, i.e. if the image is a post-boot dump
@@ -3353,7 +3353,7 @@ its installer.** New pass 6 links them all.
   are the same 134 words, not two tables.
 * Bank 0 supplies slots 0..133 (ROM00 targets), bank 1 slots 134..280 (ROM01).
   281 × 4 = 1124 bytes = exactly `ED1C..F17F`, which is exactly the range
-  `KernelInitCopyData` pre-fills, ending exactly on `F180`. The three
+  `Kernel_InitCopyData` pre-fills, ending exactly on `F180`. The three
   slot→target pairs recorded here earlier from a live RAM dump (58 → `48BF`,
   60 → `4AE0`, 68 → `4F5A`) all reproduce, which is what fixes bank-0-first.
 * The whole farm currently reads `21 01 00 C9` — all 1124 bytes match the
@@ -3372,7 +3372,7 @@ at 1087 functions.
 
 ## Commstar: the controller transaction decoded (2026-09-01)
 
-* **`LinkBlockTx` (`ROM00:3277`) and `LinkBlockRx` (`ROM00:3378`) are decoded
+* **`Link_BlockTx` (`ROM00:3277`) and `Link_BlockRx` (`ROM00:3378`) are decoded
   end to end.** This is the layer a physical IR adapter implements, and it was
   the last major undecoded one. Full step-by-step listings are on the protocol
   page; the load-bearing results:
@@ -3389,7 +3389,7 @@ at 1087 functions.
 * **The two "trailing excluded bytes" are signalled out of band, CONFIRMED.**
   Receive status `4Bh` bit 2 gates a single extra `INI` at `ROM00:33F3`. The
   frame's length field never covers them, which is why the peer appends them
-  separately. Their *meaning* stays open — nothing in `LinkBlockRx` interprets
+  separately. Their *meaning* stays open — nothing in `Link_BlockRx` interprets
   them, so it is a controller convention this ROM cannot explain.
 * **Receive status register `4Bh`:** bit 0 = byte waiting, bit 1 = end of
   frame, bit 2 = one further byte to take, bit 3 = controller error. The
@@ -3411,8 +3411,8 @@ at 1087 functions.
   prelude is a byte an adapter will see. A logic capture settles it.
 * **Port-select mechanics resolved.** "Connector" was the wrong word: Plinth and V24 are
   two **IR ports on the handheld** — base and top — and the connector is the
-  infrared link itself. `LinkBlockTx` tests link-id bit 5 (`ROM00:3278`,
-  `AND 20h`) and hands it to `LinkPortSelect` (`ROM00:3454`), which drives
+  infrared link itself. `Link_BlockTx` tests link-id bit 5 (`ROM00:3278`,
+  `AND 20h`) and hands it to `Link_PortSelect` (`ROM00:3454`), which drives
   `LINK_CTRL` bit 1 and port `2Ch` bit 5 **together**: wire-ID bit 5 clear ->
   both set, wire-ID bit 5 set -> both clear. The session's inference that
   wire-ID bit 5 clear meant Plinth was later **REJECTED**: a reproduced V24
@@ -3502,8 +3502,8 @@ at 1087 functions.
     `WORKSTATION RAMDISK`, `PLINTH`, `V24 ADAPTOR`, `EXT STORAGE ADAPTOR`) is
     what the harness drives; the two-entry picker at `0x7663` sits in the
     comms setup form and **no current trace exercises it**.
-  * Still CONFIRMED and unaffected: `LinkBlockTx` routes on wire-ID bit 5
-    (`ROM00:3278`) and `LinkPortSelect` drives `LINK_CTRL` bit 1 and port
+  * Still CONFIRMED and unaffected: `Link_BlockTx` routes on wire-ID bit 5
+    (`ROM00:3278`) and `Link_PortSelect` drives `LINK_CTRL` bit 1 and port
     `2Ch` bit 5 together. At this session the physical mapping remained OPEN.
     **SUPERSEDED 2026-09-06:** the V24 trace plus owner capture maps wire-ID
     bit 5 clear/output bits set to the top port.
@@ -3528,20 +3528,20 @@ changed. Files touched: `doc/protocol/commstar.md`,
 * **Contradiction, now resolved: "the transition table is never consulted by
   the firmware at runtime."** That sentence in `protocol/commstar.md` was the
   exact inverse of the truth and sat forty lines below a paragraph saying the
-  opposite. `SessionStartDataMode` (`ROM00:4533`) skips the table only when
+  opposite. `Session_StartDataMode` (`ROM00:4533`) skips the table only when
   `E48D == 2`; `E48D` measures **0** in every session, so the table is
   consulted on **every** command the firmware issues. Both the offending
   sentence and the "the table is gated off on the traced path" claim in
   *What selects the operation* are replaced.
 * **The real mechanism for states 4/5/6.** `C-COMMAND` is validated by the
-  matrix like everything else (`ROM00:4AEA` calls `SessionStartDataMode(5)`
+  matrix like everything else (`ROM00:4AEA` calls `Session_StartDataMode(5)`
   and bails at `4AF3`); what it does differently is discard the staged
   `ram:E48C` and write `ram:E491` instead at `ROM00:4C62`. So the table is a
   complete validator of command *order* and an incomplete description of
   *states*. Documented that way now, in place of "partial validator … bypassed
   for everything else".
 * **`ram:E48D` is three-valued, and this was nowhere stated.** Byte-verified,
-  four readers, two different comparison constants: `SessionStartDataMode`
+  four readers, two different comparison constants: `Session_StartDataMode`
   (`4533`) tests **2**; `C-COMMAND` (`4B40`), `C-SHUT-DOWN` (`4D92`) and
   `C-END-TX` (`530D`) each test **1**. Mode 0 = normal, mode 1 = advances
   state without transmitting, mode 2 = validation off. Added as its own
@@ -3599,7 +3599,7 @@ changed. Files touched: `doc/protocol/commstar.md`,
   only the names are stale. Left alone because `analysis/` was out of scope
   for this pass.
 * **Also unresolved:** the protocol page and the evidence page disagree in
-  emphasis about whether `0x7F` at frame offset +4 is an id. `LinkProbe`
+  emphasis about whether `0x7F` at frame offset +4 is an id. `Link_Probe`
   computing `7Fh AND 1Fh` proves `7Fh` is used *as an id* somewhere; what it
   means at offset +4 is still SUSPECTED. Both pages now say that, in those
   words.
@@ -3612,7 +3612,7 @@ changed. Files touched: `doc/protocol/commstar.md`,
   taking the argument path with an argument the test never supplied, and mode 1
   fails because `table[CONNECTED][C-END-TX] = 8Dh` (byte-verified at
   `micron1.bin 0x695B`; bit 7 set, next state `CRASHED`) makes
-  `SessionStartDataMode` return non-zero and `ROM00:52F8` exit. Both halves are
+  `Session_StartDataMode` return non-zero and `ROM00:52F8` exit. Both halves are
   now on the page.
 
 ## Commstar: the 561-byte anomaly was a harness bug (2026-09-01)
@@ -3622,8 +3622,8 @@ changed. Files touched: `doc/protocol/commstar.md`,
   `E6C1`. A real service-33 receive is a 134-byte object at `ram:E5BC` with
   its body 8 bytes in, so the firmware never writes past `ram:E641`. The extra
   128 bytes buried **live Commstar session state** — including `ram:E69F`-`E6B3`,
-  the buffer `SessionRxByteGet` (`ROM00:65C2`) reads and the 16-bit count at
-  `ram:E6A9` it tests and decrements, called from `SessionRxByteLoop` at
+  the buffer `Session_RxByteGet` (`ROM00:65C2`) reads and the 16-bit count at
+  `ram:E6A9` it tests and decrements, called from `Session_RxByteLoop` at
   `ROM00:5A21`.
   * **Why it depended on length:** chunks run 14, then 256-byte chunks, then a
     short remainder. The remainder overwrites only the low end of the window,
@@ -3653,7 +3653,7 @@ changed. Files touched: `doc/protocol/commstar.md`,
   reading cannot explain. Next experiment: single-step `ROM00:65C2`-`65DF` on
   a poked failing run versus a passing one, logging `(E6A9)` and the byte
   returned per call. Does not affect the fix, which removes the input.
-* **`ROM00:65C2` `SessionRxByteGet`, byte-verified.** A pushback/lookahead
+* **`ROM00:65C2` `Session_RxByteGet`, byte-verified.** A pushback/lookahead
   reader: if the 16-bit count at `ram:E6A9` is zero it falls through to `65E0`
   to fetch (via the `ram:E6AD` / `E6AE` / `E6AC` flag bytes); otherwise it
   decrements the count and returns `mem[ram:E69F + count]`. Initialiser
@@ -3752,7 +3752,7 @@ changed. Files touched: `doc/protocol/commstar.md`,
   does not abut its neighbour as a smell.**
 * **`F68D`-`F77F` (243 B) — OPEN, characterised.** Ruled out: any static
   reference (the only literal naming `F68D` is `ROM00:0308` `01 8D F6`, the
-  *terminator* of `InstallKernelToRam`'s copy loop), any `SP`-fill, and any
+  *terminator* of `Kernel_KernelToRam`'s copy loop), any `SP`-fill, and any
   write through boot-to-Main-Menu or a synthetic Load/Run. **LIKELY** spare
   room in a round 1536-byte kernel arena: `F180 + 0x600 = F780` while the
   image is `0x50D`, and `ROM00:0318` re-enters the same copy loop with
@@ -4054,7 +4054,7 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
     one-key override.
   * CONFIRMED by owner hardware observation: initiating Load/Run PLINTH
     flashes the back/base IR port; V24 ADAPTOR flashes the top port. This
-    proves UI-to-physical-connector routing only, not LinkPortSelect bit-5
+    proves UI-to-physical-connector routing only, not Link_PortSelect bit-5
     polarity; retain that separate hardware question.
 - 2026-09-02 (terminal escape table): documented the 17 byte-verified ESC
   second-byte commands at ROM00:2050 and corrected its handler-table base to
@@ -4086,12 +4086,12 @@ hardware. Whether banks 2+ map to specific SRAM pages is LIKELY, not shown.
   continuous 0-V/no-clock intervals, not absent acquisition time. More
   importantly, raw `10000001 000001011` is an inverted `0x7E` flag followed
   by five raw zeroes and a stuffed raw one; removing that one gives
-  `00000011` = the known `0x03` LinkBlockTx prelude. This supersedes the
+  `00000011` = the known `0x03` Link_BlockTx prelude. This supersedes the
   earlier speculative 0x81=LINK_CMD and C-prefix=0x0C matches. Full HDLC is
   still SUSPECTED until a closing flag and FCS are observed.
 - 2026-09-02 (no-peer physical boundary): reconstructed B's omitted clock cell
   from its 244-us gap; A/B/C all de-stuff to raw `0x03`. Static callers show
-  every transmit funnels through LinkTransferService, so later Load/Run fields
+  every transmit funnels through Link_TransferService, so later Load/Run fields
   cannot expose byte 0x0C while the physical exchange stops after 0x03. Open:
   determine the minimal optical acknowledgement that makes the link hardware
   release the next byte; capture `LINK_TXD` and IR together if possible.
@@ -4131,7 +4131,7 @@ run and is also retired; see the later hardware-result entry.
   `63h` claim equated `Session_TxBlock4`'s first stack argument at
   `ROM00:5C04` with the unrelated two-option string table index at
   `ROM01:7663`; no xref supports that correlation. Fresh PLINTH and V24
-  Load/Run runs both reach `LinkPortSelect` with `fdd4=43h`: wire-ID bit 5 is
+  Load/Run runs both reach `Link_PortSelect` with `fdd4=43h`: wire-ID bit 5 is
   clear, while `LINK_CTRL` bit 1 and port `2Ch` bit 5 are set. The V24 run
   enters its distinct Log-on form and emits distinct application data, so the
   UI choice was genuine. Combined with the owner's capture of that operation
@@ -4239,7 +4239,7 @@ run and is also retired; see the later hardware-result entry.
 * **SUPERSEDED below:** conn13's 93.748 and 109.371 ms population medians were
   initially described as 96 and 112 periods of a 1,024 Hz running RTC. Fresh
   call-order analysis shows that 1,024 Hz is confined to the clock self-test;
-  `RtcInit` subsequently leaves the post-boot RTC at 64 Hz.
+  `RTC_Init` subsequently leaves the post-boot RTC at 64 Hz.
 * Unit tests cover scope-channel ownership and stuffed address recovery. The
   exact Arduino source snapshot used for each early capture remains OPEN;
   decoded waveform classifications do not depend on it.
@@ -4247,19 +4247,19 @@ run and is also retired; see the later hardware-result entry.
   `LINK_STATUS` while replaying conn13 silent/early/late stimuli. This directly
   observes `LINK_STATUS` bits 4, 6, and 7 and separates receive dispatch, the
   bit-6 acknowledge wait, and the first-byte bit-7 wait. Matching OPEN
-  bookmarks were saved at `ROM00:32F3` and `ROM00:3318`; `LinkBlockTx`'s plate
+  bookmarks were saved at `ROM00:32F3` and `ROM00:3318`; `Link_BlockTx`'s plate
   now qualifies every bit with its owning register.
 
 ## Retry scheduler cadence correction (2026-09-07)
 
-* **CORRECTION, CONFIRMED:** cold boot calls `ClockSelftestTickWindow` at
-  `ROM00:0208`, where `RtcPeriphRegSetup` writes RTC Register A = `26h`
-  (1,024 Hz), then calls `RtcInit` at `ROM00:024A`. Its
-  `RtcSetTimeFromBlock` call leaves RTC Register A = `2Ah` (64 Hz). A bounded
+* **CORRECTION, CONFIRMED:** cold boot calls `Clock_SelftestTickWindow` at
+  `ROM00:0208`, where `RTC_PeriphRegSetup` writes RTC Register A = `26h`
+  (1,024 Hz), then calls `RTC_Init` at `ROM00:024A`. Its
+  `RTC_SetTimeFromBlock` call leaves RTC Register A = `2Ah` (64 Hz). A bounded
   300,000-slice emulator boot reached the banner and reported
   `RTC rate =64.0 Hz (RS=0xa)`.
 * The conn13 medians therefore match **six and seven 64 Hz periods**, not 96
-  and 112 1,024 Hz ticks. `LinkTransferService` copies its configured delay
+  and 112 1,024 Hz ticks. `Link_TransferService` copies its configured delay
   of six into the retry countdown and registers itself with
   `Comms_WorkItemRegister`; `RTC_WakeReasonFetch` invokes
   `Comms_WorkItemSweep` once per observed RTC Register C PF event.
@@ -4301,9 +4301,9 @@ run and is also retired; see the later hardware-result entry.
   `power_lcd_init` writes
   `CTL_LATCH_2A=20h`, waits within one percent of the stock
   `ROM00:0152`-`015D` reset loop's Z80 cycle count, sets the contrast shadow to
-  `40h`, and tail-calls the complete stock `LcdInit` at `ROM00:1EEC`. This is
+  `40h`, and tail-calls the complete stock `Lcd_Init` at `ROM00:1EEC`. This is
   the minimum byte-proven path: the stock special-boot route also reaches
-  `LcdInit` after that latch state and reset delay.
+  `Lcd_Init` after that latch state and reset delay.
 * **Stack collision margin increased.** A bounded run of the old image found
   a deepest stack write at `C7F6h`, only nine bytes above the last exerciser
   state byte at `C7EDh`; an interrupt there had only two bytes of remaining
@@ -4316,7 +4316,7 @@ run and is also retired; see the later hardware-result entry.
   The old `1CBD` image and hash in the historical entry above must not be
   burned.
 * **Validation:** six dedicated exerciser tests now lock the image fingerprint,
-  stock `LcdInit` entry bytes and HD61830 command sequence, R10-then-R11 home
+  stock `Lcd_Init` entry bytes and HD61830 command sequence, R10-then-R11 home
   sequence, region bounds, stack separation and CTRL sweep. The full
   `analysis/` suite passes: 95 passed, 33 emulator-dependent tests skipped and
   71 subtests passed. A bounded 30,000-slice run logged the complete stock LCD
@@ -4327,7 +4327,7 @@ run and is also retired; see the later hardware-result entry.
   collected 105 passing tests but its 102 barcode build cases could not start
   because this sandbox cannot run their `sudo docker` assembler command; that
   is unrelated to the exerciser.
-* **Ghidra saved:** `lcd_sync_status` now records the R10/R11 low-then-high
+* **Ghidra saved:** `Lcd_sync_status` now records the R10/R11 low-then-high
   requirement, and reset at `ROM00:0152` records the latch plus delay contract.
 
 ## Replacement-ROM first hardware result (2026-09-07)
@@ -4338,9 +4338,9 @@ run and is also retired; see the later hardware-result entry.
   v13 preamble or records remains an OPEN discriminator.
 * **CONFIRMED omitted cold-start sequence:** unlike the normal ROM path, the
   `1225` image did not read `IRQ_STATUS`, write `IRQ_MASK=FFh`, or write
-  `SOUND=00h` before `LcdInit`. The stock bytes do exactly those operations at
+  `SOUND=00h` before `Lcd_Init`. The stock bytes do exactly those operations at
   `ROM00:01B1`-`01B9`, immediately before the normal cold path reaches
-  `LcdInit` at `ROM00:01E1`. The emulator does not model the beeper and did not
+  `Lcd_Init` at `ROM00:01E1`. The emulator does not model the beeper and did not
   expose the omission. `SOUND=00h` is independently byte-confirmed as the
   `Sound_Off` operation at `ROM00:35C9`-`35CD`.
 * **LIKELY causal split, pending hardware retest:** leaving `SOUND` at its
@@ -4376,7 +4376,7 @@ run and is also retired; see the later hardware-result entry.
 
 * **Owner-supplied hardware result:** the verified `2692` image produced a
   brief power-up bleep rather than the `1225` image's constant buzz, confirming
-  execution reached `SOUND=00h` before `LcdInit`. The panel remained uniformly
+  execution reached `SOUND=00h` before `Lcd_Init`. The panel remained uniformly
   black and physical YES/NO caused no visible change. Whether the Arduino saw
   preamble `A5 5A 0D 80 80` remains the key discriminator for progress beyond
   LCD initialization.
@@ -4402,7 +4402,7 @@ run and is also retired; see the later hardware-result entry.
   exerciser README. The final candidate uses neither.
 * **Excessive full-page clear discarded before burn:** Davison clears all
   eight display-RAM pages, but stale off-screen RAM cannot explain a uniformly
-  driven-black LCD. The candidate retains only stock `LcdInit` and its normal
+  driven-black LCD. The candidate retains only stock `Lcd_Init` and its normal
   160-cell clear.
 * **Scope reduction:** the optional port-`2Ch` pin walk was removed to keep the
   corrected keypad scanner and LCD diagnostics within previously vetted filler.
@@ -4410,7 +4410,7 @@ run and is also retired; see the later hardware-result entry.
   for this protocol run.
 * **`1E3E` hardware result (owner-supplied):** both beeps were heard and the
   LCD became uniformly clear rather than black. This confirms that stock
-  `LcdInit` returned. **Correction 2026-09-10:** this does not establish
+  `Lcd_Init` returned. **Correction 2026-09-10:** this does not establish
   physical contrast polarity: value, ordering and delay changed together,
   and the earlier run did not prove its final contrast write was reached. NO/YES
   produced no visible change. That does not re-open the confirmed matrix
@@ -4420,12 +4420,12 @@ run and is also retired; see the later hardware-result entry.
   those polling paths was not observed.
 * **`1E3E` interaction design discarded:** an endpoint with no text is not a
   usable contrast target, and making keypad handling conditional on link
-  progress defeats the diagnostic. The post-`LcdInit` tone served its purpose
+  progress defeats the diagnostic. The post-`Lcd_Init` tone served its purpose
   and is removed from the next candidate.
 * **Current candidate:** the 32768-byte `27E8` image uses the established
   `g_bLcdContrast` shadow, starting both it and port `46h` at `C0h`. After the
   same pre-init contrast write, approximately 476 ms settle, and complete
-  stock `LcdInit`, it repeatedly displays `CONTRASTxx`. NO decrements the
+  stock `Lcd_Init`, it repeatedly displays `CONTRASTxx`. NO decrements the
   shadow and port value by two; YES increments both by two.
   Physical ENTER is byte-verified as matrix index 22 from
   `tbl_kbd_map[22]=0Dh`; ENTER alone leaves setup and begins link initialization.
@@ -4442,7 +4442,7 @@ run and is also retired; see the later hardware-result entry.
   keypad-drive values; no link port is touched before ENTER. The 334-byte
   post-setup link body is byte-identical to the already-validated `1E3E` body.
 * **Ghidra saved:** `g_bLcdContrast` and `g_bKbdMatrixIndex` now name and type
-  the two relevant RAM bytes. `KbdScanRowDecode`'s plate records its exact
+  the two relevant RAM bytes. `Kbd_ScanRowDecode`'s plate records its exact
   bit-index contract, and the `Kbd_ScanMain` arithmetic carries a PRE comment
   for the confirmed `6*sense-line-index + drive-line-index` mapping. The stale
   `g_bLcdContrast` repeatable that called the byte a power/clock latch is
@@ -4539,7 +4539,7 @@ run and is also retired; see the later hardware-result entry.
   cursor after setup, so its marker starts after the diagnostic text.
 * **SUSPECTED:** if the row freezes without an error marker, execution may
   be waiting for LINK_STATUS bit 7 in the first reporting operations.
-  Stock LinkPresent at ROM00:34EC-34F7 has a bounded ready wait and then
+  Stock Link_Present at ROM00:34EC-34F7 has a bounded ready wait and then
   writes LINK_CMD=81h. The exerciser's subsequent putbyte/putflag waits
   retry indefinitely; no new screen is rendered before the preamble.
   A PC/status observation or explicit startup-stage indicator would
@@ -4565,7 +4565,7 @@ run and is also retired; see the later hardware-result entry.
   identifies the changed experiment; decoder suppresses phase interpretation
   for it and for captures without a known phase-bearing preamble.
 * **Flag bug fixed:** the prior constant-folded `LD A,LINK_ID & 20h` did not
-  establish the caller-Z contract of LinkPortSelect. Progress rendering
+  establish the caller-Z contract of Link_PortSelect. Progress rendering
   exposed this in tests (control `01h` instead of `03h`). Fresh bytes at
   ROM00:3454-3489 and caller ROM00:3278-327A confirm the flag dependence,
   already correctly described by the Ghidra plate. Use XOR A for fixed-top
@@ -4595,8 +4595,8 @@ run and is also retired; see the later hardware-result entry.
   `ram:e646`/`ram:e648` (`ROM00:5AA3`/`ROM00:5AAC`). Three direct static
   writers: live copy at `ROM00:5AA3`/`ROM00:5AAC`; init-zero at
   `ROM00:45C4`/`ROM00:45CA` and `ROM00:4737`/`ROM00:473D`. Single direct
-  reader at `ROM00:4380`/`ROM00:4399` in `SessionStateBuild`, via
-  `FormatDecU16` (width 3) into the RCV1/RCV2 error/status screen. They
+  reader at `ROM00:4380`/`ROM00:4399` in `Session_StateBuild`, via
+  `Lib_DecU16` (width 3) into the RCV1/RCV2 error/status screen. They
   are not builder inputs and not counters. Broader UI meaning beyond that
   display remains OPEN.
 
@@ -4635,7 +4635,7 @@ run and is also retired; see the later hardware-result entry.
 * **A5 — `ram:e48c` session error-code cell (CONFIRMED mechanics; full
   runtime-writer map OPEN).** 17 direct readers, no direct static writer;
   written indirectly via `ROM00:454B`-`ROM00:4557` → `ROM00:3C06`
-  (`SessionCoroJumpTable`); table at `ROM00:692A + 17*ram:E22D + selector`,
+  (`Session_CoroJumpTable`); table at `ROM00:692A + 17*ram:E22D + selector`,
   masked `0x7F`, written through destination pointer at `ROM00:3C94`-`ROM00:3C9E`
   (byte `ram:e48c` via `HL` indirection). Full set of runtime selectors
   that drive it remains OPEN.
@@ -4711,25 +4711,25 @@ No Ghidra changes; docs only.
 
 * **Findings 1–4 — `LINK_STATUS` bit 6 and `LINK_CTRL` bits 6/7 (CONFIRMED unless noted):**
   1. `LINK_STATUS` bit 6 is polled CLEAR in exactly two places, both inside
-     `LinkBlockTx` — `ROM00:32F3` and `ROM00:3336`; timeout to `ROM00:3356`
+     `Link_BlockTx` — `ROM00:32F3` and `ROM00:3336`; timeout to `ROM00:3356`
      with `A=0xEE`. **No** bit-6 test exists in the receive path. Other
      readers: bit 4 at `ROM00:32BB` (`CPL`/`AND 10h`, waits clear) and
      `ROM00:34E7` (`AND 10h`, IRQ decision); bit 7 at `ROM00:3318` (`RLCA`,
-     per-byte) and `ROM00:34FB` (`AND 80h`, `LinkWaitReady`); bit 0 at
+     per-byte) and `ROM00:34FB` (`AND 80h`, `Link_WaitReady`); bit 0 at
      `ROM00:33CF` (`RRCA`, gates `INI` loop); `ROM00:34BA` returns raw byte
-     (`LinkProbe`). 2. `LINK_CTRL` bits 6 and 7 are the `ROM00:34BD` (sets both)
-     / `ROM00:34D2` (clears both) pair; `LinkBlockTx` clears both at entry
+     (`Link_Probe`). 2. `LINK_CTRL` bits 6 and 7 are the `ROM00:34BD` (sets both)
+     / `ROM00:34D2` (clears both) pair; `Link_BlockTx` clears both at entry
      (`ROM00:327D`) and never raises them during the transaction; they are set
      by the IRQ handler when `LINK_STATUS` bit 4 is clear (`ROM00:31C2`), by
-     `LinkRxDispatcher` (`ROM00:3010`/`3028`/`3056`), and by `LinkTransferService`
-     (`ROM00:2FAE`). 3. `LinkBlockRx` (`ROM00:3378`) opens with the same
-     bit-5/bit-4 arm as `LinkBlockTx` (`ROM00:32CC`–`32EE`) but inserts a dummy
+     `LinkRxDispatcher` (`ROM00:3010`/`3028`/`3056`), and by `Link_TransferService`
+     (`ROM00:2FAE`). 3. `Link_BlockRx` (`ROM00:3378`) opens with the same
+     bit-5/bit-4 arm as `Link_BlockTx` (`ROM00:32CC`–`32EE`) but inserts a dummy
      `IN A,(4Eh)` (`LINK_RXD`) before setting bit 4 (`ROM00:338C`); byte path uses
      `LINK_STATUS` bit 4 (IRQ) and bit 0 (`INI` gate) reading `LINK_RXD` (`4Eh`).
-  4. **CONFIRMED ordering:** `LinkTransferService` (`ROM00:2F58`) calls
-     `LinkBlockTx` at `ROM00:2F9A` and then calls `ROM00:34BD` (raise
+  4. **CONFIRMED ordering:** `Link_TransferService` (`ROM00:2F58`) calls
+     `Link_BlockTx` at `ROM00:2F9A` and then calls `ROM00:34BD` (raise
      `LINK_CTRL` 6/7) at `ROM00:2FAE`, immediately after the transmit
-     transaction returns, returning at `ROM00:2FB1`; `LinkBlockTx` itself has
+     transaction returns, returning at `ROM00:2FB1`; `Link_BlockTx` itself has
      no 6/7 writer. So the receive path is re-enabled only after the transmit
      transaction completes. **LIKELY:** at the interrupt level the link is
      firmware-managed and half-duplex — the transmit transaction clears the
@@ -4758,19 +4758,19 @@ No Ghidra changes; docs only.
 
 ### 2026-09-13 — witness build and RX sweep (CONFIRMED, emulator/syntax validated; docs only, no new inference, no Ghidra)
 
-* **Witness build (CONFIRMED):** `analysis/rom_exerciser/build.py` now builds two variants from the one source — default record-stream (`micron1_exerciser.bin`, 32768 bytes, sum16 `2609`, 716 changed bytes, SHA-256 `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`) unchanged, and with `--witness` `micron1_witness.bin` (32768 bytes, sum16 `2DA4`, 812 changed bytes, SHA-256 `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`). Both live in the same reclaimed `scr` region at `0250-02FD`; default build strips the witness code and stays byte-identical to `2609` (CONFIRMED). The witness does the stock opening (LinkProbe, top-V24 port select, control setup), writes the flag via LinkPresent, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then STOPS transmitting and watches the receive path. It never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` after the arm, so nothing it sends can disturb the receive path being measured (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, the arm values `23h`/`33h`/`13h`, then silence). Witness LCD row: `W` then six hex bytes `OR AND ISRC IRQN ARMD HB` — `OR`/`AND` are `LINK_STATUS` over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` heartbeat; reset only by power-cycling; the IR channel is being listened to, so the LCD is the only readout.
+* **Witness build (CONFIRMED):** `analysis/rom_exerciser/build.py` now builds two variants from the one source — default record-stream (`micron1_exerciser.bin`, 32768 bytes, sum16 `2609`, 716 changed bytes, SHA-256 `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`) unchanged, and with `--witness` `micron1_witness.bin` (32768 bytes, sum16 `2DA4`, 812 changed bytes, SHA-256 `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`). Both live in the same reclaimed `scr` region at `0250-02FD`; default build strips the witness code and stays byte-identical to `2609` (CONFIRMED). The witness does the stock opening (Link_Probe, top-V24 port select, control setup), writes the flag via Link_Present, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then STOPS transmitting and watches the receive path. It never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` after the arm, so nothing it sends can disturb the receive path being measured (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, the arm values `23h`/`33h`/`13h`, then silence). Witness LCD row: `W` then six hex bytes `OR AND ISRC IRQN ARMD HB` — `OR`/`AND` are `LINK_STATUS` over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` heartbeat; reset only by power-cycling; the IR channel is being listened to, so the LCD is the only readout.
 * **Arduino `RX_SWEEP` mode (CONFIRMED code; syntax-checked with host stub, no AVR toolchain in CI):** `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` gains `RX_SWEEP` (set `RX_SWEEP 1`, all other mode flags `0`). It answers each handheld burst with one combination of: flag sense `{0x81, 0x7E}`; data polarity `{normal, complemented}`; data-to-clock phase `{-4,-2,0,+2,+4}` eighths of a cell (transmit convention is a −2/8-cell data lead); content `{flag only, flag+03h, flag+03h+legal body+flag}`. Reply ~3 ms after the handheld burst; one combination advances per burst and the parameters are printed. It does NOT score itself: the controller's reaction is read from the witness ROM (`LINK_STATUS` `OR`/`AND`, `ISRC`).
 * **Validation (CONFIRMED):** emulator tests lock the witness fingerprint and verify `test_witness_stops_transmitting_after_the_arm` (65 exerciser tests pass); Arduino sketch syntax-checked with host stub, no AVR toolchain in CI. Docs updated (`analysis/rom_exerciser/README.md`, `doc/re-notes/exerciser-test-plan.md`, `doc/research/TASKS.md`); `Next` priority lists refreshed. No Ghidra changes.
 
 ### 2026-09-13 — static receive-chain state map (docs only, no new inference, no Ghidra; parent-adjudicated, bytes verified)
 
-* **Static map added (CONFIRMED, `ROM00`):** `re-notes/ir-wire-protocol.md` § *Receive-chain state map* records the ROM's receive chain byte-for-byte: `Link_IrqPollArmOrService` (`ROM00:31B6` clear 6/7, test `LINK_STATUS` bit 4, dispatch or re-arm), `LinkRxDispatcher` (`ROM00:2FBD` `LinkBlockRx` at `3378`, validate at `30DC`, cancel at `21BA`, dispatch on `FDD5`/`FDE6`), `LinkBlockRx` arm (`3378`–`33A6` with dummy `LINK_RXD` at `338C`) and byte loop (`33CF` `RRCA` on `LINK_STATUS` bit 0, `INI` on `4Eh`, timeouts `EE`/`ED`/`EC`), `LinkValidateFrameHeader` (`30DC` length <6 / embedded-length mismatch / link-id +4 vs `FDD4`), dispatcher branches (`3002` on `FDE6`, `302C` setup, error `FE14`/`FFFF`, command path `3084`–`30DB` with per-link slot at `FE43+(FDD4&3F)`, `FDD5=4`, `FBC9` bit 0, `JP (FDD2)`), slot helper `3192`/`31A1`/`31A6`/`31AB` and `317B` table, complete `LINK_CTRL` 6/7 SET (`34BD`: `31C2`/`3010`/`3028`/`3056`/`2FAE`) and CLEAR (`34D2`: `31B6`/`327D`/`30B3`/`2EC2`/`2ED4`/`34B7`) points, and state cells (`FDD5`/`FDD4`/`FDD6`/`FDD7`/`FDD8`/`FDCA`/`FDCB`/`FDDC`/`FDE6`/`FDE7`/`FDEA`/`FE14`/`FBC9` bit 0). Exerciser note: its own IM-1 ISR never calls `LinkInitSlots`; separate.
+* **Static map added (CONFIRMED, `ROM00`):** `re-notes/ir-wire-protocol.md` § *Receive-chain state map* records the ROM's receive chain byte-for-byte: `Link_IrqPollArmOrService` (`ROM00:31B6` clear 6/7, test `LINK_STATUS` bit 4, dispatch or re-arm), `LinkRxDispatcher` (`ROM00:2FBD` `Link_BlockRx` at `3378`, validate at `30DC`, cancel at `21BA`, dispatch on `FDD5`/`FDE6`), `Link_BlockRx` arm (`3378`–`33A6` with dummy `LINK_RXD` at `338C`) and byte loop (`33CF` `RRCA` on `LINK_STATUS` bit 0, `INI` on `4Eh`, timeouts `EE`/`ED`/`EC`), `Link_ValidateFrameHeader` (`30DC` length <6 / embedded-length mismatch / link-id +4 vs `FDD4`), dispatcher branches (`3002` on `FDE6`, `302C` setup, error `FE14`/`FFFF`, command path `3084`–`30DB` with per-link slot at `FE43+(FDD4&3F)`, `FDD5=4`, `FBC9` bit 0, `JP (FDD2)`), slot helper `3192`/`31A1`/`31A6`/`31AB` and `317B` table, complete `LINK_CTRL` 6/7 SET (`34BD`: `31C2`/`3010`/`3028`/`3056`/`2FAE`) and CLEAR (`34D2`: `31B6`/`327D`/`30B3`/`2EC2`/`2ED4`/`34B7`) points, and state cells (`FDD5`/`FDD4`/`FDD6`/`FDD7`/`FDD8`/`FDCA`/`FDCB`/`FDDC`/`FDE6`/`FDE7`/`FDEA`/`FE14`/`FBC9` bit 0). Exerciser note: its own IM-1 ISR never calls `Link_InitSlots`; separate.
 * **TASKS update:** `Next` No-hardware priority 1 marked **DONE 2026-09-13** (this pass); renumbered so top is now the emulator demonstration of the handshake gating, followed by the static backlog; hardware priorities unchanged (Phase 0 `2609`/`2DA4`, Phase 2 witness+`RX_SWEEP`, Phase 3 `CommstarPeer`). No new inference; evidence tags preserved.
 
 ### 2026-09-17 — emulator handshake-gating demonstration and witness RX-enable fix (CONFIRMED, emulator; docs only, no Ghidra, no new inference)
 
-* **Finding 1 — emulator trace (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `LinkTransferService` inner path (`ROM00:2F86`) runs `LinkBlockTx` (`ROM00:3277`) to completion — one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout — returns `A=0EEh`/carry set (`ROM00:3356`), then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (observed `42h`, `0C2h`). So "stock firmware never reaches the `2FAE` RX-enable" is FALSE: carry is ignored. *Harness detail:* stub `RET` at resident-kernel helper `0F54Eh` (absent from flat memory), not a firmware finding.
-* **Finding 2 — temporal gating (CONFIRMED firmware write pattern):** gating is temporal, not permanent. `LINK_CTRL` 6/7 cleared for the whole `LinkBlockTx` transaction and restored by `34BD` at `2FAE` after it, on success or `0EEh` timeout. Firmware holds 6/7 clear for ~10–12 ms (bit-6 wait is 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry) then raises them for the remainder (CONFIRMED firmware latch writes). Whether the controller's receiver is inhibited during that window is Provisional (see Finding 4); IF 6/7 gates the receiver the `conn3`–`conn13` replies inside that window were missed, ELSE the failure is framing/convention.
+* **Finding 1 — emulator trace (CONFIRMED):** synthetic controller `LINK_STATUS` bit 6 never clears. Stock `Link_TransferService` inner path (`ROM00:2F86`) runs `Link_BlockTx` (`ROM00:3277`) to completion — one `LINK_CMD`=`81h`, one `LINK_TXD`=`03h`, `LINK_CTRL` 6/7 clear throughout — returns `A=0EEh`/carry set (`ROM00:3356`), then calls `ROM00:34BD` at `ROM00:2FAE` and raises `LINK_CTRL` 6/7 (observed `42h`, `0C2h`). So "stock firmware never reaches the `2FAE` RX-enable" is FALSE: carry is ignored. *Harness detail:* stub `RET` at resident-kernel helper `0F54Eh` (absent from flat memory), not a firmware finding.
+* **Finding 2 — temporal gating (CONFIRMED firmware write pattern):** gating is temporal, not permanent. `LINK_CTRL` 6/7 cleared for the whole `Link_BlockTx` transaction and restored by `34BD` at `2FAE` after it, on success or `0EEh` timeout. Firmware holds 6/7 clear for ~10–12 ms (bit-6 wait is 620×59 T ~=9.92 ms at 3.6864 MHz, `ROM00:32F0`, within ~93.75 ms retry) then raises them for the remainder (CONFIRMED firmware latch writes). Whether the controller's receiver is inhibited during that window is Provisional (see Finding 4); IF 6/7 gates the receiver the `conn3`–`conn13` replies inside that window were missed, ELSE the failure is framing/convention.
 * **Correction to re-framing (CONFIRMED firmware write pattern; consequence Provisional):** `conn3`–`conn13` Arduino replies were sent ~1–9 ms after the handheld's burst, i.e. inside the window in which the firmware holds LINK_CTRL 6/7 clear (~10–12 ms: 620×59 T ~=9.92 ms at `ROM00:32F0`). Firmware holds 6/7 clear for that window then raises them via `34BD` at `2FAE` after every attempt (CONFIRMED) — so wording implying "the RX was never enabled" is refuted. Whether framed data could be received inside that window depends on the Provisional 6/7 reading: IF 6/7 gates the receiver the replies were missed and the optical reaction was a front-end/cadence effect, ELSE the failure is framing/convention (question C). Either way, a reply timed after the transaction is the safe choice.
 * **Code fix (CONFIRMED by emulator):** every exerciser build left `LINK_CTRL` 6/7 clear so RX IRQ could never fire (`ISRC` bit 2 inert). Witness now sets them before listening (`ctrl_or 40h` then `ctrl_or 80h`, as `34BD`/`2FAE` does). New witness image: sum16 `2E3E`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0` (was `2DA4`, 812 bytes, `863121e8b379c6578aaabffde464596506732989b9c3ab1453ffe4df9f868887`); default `2609` unchanged; 65 exerciser tests pass.
 * **Docs updated:** `re-notes/ir-wire-protocol.md` (Finding 4 extended + re-framing corrected + state-map 7 updated), `re-notes/exerciser-test-plan.md` (witness fingerprint updated + `LINK_CTRL` 6/7 enable noted + Phase 0/2 timing: stimulus must arrive after ~10 ms TX window), `analysis/rom_exerciser/README.md` (witness fingerprint + enable + temporal note), `research/TASKS.md` (Next: emulator DONE 2026-09-17, top no-hardware now static backlog; hardware priorities unchanged). `TASKS` also refreshed witness to `2E3E` in Next hardware gate. No Ghidra changes; evidence tags preserved.
@@ -4791,13 +4791,13 @@ No Ghidra changes; docs only.
 ### 2026-09-17 — runtime loader `ram:D370` coroutine rendezvous substantially advanced (CONFIRMED, ROM01/ram; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
 
 * **Advances the "runtime loader `ram:D370` input-provider path" open item** carried in `Next` static backlog. Byte-verified in `ROM01`/`ram`. All tags CONFIRMED unless noted.
-* **Finding 1 — coroutine-driven loader (CONFIRMED).** The runtime Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven. Its routines enter via `LD DE,0; CALL ROM01:D837` (`CoroutineTaskSwitch`, `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`).
+* **Finding 1 — coroutine-driven loader (CONFIRMED).** The runtime Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven. Its routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_TaskSwitch`, `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`).
 * **Finding 2 — `Coroutine_SwapContinuation` (CONFIRMED).** `ram:D9F9`-`ram:DA0A` swaps the current continuation with the 16-bit word at the address in `HL`, then returns: `Z` when the peer slot was empty (the caller continues), `NZ` when it yielded to the peer (`EX SP,HL; LD HL,1; RET`).
 * **Finding 3 — `ram:D370` is the loader's peer/rendezvous slot (CONFIRMED).** A byte search for the address (`70 D3`) finds it ONLY inside the loader region: `ROM01:0BA3`, `ROM01:0CEE`, `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`. No code outside the loader writes or reads `D370`, so the peer is resumed by the coroutine scheduler rather than registered by a distinct ROM routine.
 * **Finding 4 — loader request protocol (CONFIRMED).** The loader sets `D368` (destination offset), `D36A` (destination pointer), `D36C` (requested byte count), `D36E` (delivered count), then swaps `D370`; the peer fills the bytes and swaps back. `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)` and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`).
 * **Finding 5 — `Program_LoadDipOrCom` routing (CONFIRMED).** `ROM01:0CE7` requests 14 bytes (`D36C=0x0E` at `ROM01:0D08`-`ROM01:0D0B`), routes on the first little-endian word (`0xC8C9` → DIP at `ROM01:0DD7`) and on the first-chunk length (`D399 < 14` → raw COM at `ROM01:0D3B`). The DIP header/block parser is `ROM01:0E40`-`ROM01:0F80` (reads the serialized header at `D39B` +0/+4/+6/…). This matches the existing "Loader-stream boundary" text.
 * **Finding 6 — feeder is the session program-data receive (CONFIRMED); exact staging cell remains OPEN.** The feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → the Load/Run staging buffer → `Program_ConsumeInputChunk`). The exact staging cell/buffer the loader's peer fills remains **OPEN**.
-* **Finding 7 — `Ui_FormExitDispatchNext` (CONFIRMED).** `ROM01:06D3` pumps five handler slots at `D081` via `ram:D828`.
+* **Finding 7 — `UI_FormExitDispatchNext` (CONFIRMED).** `ROM01:06D3` pumps five handler slots at `D081` via `ram:D828`.
 * **Docs updated:** `re-notes/os-diposb.md` (Runtime program loading: replaced "`ram:D370` is `g_pProgramLoaderContinuation` … not an input-provider pointer; upstream provider remains OPEN" with findings 1-4 and 6 — loader is coroutine-driven, `D370` is the peer rendezvous slot with no external refs, feeder is session program-data receive, exact staging cell remains OPEN), `manual/programmer-guide.md` (§7b source-bytes sentence updated to same), `research/TASKS.md` (runtime loader marked substantially advanced 2026-09-17 with findings 1-4; `Next` refreshed so top no-hardware item is now the guarded structural repairs, followed by the deferred final annotation sweep; hardware-dependent priorities unchanged; this log entry). No Ghidra changes; evidence tags preserved; style preserved; no new inference.
 * **Next:** top no-hardware item is now guarded structural repairs (`e020`-`e0aa` plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus `ROM00:7409`/`7472` module-A deferred sites; diff-guarded, one at a time), followed by the deferred final annotation sweep (TASKS §12 FINAL PASS); the loader's exact staging cell remains the remaining **OPEN** for that item; hardware priorities unchanged.
 
@@ -4827,7 +4827,7 @@ No Ghidra changes; docs only.
 ### 2026-09-18 — final-sweep batch 1: coverage refresh + 27 renames (docs only, reviewer-approved scope; no new inference)
 
 * **Coverage tracker refreshed:** `research/gap-analysis.md` updated to 2026-09-18 (12th audit): **1099 functions, 252 auto `FUN_*`** (ROM00 574/105, ROM01 329/145, ram 195/2, EXTERNAL 1/0; 847 named, **77.1 %**). Was 919 total / 159 `FUN_*` in the stale 2026-08-30 audit; increase reflects functions defined since then, not new coverage. See `gap-analysis.md` headline.
-* **Batch 1 of the final naming sweep (reviewer-approved scope; docs updated here, Ghidra applied separately):** deleted 2 false functions (`ram:b57c`, `ram:ff21` — zero-filled RAM created from mid-instruction flow errors) and renamed+plated 27: `ram:d7fe`=Lib_EmitBankedCallStub, `ram:db40`=Lib_StrCmpN, `ram:def7`/`df03`/`df0c`=Lib_Signed{Le,Ge,Gt}32, `ram:df21`/`df2d`=Lib_Unsigned{Le,Ge}32, `ram:df18`=Lib_UnsignedLt32 (was SessionTestCarry; correction), `ram:ee3c`/`f13c`=SessionOpStub_72/264, `ROM00:1e01`/`1e0f`/`1e1d`/`1edd`=Tty_Cursor{Left,Up,Back,Home}, `ROM00:3d9b`/`3d11`/`3dcb`/`3d59`/`3e14`/`3ede`=Session_{TxAppendByte,TxFlush,RxConsumeByte,RxRefill,TxWriteBuffer,TxAppendString}, `ROM00:3f5b`/`3fce`/`3fd8`/`3fe2`/`3f65`=Session_SetMode3/4/5/6 and Session_SetModeByName, `ROM00:4262`=Session_CoroNoOp, `ROM00:3562`=Sound_BeepTimed. Function count 1101->1099. No Ghidra edits in this docs pass.
+* **Batch 1 of the final naming sweep (reviewer-approved scope; docs updated here, Ghidra applied separately):** deleted 2 false functions (`ram:b57c`, `ram:ff21` — zero-filled RAM created from mid-instruction flow errors) and renamed+plated 27: `ram:d7fe`=Lib_EmitBankedCallStub, `ram:db40`=Lib_StrCmpN, `ram:def7`/`df03`/`df0c`=Lib_Signed{Le,Ge,Gt}32, `ram:df21`/`df2d`=Lib_Unsigned{Le,Ge}32, `ram:df18`=Lib_UnsignedLt32 (was SessionTestCarry; correction), `ram:ee3c`/`f13c`=Session_OpStub_72/264, `ROM00:1e01`/`1e0f`/`1e1d`/`1edd`=Tty_Cursor{Left,Up,Back,Home}, `ROM00:3d9b`/`3d11`/`3dcb`/`3d59`/`3e14`/`3ede`=Session_{TxAppendByte,TxFlush,RxConsumeByte,RxRefill,TxWriteBuffer,TxAppendString}, `ROM00:3f5b`/`3fce`/`3fd8`/`3fe2`/`3f65`=Session_SetMode3/4/5/6 and Session_SetModeByName, `ROM00:4262`=Session_CoroNoOp, `ROM00:3562`=Sound_BeepTimed. Function count 1101->1099. No Ghidra edits in this docs pass.
 * **Deferred in batch 1 (left as `FUN_*`):** `ram:d7c5`, `ROM00:4333`, `ROM00:44ed`, `ROM00:450d`, `ROM00:2da5` — to be worked in later batches.
 * **Remaining:** 252 auto `FUN_*` (ROM00 105, ROM01 145, ram 2), to be worked in further batches (investigate -> review -> annotate), plus the code-gap/data-typing tail and the deferred final sub-items (TASKS §12 FINAL PASS).
 * **Reviewer correction noted:** the existing `ram:df36` plate ("strictly-greater-than") is correct; `ram:df18` was the misnamed one (corrected to Lib_UnsignedLt32 in this batch).
@@ -4851,7 +4851,7 @@ No Ghidra changes; docs only.
 * **Structural (diff-guarded, Appendix-justified):** 50 compiler-prologue
   shells (`LD DE,0 / CALL ram:d837`, body at entry+6) extended to their real
   bodies; the duplicate heads `ROM01::0115`/`01e6` merged into the existing
-  `StrTrimInsert`/`StrCopyPad`; the mid-instruction fragments `ROM01::0303`
+  `Lib_TrimInsert`/`Lib_CopyPad`; the mid-instruction fragments `ROM01::0303`
   (`StrTrimDispatch`, inside `02f9`) and `ROM01::13ef` (`FieldFillBuffer`,
   inside `13d8`) deleted. Guarded total 1099 → 1093.
 * **Corrections (byte-verified, cross-reviewed):** `0x2335` (9013)
@@ -4892,17 +4892,17 @@ No Ghidra changes; docs only.
   Guarded total 1093 → 1029; internal 1092 → 1028.
 
 * **Cluster merges (CONFIRMED):** parents extended and their
-  inline-switch case blocks absorbed — `3a04` `SessionFieldDispatch`
-  (→`3b7a`), `444f` `SessionRedrawField` (→`463e`), `576c`
-  `CmdDispatchSub` (→`5839`), `583a` `CmdDispatchWrap` (→`59a8`),
-  `6292` `Ui_PostKeyedEntry` (→`62e4`), `6633` `Ui_PostDescriptor`
-  (→`6759`), `6aa9` `Ui_RecordMatchAndPost` (→`6b6c`). All 12 interior
+  inline-switch case blocks absorbed — `3a04` `Session_FieldDispatch`
+  (→`3b7a`), `444f` `Session_RedrawField` (→`463e`), `576c`
+  `Session_DispatchSub` (→`5839`), `583a` `Session_DispatchWrap` (→`59a8`),
+  `6292` `UI_PostKeyedEntry` (→`62e4`), `6633` `UI_PostDescriptor`
+  (→`6759`), `6aa9` `UI_RecordMatchAndPost` (→`6b6c`). All 12 interior
   adjudications were **MERGE** (internal-only callers, no external
   references).
 
 * **Structural model decision (CONFIRMED — record prominently):** an
   inline-switch case reached via `CALL ram:e0b2`
-  (`InlineTableDispatch`) + `JP(HL)` is a **basic block of the routine
+  (`Kernel_TableDispatch`) + `JP(HL)` is a **basic block of the routine
   that owns the table**, not an independent function. Example: `3a04`
   runs its prologue, computes the switch value, `JP 3b53`
   (dispatcher); table `3b56` cases (`01→3acb`, `02/80→3a1c`, `04→3a99`,
@@ -4965,8 +4965,8 @@ No Ghidra changes; docs only.
   `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
   `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
   `Session_AnswerConnect 573d-578e`,
-  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
-  `SessionTxStringSender 5f58-606b`; site-1 corrected to `3f20`
+  `Session_ManualConnect 578f-5829`, `Session_RxByteLoop 59fb-5b57`,
+  `Session_TxStringSender 5f58-606b`; site-1 corrected to `3f20`
   (see below); ~89 case-block functions absorbed, ~113 labels
   created; residual ROM00 `FUN_*` = 5 deferred (`2da5`, `4333`,
   `441b`, `44ed`, `450d`). Full maps in Ghidra (labels) and audit
@@ -5020,7 +5020,7 @@ No Ghidra changes; docs only.
 ### 2026-09-18 — ROM01 dispatch-case label model applied
 
 * **Hybrid model now the standard (CONFIRMED).** Inline-switch
-  dispatch (`CALL ram:e0b2` `InlineTableDispatch` + inline table +
+  dispatch (`CALL ram:e0b2` `Kernel_TableDispatch` + inline table +
   `JP(HL)`) cases are **basic blocks of the owning routine**, kept as
   one function; navigation is restored with **labels** (not functions)
   at each case target and shared continuation. Rationale: case blocks
@@ -5035,8 +5035,8 @@ No Ghidra changes; docs only.
   functions merged + labelled): `Program_LoadDipOrCom 0CE7-0FE5`,
   `Field_ResetCounterDispatch 10CF-1176`,
   `Session_AdvanceStageOnZero 14CF-153D`,
-  `Ui_FieldEditGetChoice 1D80-1FF2`, `SessionRxDispatch 2880-28FD`,
-  `SessionConnectCheck 2B43-2C4E`, `SessionCmdWalkTable 2C4F-2CD2`;
+  `UI_FieldEditGetChoice 1D80-1FF2`, `Session_RxDispatch 2880-28FD`,
+  `Session_ConnectCheck 2B43-2C4E`, `Session_CmdWalkTable 2C4F-2CD2`;
   40 labels + 37 EOL comments. Half B (7 already-merged sites
   `3b53`/`45d1`/`4a2d`/`581f`/`5991`/`5e2e`/`66ec`): 33 labels, no
   merges; `5e41` `CmdHandlerCount` renamed `FieldFormat_Default`.
@@ -5075,12 +5075,12 @@ No Ghidra changes; docs only.
   `mkdocs build --strict` (site_dir `site-mkdocs`) run; no Ghidra
   edits.
 
-### 2026-09-18 — ROM00 InlineTableDispatch hybrid pass complete
+### 2026-09-18 — ROM00 Kernel_TableDispatch hybrid pass complete
 (Ghidra saved, docs only in this pass, no new inference;
 parent-verified)
 
 * **ROM00 dispatch pass complete (CONFIRMED).** All 25 ROM00
-  `CALL ram:e0b2` (`InlineTableDispatch`) sites audited and
+  `CALL ram:e0b2` (`Kernel_TableDispatch`) sites audited and
   converted to the hybrid model: one function per
   prologue-delimited routine + **labels** at case
   targets/continuations.
@@ -5101,8 +5101,8 @@ parent-verified)
   `Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
   `Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
   `Session_AnswerConnect 573d-578e`,
-  `Session_ManualConnect 578f-5829`, `SessionRxByteLoop 59fb-5b57`,
-  `SessionTxStringSender 5f58-606b`. All owners byte-verified
+  `Session_ManualConnect 578f-5829`, `Session_RxByteLoop 59fb-5b57`,
+  `Session_TxStringSender 5f58-606b`. All owners byte-verified
   (`11 00 00 CD 37 D8` prologue → final `C9`); interiors
   discriminated by that prologue check.
 
@@ -5162,7 +5162,7 @@ new inference; parent-verified)
   (symbols kept).**
 
   * **Renamed (14, CONFIRMED):**
-    `SessionConfigShow` (`ROM00:2DA5`),
+    `Session_ConfigShow` (`ROM00:2DA5`),
     `Session_CoroYield` (`ROM00:4333`, prologue 5-byte
     `11 00 00 CD 37 D8`), `Session_Yield` (`ROM00:44ED`),
     `Session_CmdCommandYield` (`ROM00:450D`),
@@ -5175,7 +5175,7 @@ new inference; parent-verified)
     `Field_ReturnOneStub1` (`ROM01:4A41`),
     `Field_ReturnOneStub2` (`ROM01:4A67`),
     `Field_ReturnOneStub3` (`ROM01:4B5F`),
-    `ChecksumThunk_MemMove` (`ram:D7C5`).
+    `Lib_Thunk_MemMove` (`ram:D7C5`).
 
   * **Retained (10, CONFIRMED retained, plates set, symbols
     kept) with documented open questions:**
@@ -5220,7 +5220,7 @@ new inference; parent-verified)
     `+12h`) whose string pointers reference the shared option
     pool at `79F4-7A82` (`"PLINTH"`, `"V24 ADAPTOR"`,
     `"LOCAL LINK"`, baud rates, `ON`/`OFF`). Referenced from
-    `FieldConfigLoad` (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
+    `Field_ConfigLoad` (`ROM01:05E0-06B0`) at `0620 LD HL,0x758B`,
     `0658 LD HL,0x75EB`, `066A LD HL,0x760D`.
 
   * **Unresolved (OPEN/SUSPECTED):** the `E1` prefix at `757F`,
@@ -5272,13 +5272,13 @@ Ghidra saved)
 
 * **Item C — retained `FUN_*` resolved (CONFIRMED, Ghidra
   saved).** 6 renamed:
-  `ROM01:156f`→`SessionObj_Method_6784`,
-  `1664`→`SessionObj_Method_6b6d`,
-  `168e`→`SessionObj_Method_6c84`,
-  `16b8`→`SessionObj_Method_696f` (each prologue → `CALL`
+  `ROM01:156f`→`Session_Obj_Method_6784`,
+  `1664`→`Session_Obj_Method_6b6d`,
+  `168e`→`Session_Obj_Method_6c84`,
+  `16b8`→`Session_Obj_Method_696f` (each prologue → `CALL`
   a work function → tail-call `ROM01:1548`),
-  `4d86`→`SessionObj_BuildTextBuf1`,
-  `4e79`→`SessionObj_BuildTextBuf2` (text-buffer builders,
+  `4d86`→`Session_Obj_BuildTextBuf1`,
+  `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
   `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained
   with plates: `ROM01:1177` (trivial stub),
   `ROM00:441b` (zero-xref dead, sibling `443c` used),
@@ -5297,7 +5297,7 @@ Ghidra saved)
   classification labelled ~83 as "real missed functions",
   but this is **WRONG**: spot-check showed e.g.
   `ROM01:1b83` is the **body continuation** of
-  `Ui_RecordEditModal` (a 6-byte `11 00 00 CD 37 D8`
+  `UI_RecordEditModal` (a 6-byte `11 00 00 CD 37 D8`
   prologue shell at `1b7d`), not a new function. The gaps
   are overwhelmingly **truncated-body continuations** of
   the preceding compiled routine (the same idiom as the
@@ -5345,7 +5345,7 @@ truncated-body continuations absorbed)
     `2e6f`→`2f74`, `07ee`→`0903`) — these end in a
     tail-call `JP` rather than `RET`, so the first
     pass missed them;
-  * **`ROM01:73de` `Ui_TableRenderRev` extended to
+  * **`ROM01:73de` `UI_TableRenderRev` extended to
     `7544`** (its continuation; `73e4` is not a
     function entry but the body after the shell
     prologue).
@@ -5420,19 +5420,19 @@ names renamed, 144 unplated functions plated)
 
 * **Item 2b — wrong names, 5 renamed + docs synced
   (CONFIRMED, byte-verified, Ghidra saved).**
-  `ROM00:3BB8` `CoroutineTaskSwitch` →
+  `ROM00:3BB8` `Coroutine_TaskSwitch` →
   `Coroutine_IndexedLookup_6A4A` (indexed lookup into
   table at `6A4A`, not a task switch; real
-  `CoroutineTaskSwitch` is `ram:D837` — duplicate
+  `Coroutine_TaskSwitch` is `ram:D837` — duplicate
   mis-name corrected), `ROM00:3BD0`
-  `CoroutineSessionMul16` →
+  `Coroutine_SessionMul16` →
   `Coroutine_IndexedLookup_6B67` (into `6B67`),
   `ROM00:7C14` `Session_Cmp16Bit` → `Session_CmpLeU16`
   (HL=1 iff HL<=DE unsigned), `ROM00:7C22`
   `Session_Cmp16BitB` → `Session_CmpGtU16` (HL=1 iff
   HL>DE unsigned), `ROM01:6F29`
-  `ServiceCall_Id2Byte` → `ServiceCall_BdosFn2` (calls
-  `SessionBdosCall` `ram:DA13` with fn 2).
+  `Syscall_Call_Id2Byte` → `ServiceCall_BdosFn2` (calls
+  `Session_BdosCall` `ram:DA13` with fn 2).
   `doc/research/TASKS.md` mentions updated; grep
   confirms 0 stale mentions in `doc/` for the 5 old
   names. Rename hygiene per AGENTS.md §7 (symbol +
@@ -5461,7 +5461,7 @@ names renamed, 144 unplated functions plated)
 * **Docs updated in this pass:** `research/TASKS.md`
   (§12 scope updated, §12 2026-09-19 entry,
   `ram:D837` duplicate-name correction,
-  `ServiceCall_Id2Byte`/`Session_Cmp*` sync),
+  `Syscall_Call_Id2Byte`/`Session_Cmp*` sync),
   `research/gap-analysis.md` (headline 2026-09-19,
   plate coverage 100 % with breakdown, remaining
   annotation tail), `re-notes/open-questions.md`

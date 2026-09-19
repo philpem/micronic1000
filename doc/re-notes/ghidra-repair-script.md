@@ -21,7 +21,7 @@ put them back, and its report tells you what had drifted.
 | 1 | The `ram:D837` frame-helper's no-return flag | A wrong flag makes Ghidra delete every C function body |
 | 2 | Both banks' boot-load chains | The load script is data that follows no flow edge |
 | 3 | `RST 10h` banked-call inline operands | The three operand bytes look like code |
-| 4 | `InlineTableDispatch` inline tables | The table follows a `CALL` and the dispatcher tail-jumps |
+| 4 | `Kernel_TableDispatch` inline tables | The table follows a `CALL` and the dispatcher tail-jumps |
 | 5 | Missing functions at compiler frame prologues | Nothing references a routine that is only reached through the deferred-call queue |
 | 6 | The 281-slot runtime stub farm | Every slot is a cold template with no reference to the routine it stands for |
 
@@ -31,7 +31,7 @@ RAM image in place, and every later pass reads it. Pass 1's byte check looks at
 
 Pass 4 is `DefineInlineTables.java` folded in with its behaviour preserved;
 that script stays in the tree and is still described in
-[InlineTableDispatch tables](inline-dispatch.md). Passes 2 and 3 replace the
+[Kernel_TableDispatch tables](inline-dispatch.md). Passes 2 and 3 replace the
 ad-hoc `AnnotateRst10Calls.java`, with two bugs fixed (below).
 
 ## Pass 0 — battery-RAM bootstrap
@@ -63,7 +63,7 @@ with the performing routine named against each:
 | `ROM00:3257` → `ram:FE93` (16) | `ROM00:3220` |
 | `ROM00:3267` → `ram:FE83` (16) | `ROM00:3220` |
 | `ROM00:7030` → `ram:D681` (0x212) | `ROM00:3BAA` |
-| `ROM00:369D` → `ram:F180` (0x50D) | `InstallKernelToRam`, `ROM00:02FE` |
+| `ROM00:369D` → `ram:F180` (0x50D) | `Kernel_KernelToRam`, `ROM00:02FE` |
 
 The script prints both lists and reports any disagreement. **That diff found a
 live bug.** `FillBatteryRam.java` hardcoded the `E104` copy as `0130h` bytes;
@@ -87,9 +87,9 @@ state.
 every `ram` function at or above `F100`, on the reasoning that they were
 invented over unmapped memory. That was true of the database it was written
 for. On the current database the resident kernel lives at `F180`, so the
-original predicate would delete **61 functions** — `BdosDispatchFn`, every
-`Syscall_InvokeService*`, `Kernel_BankedCallEnvelope`, `KernSetBank`,
-`BankedCallCommonEntry`, the whole `SessionOpStub_*` farm — 58 of them
+original predicate would delete **61 functions** — `Bdos_DispatchFn`, every
+`Syscall_InvokeService*`, `Kernel_BankedCallEnvelope`, `Kernel_SetBank`,
+`Kernel_CallCommonEntry`, the whole `SessionOpStub_*` farm — 58 of them
 hand-named. The predicate now requires **both** that the function still carries
 Ghidra's generated `FUN_` name and that its entry is not an instruction. A
 hand-named function can never match, and neither can anything pass 5 creates,
@@ -128,12 +128,12 @@ Two facts follow from those bytes.
   what `CALL D836` with `HL` holding the popped return address does. The
   helper is not a non-returning function.
 
-The database had `ram:D837` (still named `CoroutineTaskSwitch`) flagged
+The database had `ram:D837` (still named `Coroutine_TaskSwitch`) flagged
 no-return. With that flag set, Ghidra's non-returning-function repair treats
 the body of every compiled routine as dead code. Measured on this program:
 a run of the other four passes with the flag still set created 143 functions,
 and background auto-analysis then silently deleted **61 existing ones**, 59 of
-them hand-named — `Lib_StrCmp`, `Lib_StrCopy`, `RunLoadedProgram`,
+them hand-named — `Lib_StrCmp`, `Lib_StrCopy`, `Program_LoadedProgram`,
 `Kernel_RunStagedCall`, the `SessionOpStub_*` farm, and more. It also capped
 every prologue function's body at the six bytes of the prologue itself.
 
@@ -190,11 +190,11 @@ Two guards keep it from damaging data:
   Ghidra mis-decoded, so it is reported and skipped. `ram:D6F7` and `D6F9`
   are exactly this: the high bytes of the words `D713h` and `D727h`.
 
-## Pass 4 — InlineTableDispatch tables
+## Pass 4 — Kernel_TableDispatch tables
 
 `DefineInlineTables.java` folded in, with its behaviour preserved and a
 check-before-write fast path added. The repair is documented in full on its own
-page — see [InlineTableDispatch tables](inline-dispatch.md), which covers the
+page — see [Kernel_TableDispatch tables](inline-dispatch.md), which covers the
 table grammar, the count guard, and the misaligned-handler case at
 `ROM01:115F`. Nothing about that pass changes here; it is listed as pass 4 so
 the numbering in the script's report matches this page.
@@ -232,8 +232,8 @@ address against the wrong space.
 
 New functions keep Ghidra's default `FUN_*` name — per `AGENTS.md`, an
 unanalysed function must stay obviously unanalysed. Where a hand-made label
-already existed at the entry, Ghidra adopts it, so `SessionPollIntrq`,
-`UiDialogLayout`, `TextOutString` and others became functions under their real
+already existed at the entry, Ghidra adopts it, so `Session_PollIntrq`,
+`UI_DialogLayout`, `Text_OutString` and others became functions under their real
 names.
 
 Function bodies come from Ghidra's own flow analysis; the script does not
@@ -246,7 +246,7 @@ the shape of a missed `RET`.
 software or the other bank may call. A `CALL 0EExxh` is how you reach a
 firmware routine without knowing which bank it is in.
 
-In the cold image every slot still holds the `KernelInitCopyData` template
+In the cold image every slot still holds the `Kernel_InitCopyData` template
 `21 01 00 C9` = `LD HL,1 / RET` (verified: all 1124 bytes of `ED1C..F17F`
 match the 4-byte pattern at `ram:D6D7`). So each slot returns 1, does nothing,
 and — the point for analysis — carries no reference to the routine it stands
@@ -282,7 +282,7 @@ where bank 0's fn=2 record keeps them.
 The cursor cell `(d684)` reads `ED1C` in the cold image. Bank 0's 134 words
 followed by bank 1's 147 come to 281 slots × 4 = 1124 bytes, landing exactly on
 `F180` — the resident kernel's base, and exactly the range
-`KernelInitCopyData` pre-fills. Three slot-to-target pairs recorded
+`Kernel_InitCopyData` pre-fills. Three slot-to-target pairs recorded
 independently from a live RAM dump all reproduce:
 
 | Slot | Address | Target |
