@@ -305,15 +305,29 @@ State: continuously updated as work progresses.
      at `ROM01:06EF`), double-indirects to callback
      slot (`ROM01:06F7`-`06FA`), calls via
      `CALL 0xD828` (`g_pUserCallbackTrampoline`);
-     callback slots base `ram:D12F`, stride `0x0E`,
-     first word little-endian ROM01 address
-     (`D12F/D130=0x1177`, `D13D/D13E=0x156F`);
-     `ram:D081` entries
-     `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-     (NULL-terminated); no static xref by double
-     indirection — manual DATA xref `ROM01:06EF` →
-     `ram:D081` added; plates at `ROM01:06D3`,
-     `ram:D081`, `ram:D12F` (Ghidra saved).
+      callback slots base `ram:D12F`, stride `0x0E`,
+      first word little-endian ROM01 callback
+      address (CONFIRMED, byte-verified slot
+      contents): `D12F/D130=0x1177`,
+      `D13D/D13E=0x156F`; `ram:D081` entries
+      `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+      (NULL-terminated) select callbacks
+      `0x0A67/0x156F/0x1177/0x1177/0x156F`
+      (CONFIRMED) — byte-verified slot contents
+      and manual DATA xrefs added:
+      `ram:D0F0`→`ROM01:0A67`,
+      `ram:D121`→`ROM01:1177`,
+      `ram:D12F`→`ROM01:1177`,
+      `ram:D13D`→`ROM01:156F`,
+      `ram:D14B`→`ROM01:156F` (so `ROM01:1177`
+      reached via slots `D121` and `D12F`,
+      `0x156F` via `D13D`/`D14B`); no static xref
+      by double indirection — manual DATA xref
+      `ROM01:06EF` → `ram:D081` added; plates
+      updated at `ram:D081` (entry→callback
+      listing) and `ram:D12F` (slot base + observed
+      callbacks; Ghidra saved); function list
+      unchanged.
      Earlier static search (zero xrefs to
      `ROM01:7C80` / `ram:D128` / `D130`; `28 d1`
      hits at `ROM01:2A22`/`3412` falsified as
@@ -356,35 +370,49 @@ State: continuously updated as work progresses.
      `--upload` (`0200:A5` marker) + `--watch-mem`;
      `0100:21` early-return artifact corrected — see
      Phase 3.
-      Extended coverage (emulator
-      `analysis/boot_hw.py`, exit 0, bounded) —
-      `--watch-pc 0904,1177,441b,d937` across
-      four run types: boot + `--drive-serial`
-      `1177=2, others 0`;
-      `--trace-session-transaction 4` `1177=2,
-      others 0`; `--upload hello.com
-      --upload-marker 0200:A5` (real COM load)
-      `1177=13, others 0`; `--upload hello.com
-      --commstar-peer` (commstar attach)
-      `0904=0 441B=0 D937=0` (peer saw no
-      requests — test COM does not hold a
-      commstar session). So `ROM01:1177`
-      reachable in every run (up to 13 hits);
-      `ROM01:0904`, `ROM00:441B`, `ram:D937`
-      unhit in all four. Combined with static
-      status — `ROM01:0904` `NOP; NOP; RET`
-      alignment padding (not a real routine),
-      `ROM00:441B`/`ram:D937` **zero xrefs** —
-      these three are **dead/unreachable in
-      every exercised path** (boot, session
-      transaction, COM load, commstar attach).
-      Retained (plates) rather than deleted:
-      could still be reached by other loaded
-      software or the one unexercised path
-      (barcode scan). Tag **SUSPECTED dead →
-      LIKELY dead** (zero xrefs + unhit in four
-      run types); only the barcode-scan capture
-      remains unexercised (CONFIRMED).
+       Extended coverage (emulator
+       `analysis/boot_hw.py`, exit 0, bounded) —
+       `--watch-pc 0904,1177,441b,d937` across
+       four run types: boot + `--drive-serial`
+       `1177=2, others 0`;
+       `--trace-session-transaction 4` `1177=2,
+       others 0`; `--upload hello.com
+       --upload-marker 0200:A5` (real COM load)
+       `1177=13, others 0`; `--upload hello.com
+       --commstar-peer` (commstar attach)
+       `0904=0 441B=0 D937=0` (peer saw no
+       requests — test COM does not hold a
+       commstar session). So `ROM01:1177`
+       reachable in every run (up to 13 hits);
+       `ROM01:0904`, `ROM00:441B`, `ram:D937`
+       unhit in all four. Combined with static
+       status — `ROM01:0904` `NOP; NOP; RET`
+       alignment padding (not a real routine),
+       `ROM00:441B`/`ram:D937` **zero xrefs** —
+       these three are **dead/unreachable in
+       every exercised path** (boot, session
+       transaction, COM load, commstar attach).
+       Retained (plates) rather than deleted:
+       could still be reached by other loaded
+       software or the one unexercised path
+       (barcode scan). Tag **SUSPECTED dead →
+       LIKELY dead** (zero xrefs + unhit in four
+       run types); only the barcode-scan capture
+       remains unexercised (CONFIRMED) — now
+       **attempted but not exercised
+       (CONFIRMED):** two bounded runs
+       `--barcode-scan A1 --barcode-probe
+       --watch-pc 0904,441b,d937` — (a) plain
+       boot+scan, (b) expect flow
+       `Enter the Workstation`/`Main Menu` then
+       scan — both ended `barcode_status=pending`
+       with `0904=0 441B=0 D937=0`, wand armed
+       but never triggered, flow did not reach a
+       barcode-entry field; retains remain
+       **LIKELY dead**, discriminator still
+       unexercised, next step is a UI flow that
+       reaches a barcode-entry field before scan
+       (or owner real scan).
 
 ### Emulator-coverage / vtable-mapping plan —
     closing the low-priority retains (no
@@ -612,32 +640,45 @@ State: continuously updated as work progresses.
       not fully decoded / SUSPECTED LE"
       hypotheses are superseded.
 
-     * **Reader / dispatcher — LOCATED
-       (CONFIRMED, emulator `--watch-read`;
-       Ghidra saved).** `UI_FormExitDispatchNext`
-       (`ROM01:06D3`-`0720`) increments
-       `g_formIdxW` (`ram:D2DE`), rejects
-       `index >=5` via `CALL 0xE0E7`, indexes
-       5-entry word-pointer table at `ram:D081`
-       (`LD DE,0xD081; ADD HL,DE` at
-       `ROM01:06EF`), double-indirects to
-       callback slot (`ROM01:06F7`-`06FA`), calls
-       via `CALL 0xD828`
-       (`g_pUserCallbackTrampoline` indirect-call
-       tramp). Callback slots base `ram:D12F`,
-       stride `0x0E`, first word little-endian
-       ROM01 address (`D12F/D130=0x1177`,
-       `D13D/D13E=0x156F`); `ram:D081` entries
-       `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-       (NULL-terminated) into `D12F`-based
-       records. No static xref by double
-       indirection (base `D081` indexed by RAM
-       counter, then pointer to slot) — why
-       earlier static hunt failed; manual DATA
-       xref `ROM01:06EF` → `ram:D081` added;
-       plates at `ROM01:06D3` (reader),
-       `ram:D081` (index table), `ram:D12F`
-       (callback-slot base, repeatable). Table
+      * **Reader / dispatcher — LOCATED
+        (CONFIRMED, emulator `--watch-read`;
+        Ghidra saved).** `UI_FormExitDispatchNext`
+        (`ROM01:06D3`-`0720`) increments
+        `g_formIdxW` (`ram:D2DE`), rejects
+        `index >=5` via `CALL 0xE0E7`, indexes
+        5-entry word-pointer table at `ram:D081`
+        (`LD DE,0xD081; ADD HL,DE` at
+        `ROM01:06EF`), double-indirects to
+        callback slot (`ROM01:06F7`-`06FA`), calls
+        via `CALL 0xD828`
+        (`g_pUserCallbackTrampoline` indirect-call
+        tramp). Callback slots base `ram:D12F`,
+        stride `0x0E`, first word little-endian
+        ROM01 callback address (CONFIRMED,
+        byte-verified slot contents):
+        `D12F/D130=0x1177`, `D13D/D13E=0x156F`;
+        `ram:D081` entries
+        `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+        (NULL-terminated) select callbacks
+        `0x0A67/0x156F/0x1177/0x1177/0x156F`
+        (CONFIRMED) — byte-verified slot contents
+        and manual DATA xrefs added:
+        `ram:D0F0`→`ROM01:0A67`,
+        `ram:D121`→`ROM01:1177`,
+        `ram:D12F`→`ROM01:1177`,
+        `ram:D13D`→`ROM01:156F`,
+        `ram:D14B`→`ROM01:156F` (so `ROM01:1177`
+        reached via `D121`/`D12F`, `0x156F` via
+        `D13D`/`D14B`) into `D12F`-based records.
+        No static xref by double indirection (base
+        `D081` indexed by RAM counter, then pointer
+        to slot) — why earlier static hunt failed;
+        manual DATA xref `ROM01:06EF` →
+        `ram:D081` added; plates updated at
+        `ram:D081` (entry→callback listing) and
+        `ram:D12F` (slot base + observed callbacks;
+        Ghidra saved); function list unchanged.
+        Table
        `ROM01:7C80`/`ram:D128` (43 big-endian
        entries, `FFFF` at `ROM01:7CD8`) retain
        notes record vtable slot role; earlier
@@ -7731,12 +7772,77 @@ names renamed, 144 unplated functions plated)
    to extended (4 runs, LIKELY dead).
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (minor/deferred block + Phase 1 block + this
-   entry), `research/gap-analysis.md` (both
-   retained-`FUN_*` sections — `0904`/`441B`/`D937`
-   upgraded to **LIKELY dead** with four-run
-   coverage, `1177` to up to 13 hits). No Ghidra
-   edits; no new inference; evidence tags preserved
+    (minor/deferred block + Phase 1 block + this
+    entry), `research/gap-analysis.md` (both
+    retained-`FUN_*` sections — `0904`/`441B`/`D937`
+    upgraded to **LIKELY dead** with four-run
+    coverage, `1177` to up to 13 hits). No Ghidra
+    edits; no new inference; evidence tags preserved
+    (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
+    `mkdocs build --strict` (site_dir `site-mkdocs`)
+    run — see below.
+### 2026-09-19 — callback xrefs linked; barcode path
+ armed but not triggered (Ghidra saved; emulator;
+ docs only, no Ghidra, no new inference;
+ parent-verified)
+
+* **Callback xrefs linked (CONFIRMED).** The
+   `ram:D081` 5-entry pointer table (read by
+   `UI_FormExitDispatchNext`) points to callback
+   slots whose first word is a little-endian
+   ROM01 callback address (CONFIRMED, byte-verified
+   slot contents). Byte-verified slot contents and
+   manual DATA xrefs added: `ram:D0F0`→`ROM01:0A67`,
+   `ram:D121`→`ROM01:1177`, `ram:D12F`→`ROM01:1177`,
+   `ram:D13D`→`ROM01:156F`, `ram:D14B`→`ROM01:156F`.
+   So the `D081` entries
+   `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B` select
+   callbacks `0x0A67`/`0x156F`/`0x1177`/`0x1177`/
+   `0x156F`; `ROM01:1177` is reached by the dispatch
+   via slots `D121` and `D12F` (both entries), and
+   `0x156F` via `D13D`/`D14B`. Plates updated at
+   `ram:D081` (entry→callback listing) and `ram:D12F`
+   (slot base + observed callbacks; Ghidra saved);
+   function list unchanged.
+
+* **Barcode-scan path attempted but not exercised
+   (CONFIRMED).** Two bounded harness runs with
+   `--barcode-scan A1 --barcode-probe
+   --watch-pc 0904,441b,d937` — (a) a plain
+   boot+scan, (b) the harness's documented expect
+   flow (`--expect "Enter the
+   Workstation:\r12345678\r" --expect "Main Menu"`
+   then scan) — both ended `barcode_status=pending`
+   with `0904=0 441B=0 D937=0`. So the wand was
+   armed but never triggered: the flow did not
+   reach a barcode-entry field. The three retains
+   therefore remain **LIKELY dead** and the
+   barcode-scan discriminator is **still
+   unexercised**; the needed next step is a UI flow
+   that reaches a barcode-entry field before the
+   scan (or the owner performing a real scan).
+
+* **TASKS.md:** recorded the 5 callback xrefs in the
+   vtable/reader notes (minor/deferred header and
+   Phase 2 reader bullet — byte-verified slot
+   contents, `D081`→callback mapping, `ROM01:1177`
+   via `D121`/`D12F`, `0x156F` via `D13D`/`D14B`,
+   plates updated), and updated the retain block:
+   barcode path attempted (two flows) →
+   `barcode_status=pending`, retains still **LIKELY
+   dead**, discriminator unexercised, next step is a
+   barcode-entry field before scan. No Ghidra edits
+   in this docs pass beyond the saved plates above;
+   no new inference; evidence tags preserved
    (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
-   `mkdocs build --strict` (site_dir `site-mkdocs`)
-   run — see below.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (vtable/reader notes + retain block + this
+   entry), `research/gap-analysis.md` (both
+   retained-`FUN_*` sections — callback xrefs
+   linked with `D081`→callback mapping and barcode
+   armed but not triggered with two flows). No
+   Ghidra edits; no new inference; evidence tags
+   preserved; ~70-col wrapping. `mkdocs build
+   --strict` (site_dir `site-mkdocs`) run — see
+   below.

@@ -245,42 +245,72 @@ kept symbols.** All byte-verified; Ghidra saved.
   **withdrawn**; the validator role is **SUSPECTED** only.
 
 * **Retained (10) with documented open questions
-   (CONFIRMED retained, plates set, symbols kept;
-   updated 2026-09-19 — vtable reader LOCATED +
-   extended coverage):**
-   `ROM00:441B` (zero xrefs, **LIKELY dead** —
-   unhit in four bounded runs: boot,
-   session-transaction, COM load, commstar
-   attach; only barcode scan unexercised);
-   `ROM01:0904` (alignment padding
-   `NOP; NOP; RET`, not a real routine,
-   zero xrefs, **LIKELY dead** — unhit in
-   four runs; only barcode unexercised);
-   `ROM01:1177` (trivial stub, **CONFIRMED
-   reachable** in every run via extended
-   `boot_hw.py --watch-pc` — up to 13 hits;
-   identity remains unknown) /
-   `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
-   session-object vtable entries (methods)** at
-   `ROM01:7C80` / `ram:D128` — 43 big-endian entries,
-   `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
-   alternate entry; `ram:D128` diverges at entries
-   3–6 — see Phase 2; retain notes record vtable
-   slot role; **reader LOCATED (CONFIRMED,
-   emulator `--watch-read`):** `UI_FormExitDispatchNext`
-   (`ROM01:06D3`-`0720`) indexes 5-entry word-pointer
-   table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
-   `ROM01:06EF`), double-indirects to callback slot
-   (`ROM01:06F7`-`06FA`), calls via `CALL 0xD828`
-   (`g_pUserCallbackTrampoline`); callback slots base
-   `ram:D12F`, stride `0x0E`, first word little-endian
-   ROM01 address (`D12F/D130=0x1177`,
-   `D13D/D13E=0x156F`); `ram:D081` entries
-   `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-    (NULL-terminated); no static xref by double
-    indirection — manual DATA xref `ROM01:06EF` →
-    `ram:D081` added; plates at `ROM01:06D3`,
-    `ram:D081`, `ram:D12F` (Ghidra saved); residual
+    (CONFIRMED retained, plates set, symbols kept;
+    updated 2026-09-19 — vtable reader LOCATED +
+    extended coverage; callback xrefs linked,
+    barcode path armed but not triggered):**
+    `ROM00:441B` (zero xrefs, **LIKELY dead** —
+    unhit in four bounded runs: boot,
+    session-transaction, COM load, commstar
+    attach; barcode path attempted in two
+    bounded runs `--barcode-scan A1 --barcode-probe
+    --watch-pc 0904,441b,d937` — plain boot+scan
+    and expect flow `Enter the Workstation`/
+    `Main Menu` then scan — both
+    `barcode_status=pending` with
+    `0904=0 441B=0 D937=0` (CONFIRMED), wand
+    armed but never triggered, flow did not
+    reach a barcode-entry field; discriminator
+    still unexercised, next step is a UI flow
+    that reaches a barcode-entry field before
+    scan or owner real scan);
+    `ROM01:0904` (alignment padding
+    `NOP; NOP; RET`, not a real routine,
+    zero xrefs, **LIKELY dead** — same four runs
+    + two barcode attempts unhit; only barcode
+    path unexercised);
+    `ROM01:1177` (trivial stub, **CONFIRMED
+    reachable** in every run via extended
+    `boot_hw.py --watch-pc` — up to 13 hits;
+    identity remains unknown) /
+    `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
+    session-object vtable entries (methods)** at
+    `ROM01:7C80` / `ram:D128` — 43 big-endian entries,
+    `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
+    alternate entry; `ram:D128` diverges at entries
+    3–6 — see Phase 2; retain notes record vtable
+    slot role; **reader LOCATED (CONFIRMED,
+    emulator `--watch-read`):** `UI_FormExitDispatchNext`
+    (`ROM01:06D3`-`0720`) increments `g_formIdxW`
+    (`ram:D2DE`), rejects `index >=5` via
+    `CALL 0xE0E7`, indexes 5-entry word-pointer
+    table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
+    `ROM01:06EF`), double-indirects to callback
+    slot (`ROM01:06F7`-`06FA`), calls via
+    `CALL 0xD828` (`g_pUserCallbackTrampoline`);
+    callback slots base `ram:D12F`, stride `0x0E`,
+    first word little-endian ROM01 callback
+    address (CONFIRMED, byte-verified slot
+    contents): `D12F/D130=0x1177`,
+    `D13D/D13E=0x156F`; `ram:D081` entries
+    `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+     (NULL-terminated) select callbacks
+    `0x0A67/0x156F/0x1177/0x1177/0x156F`
+    (CONFIRMED) — byte-verified slot contents
+    and manual DATA xrefs added:
+    `ram:D0F0`→`ROM01:0A67`,
+    `ram:D121`→`ROM01:1177`,
+    `ram:D12F`→`ROM01:1177`,
+    `ram:D13D`→`ROM01:156F`,
+    `ram:D14B`→`ROM01:156F` (so `ROM01:1177`
+    reached via slots `D121` and `D12F`,
+    `0x156F` via `D13D`/`D14B`); no static xref
+    by double indirection — manual DATA xref
+    `ROM01:06EF` → `ram:D081` added; plates
+    updated at `ram:D081` (entry→callback
+    listing) and `ram:D12F` (slot base + observed
+    callbacks; Ghidra saved); function list
+    unchanged); residual
     **RESOLVED/WITNESSED 2026-09-19 (CONFIRMED,
     emulator):** `D7` stub-patch **WITNESSED** —
     COM writes `D7 00 BF 48` into `EE00`-`EE03`
@@ -378,7 +408,8 @@ Deferred by design (wrong address space if created in
 `ROM00`).
 
 **Item C — retained `FUN_*` resolved (CONFIRMED;
-updated 2026-09-19 — vtable reader LOCATED).**
+updated 2026-09-19 — vtable reader LOCATED; callback
+xrefs linked, barcode armed but not triggered).**
 6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
 `1664`→`Session_Obj_Method_6b6d`,
 `168e`→`Session_Obj_Method_6c84`,
@@ -390,19 +421,31 @@ four are CONFIRMED session-object vtable entries
 endian hi-first, Phase 2)** — retain notes record
 the vtable slot role; **reader LOCATED (CONFIRMED,
 emulator `--watch-read`):** `UI_FormExitDispatchNext`
-(`ROM01:06D3`-`0720`) indexes 5-entry word-pointer
-table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
-`ROM01:06EF`), double-indirects to callback slot
+(`ROM01:06D3`-`0720`) increments `g_formIdxW`
+(`ram:D2DE`), rejects `index >=5` via `CALL 0xE0E7`,
+indexes 5-entry word-pointer table at `ram:D081`
+(`LD DE,0xD081; ADD HL,DE` at `ROM01:06EF`),
+double-indirects to callback slot
 (`ROM01:06F7`-`06FA`), calls via `CALL 0xD828`
 (`g_pUserCallbackTrampoline`); callback slots base
 `ram:D12F`, stride `0x0E`, first word little-endian
-ROM01 address (`D12F/D130=0x1177`,
-`D13D/D13E=0x156F`); `ram:D081` entries
+ROM01 callback address (CONFIRMED, byte-verified
+slot contents): `D12F/D130=0x1177`,
+`D13D/D13E=0x156F`; `ram:D081` entries
 `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-    (NULL-terminated); no static xref by double
-    indirection — manual DATA xref `ROM01:06EF` →
-    `ram:D081` added; plates at `ROM01:06D3`,
-    `ram:D081`, `ram:D12F` (Ghidra saved); residual
+    (NULL-terminated) select callbacks
+`0x0A67/0x156F/0x1177/0x1177/0x156F` (CONFIRMED)
+— byte-verified slot contents and manual DATA
+xrefs added: `ram:D0F0`→`ROM01:0A67`,
+`ram:D121`→`ROM01:1177`, `ram:D12F`→`ROM01:1177`,
+`ram:D13D`→`ROM01:156F`, `ram:D14B`→`ROM01:156F`
+(so `ROM01:1177` reached via `D121` and `D12F`,
+`0x156F` via `D13D`/`D14B`); no static xref by
+double indirection — manual DATA xref
+`ROM01:06EF` → `ram:D081` added; plates updated
+at `ram:D081` (entry→callback listing) and
+`ram:D12F` (slot base + observed callbacks;
+Ghidra saved); function list unchanged; residual
     **RESOLVED/WITNESSED 2026-09-19 (CONFIRMED,
     emulator):** `D7` stub-patch **WITNESSED**
     (`D7 00 BF 48` into `EE00`-`EE03`,
@@ -415,14 +458,19 @@ plates: `ROM01:1177` (trivial stub, **CONFIRMED
 reachable** in every run via extended
 `boot_hw.py --watch-pc` — up to 13 hits; identity
 remains unknown), `ROM00:441b` (zero-xref dead,
-**LIKELY dead** — unhit in four bounded runs;
-only barcode scan unexercised; sibling `443c`
-used), `ram:d937` (zero-xref bit-flag dispatcher
-over `ram:e104`, **LIKELY dead** — unhit in four
-runs; only barcode unexercised), `ROM01:0904`
-(alignment padding `NOP; NOP; RET`, not a real
-routine, zero xrefs, **LIKELY dead** — unhit in
-four runs; only barcode unexercised).
+**LIKELY dead** — unhit in four runs + two
+barcode attempts `barcode_status=pending`,
+`0904=0 441B=0 D937=0` (CONFIRMED); wand armed
+but never triggered, flow did not reach a
+barcode-entry field; discriminator still
+unexercised; sibling `443c` used),
+`ram:d937` (zero-xref bit-flag dispatcher over
+`ram:e104`, **LIKELY dead** — same four runs +
+two barcode attempts unhit; only barcode
+unexercised), `ROM01:0904` (alignment padding
+`NOP; NOP; RET`, not a real routine, zero xrefs,
+**LIKELY dead** — same; only barcode
+unexercised).
 
 Coverage after Items A–C is the headline above: auto
 `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910
