@@ -257,37 +257,52 @@ State: continuously updated as work progresses.
   **Corrects** the earlier "no ROM code writes
   `EE00-EE4F`" claim (bulk-copy blind spot).
 
-  1. **Minor / deferred (OPEN, low priority —
-    nothing actionable without new data).**
-    4 documented retained `FUN_*`
-    (`ROM01:0904` alignment padding `NOP; NOP; RET`,
-    `ROM00:441B` dead yield, `ram:D937` bit-flag
-    dispatcher, `ROM01:1177` trivial stub) — now
-    updated: `ROM01:1177` **CONFIRMED reachable**
-    (Phase 1, 2 hits at boot/session; identity
-    remains unknown) and `ROM01:156F`/`1664`/`168E`/
-    `16B8` are **CONFIRMED session-object vtable
-    entries** (methods) at `ROM01:7C80` /
-    `ram:D128` (43 big-endian entries,
-    `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
-    alternate entry; `ram:D128` diverges at
-    entries 3–6 — see Phase 2) — retain notes
-    record the vtable slot role; **reader
-    OPEN — static search exhausted** (zero xrefs
-    to `ROM01:7C80` / `ram:D128` / `D130`;
-    byte-pattern `28 d1` hits at `ROM01:2A22` and
-    `ROM01:3412` falsified as `CALL 28FE` /
-    `POP DE` (`CD FE 28 D1 …`) (CONFIRMED);
-    `d128`/`d130` operands zero (CONFIRMED);
-    SUSPECTED `Session_HelperRouter11E5`
-    `ROM01:11E5` not supported by a table
-    reference; next tool is emulator read-trace).
-    The 12 non-code code gaps (page-zero RST
-    vectors, the `254b` inline dispatcher,
-    padding, and the `7545-7FFF` data region),
-    and `ROM00:7409`/`7472` (module-A ROM
-    images, deferred by design); all recorded
-    as such — no further action (CONFIRMED).
+   1. **Minor / deferred (OPEN, low priority —
+     nothing actionable without new data).**
+     4 documented retained `FUN_*`
+     (`ROM01:0904` alignment padding `NOP; NOP; RET`,
+     `ROM00:441B` dead yield, `ram:D937` bit-flag
+     dispatcher, `ROM01:1177` trivial stub) — now
+     updated: `ROM01:1177` **CONFIRMED reachable**
+     (Phase 1, 2 hits at boot/session; identity
+     remains unknown) and `ROM01:156F`/`1664`/`168E`/
+     `16B8` are **CONFIRMED session-object vtable
+     entries** (methods) at `ROM01:7C80` /
+     `ram:D128` (43 big-endian entries,
+     `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
+     alternate entry; `ram:D128` diverges at
+     entries 3–6 — see Phase 2) — retain notes
+     record the vtable slot role; **reader
+     LOCATED (CONFIRMED, emulator
+     `--watch-read`):** `UI_FormExitDispatchNext`
+     (`ROM01:06D3`-`0720`) increments `g_formIdxW`
+     (`ram:D2DE`), rejects `index >=5` via
+     `CALL 0xE0E7`, indexes 5-entry word-pointer
+     table at `ram:D081` (`LD DE,0xD081; ADD HL,DE`
+     at `ROM01:06EF`), double-indirects to callback
+     slot (`ROM01:06F7`-`06FA`), calls via
+     `CALL 0xD828` (`g_pUserCallbackTrampoline`);
+     callback slots base `ram:D12F`, stride `0x0E`,
+     first word little-endian ROM01 address
+     (`D12F/D130=0x1177`, `D13D/D13E=0x156F`);
+     `ram:D081` entries
+     `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+     (NULL-terminated); no static xref by double
+     indirection — manual DATA xref `ROM01:06EF` →
+     `ram:D081` added; plates at `ROM01:06D3`,
+     `ram:D081`, `ram:D12F` (Ghidra saved).
+     Earlier static search (zero xrefs to
+     `ROM01:7C80` / `ram:D128` / `D130`; `28 d1`
+     hits at `ROM01:2A22`/`3412` falsified as
+     `CALL 28FE`/`POP DE` CONFIRMED) failed due to
+     double indirection. Residual OPEN is only the
+     witnessed `D7` stub-patch (DIP/COM).
+     The 12 non-code code gaps (page-zero RST
+     vectors, the `254b` inline dispatcher,
+     padding, and the `7545-7FFF` data region),
+     and `ROM00:7409`/`7472` (module-A ROM
+     images, deferred by design); all recorded
+     as such — no further action (CONFIRMED).
     Boot copy **corrected** (`Kernel_InitCopyData`
     `ram:D6C0` `D6C9`/`D6D4` fills `EE00-EE4F`;
     old "does NOT touch `EE00`" wrong);
@@ -451,10 +466,10 @@ State: continuously updated as work progresses.
        `--watch-mem EE00:EE4F` on a load path)
        are **not yet run** (pending).
 
-     Phase 2 — session-object dispatch tables
-    `ROM01:7C80` / `ram:D128` — **DONE 2026-09-19
-    (CONFIRMED, static + emulator;
-    reader OPEN — see below)**
+      Phase 2 — session-object dispatch tables
+     `ROM01:7C80` / `ram:D128` — **DONE 2026-09-19
+     (CONFIRMED, static + emulator;
+     reader LOCATED — see below)**
 
     * **Resolved (CONFIRMED, static).**
       `ROM01:7C80` and its RAM copy `ram:D128` are
@@ -493,57 +508,64 @@ State: continuously updated as work progresses.
       not fully decoded / SUSPECTED LE"
       hypotheses are superseded.
 
-    * **Reader / dispatcher — not yet located
-      (OPEN, SUSPECTED) — static search
-      exhausted.** There are **zero xrefs** to
-      `ROM01:7C80` and to `ram:D128`/`D12A`/
-      `D130`; only `ram:D100` in that area has
-      xrefs (6, in `Dialog_IdleRelease`,
-      `Session_AdvanceStageOnZero`,
-      `Session_HelperRouter11E5`). Byte-pattern
-      search for the little-endian pointer to
-      `D128` (`28 d1`) found only two hits —
-      `ROM01:2A22` and `ROM01:3412` — and both
-      are **false positives** (CONFIRMED,
-      byte-verified): the bytes are the tail of
-      `CALL 28FE` followed by `POP DE`
-      (`CD FE 28 D1 …`), not a pointer.
-      `search_instructions` for `d128`/`d130`
-      operands also returned zero (CONFIRMED).
-      So there is no `LD HL,(D128)`, no
-      immediate base, and no data pointer to the
-      table in the ROM — the dispatcher cannot
-      be located statically. It must reach the
-      table by a **computed address** (e.g. a
-      pointer chain or a base computed at
-      runtime), or by direct execution out of
-      the RAM copy per the coroutine model
-      (OPEN). The static lead
-      `Session_HelperRouter11E5` (`ROM01:11E5`)
-      is **not** supported by a table reference
-      (its plate documents a different,
-      6-byte-stride table at `ram:D108` plus the
-      `ram:D100` scratch buffer).
-      **Discriminating observation now:** an
-      **emulator read-trace** of `ram:D128`/
-      `ROM01:7C80` (execution watching the table
-      addresses) or a computed-address/
-      pointer-chain trace, since byte/xref
-      search is exhausted. Recorded as an OPEN
-      item; do not claim proven dispatch.
+     * **Reader / dispatcher — LOCATED
+       (CONFIRMED, emulator `--watch-read`;
+       Ghidra saved).** `UI_FormExitDispatchNext`
+       (`ROM01:06D3`-`0720`) increments
+       `g_formIdxW` (`ram:D2DE`), rejects
+       `index >=5` via `CALL 0xE0E7`, indexes
+       5-entry word-pointer table at `ram:D081`
+       (`LD DE,0xD081; ADD HL,DE` at
+       `ROM01:06EF`), double-indirects to
+       callback slot (`ROM01:06F7`-`06FA`), calls
+       via `CALL 0xD828`
+       (`g_pUserCallbackTrampoline` indirect-call
+       tramp). Callback slots base `ram:D12F`,
+       stride `0x0E`, first word little-endian
+       ROM01 address (`D12F/D130=0x1177`,
+       `D13D/D13E=0x156F`); `ram:D081` entries
+       `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+       (NULL-terminated) into `D12F`-based
+       records. No static xref by double
+       indirection (base `D081` indexed by RAM
+       counter, then pointer to slot) — why
+       earlier static hunt failed; manual DATA
+       xref `ROM01:06EF` → `ram:D081` added;
+       plates at `ROM01:06D3` (reader),
+       `ram:D081` (index table), `ram:D12F`
+       (callback-slot base, repeatable). Table
+       `ROM01:7C80`/`ram:D128` (43 big-endian
+       entries, `FFFF` at `ROM01:7CD8`) retain
+       notes record vtable slot role; earlier
+       `28 d1` hits at `ROM01:2A22`/`3412` were
+       **false positives** (`CALL 28FE`/`POP DE`
+       CONFIRMED); `Session_HelperRouter11E5`
+       (`ROM01:11E5`) not supported by table
+       reference (different `ram:D108` table).
+       Residual OPEN is only the witnessed `D7`
+       stub-patch (DIP/COM).
 
-    * Harness notes (for reference; Phase 2 static
-      decode required no live index→handler trace):
-      dump tables at menu via
-      `--dump-mem 7c80:80 --dump-mem d128:80
-      --watch-mem 7c80:7cff,d128:d1af`; session run
-      with `--trace-session-*` / `--upload` plus
-      `--watch-mem` on both tables would show
-      `ram:D128` writes during `Session_Init*` /
-      `Form_Builder (ROM01:0271)` and `ROM01:7c80`
-      reads only — kept for any future slot-index
-      trace, but the entry format and the four
-      method mappings are now CONFIRMED without it.
+     * Harness notes (for reference; Phase 2 static
+       decode required no live index→handler trace):
+       dump tables at menu via
+       `--dump-mem 7c80:80 --dump-mem d128:80
+       --watch-mem 7c80:7cff,d128:d1af`; session run
+       with `--trace-session-*` / `--upload` plus
+       `--watch-mem` on both tables would show
+       `ram:D128` writes during `Session_Init*` /
+       `Form_Builder (ROM01:0271)` and `ROM01:7c80`
+       reads only — kept for any future slot-index
+       trace, but the entry format and the four
+       method mappings are now CONFIRMED without it.
+       **Harness gained `--watch-read`
+       `LO:HI[,...]` (inclusive read-watch mirroring
+       `--watch-mem`; reports value + reading PC +
+       SP + bank; per-range cap
+       `--watch-read-limit`, default 24; totals at
+       exit; entry in `--help`) — this is what
+       located the `ram:D081` reader via
+       `--watch-read D081:D08A` (double indirection
+       at `ROM01:06EF`/`06F7`).
 
      Phase 3 — `ram:EE00-EE4F` stub arena —
     **DONE 2026-09-19 (CONFIRMED boot-copy +
@@ -7317,11 +7339,81 @@ names renamed, 144 unplated functions plated)
   is exhausted.
 
 * **TASKS.md:** updated the vtable-reader OPEN
-  item (both `28 d1` hits falsified as
-  `CALL 28FE`/`POP DE`; zero operand refs;
-  static search exhausted; next tool = emulator
-  read-trace) and appended this entry. No Ghidra
-  edits; evidence tags preserved; ~70-col
+   item (both `28 d1` hits falsified as
+   `CALL 28FE`/`POP DE`; zero operand refs;
+   static search exhausted; next tool = emulator
+   read-trace) and appended this entry. No Ghidra
+   edits; evidence tags preserved; ~70-col
+   wrapping. `mkdocs build --strict` (site_dir
+   `site-mkdocs`) run — see below.
+
+### 2026-09-19 — vtable reader located
+ (UI_FormExitDispatchNext via ram:D081 pointer
+ table; --watch-read added) (Ghidra saved;
+ emulator read-trace; docs only in this pass,
+ no new inference; parent-verified)
+
+* **Vtable reader LOCATED (CONFIRMED, emulator
+  `--watch-read`).** Session-object callback
+  table is read by `UI_FormExitDispatchNext`
+  (`ROM01:06D3`-`0720`). It increments
+  `g_formIdxW` (`ram:D2DE`), rejects at
+  `index >=5` via `CALL 0xE0E7`, indexes
+  5-entry word-pointer table at `ram:D081`
+  (`LD DE,0xD081; ADD HL,DE` at `ROM01:06EF`),
+  double-indirects to callback slot
+  (`ROM01:06F7`-`06FA`), calls via
+  `CALL 0xD828` (`g_pUserCallbackTrampoline`
+  indirect-call tramp).
+
+* **Callback slots (CONFIRMED, emulator
+  `--watch-read` + byte-verified):** base
+  `ram:D12F`, stride `0x0E`; first word of each
+  slot is little-endian ROM01 address. Observed
+  `D12F/D130=0x1177`, `D13D/D13E=0x156F` — i.e.
+  retained session-object stubs. `ram:D081`
+  entries are word pointers
+  `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+  (NULL-terminated) into `D12F`-based records.
+
+* **Why no static xref (CONFIRMED):** reader
+  reaches table by double indirection (base
+  `D081` indexed by RAM counter, then pointer to
+  callback slot), so byte/xref search could not
+  see it — why earlier static hunt failed.
+  Manual DATA xref `ROM01:06EF` → `ram:D081`
+  added; plates at `ROM01:06D3` (reader),
+  `ram:D081` (index table), `ram:D12F`
+  (callback-slot base, repeatable) (Ghidra
+  saved).
+
+* **Harness gained `--watch-read` `LO:HI[,...]`
+  (CONFIRMED, tested).** `analysis/boot_hw.py`
+  now supports inclusive read-watch mirroring
+  `--watch-mem` (reports value + reading PC +
+  SP + bank; per-range cap
+  `--watch-read-limit`, default 24; totals at
+  exit). Entry in `--help`. This is what
+  located the reader.
+
+* **TASKS.md:** closed vtable-reader OPEN item
+  wherever it appeared — `Minor / deferred`
+  retain notes, Phase 2 reader bullet, and
+  `gap-analysis.md` retained sections marked
+  **RESOLVED** with reader + `D081`/`D12F`
+  facts; residual OPEN is only the witnessed
+  `D7` stub-patch (DIP/COM) (mechanically
+  possible and unobserved — needs witnessed
+  `D7` write + `--dump-mem` capture).
+
+* **Docs updated in this pass:**
+  `research/TASKS.md` (closed OPEN + this
+  entry), `research/gap-analysis.md` (retained
+  sections RESOLVED + reader facts), and
+  `analysis/README.md` (harness `--watch-read`
+  docs). No Ghidra edits in this docs pass
+  beyond the saved plates/xref above; no new
+  inference; evidence tags preserved; ~70-col
   wrapping. `mkdocs build --strict` (site_dir
   `site-mkdocs`) run — see below.
 

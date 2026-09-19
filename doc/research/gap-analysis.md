@@ -246,7 +246,7 @@ kept symbols.** All byte-verified; Ghidra saved.
 
 * **Retained (10) with documented open questions
    (CONFIRMED retained, plates set, symbols kept;
-   updated 2026-09-19 — vtable reader OPEN):**
+   updated 2026-09-19 — vtable reader LOCATED):**
    `ROM00:441B` (zero xrefs, dead coroutine yield);
    `ROM01:0904` (alignment padding `NOP; NOP; RET`);
    `ROM01:1177` (trivial stub, **CONFIRMED reachable**
@@ -258,12 +258,23 @@ kept symbols.** All byte-verified; Ghidra saved.
    `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
    alternate entry; `ram:D128` diverges at entries
    3–6 — see Phase 2; retain notes record vtable
-   slot role; **reader OPEN:** zero xrefs to
-   `ROM01:7C80` / `ram:D128`/`D130`; SUSPECTED
-   `Session_HelperRouter11E5` `ROM01:11E5`; plates
-   at `ROM01:7C80` / `ram:D128`; discriminating
-   `LD HL,(D128)` / indexed `JP (HL)` not yet
-   found);
+   slot role; **reader LOCATED (CONFIRMED,
+   emulator `--watch-read`):** `UI_FormExitDispatchNext`
+   (`ROM01:06D3`-`0720`) indexes 5-entry word-pointer
+   table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
+   `ROM01:06EF`), double-indirects to callback slot
+   (`ROM01:06F7`-`06FA`), calls via `CALL 0xD828`
+   (`g_pUserCallbackTrampoline`); callback slots base
+   `ram:D12F`, stride `0x0E`, first word little-endian
+   ROM01 address (`D12F/D130=0x1177`,
+   `D13D/D13E=0x156F`); `ram:D081` entries
+   `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+   (NULL-terminated); no static xref by double
+   indirection — manual DATA xref `ROM01:06EF` →
+   `ram:D081` added; plates at `ROM01:06D3`,
+   `ram:D081`, `ram:D12F` (Ghidra saved); residual
+   OPEN is only the witnessed `D7` stub-patch
+   (DIP/COM));
    `ROM01:4D86`/`4E79` (text-buffer builders;
    compiler-frame args `SP+0x0E`–`0x16` undecoded);
    `ram:D937` (zero xrefs, dead stub).
@@ -354,7 +365,7 @@ Deferred by design (wrong address space if created in
 `ROM00`).
 
 **Item C — retained `FUN_*` resolved (CONFIRMED;
-updated 2026-09-19 — vtable reader OPEN).**
+updated 2026-09-19 — vtable reader LOCATED).**
 6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
 `1664`→`Session_Obj_Method_6b6d`,
 `168e`→`Session_Obj_Method_6c84`,
@@ -364,9 +375,23 @@ four are CONFIRMED session-object vtable entries
 (methods) at `ROM01:7C80` / `ram:D128` (43 entries,
 `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`; big-
 endian hi-first, Phase 2)** — retain notes record
-the vtable slot role; **reader OPEN** (zero xrefs
-to `ROM01:7C80` / `ram:D128`/`D130`; SUSPECTED
-`ROM01:11E5`);
+the vtable slot role; **reader LOCATED (CONFIRMED,
+emulator `--watch-read`):** `UI_FormExitDispatchNext`
+(`ROM01:06D3`-`0720`) indexes 5-entry word-pointer
+table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
+`ROM01:06EF`), double-indirects to callback slot
+(`ROM01:06F7`-`06FA`), calls via `CALL 0xD828`
+(`g_pUserCallbackTrampoline`); callback slots base
+`ram:D12F`, stride `0x0E`, first word little-endian
+ROM01 address (`D12F/D130=0x1177`,
+`D13D/D13E=0x156F`); `ram:D081` entries
+`0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
+(NULL-terminated); no static xref by double
+indirection — manual DATA xref `ROM01:06EF` →
+`ram:D081` added; plates at `ROM01:06D3`,
+`ram:D081`, `ram:D12F` (Ghidra saved); residual
+OPEN is only the witnessed `D7` stub-patch
+(DIP/COM);
 `4d86`→`Session_Obj_BuildTextBuf1`,
 `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with
