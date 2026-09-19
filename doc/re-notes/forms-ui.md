@@ -34,9 +34,9 @@ whatever list `ec49` currently points at.
 
 - **`Form_InitFromTemplates`** (ROM01:060b, was `Ui_CommSetupFormInit`)
   builds a form from three template descriptors (ROM01:758b, 75eb, 760d)
-  via `TemplateBuilder`, into dest buffers `ec7e`/`ec97`/`ec98`, then
+  via `Form_Builder`, into dest buffers `ec7e`/`ec97`/`ec98`, then
   zeroes the per-field state cells. It is generic, not comm-setup-specific.
-- **`TemplateBuilder`** (ROM01:0271) walks a template descriptor: reads
+- **`Form_Builder`** (ROM01:0271) walks a template descriptor: reads
   per-record data, and dispatches each record through a function pointer
   (`d828`). The template embeds at `+0x0c` a pointer to the field's choice
   table.
@@ -69,7 +69,7 @@ whatever list `ec49` currently points at.
 
 ## Screen transition dispatch
 
-`Ui_FormExitDispatchNext` (ROM01:06d3) is the form-transition loop. It
+`UI_FormExitDispatchNext` (ROM01:06d3) is the form-transition loop. It
 pre-increments a walk index at `d2de`, then walks the 5-entry table at
 `ram:D081` — now `g_apScreenHandlerTables` (was `g_tblFieldTypeRecPtrs`):
 **five per-screen handler-table pointers indexed by the active-screen
@@ -79,10 +79,10 @@ screen's handler table, then `word @ P` is the handler bank-called via
 `ram:D0F0`**, the Load/Run loader's handler table — the path through which
 `ROM01:0A67-10CE` (`Program_PrepareLoadGeometry`, `Program_LoadByName`,
 `Program_LoadDipOrCom`, `Program_RunByName`, `Program_GenerateBlockChecksums`,
-`Program_VerifyBlockChecksums`, `RunLoadedProgram` at `ram:D7F0`, etc.) is
+`Program_VerifyBlockChecksums`, `Program_LoadedProgram` at `ram:D7F0`, etc.) is
 reached. When the index wraps it rebuilds the comm form
 (`Form_InitFromTemplates`, `060b`) and posts descriptors `0x7715`/`0x7751`
-via `Ui_PostDescriptor` (`6633`). Module B (`ROM01:7BCB` → `ram:D081`,
+via `UI_PostDescriptor` (`6633`). Module B (`ROM01:7BCB` → `ram:D081`,
 586 bytes) is therefore *not* purely strings: it opens with this pointer
 table (and the error-code table near `d0e0`) before the banner
 `"PARCON 1000\n*** Error ***"` and the program-load error strings.
@@ -92,7 +92,7 @@ superseded.
 ## Menus
 
 Menus are a separate structure, rendered by a menu handler (not
-`TemplateBuilder`). The Main Menu table (`tbl_menu_main`, ROM01:772d) is a
+`Form_Builder`). The Main Menu table (`tbl_menu_main`, ROM01:772d) is a
 title record `{label ptr, attr}` followed by 4 `MenuItem` records
 `{key: u8, label: ptr, attr: u16}`:
 
@@ -126,16 +126,22 @@ entry point.)
 
 ## Field validation
 
-Typed input is validated per field type by four field-type validators
-(ROM00:582a / 5834 / 583e / 5848) plus `Session_FieldParseValidate`
+Typed input is validated by `Session_FieldParseValidate`
 (ROM01:612a, numeric parse against the limit table `e34f` indexed by
-`e88f`). Validators **return HL=0 on rejection** — they do not raise an
-error banner themselves; the caller handles the display. "Invalid
-reply"/"Invalid data stream" are session *protocol* errors, not field
-validation messages, and "Invalid command" is an unreferenced (dead) string.
-The protocol errors are dispatched by `Session_ProtocolErrorDispatch`
-(ROM00:4f37): selectors 0x09→"Not available" (8102), 0x0A→"Invalid data
-stream" (8101).
+`e88f`). It **returns HL=0 on rejection** — it does not raise an error
+banner itself; the caller handles the display. The four ROM00 slots
+previously described as field-type validators are session TX paths, not
+field validators (CONFIRMED, byte-verified): `ROM00:582A`
+`Session_CoroTxFrameAndRx` is a coroutine trampoline to `ROM00:60CC`
+(`Session_TxFrameAndRx`), `ROM00:5834` `Session_CoroTxFrame33` to
+`ROM00:60D6` (`Session_TxFrame33Transaction`), `ROM00:583E`
+`Session_CoroReturnZero` to `ROM00:6120` (`Session_ReturnZero`), and
+`ROM00:5848` `Session_TxRecordData` forwards two stack arguments to
+`ROM00:6181`. "Invalid reply"/"Invalid data stream" are session
+*protocol* errors, not field validation messages, and "Invalid command"
+is an unreferenced (dead) string. The protocol errors are dispatched by
+`Session_ProtocolErrorDispatch` (ROM00:4f37): selectors 0x09→"Not
+available" (8102), 0x0A→"Invalid data stream" (8101).
 
 ## The device list
 
@@ -154,7 +160,7 @@ choice list for the device-selector (the `From` field):
 ## Field-edit key dispatch
 
 The form's key input is read by `Ui_FieldEditPump` (ROM01:1fb5) and
-dispatched through `InlineTableDispatch` at ROM01:1f96, whose inline table
+dispatched through `Kernel_TableDispatch` at ROM01:1f96, whose inline table
 (1f99) maps:
 
 | case | key | handler |
@@ -201,7 +207,7 @@ editor has a separate path below.
 > **Disassembly note.** `115f` had been decoded one byte late as an
 > undefined byte plus `NOP / NOP / RET`, because the dispatcher reaches its
 > handlers through `JP (HL)` and nothing referenced the true entry. See
-> [InlineTableDispatch](inline-dispatch.md#misaligned-handlers); the repair
+> [Kernel_TableDispatch](inline-dispatch.md#misaligned-handlers); the repair
 > is automated in `analysis/ghidra/DefineInlineTables.java`.
 
 ## Keyboard keymap
@@ -254,8 +260,8 @@ one-key page-2 override; held Sun follows the separate direct-chord path.
 
 ## Error screens
 
-Errors are rendered by `SessionStateBuild` (ROM00:4351) through
-`SessionMessageBox` (ROM00:4296). The on-screen format (major error
+Errors are rendered by `Session_StateBuild` (ROM00:4351) through
+`Session_MessageBox` (ROM00:4296). The on-screen format (major error
 qualifier + `(RCV1/RCV2)` status pair + message) is documented in
 [commstar — error/status screen format](../protocol/commstar.md) and
 summarised for operators in the [user guide](../manual/user-guide.md).

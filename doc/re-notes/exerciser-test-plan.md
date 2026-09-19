@@ -1,8 +1,9 @@
 # ROM exerciser — test plan
 
-## Current burn: startup diagnostic `2726`
+## Current burn: startup diagnostic `2609`
 
-SHA-256: `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
+SHA-256: `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`
+(32768 bytes, 716 changed bytes vs stock).
 The validated setup and `A4h` contrast are retained. After ENTER, stages
 `01` (probe), `02` (top-V24 select/baseline), `03` (frame open), `04`
 (preamble), `05` (baseline records) appear at the upper left.
@@ -24,7 +25,7 @@ version-`0Dh` experiments, not the current sweep coverage.
 > run produced only the expected brief power-up bleep but remained uniformly
 > black; its transposed keypad coordinates made YES/NO ineffective. The
 > verified `1E3E` run produced both beeps and a uniformly clear LCD, confirming
-> that stock `LcdInit` returned. Correction (2026-09-10): contrast polarity
+> that stock `Lcd_Init` returned. Correction (2026-09-10): contrast polarity
 > was not isolated from concurrent startup timing and ordering changes.
 > The owner reports that `27E8` displays `CONTRASTC0`, but keys remain
 > ineffective. Do not reburn it unchanged; keypad diagnosis precedes IR tests.
@@ -52,7 +53,7 @@ state defeat a universal final-light-off rule. See
 [IR wire protocol](ir-wire-protocol.md).
 
 That work is exhausted because the deciding variable is inside the latch
-boundary. `LinkBlockTx` arms the handshake at `ROM00:32CC`; the same no-payload
+boundary. `Link_BlockTx` arms the handshake at `ROM00:32CC`; the same no-payload
 `0EEh` result can follow either the `LINK_STATUS` bit-6-clear wait at
 `ROM00:32F3` or a per-byte `LINK_STATUS` bit-7-set wait beginning at
 `ROM00:3318`. No optical probe can distinguish those status paths. This run
@@ -77,7 +78,7 @@ the arm itself makes `LINK_STATUS` bit 6 set is one of the measurements.
 **Q3 is the one no external experiment could have asked.** The firmware's
 receive path is interrupt-driven — IRQ source 2 is the link controller, and
 its handler at `ROM00:31B6` tests `LINK_STATUS` bit 4 and enters
-`LinkBlockRx` ([interrupt map](../reference/memory-map.md#link-interrupt)).
+`Link_BlockRx` ([interrupt map](../reference/memory-map.md#link-interrupt)).
 A controller that signals without holding a bit long enough for a poll to
 catch would be invisible to every previous run and to the polled fields here.
 
@@ -116,7 +117,7 @@ moving that correlated bit into bit 1, then forces bit 1 to the selected port.
 The seven remaining bits therefore enumerate all 128 combinations.
 
 **The instrument is more patient than the firmware.** A frame holds the arm for
-well over 0.5 s where `LinkBlockTx` allows 9.92 ms for `LINK_STATUS` bit 6 to
+well over 0.5 s where `Link_BlockTx` allows 9.92 ms for `LINK_STATUS` bit 6 to
 clear. A late clear would explain that specific timeout path; the subsequent
 `LINK_STATUS` bit-7 payload gate remains a separate requirement.
 
@@ -125,10 +126,10 @@ clear. A late clear would explain that specific timeout path; the subsequent
 0. **Verify the chips.** Read both out, sum the bytes, compare against `ACF8`
    and `2E12`, then `cmp` against `micronic/`. Do this while the case is open;
    it is the check the labels cannot do.
-1. **Burn `micron1_exerciser.bin` only if sum16 is `27E8` and SHA-256 is
-   `f02073d9743faab7b69c1ff85bdabc018a328000507ecf51574bba95e03814ca`.**
-   Label it `27E8`; `ROM01` is untouched. Do not reuse the `1225`, `2692` or
-   `1E3E` parts.
+1. **Burn `micron1_exerciser.bin` only if sum16 is `2609` and SHA-256 is
+   `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`.**
+   Label it `2609`; `ROM01` is untouched. Do not reuse the `1225`, `2692`,
+   `1E3E`, or `2726` parts.
 2. **Set contrast before configuring the Arduino.** After the brief power-up
    bleep and approximately 0.6 s startup delay, the LCD should show
    `CONTRASTC0`. NO decrements `g_bLcdContrast` and port `46h` by two toward the
@@ -180,7 +181,7 @@ port. Read them in this order.
 | contrast text frozen but keys inert | silent | keypad scanner or matrix mapping failed; IR has not started |
 | contrast text disappears after ENTER | check wire | ENTER was accepted and link startup began |
 
-### Precomputed error rows (`2726`)
+### Precomputed error rows (`2609`)
 
 A terminal timeout homes the cursor and overwrites the whole first row with ten
 hex digits and ten blanks:
@@ -191,8 +192,8 @@ EE SS RR CC NN
 
 `EE` is the error marker; `SS` the startup stage; `RR` a **fresh** port-`4Bh`
 (`LINK_STATUS`) sample taken on entry (`exerciser.asm:802`), not the last
-polling sample; `CC` the port-`4Ah` (`LINK_CTRL`) shadow, which this
-baseline-only build always leaves at `03h`; and `NN` the count of completed
+polling sample; `CC` the port-`4Ah` (`LINK_CTRL`) shadow (`03h` before the
+transmit arm, `13h` after — see below); and `NN` the count of completed
 port-`4Dh` (`LINK_TXD`) data writes, modulo 256. Read `SS` first, then `RR`:
 that is the measurement.
 
@@ -204,14 +205,21 @@ wait, so a **frozen `01`/`02` with no `EE` is a hang**, not a timeout; report
 the number as-is. CONFIRMED: `failure` unconditionally writes `0xEE` first
 (`exerciser.asm:806`), and `dead: jp failure` (`:331`) is the only route in.
 
+`CC` is `03h` before the arm and `13h` after (CONFIRMED). The arm `arm_tx` at
+`0x0250` (replicating stock `ROM00:32CC-32EE`: raise `LINK_CTRL` bit 5, then
+bit 4, settle 32 iterations, drop bit 5 leaving bit 4 SET) runs once the first
+preamble byte `A5` has been written, so: stage `03` rows and stage `04` rows
+with `NN=00` show `CC=03h`; stage `04` rows with `NN>=01` and all stage `05`
+rows show `CC=13h` (CTRL_SHADOW `13h` vs `03h` baseline).
+
 | Failure | `SS` | `CC` | `NN` | Row shape | `RR` reading and diagnosis | Next action |
 |---|---|---|---|---|---|---|
-| `LinkPresent` failed all 16 stock attempts; frame never opened | `03` | `03` | `00` | `EE03RR0300` | bit 7 clear: TXRDY never asserted through ~16x9.7 ms. bit 7 set: it appeared just after the bound | No command and no data byte reached the wire (`LinkPresent` writes `81h` only on success). Check controller presence/power; compare with the stock ROM |
-| First preamble byte cannot be sent | `04` | `03` | `00` | `EE04RR0300` | bit 7 clear: TXRDY still not asserted. bit 7 set: late ready | Probe/select/open passed but the first data write cannot complete |
-| Preamble stalls mid-stream | `04` | `03` | `01`-`04` | `EE04RR03NN` | bit 7 clear: stalled at this byte. bit 4/0 set: inbound activity while transmitting | TX worked for `NN` bytes then stopped: intermittent ready, or a peer reply |
-| Record frame cannot start | `05` | `03` | `05` | `EE05RR0305` | bit 7 clear: the frame flag or the first record field timed out | Preamble complete. `putflag` is uncounted (`exerciser.asm:467-471`), so `NN=05` does not distinguish a missing frame flag from a missing `COUNT` field |
-| Inside a record | `05` | `03` | `06`-`15` | `EE05RR03NN` | bit 7 clear: stalled at this field | Failing field is `(NN-5) mod 11`, 0-based: 0 `COUNT`, 1 `OR`, 2 `AND`, 3 `RXD`, 4 `SIDE`, 5 `CTRL`, 6 `WD`, 7 `KEY`, 8 `IRQN`, 9 `ISTAT`, 10 `ISRC` |
-| After one or more complete records | `05` | `03` | `5+11R` | `EE05RR0310` at `R=1` | bit 7 clear: the next record's first field, or a frame flag, timed out | Completed records `R = ((NN-5) x 163) mod 256`, since `163 = 11^-1 mod 256` |
+| `Link_Present` failed all 16 stock attempts; frame never opened | `03` | `03` | `00` | `EE03RR0300` | bit 7 clear: TXRDY never asserted through ~16x9.7 ms. bit 7 set: it appeared just after the bound | No command and no data byte reached the wire (`Link_Present` writes `81h` only on success). Check controller presence/power; compare with the stock ROM |
+| First preamble byte cannot be sent | `04` | `03` | `00` | `EE04RR0300` | bit 7 clear: TXRDY still not asserted. bit 7 set: late ready | Probe/select/open passed but the first data write cannot complete (arm has not yet run) |
+| Preamble stalls mid-stream | `04` | `13` | `01`-`04` | `EE04RR13NN` | bit 7 clear: stalled at this byte. bit 4/0 set: inbound activity while transmitting | TX worked for `NN` bytes then stopped: intermittent ready, or a peer reply |
+| Record frame cannot start | `05` | `13` | `05` | `EE05RR1305` | bit 7 clear: the frame flag or the first record field timed out | Preamble complete. `putflag` is uncounted (`exerciser.asm:467-471`), so `NN=05` does not distinguish a missing frame flag from a missing `COUNT` field |
+| Inside a record | `05` | `13` | `06`-`15` | `EE05RR13NN` | bit 7 clear: stalled at this field | Failing field is `(NN-5) mod 11`, 0-based: 0 `COUNT`, 1 `OR`, 2 `AND`, 3 `RXD`, 4 `SIDE`, 5 `CTRL`, 6 `WD`, 7 `KEY`, 8 `IRQN`, 9 `ISTAT`, 10 `ISRC` |
+| After one or more complete records | `05` | `13` | `5+11R` | `EE05RR1310` at `R=1` | bit 7 clear: the next record's first field, or a frame flag, timed out | Completed records `R = ((NN-5) x 163) mod 256`, since `163 = 11^-1 mod 256` |
 
 The regression test asserts these shapes with a simulated controller, e.g.
 `EE03400300` (never ready), `EE04010302` (mid-preamble), `EE05000310` (first
@@ -229,7 +237,7 @@ decisive bits by hand:
 scope capture are the authority on whether a bit was stuck or merely late. One
 row cannot establish a stuck bit on its own.
 
-The `1E3E` run's second beep already proved that stock `LcdInit` returns, so
+The `1E3E` run's second beep already proved that stock `Lcd_Init` returns, so
 the new candidate spends that ROM space on an interactive screen instead.
 
 Davison's 1998 monitor uses the same LCD ports and overlapping controller
@@ -333,7 +341,7 @@ everything since `conn3` has been mis-aimed.
   change it for this run.
 * Capturing less than one full cycle (a few seconds), so a phase is missing.
 * Treating the preamble's `PSTAT` as a controller identity: it is
-  `LINK_STATUS` immediately after `LinkProbe`, i.e. the reset state, and is
+  `LINK_STATUS` immediately after `Link_Probe`, i.e. the reset state, and is
   useful only as the reference the phase readings are compared against.
 * Reading `IRQN` as an interrupt count. It is a count of *records in which an
   interrupt fired*, capped at one per record by design, and it counts keypad
@@ -344,6 +352,80 @@ everything since `conn3` has been mis-aimed.
   its `OR`/`AND` window. Against a 122 µs wire cell, and at most once per
   record, that cannot hide an event — but it is why `ISTAT` is sampled in the
   handler rather than inferred from the polled accumulators.
+
+## IR handshake investigation plan (Phases 0–3)
+
+This plan records the **already-established** receive-path findings and the
+next hardware/software steps without new inference. It is the reference for the
+open questions described in
+[IR wire protocol — The receive path and the awaited status bit](ir-wire-protocol.md#the-receive-path-and-the-awaited-status-bit).
+
+### Phase 0 — hardware gate (already prepared)
+
+* **Burn build `2609`**, Arduino `LISTEN_ONLY` + `RECORD_READOUT`, press ENTER,
+  decode with `decode_records.py`.
+* Holds the `ROM00:32CC`-`ROM00:32EE` arm (raise `LINK_CTRL` bit 5, then bit 4,
+  32-iteration settle ~0.11 ms, drop bit 5 leaving bit 4 SET) and samples
+  `LINK_STATUS` (`4Bh`) as per-record `OR`/`AND` plus `ISRC` bit 2.
+* **Witness variant as independent Phase-0 read (CONFIRMED):** `micron1_witness.bin` (`2E3E`, built with `build.py --witness`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0`) does the same stock opening (Link_Probe, top-V24 port select, control setup), writes the flag via Link_Present, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then **raises LINK_CTRL 6/7** (the stock 34BD/2FAE action; whether 6/7 gates the receive path, only its interrupt, or another function is Provisional) (`LINK_CTRL` bits 6/7 via `ctrl_or 40h` then `ctrl_or 80h`, doing what `ROM00:34BD`/`ROM00:2FAE` does — CONFIRMED fix; every earlier exerciser build left them clear so the link RX interrupt was never enabled by the exerciser (consequence Provisional)) and watches the receive path. It then never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` again, so nothing it sends can disturb the receive path (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, arm values `23h`/`33h`/`13h`, enables `53h`/`0D3h`, then silence). Its LCD row is `W` `OR AND ISRC IRQN ARMD HB` — `OR`/`AND` are `LINK_STATUS` over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` heartbeat; reset only by power-cycling. The default `2609` record-stream build stays byte-identical when the witness code is stripped; both live in the same reclaimed `scr` region at `0250-02FD` (CONFIRMED). The witness also serves as an independent Phase-0 read for `LINK_STATUS` bit 6 with no peer.
+* **Discriminator:**
+  * If `LINK_STATUS` bit 6 sets then **clears with no peer**, it is a
+    **transmit-complete** condition — go to Phase 3.
+  * If it **stays set with no peer**, the **peer-handshake** reading survives —
+    go to Phase 2.
+
+### Phase 1 — offline, partly done
+
+Finish mapping the receive chain (`ROM00:2FBD`, `LinkRxDispatcher` at
+`ROM00:3010`/`3028`/`3056`, `ROM00:30DC` `Link_ValidateFrameHeader`) and where
+`LINK_CTRL` bits 6/7 are raised/lowered relative to the transmit handshake
+(`ROM00:34BD` / `ROM00:34D2` pair; `Link_BlockTx` clears at `ROM00:327D`; IRQ
+poll re-arms at `ROM00:31C2`). Records the window ordering from static code.
+
+### Phase 2 — hardware: receive-convention sweep
+
+Hold the arm, then **stop transmitting** and sample `LINK_STATUS` (`OR`/`AND`)
+and the link IRQ source while the Arduino sends return-path stimuli sweeping:
+
+* **(a) flag sense:** `1000_0001` vs `0111_1110`;
+* **(b) data polarity** (inverted vs non-inverted);
+* **(c) data/clock phase** sign and magnitude (`+/-1/4` and `+/-1/8` cell);
+* **(d) delivery:** continuous idling flags vs a burst timed after the
+  handheld's burst;
+* **(e) content:** bare flag → flag+address → flag+prelude `03h`.
+
+**Witness + Arduino `RX_SWEEP` pairing (CONFIRMED code, syntax-checked with host stub, no AVR toolchain in CI):** the witness ROM (`2E3E`, `build.py --witness`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0`, enables `LINK_CTRL` 6/7 before listening) is the Phase-0/Phase-2 instrument that removes the record-stream build's TX confound — it stops transmitting after the arm, raises LINK_CTRL 6/7 (Provisional RX-enable), and reports `LINK_STATUS` `OR`/`AND` (current ~0.1 s window, live) and sticky `ISRC` on the LCD (`W` `OR AND ISRC IRQN ARMD HB`). The Arduino sketch `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` gains `RX_SWEEP` (set `RX_SWEEP 1`, all other mode flags `0`). It answers each handheld burst with one combination of: flag sense `{0x81, 0x7E}`; data polarity `{normal, complemented}`; data-to-clock phase `{-4,-2,0,+2,+4}` eighths of a cell (transmit convention is a −2/8-cell data lead); content `{flag only, flag+03h, flag+03h+legal body+flag}`. Reply ~3 ms after the handheld burst; one combination advances per burst and the parameters are printed. It does NOT score itself: the controller's reaction is read from the witness ROM (`LINK_STATUS` `OR`/`AND`, `ISRC`).
+
+**Timing guidance — CONFIRMED (emulator):** the gating is temporal. The
+firmware holds LINK_CTRL 6/7 clear for the ~10–12 ms `Link_BlockTx` transaction (620 × 59 T
+~ 9.92 ms at 3.6864 MHz, `ROM00:32F0`, within the ~93.75 ms retry interval)
+and raises them by `ROM00:34BD` at `ROM00:2FAE` after it. A return-path
+stimulus timed after that ~10 ms TX window is the safe choice under either reading of 6/7; timing a reply to the handheld's burst alone (∼1–9 ms) lands
+inside the window in which the firmware holds LINK_CTRL 6/7 clear; whether that prevents reception depends on the Provisional 6/7 reading. 65 exerciser tests pass.
+
+**Discriminator:** any of `LINK_STATUS` bit 6 **clear**, `LINK_STATUS` bit 4
+**set**, or **IRQ source 2** asserting identifies the receive convention.
+This answers open questions **C** and **D** and, if bit 6 clears, **A/B**.
+
+### Phase 3 — redo the `conn`-style reply with a completed handshake
+
+With a completed transmit handshake (Phase 0 outcome) and — if Phase 2 finds one
+— the correct return convention, redo the `conn`-style reply and hunt for the
+post-handshake payload. `micronic.peer.CommstarPeer` already covers the session
+layer above that boundary. This answers **B**.
+
+### Offline work available (no hardware)
+
+1. **Static receive-chain map (Phase 1)** — partly done above; finish the
+   `2FBD`/`LinkRxDispatcher`/`30DC` walk and the `LINK_CTRL` 6/7 raise/clear
+   ordering relative to the transmit handshake.
+2. **Emulator traces of the firmware's TX/RX enable ordering** (`analysis/boot_hw.py`)
+   to confirm the window ordering; note the controller model is synthetic, so
+   this validates **control flow only**, not electrical timing.
+3. **"RX witness" exerciser variant (CONFIRMED, done)** — `micron1_witness.bin` (`2E3E`, `build.py --witness`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0`) performs the transmit opening+arm once, **enables `LINK_CTRL` 6/7** (`ctrl_or 40h`/`80h` — what `34BD`/`2FAE` does; earlier builds left them clear so RX IRQ could never fire), then stops transmitting and samples `LINK_STATUS` (`OR`/`AND`) and the link IRQ source over a long window, reporting on the **LCD** (`W` `OR AND ISRC IRQN ARMD HB`, `OR`/`AND` per-window live, `ISRC`/`IRQN` sticky, `ARMD` post-arm sample) — the IR channel cannot be used while listening. Emulator-validatable; no IR emission during the listen window except the enables (CONFIRMED: one `0x81`/`0xA5` + arm `23h`/`33h`/`13h` + `53h`/`0D3h`, then silence). Default `2609` stays byte-identical.
+4. **Arduino Phase-2 receive-convention sweep modes (CONFIRMED, done)** — `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` now has `RX_SWEEP` (flag sense `{0x81,0x7E}`, data polarity `{normal, complemented}`, phase `{-4,-2,0,+2,+4}` eighths, content `{flag only, flag+03h, flag+03h+legal body+flag}`, ~3 ms reply, one combination per burst, parameters printed; syntax-checked with host stub, no AVR toolchain in CI).
+5. **Write the Phase-2 bench procedure** (wiring, sweep order, capture length,
+   decode steps, and the per-record `OR`/`AND`/`ISRC` decision table).
 
 ## After this run
 

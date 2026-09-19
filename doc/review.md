@@ -27,7 +27,7 @@ emulator as an evidence and regression tool; it does not yet provide the
 end-to-end developer deployment or live-link workflow identified below.
 
 The 4Ah-4Fh Commstar controller path is now byte-verified in both directions.
-`LinkBlockTx` and `LinkBlockRx` have documented latch ordering, status-bit
+`Link_BlockTx` and `Link_BlockRx` have documented latch ordering, status-bit
 branches, delays, and timeout bounds; the corresponding Ghidra plates and
 comments were updated. Earlier electrical labels such as `TX-ready`, `ACK`,
 and `clock` were deliberately withdrawn: they remain **SUSPECTED** pending a
@@ -53,7 +53,7 @@ The following review observations are **superseded** by the current
 reviewer-approved BDOS pass (no new reverse-engineering; applied existing
 findings):
 
-* **fn `1Ah` as stub / "no contracts":** `1Ah` (`BdosSetDmaAddress`,
+* **fn `1Ah` as stub / "no contracts":** `1Ah` (`Bdos_SetDmaAddress`,
   `ROM00:0CEC`) is an **implemented set-DMA** (stores `DE`), not a stub; its
   downstream record-I/O ABI remains incomplete. Earlier prose that grouped
   `1Ah` with inert stubs is superseded.

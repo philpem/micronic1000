@@ -134,7 +134,7 @@ overruns into the device-table pointer at `F978`.
 
 `ROM00:110C` computes `((FBC5 >> 2) + 5) & 1Fh`, and `ROM00:320B` indexes
 `FE83 + index − 1`. Measured `FBC5 = 04` gives `FE83+5` = wire `2Bh`, which
-`LinkCommandLookup` routes to `ExtBusArm`.
+`Link_CommandLookup` routes to `ExtBus_BusArm`.
 
 ### `BDOS 03h` framing
 
@@ -148,7 +148,7 @@ execution**: a driven `A1` scan returns `1B 02 41 31`.
   The wand model gates on those PCs so the presence probe at `12A3` and the
   idle polls at `1302`/`1317`/`132E`/`1370` cannot consume samples.
 * A synthetic direct capture must stop at `ROM00:30BD`: `CALL 30BD` never
-  returns, because `LinkResetSession` sets `ram:FBC9` bit 0 and tail-jumps
+  returns, because `Link_ResetSession` sets `ram:FBC9` bit 0 and tail-jumps
   through `(ram:FDD2)`, the device-completion callback. By then the whole
   record is written.
 * Acceptance evidence for the wand: `--barcode-scan A1` feeds 39 elements

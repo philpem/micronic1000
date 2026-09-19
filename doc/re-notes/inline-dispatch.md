@@ -1,6 +1,6 @@
-# InlineTableDispatch: inline switch tables
+# Kernel_TableDispatch: inline switch tables
 
-`InlineTableDispatch` (`ram:E0B2`) is a switch helper whose jump table is
+`Kernel_TableDispatch` (`ram:E0B2`) is a switch helper whose jump table is
 stored **inline, immediately after the CALL** rather than in a separate data
 block. Every call site therefore carries its own table, and Ghidra renders
 those bytes as stray data unless they are decoded deliberately. This page
@@ -29,6 +29,69 @@ CALL E0B2
   Treat the bytes after the table as unreachable from this call.
 * **Clobbers:** `AF`, `DE`, `HL`. `BC` is preserved (`PUSH BC` at `E0B4`,
   `POP BC` at `E0D7`).
+
+## Structural treatment — hybrid label model (CONFIRMED, standard)
+
+**CONFIRMED standard (2026-09-18).** An inline-switch dispatch
+(`CALL ram:e0b2` `Kernel_TableDispatch` + inline table + `JP(HL)`)
+case is a **basic block of the owning routine**, kept as **one
+function**; navigation is restored with **labels** (not functions)
+at each case target and at the shared continuation. Rationale: the
+case blocks have no prologue and use the parent's frame, so naming
+them as functions asserts a false ABI; labels give the greppable
+name without that.
+
+ROM01 audit complete 2026-09-18 — **14 sites = all ROM01
+`CALL ram:e0b2` sites**: Half A (7 owners, 27 case functions
+merged + labelled: `Program_LoadDipOrCom 0CE7-0FE5`,
+`Field_ResetCounterDispatch 10CF-1176`,
+`Session_AdvanceStageOnZero 14CF-153D`,
+`UI_FieldEditGetChoice 1D80-1FF2`, `Session_RxDispatch 2880-28FD`,
+`Session_ConnectCheck 2B43-2C4E`, `Session_CmdWalkTable 2C4F-2CD2`;
+40 labels + 37 EOL comments) and Half B (7 already-merged sites
+`3b53`/`45d1`/`4a2d`/`581f`/`5991`/`5e2e`/`66ec`; 33 labels, no
+merges; `5e41` `CmdHandlerCount` → `FieldFormat_Default`). Guarded
+total 1028 → 1001 internal (1002 guarded); all owners byte-verified
+(`11 00 00 CD 37 D8` prologue → final `C9`). The superseded
+`257f` handlers (`Field_StepMode1 2569`, `Field_StepMode2 2572`,
+`Field_ApplyStepMode 2593`) are blocks of the routine at `254b`
+→ `JP 257c` → `2593` → `RET 2658` and were absorbed/labelled in
+Half A. Full per-target maps in
+`/tmp/opencode/rom01_dispatch_auditA.md` and
+`/tmp/opencode/rom01_dispatch_auditB.md`.
+
+ROM00 audit complete 2026-09-18 — **25 sites = all ROM00
+`CALL ram:e0b2` sites, hybrid model applied (CONFIRMED):**
+23 routines extended (sites 8+9 share `Session_CmdCommand
+4ae0-4d28`, sites 17+18 share `Session_CmdEndTx 52a5-5427`):
+`Session_TxAppendString 3ede-3f1f`, `Session_CoroJumpTx 3f20-4009`,
+`Session_InitCommsCmd 4563-46e8`, `Session_InitState 46e9-47f5`,
+`Session_LogonMode0Or2Callback 47f6-48be`,
+`Session_CmdAnswer 48bf-4973`, `Session_CmdManual 4974-4a24`,
+`Session_CmdDropLine 4a25-4adf`, `Session_CmdCommand 4ae0-4d28`,
+`Session_CmdShutDown 4d75-4e6c`, `Session_CmdRxRec 4e6d-4f59`,
+`Session_ReceiveProgram 4f5a-5033`,
+`Session_CmdBeginFile 5034-50ec`, `Session_CmdTxRec 50ed-5178`,
+`Session_CmdEndFile 5179-51eb`, `Session_CmdTxBlk 51ec-52a4`,
+`Session_CmdEndTx 52a5-5427`, `Session_CmdAbort 5469-54e4`,
+`Session_RxRecord 5542-5668`, `Session_GetParamE520 56e7-573c`,
+`Session_AnswerConnect 573d-578e`,
+`Session_ManualConnect 578f-5829`, `Session_RxByteLoop 59fb-5b57`,
+`Session_TxStringSender 5f58-606b`; ~89 case-block functions
+absorbed (12 from Deletion List + 77 interior blocks by prologue
+check; only `3f20` had `11 00 00 CD 37 D8` among interiors),
+~113 labels created; site-1 owner corrected to `3f20-4009`
+(`3ede` is separate `3ede-3f1f`, `3f20` carries external callers
+`5346`, `4c3a`, `ROM00::7dbe`, `ram:ed88`); residual ROM00
+`FUN_*` = 5 deferred (`2da5`, `4333`, `441b`, `44ed`, `450d`);
+guarded 1002 → 915 (−87; internal 1001 → 914, labels not loss).
+**Remaining (2026-09-18):** no `CALL ram:e0b2` site remains
+unaudited (ROM01 14, ROM00 25 both closed); `ROM01:757F-768E`
+now `undefined[272]`; 10 `FUN_*` were reduced to 4 (ROM00 1,
+ROM01 2, ram 1) by the tail pass — see
+`research/gap-analysis.md`. Coverage tail is the code-gap
+sweep with the corrected absorb-continuations model
+(see `research/gap-analysis.md`).
 
 ## Matching
 

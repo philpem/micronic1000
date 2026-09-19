@@ -71,9 +71,9 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `8000`-`D080` | 20609 | **Upper TPA** — the part of a loaded program's image above the bank window. Free after a program smaller than `0x7F00` loads. | LIKELY | `ROM00:7052` `21 81 D0 / 22 BD E3` = `LD HL,D081; LD (E3BD),HL` sets `g_pProgramLoadCeiling` = `D081`; COM limit `0xCF81` = `D081-0100` ([program formats](../reference/program-formats.md)). No disassembled instruction anywhere references `8006`-`D080`. |
 | `D081`-`D2CA` | 586 | Workstation module B (`g_apScreenHandlerTables`, `g_apLoadRunHandlers` at `D0F0`, `commstar_state_names` at `D0CF`) | CONFIRMED | boot chain `ROM01:7E23`: memcpy `7BCB → D081`, `0x24A` |
 | `D2CB`-`D480` | 438 | Module B workspace, zeroed at boot. Live cells: `D2DC` `g_formCtxW`, `D2DE` `g_formIdxW`, `D368`-`D36E` program-input globals, `D39B` `g_pProgramBlockDescriptor`, `D465` `g_wLogonModeEnableMask` | CONFIRMED | boot chain `ROM01:7E2B`: memset `D2CB..D480` |
-| `D481`-`D680` | 512 | **Stack of the running loaded program**, grows down from `D681` | CONFIRMED | `ram:D7FA` (`RunLoadedProgram`) `31 81 D6` = `LD SP,D681`, then `JP (HL)`; byte-verified at `ROM00:71A9`. Ghidra records 14 call-pushes landing at `ram:D67F`. |
-| `D681`-`D892` | 530 | DIPOS dispatch block: syscall dispatch, boot-chain walker, `RST 10h` cross-bank thunk, `CoroutineTaskSwitch` | CONFIRMED | `ROM00:3BAA` `21 30 70 / 11 81 D6 / 01 12 02 / ED B0 / C3 81 D6` — LDIR `ROM00:7030 → D681`, `0x212` bytes, then jump into it |
-| `D893`-`E0F3` | 2145 | Session module A (string/`RegFile` runtime library, `InlineTableDispatch` at `E0B2`) | CONFIRMED | boot chain `ROM00:7D74`: `01 00 CE 73 93 D8 61 08` = memcpy `73CE → D893`, `0x861` |
+| `D481`-`D680` | 512 | **Stack of the running loaded program**, grows down from `D681` | CONFIRMED | `ram:D7FA` (`Program_LoadedProgram`) `31 81 D6` = `LD SP,D681`, then `JP (HL)`; byte-verified at `ROM00:71A9`. Ghidra records 14 call-pushes landing at `ram:D67F`. |
+| `D681`-`D892` | 530 | DIPOS dispatch block: syscall dispatch, boot-chain walker, `RST 10h` cross-bank thunk, `Coroutine_Enter` (`ram:D837`, `CONFIRMED ram:D837-D857`) | CONFIRMED | `ROM00:3BAA` `21 30 70 / 11 81 D6 / 01 12 02 / ED B0 / C3 81 D6` — LDIR `ROM00:7030 → D681`, `0x212` bytes, then jump into it |
+| `D893`-`E0F3` | 2145 | Session module A (string/`RegFile` runtime library, `Kernel_TableDispatch` at `E0B2`) | CONFIRMED | boot chain `ROM00:7D74`: `01 00 CE 73 93 D8 61 08` = memcpy `73CE → D893`, `0x861` |
 | `E0F4`-`E103` | 16 | BDOS-call parameter page | CONFIRMED | boot chain `ROM00:7D58`: memcpy `7242 → E0F4`, 16 |
 | `E104`-`E22C` | 297 | Module A2 (auxiliary jump/handler block) | CONFIRMED | boot chain `ROM00:7D7C`: `01 00 2F 7C 04 E1 29 01` = memcpy `7C2F → E104`, **`0x129`** |
 | `E22D`-`E2F9` | 205 | Misc session config; `E22D` = `g_bSessionState` | CONFIRMED | boot chain `ROM00:7D66`: memcpy `7301 → E22D`, `0xCD` |
@@ -88,12 +88,12 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `E705`-`EC6C` | 1384 | Workstation/session state, zeroed at boot: `EC00` `workstation_state_page`, `EC41` `g_wEventWord`, `EC49` `g_pScreenDesc`, plus `E720`-`EBFB` link/session cells | CONFIRMED | boot chain `ROM01:7E1D`: memset `E705..EC6C` |
 | `EC6D`-`ED1B` | 175 | **Not written by any boot chain, but live at runtime**: `EC71` `g_acRequestedProgramName`, `EC97`/`EC98` logon indices, `EC99`/`ECA2`/`ECAB`/`ECB4` logon user/password/group/phone, `ECC9` `g_wProgramLoadState`, `ECCB` `g_acLoadedProgramName`, `ECD8`/`ECDA` program bank base/limit, `ECDC` program header, `ECEA` block descriptors | CONFIRMED | reads/writes from `ROM01:0A1D`, `0D54`, `0F90`, `0E05` and the `C-INIT-COMMS` string arguments |
 | `ED1C`-`F17F` | 1124 | Deferred-call / far-call stub arena: 281 × 4-byte `{RST10h, bank, target}` stubs, also used as UI vtable targets | CONFIRMED | fn=2 chain records in both banks; see [OS internals](os-diposb.md#queue-purpose-the-fn2-records) |
-| `F180`-`F68C` | 1293 | Resident kernel (BDOS gate, syscall envelopes, RST/NMI stubs, bank helpers) | CONFIRMED | `InstallKernelToRam` `ROM00:02FE`: `ROM00:369D → F180`. The copy loop is bounded by the *address* `F68D` (`ROM00:0308` `01 8D F6`), not by a length; `0x50D` is `F68D - F180`. A second entry at `ROM00:0318` loads a different, `0xB5`-byte bank-helper image from `ROM00:35E8` to the same base — see "the two spans that stayed empty". |
+| `F180`-`F68C` | 1293 | Resident kernel (BDOS gate, syscall envelopes, RST/NMI stubs, bank helpers) | CONFIRMED | `Kernel_KernelToRam` `ROM00:02FE`: `ROM00:369D → F180`. The copy loop is bounded by the *address* `F68D` (`ROM00:0308` `01 8D F6`), not by a length; `0x50D` is `F68D - F180`. A second entry at `ROM00:0318` loads a different, `0xB5`-byte bank-helper image from `ROM00:35E8` to the same base — see "the two spans that stayed empty". |
 | `F68D`-`F77F` | 243 | **Dead gap between the top of the resident kernel image and the port shadows.** No reference of any kind from either ROM or any RAM module, and no write from any of the five workloads driven under the emulator. It is *not* spare room in a round 1536-byte arena — that reading is **disproven** below. It is *not* stack headroom in practice either: the system stack's measured low-water mark is `F7EA`, 107 bytes above `F77F`. | CONFIRMED (unwritten across every driven workload) / OPEN (any use outside them) | `--watch-mem f68d:f77f` = 0 writes in all five runs; `--fill-mem f68d:f819` leaves everything below `F7EA` intact; see "the two spans that stayed empty" below |
 | `F780`-`F799` | 26 | I/O port shadows: `F780` p02, `F782` p02-cfg, `F784` p04, `F786` p07, `F78B` p2A, `F78D` p2C, `F791` `g_bBankShadowP47`, `F794` `g_bLinkCtrlShadow` | CONFIRMED | named, heavily read/written |
 | `F79A`-`F819` | 128 | **System stack**, grows down from `F81A` | CONFIRMED | `31 1A F8` = `LD SP,F81A` at `ROM00:0175`, `01A6`, `01D4`, `024D`; 54 call-pushes recorded at `ram:F818` |
 | `F81A`-`F8B7` | 158 | System variables: `F81C` `g_bWarmbootSig`, `F81D` `g_bBootmodeFlag`, `F81E`-`F82F`, `F8AE`-`F8B6` RAM-disk geometry (`F8B0`=`0100`, `F8B6`=`8000`, set at `ROM00:05A1`) | CONFIRMED | `ROM00:05A1`-`05BB` |
-| `F8B8`-`F937` | 128 | **BDOS directory swap buffer** | CONFIRMED | `ram:F535` `2A A3 FF / 11 B8 F8 / EB / 01 80 00` = `LD HL,(FFA3); LD DE,F8B8; EX DE,HL; LD BC,80h; CALL KernMemCopy` |
+| `F8B8`-`F937` | 128 | **BDOS directory swap buffer** | CONFIRMED | `ram:F535` `2A A3 FF / 11 B8 F8 / EB / 01 80 00` = `LD HL,(FFA3); LD DE,F8B8; EX DE,HL; LD BC,80h; CALL Kernel_MemCopy` |
 | `F938`-`F9B3` | 124 | System/extension variables: `F958` `g_abExtResultEnv`, `F95C` `g_wExtResultCount`, `F95E` `g_abExtResultData`, `F99A` `g_abRtcAlarmRecord`, `F9A2` `g_abRtcTimeRecord` | CONFIRMED | named, referenced |
 | `F9B4` | 1 | Barcode edge-sample count | CONFIRMED | `ROM00:1409` `LD (F9B4),A` (A = capped sample count, `CP 80h` at `140F`) |
 | `F9B5`-`FBB4` | 512 | **Barcode-pen edge-timing capture buffer** — filled by `PUSH` from `SP=FBB5` downward, then reversed in place | CONFIRMED | `ROM00:13BB` `ED 73 BD FB` save SP; `13BF` `31 B5 FB` `LD SP,FBB5`; `1401` `PUSH HL` per edge; `1404` restore; `1415` `DD 21 B5 F9` `LD IX,F9B5`; `1419` `FD 21 B3 FB` `LD IY,FBB3` |
@@ -110,11 +110,11 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `FEA3`-`FEAF` | 13 | Boot/sizing variables: `FEA7`/`FEA8` bank range, `FEA9`/`FEAA` page counts, `FEAB` RAM-size word (`FEA9`×`20h`), `FEAF` `g_bRamBankBitmap`. Owner-supplied: the user-entered serial number lives in this area. | CONFIRMED (cells) / LIKELY (serial) | `ROM00:2739` `LD (FEAB),HL`, `2598`/`25B5` `LD (FEAF),A`; serial per AGENTS.md owner statement |
 | `FEB0`-`FEEF` | 64 | **Per-bank RAM-presence bitmap**, one byte per bank, banks `01`-`40` | CONFIRMED | `ROM00:267F` `21 B0 FE / 36 00`; `26C7` `78 FE 41 28 17 23 36 00` (`INC HL; LD (HL),0` per bank until `B==41h`); `26E3` `21 B0 FE / 06 3F` rescans 63 entries |
 | `FEF0`-`FEFE` | 15 | Banked-call envelope save area (`FEF0`, `FEF6`, `FEF8`-`FEFE`) | CONFIRMED | `ram:F382` `LD (FEF6),HL`, `ram:F3E4` `bcret_load_fefe` |
-| `FEFF`-`FF7E` | 128 | **BDOS sector bounce buffer** | CONFIRMED | `ram:F517` and `F52A` `11 FF FE` + `01 80 00` = `LD DE,FEFF; LD BC,80h; CALL KernMemCopy` |
+| `FEFF`-`FF7E` | 128 | **BDOS sector bounce buffer** | CONFIRMED | `ram:F517` and `F52A` `11 FF FE` + `01 80 00` = `LD DE,FEFF; LD BC,80h; CALL Kernel_MemCopy` |
 | `FF7F`-`FFA2` | 36 | **BDOS FCB/directory bounce buffer** | CONFIRMED | `ram:F4F4` `21 7F FF` and `F50B` `11 7F FF`, each with `01 24 00` (`BC=24h`) |
 | `FFA3`-`FFA4` | 2 | DMA / transfer address (CP/M-style) | CONFIRMED | `ram:F510`, `F523`, `F535`, `F543` all `LD HL,(FFA3)` |
 | `FFA5`-`FFA7` | 3 | Current FCB pointer (+1 spare byte) | CONFIRMED | `ram:F4EC` `LD (FFA5),HL`, `F501`/`F508` read it |
-| `FFA8` | 1 | `g_bIrqServiceArmed`, the interrupt-service gate tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` tests the gate before `EI`; `IrqCommonHandlerImage` clears it across the worker |
+| `FFA8` | 1 | `g_bIrqServiceArmed`, the interrupt-service gate tested by `Kernel_ConditionalEnableInterrupts` | CONFIRMED | `ram:F54F` tests the gate before `EI`; `Kernel_CommonHandlerImage` clears it across the worker |
 | `FFA9`-`FFFF` | 87 | **Unclaimed remainder above the BDOS variable block** — top of RAM. No reference of any kind; every `FFxx` literal in either ROM that survives an alignment check is a small negative constant (`-1`, `-4`, `-5`, `-8`, `-10`, `-20`, `-24`, `-32`, `-48`) feeding an `ADD HL,rr` subtraction, not an address. Nothing writes it, **including a BDOS file workload that wrote 6,391 times into the bounce buffers immediately below without once crossing the boundary.** | CONFIRMED (unwritten across every driven workload, incl. the disk path) / OPEN (any use outside them) | `--watch-mem ffa9:ffff` = 0 writes in all five runs; see "the two spans that stayed empty" below |
 
 ### The two spans that turned out to be structure tails
@@ -126,7 +126,7 @@ structure one entry short. Neither is free.
 walkers fix the geometry, and both are byte-verified:
 
 ```
-ROM00:2189 CommsWorkItemRegister
+ROM00:2189 Comms_WorkItemRegister
   21 5C FD    LD HL,FD5C     ; slot 0
   0E 0A       LD C,0Ah       ; 10 slots
   7E 23 B6    LD A,(HL); INC HL; OR (HL)   ; free if both bytes zero
@@ -135,7 +135,7 @@ ROM00:2189 CommsWorkItemRegister
   11 03 00 19 LD DE,3; ADD HL,DE           ; +1 already done -> stride 4
   18 F2       JR 2195
 
-ROM00:21BA CommsWorkItemCancel
+ROM00:21BA Comms_WorkItemCancel
   DD 21 5C FD LD IX,FD5C
   DD 6E 00 / DD 66 01    ; key = entry.+0/+1
   DD 23 ×4               ; stride 4 (the listing shows 3; the bytes are 4)
@@ -152,7 +152,7 @@ at `ROM00:2289` discards the sweep-loop return address, so the first expired
 slot ends that pass and later slots wait for the next event. The sweep
 runs off the **RTC periodic interrupt**: `RTC_WakeReasonFetch` stores
 `g_bRtcWakeFlags = Register C AND (Register B OR 80h)`, then calls the sweep
-when `g_bRtcWakeFlags` bit 6 (`PF AND PIE`) is set. After `RtcInit`, that
+when `g_bRtcWakeFlags` bit 6 (`PF AND PIE`) is set. After `RTC_Init`, that
 event cadence is 64 Hz.
 
 Empirically live, too: booting to the Main Menu under
@@ -224,7 +224,7 @@ find a single write into either. What was ruled out statically, and how:
   `DD/FD 21/22/2A`, and all `JP`/`CALL` forms), filtered by a
   linear-sweep alignment check, returns **nothing** in either span. The
   one literal that names `F68D` is `ROM00:0308` `01 8D F6` =
-  `LD BC,F68D` — the *terminator* of `InstallKernelToRam`'s copy loop
+  `LD BC,F68D` — the *terminator* of `Kernel_KernelToRam`'s copy loop
   (`ROM00:0305` `11 80 F1` `LD DE,F180`, then
   `7E 12 23 13 7B B9 20 F8 7A B8 20 F4 C9`, copy until `DE == BC`), so
   `F68D` is the exclusive end of the kernel image, not a use of it. In
@@ -240,7 +240,7 @@ find a single write into either. What was ruled out statically, and how:
   `31 7F ED` (`LD SP,ED7F`) sits inside a keyboard table, `ROM00:235A`
   inside the comms config table copied by `ROM00:22E9`.
 * **`FFA9`-`FFFF` is not reached by the Z80's power-on `SP = FFFF`
-  either.** `reset_entry` sets the stack before it can push anything:
+  either.** `Boot_entry` sets the stack before it can push anything:
   `ROM00:014B` `F3 / 2A D0 FB / F9` = `DI; LD HL,(FBD0); LD SP,HL` are
   the first three instructions executed after `0000` `JP 0103` →
   `JP 014B`. No `CALL` or `PUSH` precedes them.
@@ -294,7 +294,7 @@ configuration: the Display Status screen reports `RAMdisk size 190k`.
 What it moved, from the same run's watch counters:
 
 * `F8B8`-`F937` (BDOS directory swap buffer): **15,851 writes**, all 128
-  bytes, 6 distinct PCs — `ram:F4A1` (the `KernMemCopy` inner loop)
+  bytes, 6 distinct PCs — `ram:F4A1` (the `Kernel_MemCopy` inner loop)
   ×15,488, `ROM00:056B` ×256 (the boot-time `E5` fill), plus `06D6`,
   `063F`, `064E`, `08E4`.
 * `FEFF`-`FFA8` (sector bounce, FCB bounce, DMA pointer, FCB pointer,
@@ -312,7 +312,7 @@ that ends at `FFA8`, and did not cross into `FFA9` once.
 
 #### The "1536-byte kernel arena" reading is disproven
 
-`InstallKernelToRam`, byte-verified from `micron1.bin` at `ROM00:02FE`
+`Kernel_KernelToRam`, byte-verified from `micron1.bin` at `ROM00:02FE`
 (`11 b5 00 21 e8 35 19 11 80 f1 01 8d f6 7e 12 23 13 7b b9 20 f8 7a b8 20
 f4 c9`):
 
@@ -403,7 +403,7 @@ proof of freedom. Specifically:
   RTC periodic-interrupt path (the workloads log 745-99,146 RTC/link
   transactions each), the PLINTH Load/Run download and its ROM
   finalizer, both Commstar directions through the application API, the
-  program loader and `RunLoadedProgram`, and the BDOS file layer end to
+  program loader and `Program_LoadedProgram`, and the BDOS file layer end to
   end including both the bounced and the unbounced DMA paths.
 * **Not covered — the barcode path.** It cannot be driven with the
   harness as it stands: `boot_hw.py`'s input callback returns a constant
@@ -431,20 +431,20 @@ proof of freedom. Specifically:
 
 ### The one thing that touches everything
 
-`ram_page_test_4banks` (`ROM00:2530`, called unconditionally from
-`reset_entry` at `ROM00:01BB`) **destructively pattern-tests the whole of
+`SelfTest_page_test_4banks` (`ROM00:2530`, called unconditionally from
+`Boot_entry` at `ROM00:01BB`) **destructively pattern-tests the whole of
 `8000`-`FFFF`**. CONFIRMED from the bytes: `06 04` `LD B,4` (four pages),
 `21 00 80` `LD HL,8000`, `11 00 20` `LD DE,2000` (8K stride), then four
 fill/verify passes (`55AA`, `AA55`, `H,L`, `~H,~L`) per page, advancing
 `HL += 2000h` each time — `8000`, `A000`, `C000`, `E000`. The result
 goes to `FEAF` and `FDB0`.
 
-This is why the kernel is reinstalled from ROM (`InstallKernelToRam`) and
+This is why the kernel is reinstalled from ROM (`Kernel_KernelToRam`) and
 the boot chains re-run on every boot: the RAM test has just erased their
 destinations. It runs **before** any program, so it does not threaten a
 running test COM — but it does mean *nothing* in `8000`-`FFFF` survives a
 cold boot except by being re-materialised, and it means a harness that
-pre-seeds fixed RAM before `reset_entry` completes is wasting its time.
+pre-seeds fixed RAM before `Boot_entry` completes is wasting its time.
 
 ## Safe for scratch
 
@@ -567,8 +567,8 @@ Named cells to keep clear of:
 | `E646` | `g_wSessionRxTypeOrResult` |
 | `E648`/`E649` | RX sequence / link-id copies |
 | `E64C` | `g_wSessionRxOperation` |
-| `E681` | `g_wTxResult` — latches the `SessionRxByteLoop` error |
-| `E69F`-`E6B3` | `SessionRxByteGet` (`ROM00:65C2`) pushback buffer |
+| `E681` | `g_wTxResult` — latches the `Session_RxByteLoop` error |
+| `E69F`-`E6B3` | `Session_RxByteGet` (`ROM00:65C2`) pushback buffer |
 | `E6A9`-`E6AA` | its 16-bit count — **never named literally in either ROM**, only ever touched as the high half of the `E6A9` word, which is why an address search misses it |
 | `E6FF`/`E701` | `g_wSessRcv2` / `g_wSessRcv1` |
 
@@ -619,7 +619,7 @@ inside buffers, not the exception*.
 ### A corroborating detail worth knowing
 
 The BDOS itself encodes the banked/unbanked distinction. `ram:F510`
-(`BdosPrepWriteBuf`) reads the DMA address, and:
+(`Bdos_PrepWriteBuf`) reads the DMA address, and:
 
 ```
 f510: LD HL,(FFA3)     ; caller's DMA address
@@ -628,7 +628,7 @@ f510: LD HL,(FFA3)     ; caller's DMA address
       RET NC           ; >= 8000h: use the caller's buffer in place
       LD DE,0xFEFF     ; < 8000h: bounce 128 bytes through FEFF
       LD BC,0x80
-      CALL F498        ; KernMemCopy (bank-aware)
+      CALL F498        ; Kernel_MemCopy (bank-aware)
 ```
 
 Byte-verified at `ROM00:3A2D` (`2A A3 FF 7C FE 80 D0 11 FF FE`). The
@@ -716,7 +716,7 @@ symptom, not a timing one.
   wrong, and two of its four "unidentified" spans were already solved
   elsewhere in the repo.** `doc/research/TASKS.md` has recorded the
   `FD5C` queue as a 10-slot countdown-timer/callback table since
-  2026-08-25 (with `CommsWorkItemRegister` / `Comms_WorkItemSweep` named
+  2026-08-25 (with `Comms_WorkItemRegister` / `Comms_WorkItemSweep` named
   in Ghidra, and an explicit warning that the stride is 4 even though
   the listing shows three `INC IX`), and [Commstar
   evidence](commstar-evidence.md) has treated `FE43h + (fdd4 & 3Fh)` as

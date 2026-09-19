@@ -144,7 +144,7 @@ not send a byte until the controller says it can take one.
 
 ### The transmit transaction, decoded
 
-`LinkBlockTx` (`ROM00:3277`, 257 bytes) is the whole handheld-to-controller
+`Link_BlockTx` (`ROM00:3277`, 257 bytes) is the whole handheld-to-controller
 transmit path, and it is now decoded end to end. **CONFIRMED** — every step
 below is byte-read from the ROM.
 
@@ -208,7 +208,7 @@ firmware masks it to five bits before it ever leaves the machine. The peer
 library's `link_id_from_prelude` reconstruction is guessing at the other
 three bits, and now we know it must.
 
-**There is no checksum, anywhere.** Neither `LinkBlockTx` nor `LinkBlockRx`
+**There is no checksum, anywhere.** Neither `Link_BlockTx` nor `Link_BlockRx`
 contains a single accumulating `XOR` or `ADD` — I checked every opcode in
 both. Integrity is not this layer's job, and the link's physical character is
 why that is reasonable: it is a **synchronous, clocked link** (clock and data
@@ -232,7 +232,7 @@ page said 3.579545 MHz and every deadline below was 3% too long):
 
 | Where | Count | Loop | Waiting for | Deadline |
 |---|---|---:|---|---:|
-| `34F8` (`LinkWaitReady`, called from `32A4`/`32AA`) | `02DAh` = 730 | 49 T | the controller to report ready (`TXRDY`) | **9.70 ms** |
+| `34F8` (`Link_WaitReady`, called from `32A4`/`32AA`) | `02DAh` = 730 | 49 T | the controller to report ready (`TXRDY`) | **9.70 ms** |
 | `32B8`, `32F0`, `3333` | `026Ch` = 620 | 59 T | a handshake response | **9.92 ms** |
 | `3315`, `331F` | `06F9h` = 1785 | 51 T | readiness for the next payload byte | **24.69 ms** |
 
@@ -249,7 +249,7 @@ where 3.579545 MHz has no integer divider that reaches it. See
 
 ### The receive transaction, decoded
 
-`LinkBlockRx` (`ROM00:3378`, 221 bytes) is the mirror. The payload loop reads
+`Link_BlockRx` (`ROM00:3378`, 221 bytes) is the mirror. The payload loop reads
 with `INI` from the data-in latch `4Eh`, gated by the status register, and it
 is the **status bits that carry the framing** — there is no in-band delimiter:
 
@@ -289,7 +289,7 @@ them separately and why they are excluded from the length.
 **A note on how far this goes.** The mechanism is CONFIRMED — status bit 2
 gates a single extra `INI`. What those bytes *mean* is still open: the peer
 sends the frame's type and sequence there because that is what the firmware
-accepts, but nothing in `LinkBlockRx` interprets them, so their purpose is a
+accepts, but nothing in `Link_BlockRx` interprets them, so their purpose is a
 controller-level convention this ROM cannot explain.
 
 The per-byte timeout is `06F9h` = 1785, the same constant the transmit path
@@ -297,13 +297,13 @@ uses, and the failure code is `EEh` as before.
 
 ### The command and probe latches
 
-`LINK_CMD` (`4Ch`) has exactly one writer and exactly one value. `LinkPresent`
+`LINK_CMD` (`4Ch`) has exactly one writer and exactly one value. `Link_Present`
 (`ROM00:34EC`) waits for `TXRDY`, then writes **`81h`** and shadows it at
 `ram:F796`. There is no second value anywhere in ROM00, ROM01 or the battery
 RAM, so nothing can be inferred from variation — it is a fixed "begin"
 token in the present/ready handshake rather than a command byte with fields.
 
-`LINK_PROBE` (`4Fh`) is more interesting. `LinkProbe` (`ROM00:348A`) computes
+`LINK_PROBE` (`4Fh`) is more interesting. `Link_Probe` (`ROM00:348A`) computes
 its value rather than loading it:
 
 ```text
@@ -351,13 +351,13 @@ and shifted, not four separate polls.
 | Bit | Inferred name | Role |
 |---:|---|---|
 | 0 | `XFREN` | Transfer active — cleared then set to open, cleared to close |
-| 1 | `PORTSEL` | Port select, driven from active-link-ID bit 5 by `LinkPortSelect` |
+| 1 | `PORTSEL` | Port select, driven from active-link-ID bit 5 by `Link_PortSelect` |
 | 4 | `DIREN` | Direction/enable — cleared at open, set during the handshake, cleared at close |
 | 5 | `STROBE` | Strobe — set, short delay, cleared |
 | 6, 7 | `RXARM` | Receive-armed, always driven as a pair. Set when the handheld has nothing to receive, cleared while it services a receive or runs a transfer |
 
 Bits 0, 1, 4 and 5 are driven only by the transfer routines; bits 6 and 7 are
-driven only by the interrupt poll and by `LinkBlockTx`, which clears them
+driven only by the interrupt poll and by `Link_BlockTx`, which clears them
 before transmitting.
 
 ### The receive-armed handshake
@@ -377,7 +377,7 @@ The interrupt poll at `ROM00:31B6` is the whole mechanism:
 
 So an idle handheld sits with `RXARM` set. A controller wanting to deliver
 data asserts `RXBUSY`; the poll sees it, clears `RXARM`, and dispatches. When
-the handheld transmits instead, `LinkBlockTx` clears `RXARM` at its start
+the handheld transmits instead, `Link_BlockTx` clears `RXARM` at its start
 (`ROM00:327D`).
 
 For a physical adapter this is the signal to watch: **`RXARM` set means the
@@ -536,7 +536,7 @@ data length exactly in every captured object.
 
 ### The wire states
 
-The `state` field in a type-1 request is set by `SessionSetParams`
+The `state` field in a type-1 request is set by `Session_SetParams`
 (`ROM00:5973`), which has twelve call sites in ROM00. Each is a fixed tuple,
 so the complete set of wire states is enumerable from the ROM:
 
@@ -718,7 +718,7 @@ anywhere in the routine. The handheld names the operation; the host obeys.
 
 The handheld *will* take bytes at any time. `ROM00:2352` is a five-record
 interrupt table, `{u8 mask, u16 handler}`, copied to `ram:FD84` at cold start;
-`IrqWorkerPollPort5` (`ROM00:230A`) reads port `05h` and calls each handler
+`Kernel_WorkerPollPort5` (`ROM00:230A`) reads port `05h` and calls each handler
 whose bit is set. Mask `04` vectors to `ROM00:31B6`:
 
 ```text
@@ -754,7 +754,7 @@ means telling the far end to answer a phone line.
 ### What a host can do
 
 * **Be ready and answer.** The signal is `LINK_CTRL` (`4Ah`) bits 6+7
-  (`RXARM`) **set** — the handheld is listening. `LinkBlockTx` clears them at
+  (`RXARM`) **set** — the handheld is listening. `Link_BlockTx` clears them at
   `ROM00:327D` before transmitting.
 * **Take a reasonable time.** The handheld retries a request up to `32h` = 50
   times (`ROM00:2F58` sets `FDD6`, `ROM00:30FC` decrements), and a reply up to
@@ -780,7 +780,7 @@ code reference is `ROM00:4463`, inside a helper reached from
 handheld prints it when the peer fails to answer its link-configure request,
 whatever is physically attached.
 
-`LinkProbe` (`ROM00:348A`) does return a status byte, but **both its callers,
+`Link_Probe` (`ROM00:348A`) does return a status byte, but **both its callers,
 `ROM00:0202` and `ROM00:0229`, discard it** — it is a cold-boot reset of the
 link controller.
 
@@ -789,8 +789,8 @@ electrical connector to detect: both are **IR ports on the handheld** — the
 Plinth port on the base, the V24 port on the top — and the "connection" is
 the infrared link itself.
 
-`LinkBlockTx` routes on **bit 5 of the link id**, which it tests on entry and
-hands to `LinkPortSelect` (`ROM00:3454`):
+`Link_BlockTx` routes on **bit 5 of the link id**, which it tests on entry and
+hands to `Link_PortSelect` (`ROM00:3454`):
 
 ```text
 ROM00:3277  LD   C,A          ; the link id
@@ -798,7 +798,7 @@ ROM00:3278  AND  20h          ; wire-ID bit 5 -> Z set when CLEAR
 ROM00:327A  CALL 3454h
 ```
 
-`LinkPortSelect` drives **two** latches consistently — `LINK_CTRL` (`4Ah`)
+`Link_PortSelect` drives **two** latches consistently — `LINK_CTRL` (`4Ah`)
 bit 1 and port `2Ch` bit 5 move together. These are outputs controlled by
 **wire-ID bit 5**; they are not the same bit:
 
@@ -810,12 +810,12 @@ bit 1 and port `2Ch` bit 5 move together. These are outputs controlled by
 More generally, the `43h` path applies `LINK_CTRL = old | 02h` and
 `2Ch = (old & FCh) | 20h`; the `63h` path applies
 `LINK_CTRL = old & FDh` and `2Ch = old & DCh`. “Active baseline” is the
-value after `LinkBlockTx` subsequently asserts its bit 0, assuming all other
+value after `Link_BlockTx` subsequently asserts its bit 0, assuming all other
 protocol-state bits were clear.
 
 **CONFIRMED for the top window:** the owner selected V24 ADAPTOR and captured
 the resulting transmission at the top window. A fresh emulator reproduction
-of that UI route records every completed `LinkPortSelect` call as
+of that UI route records every completed `Link_PortSelect` call as
 `fdd4=43h`, `LINK_CTRL` bit 1 set, port `2Ch` bit 5 set. Therefore the
 **wire-ID-bit-5-clear** state drives the top V24 window. The
 wire-ID-bit-5-set state, which clears those two output bits, is **LIKELY** the
@@ -855,7 +855,7 @@ the separate comms picker:
   harness both ways — `--trace-loadrun-source plinth` and `--trace-loadrun-source
   v24` — the two traces genuinely diverge (13 agreed / 1 unsolicited versus 12
   agreed / 2 unsolicited in the original bounded run) and yet **both call
-  `LinkPortSelect` with `fdd4=43h`**. This is now regression asserted together
+  `Link_PortSelect` with `fdd4=43h`**. This is now regression asserted together
   with the two latch bits, rather than inferred from the common prelude `03h`.
 
 There are two separate pickers. The
@@ -869,7 +869,7 @@ what the harness drives, while the two-entry picker at `0x7663` (`PLINTH`,
 Load/Run `PLINTH` selection flashes the back/base IR port; `V24 ADAPTOR`
 flashes the top IR port. This confirms that those UI selections reach their
 named physical connectors. It does not expose the wire id or the
-`LinkPortSelect` bit-5 branch, so the bit-5-to-connector mapping remains
+`Link_PortSelect` bit-5 branch, so the bit-5-to-connector mapping remains
 open.
 
 `Session_TxBlock4` at `ROM00:5BF7` maps its first stack argument to device 3
@@ -949,7 +949,7 @@ dialled, answered, and manual connection.
 **Neither table's index is a proven wire value.** The state table is indexed 0-15 and the
 command table 0-16, while the values carried in request payload +0 are
 `00`, `06`, `44`, `45`, `61`, and `64`. A seventh, `65`, is passed to
-`SessionSetParams` and `SessionTxSendFrame33` on the `C_ABORT` path
+`Session_SetParams` and `Session_TxSendFrame33` on the `C_ABORT` path
 (`ROM00:5BA6`) — direct evidence that these numeric values are the parameter
 an operation *sends*, rather than merely an internal label.
 No mapping between these numbering
@@ -1073,7 +1073,7 @@ program transfer needs no file wrapper: `C-TX-BLK` loops in `BLOCK-TX` until
 ### RECORD carries data, BLOCK carries programs
 
 This was a guess in the previous revision; it is now **stable**. Each of the
-four transfer operations calls `SessionStartDataMode` (`ROM00:452D`) with its
+four transfer operations calls `Session_StartDataMode` (`ROM00:452D`) with its
 command index and then loads its own display string:
 
 | Command | Index | Display string | Site |
@@ -1100,12 +1100,12 @@ Every command is still validated against the matrix; only the state
 
 `Session_SetState` (`ROM00:3BF5`) contains the only instruction in any image
 that writes `g_bSessionState`, but it has **46 callers**. Only one of them is
-inside `SessionCoroJumpTable`; the other 45 set the state directly:
+inside `Session_CoroJumpTable`; the other 45 set the state directly:
 
 * 26 pass a literal, and only ever `0` `NOT-STARTED`, `2` `CONNECTED` or
   `13` `CRASHED`.
 * 17 pass `(ram:E48C)` and 2 pass `(ram:E491)` — computed. `E48C` is the cell
-  `SessionCoroJumpTable` writes with `entry & 0x7F`, so those sites *commit*
+  `Session_CoroJumpTable` writes with `entry & 0x7F`, so those sites *commit*
   a transition the table computed earlier. The dispatcher stages the next
   state; the caller commits it.
 
@@ -1123,7 +1123,7 @@ set when its operands *differ*, so `JP Z` means "not equal"):
 
 | Reader | Compares against | Effect when it matches |
 |---|---:|---|
-| `SessionStartDataMode` `ROM00:4533` | **2** | returns 0 without consulting the transition table |
+| `Session_StartDataMode` `ROM00:4533` | **2** | returns 0 without consulting the transition table |
 | `C-COMMAND` `ROM00:4B40` | **1** | commits `ram:E491` and returns — never builds or sends the 54-byte command record |
 | `C-SHUT-DOWN` `ROM00:4D92` | **1** | commits `ram:E48C` and returns — sends nothing |
 | `C-END-TX` `ROM00:530D` | **1** | takes the completion path without the caller's disposition argument |
@@ -1135,7 +1135,7 @@ So:
   `C-INIT-COMMS` is passed on the Load/Run path.
 * **mode 1** — local/quiet. The table still validates, but three commands
   advance the handheld's state without telling the host anything.
-* **mode 2** — validation off. `SessionStartDataMode` never reaches the
+* **mode 2** — validation off. `Session_StartDataMode` never reaches the
   table, so any command runs from any state.
 
 `E48D` has exactly two writers, both reached only as runtime-stub slots:
@@ -1205,7 +1205,7 @@ twice over: `ROM00:4B15`–`4B26` stages the operation-name pointer
 from `ram:E24C + 6i` into `ram:E491`. **There is no bounds check.**
 
 The command itself is validated normally — `ROM00:4AEA` calls
-`SessionStartDataMode(5)` before any of this, and bails at `4AF3` if the
+`Session_StartDataMode(5)` before any of this, and bails at `4AF3` if the
 matrix rejects it. But on a successful logon `ROM00:4C62` reads `E491` back
 and calls `Session_SetState` with **no gate of any kind**, so the state the
 matrix staged in `ram:E48C` (always `READY-RX-DATA`, from the `CONNECTED`
@@ -1263,7 +1263,7 @@ boot state, puts this on the screen:
 Press >> to continue
 ```
 
-That is `SessionCoroJumpTable`'s illegal-transition path, and it confirms
+That is `Session_CoroJumpTable`'s illegal-transition path, and it confirms
 several separate readings at once from a single live run:
 
 * the transition table is indexed as documented — row `NOT-STARTED` (0),
@@ -1274,7 +1274,7 @@ several separate readings at once from a single live run:
 * `g_bSessionState` really is the row index, and it really does boot to 0.
 
 It also explains why the call never returns: the firmware is sitting in
-`SessionWaitContinue`, waiting for a keypress that a headless application
+`Session_WaitContinue`, waiting for a keypress that a headless application
 never sends.
 
 ### Which entry points the firmware itself uses
@@ -1335,7 +1335,7 @@ loaded application does with these entry points.
 |---|---|---|---|
 | Controller transport | **Provisional** | Latch handshake and validation | Connector timing if hardware is required |
 | Type-2/3/4 exchange | **Provisional** | Request/reply/completion ordering | Why the queue repeats type/sequence |
-| Session states 61,64,45,44 | **Provisional** | Progression to program receive, and the state value is carried in request payload +0; the full set of ten wire states is enumerated from `SessionSetParams`'s call sites | Historical operation meanings |
+| Session states 61,64,45,44 | **Provisional** | Progression to program receive, and the state value is carried in request payload +0; the full set of ten wire states is enumerated from `Session_SetParams`'s call sites | Historical operation meanings |
 | Request/response objects | **Provisional** | Three-`u16` request header, status/marker/length response object, and the 54-byte state-45 command record field for field | Meaning of the third `u16` for states `06` and `44`; what the four blank identity fields carry when populated |
 | V24 form staging | **Provisional** | Buffers reach mode-dependent dispatch | Authentication encoding |
 | Program stream | **Provisional** | Inner bytes reach loader unchanged; marker 0/1 delimits the stream; a host object carries at most **126** data bytes (measured, 127 fails) | Why the limit is 126 rather than 128, and whether a historical EOF frame exists |

@@ -1,7 +1,7 @@
 # Review: external device capture pipeline ↔ OS integration
 
 > **Correction (2026-08-24):** This review's *mechanics* (call chain,
-> the `fbc2` decode hook, BDOS fn 03 = `BdosReaderInChar`, routing via
+> the `fbc2` decode hook, BDOS fn 03 = `Bdos_ReaderInChar`, routing via
 > `fdca` wire-id) have been re-verified and are correct. Its
 > *semantics* — calling the device a "barcode reader / wand / scanner,
 > 0x2B wand, 0x2A scanner" — are **not proven**: the default FE83 wire
@@ -9,8 +9,8 @@
 > strings name a barcode/pen, and A:/B: RAM drives never touch the bus.
 > The handler is the **external-device edge-capture front end with a
 > user decode hook at `fbc2`**. Renames applied: `Reader*` → `ExtBus*`,
-> `SessionWireStateInit` → `ExtDecodeHookInstall` (156E),
-> `ReaderDecodeHookDefault` → `ExtDecodeHookDiscard` (1567). Where this
+> `SessionWireStateInit` → `ExtBus_DecodeHookInstall` (156E),
+> `ReaderDecodeHookDefault` → `ExtBus_DecodeHookDiscard` (1567). Where this
 > doc says "wand"/"scanner"/"barcode", read "external-device wire-2B/
 > 2A edge front end" and treat the light-pen reading as a hypothesis.
 
@@ -21,9 +21,9 @@ All addresses below were re-verified directly against `micron1.bin`
 
 > **Follow-up status (2026-08-24, main agent):** §6.2 resolved — the
 > reader-completion event bit is `fbc9` bit0, posted by
-> `ExtBusComplete`(14A3)→`LinkResetSession`(30BD). §6.1 renames/labels
-> applied (ExtBus*, `ExtDecodeHookInstall` 156E, `ExtDecodeHookDiscard`
-> 1567, fbc0/fbc1/fbc2 + F958/F95C/F95E labels, BdosReaderInChar
+> `ExtBus_BusComplete`(14A3)→`Link_ResetSession`(30BD). §6.1 renames/labels
+> applied (ExtBus*, `ExtBus_DecodeHookInstall` 156E, `ExtBus_DecodeHookDiscard`
+> 1567, fbc0/fbc1/fbc2 + F958/F95C/F95E labels, Bdos_ReaderInChar
 > plate). §6.3 (ROM01 fbc5/fbc2 writers) and §6.4 (fbc7/fbc8
 > consumers) remain open. §5 fixes all reflected in the docs.
 
@@ -45,14 +45,14 @@ errors (§5). The verified architecture is:
 1. **The barcode reader is a pseudo-device in the link-device
    abstraction.** Device-config bytes with bit6 *clear* (`0x2A`,
    `0x2B`, and `0xAB` = `0x2B`+keyboard) are not real 4x-port links:
-   when such a device is opened, `LinkCommandCheck` (2F7D) dispatches
-   the *config byte itself* through `LinkCommandLookup` (31C6) to
+   when such a device is opened, `Link_CommandCheck` (2F7D) dispatches
+   the *config byte itself* through `Link_CommandLookup` (31C6) to
    `ReaderArmRoute`. This is why the reader code is interwoven with the
    PLINTH/V24 link code — it shares the device/session plumbing but
    never touches the 4x transport ports.
 
 2. **BDOS function 03h (CP/M "reader input", RDR:) is the app-facing
-   barcode API.** `BdosReaderInChar` (ROM00:1080, dispatch table entry
+   barcode API.** `Bdos_ReaderInChar` (ROM00:1080, dispatch table entry
    fn 3 = 1080, verified from the table bytes at ROM00:3708) selects
    the "reader channel" device from the FE83 config table, arms the
    wand, blocks on the event system, and then returns the scan to the
@@ -80,19 +80,19 @@ CALL 5, C=03h  (CP/M reader input)
  └─ BdosEntryDispatch (36A0)
      – fn<0x25: vectors through the **RAM** table at F1EB (36E2:
        LD HL,0xF1EB) → fn 3 = ROM00:1080          [patchable, see §4.3]
- └─ BdosReaderInChar (1080)
-     ├─ DeviceSlotSelectPair (110C):
+ └─ Bdos_ReaderInChar (1080)
+     ├─ Device_SlotSelectPair (110C):
      │    index = ((fbc5 >> 2) + 5) & 0x1F  → DeviceTableIndex (31FF)
      │    → HL = FE83 + index − 1 ; f999 = *HL (device id), f978 = HL
      ├─ f999 == 0x80 → keyboard path (18C0)        [reader ch. = kbd]
      ├─ ring not empty (f954 ≠ f956) → return next byte  [see §3]
-     └─ ring empty → ConsoleMsgToLink (0EE4):
-          ├─ LinkTransportOpen (2EAB): fdca = *(f978) = device id
+     └─ ring empty → Device_MsgToLink (0EE4):
+          ├─ Link_TransportOpen (2EAB): fdca = *(f978) = device id
           ├─ builds TX descriptor @FDEE (→F990) and RX descriptor
           │    @FE12: len 0x20, buffer ptr (FE14) = **F958**
-          ├─ LinkTransportCall (2F1A): fdd4 = fdca; BIT 6 of id:
-          │    clear → LinkCommandCheck (2F7D): IX=31F5, B=fdca
-          │    └─ LinkCommandLookup (31C6): id table 31F2 =
+          ├─ Link_TransportCall (2F1A): fdd4 = fdca; BIT 6 of id:
+          │    clear → Link_CommandCheck (2F7D): IX=31F5, B=fdca
+          │    └─ Link_CommandLookup (31C6): id table 31F2 =
           │       {2B, 2A, 23, 03, FF}; handler words (post-increment
           │       base 31F7) = {1221, 1221, 1893, 1893}
           │       → 0x2B and 0x2A both → ReaderArmRoute, with
@@ -100,9 +100,9 @@ CALL 5, C=03h  (CP/M reader input)
           │         HL = (FDF0) = F990, DE = (FE14) = F958
           ├─ ReaderArmRoute (1221): fbb7 = F958 (caller envelope);
           │    zeroes 6 bytes; wand: 2Ch bit1 attention pulse;
-          │    scanner (f9aa==2A): 2Ah bit1 + CommsLineDeassertRd;
+          │    scanner (f9aa==2A): 2Ah bit1 + Comms_LineDeassertRd;
           │    ReaderQueueWorkItem(1) → async capture work item
-          └─ EventWaitForLink (168F): HALT-wait on event mask
+          └─ Link_WaitForLink (168F): HALT-wait on event mask
                (fbc9 & fbca), returns when the reader completion
                posts its event bit
 ```
@@ -127,10 +127,10 @@ ReaderPollWorkItem (12EC) / ReaderScanPoll (1317)
        then OUT_LATCH bit5 set, ReaderArmFrontEnd (14C8)
 ```
 
-Return to the application (back in BdosReaderInChar, 10B4–10D1):
+Return to the application (back in Bdos_ReaderInChar, 10B4–10D1):
 
 ```
-EventWaitForLink returned bit0 set:
+Link_WaitForLink returned bit0 set:
   DE = word at F95C  (= envelope+4 = element count)
   f998 = E (count low) ; f954 = F95E ; f956 = F95E + DE
   return A = 0x1B                     ← "scan arrived" sentinel
@@ -160,17 +160,17 @@ value: 80   AB   63   43  | 80   2B   63   43  | 80   67   63   43 | 80   67   6
 ```
 
 Device-id byte semantics (verified from the flag logic in
-DeviceConsoleInChar 0E00 / BdosReaderInChar / LinkTransportCall):
+Device_ConsoleInChar 0E00 / Bdos_ReaderInChar / Link_TransportCall):
 
 | Bits | Meaning |
 |------|---------|
 | bit7 | local keyboard/LCD flag (`0x80` = keyboard only) |
-| bit6 | **real 4x-port link** (0x43/0x45/0x63/0x67 → LinkBlockTx/Rx path) |
-| bit6 clear, low bits ≠ 0 | **pseudo-device**: id & 0x7F dispatched via LinkCommandLookup — `0x2B` wand, `0x2A` scanner route, 0x23/0x03 → 1893 stub |
+| bit6 | **real 4x-port link** (0x43/0x45/0x63/0x67 → Link_BlockTx/Rx path) |
+| bit6 clear, low bits ≠ 0 | **pseudo-device**: id & 0x7F dispatched via Link_CommandLookup — `0x2B` wand, `0x2A` scanner route, 0x23/0x03 → 1893 stub |
 
 Note entry 2 default `0xAB` = bit7 + 0x2B = **keyboard AND wand
 combined** on the *console* channel — selecting it makes scans and
-keystrokes arrive interleaved through BDOS fn 1/6 (EventWaitForLink
+keystrokes arrive interleaved through BDOS fn 1/6 (Link_WaitForLink
 waits on both event bits at once). This is the "barcode as keystrokes"
 mode, and it is why a decode hook that rewrites widths into ASCII makes
 scans transparent to ordinary console-reading programs.
@@ -180,10 +180,10 @@ selector, verified per-field:
 
 | Field | Consumer | Table window |
 |-------|----------|--------------|
-| bits 0–1: `(fbc5&3)+1` | LinkSelectActiveDevice (0EC8) — console (fn 1/2/6) | entries 1–4 |
-| bits 2+: `(fbc5>>2)+5` | DeviceSlotSelectPair (110C) — reader (fn 3) | entries 5–8 (values 0–3) |
-| bits 4+: `(fbc5>>4)` | BdosPunchOutChar (10D2) — punch (fn 4), *direct* index 1–16 | any entry |
-| (also read by BdosListOutChar 1049 — not traced further) | | |
+| bits 0–1: `(fbc5&3)+1` | Link_SelectActiveDevice (0EC8) — console (fn 1/2/6) | entries 1–4 |
+| bits 2+: `(fbc5>>2)+5` | Device_SlotSelectPair (110C) — reader (fn 3) | entries 5–8 (values 0–3) |
+| bits 4+: `(fbc5>>4)` | Bdos_PunchOutChar (10D2) — punch (fn 4), *direct* index 1–16 | any entry |
+| (also read by Bdos_ListOutChar 1049 — not traced further) | | |
 
 Examples: `fbc5 = 0x04` → console = LCD/keyboard, reader channel =
 entry 6 = 0x2B wand. `fbc5 = 0x01` → console = 0xAB keyboard+wand.
@@ -272,8 +272,8 @@ hook:                   ; called in OS context after each capture:
     RET                 ; leaving fbb9/fbbb untouched = deliver raw widths
 ```
 
-Notes: fn 3 blocks in a HALT loop (EventWaitForLink) — for a
-non-blocking design, poll with fn 06h/E=FF (BdosDirectConsoleIo,
+Notes: fn 3 blocks in a HALT loop (Link_WaitForLink) — for a
+non-blocking design, poll with fn 06h/E=FF (Bdos_DirectConsoleIo,
 0FD6, drains the same F95E ring without arming), or arm directly with
 the banked call (§4.4). On program exit the hook should be restored to
 0x1567 (or the program left resident), since a dangling `fbc2` into a
@@ -281,7 +281,7 @@ freed TPA will crash the next scan.
 
 ### 4.3 Recipe for a resident DIP decoder
 
-The DIP loader-record grammar already documented (SyscallQueueBankedBlock
+The DIP loader-record grammar already documented (Syscall_QueueBankedBlock
 D727, `{RST10, bank, addr}` constructor records) is the natural
 installer: a DIP places the decoder in battery RAM (or a RAM bank) and
 its constructor record writes `fbc1/fbc2`. Two integration depths:
@@ -317,7 +317,7 @@ the fn-3 framing:
 
 HL must not point at a byte 02h and `fdd7` must be 0 on entry, or the
 call takes the cancel branch (that is the disarm mechanism
-LinkHandleIdle uses — it sets fdd7=FF first). This path is what the
+Link_HandleIdle uses — it sets fdd7=FF first). This path is what the
 existing barcode-reader.md sketched, but with three corrections: the
 opcode (§5.4), the envelope offsets (§5.3), and the fact that it is the
 *secondary* interface — BDOS fn 3 is the primary one.
@@ -326,7 +326,7 @@ opcode (§5.4), the envelope offsets (§5.3), and the fact that it is the
 
 ## 5. Mistakes found in the existing documents
 
-### 5.1 `protocol-comms.md` — LinkCommandLookup table is off by one
+### 5.1 `protocol-comms.md` — Link_CommandLookup table is off by one
 
 The doc says the 31F2 table maps `2B→0xFF03, 2A→0x1221, 23→0x1221,
 03→0x1893`. Wrong: 31C6 advances IX by 2 **before** the compare, so
@@ -337,12 +337,12 @@ handler. (barcode-reader.md has this one right.)
 
 ### 5.2 `barcode-reader.md` + TASKS.md — "a remote peer can command a scan via link cmd 2A/2B" is wrong
 
-The id matched by LinkCommandLookup is **`fdca`, the local device-config
-byte** captured at LinkTransportOpen (2EB8: `LD A,(HL) / LD (fdca),A`)
+The id matched by Link_CommandLookup is **`fdca`, the local device-config
+byte** captured at Link_TransportOpen (2EB8: `LD A,(HL) / LD (fdca),A`)
 — i.e. the FE83 entry for the currently selected device. It is not a
 received frame command id; no inbound frame reaches this dispatch. The
 "command ids 0x2A/0x2B" are *device types* in the local config table.
-(Additionally, the LinkHandleIdle route sets `fdd7=FF` before
+(Additionally, the Link_HandleIdle route sets `fdd7=FF` before
 dispatching, which makes ReaderArmRoute take its **cancel** branch —
 that path disarms a pending scan on link-idle; it never starts one.)
 
@@ -399,10 +399,10 @@ description should document the packed `fbc5` fields (§3 above).
 1. **Annotate the discoveries**: label fbc0/fbc1/fbc2 (decode-hook
    stub/bank/vector), F958 (reader result envelope), F95C (count),
    F95E (data area), f999/f978 (reader-channel device byte/ptr), fbc5
-   packed fields; plate-comment BdosReaderInChar with the
+   packed fields; plate-comment Bdos_ReaderInChar with the
    1B/count/data protocol; fix the two doc errors (§5.1, §5.3–5.5).
 2. **Find who posts the reader's event bit** (fbc9 bit0) on
-   completion — closes the EventWaitForLink loop end-to-end.
+   completion — closes the Link_WaitForLink loop end-to-end.
 3. **ROM01 / session-module survey for fbc5 and fbc2 writers** — the
    UI almost certainly has a "reader device" settings screen; finding
    it would confirm the intended user-facing configuration values, and

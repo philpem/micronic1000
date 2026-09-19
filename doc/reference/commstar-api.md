@@ -22,9 +22,25 @@ session mode at **0**; you do not need to suppress validation for either.
 
 ## Entry points
 
-Each entry is four bytes at a fixed address in battery-backed RAM. Call it
-like an ordinary subroutine; see the calling convention below for the
-important caveat.
+Each entry occupies four bytes at a fixed address in battery-backed RAM.
+Call it like an ordinary subroutine; see the calling convention below for
+the important caveat. In the static image `ram:EE00-EE4F` holds twenty
+`LD HL,1; RET` no-op slots (4 bytes each, `21 01 00
+C9`), **not** `RST 10h` thunks. **RESOLVED 2026-09-19
+(CONFIRMED, byte-verified): the ROM contains no writer
+of the arena** — its source table `ROM00:7DFA` (20
+words) has no code xref, and only one instruction
+references the arena (`ROM01:11A4` calls `0xEE00`).
+The static image is twenty `LD HL,1; RET` slots; the
+arena is a stub farm whose real routing would be
+installed at runtime by loaded software.
+Whether/when it becomes `RST 10h` thunks cannot be
+settled from the ROM alone and remains **OPEN** — a
+loaded DIP executable or COM program could patch the
+arena at runtime (plausible/unverified; that is the
+purpose of a stub farm). Comment at `ram:EE00`.
+Computed-call xrefs such as `ram:EE04 -> ROM00:48BF`
+describe intended routing.
 
 | Address | Routine | Command dispatched | Session screen |
 |---|---|---|---|
@@ -50,7 +66,7 @@ important caveat.
 | `EE4C` | `5428` | — *send data block* | |
 
 **Each command appears exactly once.** The "command dispatched" column is
-derived, not assumed: `SessionStartDataMode` (`ROM00:452D`) has fifteen call
+derived, not assumed: `Session_StartDataMode` (`ROM00:452D`) has fifteen call
 sites in ROM00 and each pushes a distinct literal index, so the mapping from
 slot to command is one-to-one and complete.
 
@@ -61,7 +77,7 @@ dispatch no protocol command at all:
 
 * `EE24` `46E9` initialises the session (below).
 * `EE30` `4D29` and `EE48` `4D4F` are **message-box helpers**, calling
-  `SessionMessageBox` with `"   not available"` / `"   in Workstation"`.
+  `Session_MessageBox` with `"   not available"` / `"   in Workstation"`.
   They differ only in which buffer pair they use (`E278`/`E279` versus
   `E288`/`E289`).
 * `EE38` `5444` forwards three arguments to `ROM00:5915` -> `62C7`, which
@@ -71,7 +87,7 @@ dispatch no protocol command at all:
   wire state `0045` — it **sends a data block**.
 
 The last two are the raw transfer primitives, below the command layer: they
-never call `SessionStartDataMode`, so no state check applies to them at all.
+never call `Session_StartDataMode`, so no state check applies to them at all.
 
 The two commands with no entry point are `C-RX-CMD` (6) and `C-TX-REPLY` (7).
 Neither has a stub slot and no routine in either ROM dispatches them.
@@ -83,7 +99,7 @@ rather than merely prepare it, so treat it as a session *runner* whose
 contract is not yet established.
 
 Note that `E48D = 2` **suppresses** per-command dispatch:
-`SessionStartDataMode` runs the state machine when `E48D` is *not* 2. That is
+`Session_StartDataMode` runs the state machine when `E48D` is *not* 2. That is
 not something a working session needs — see
 [the session mode](../protocol/commstar.md#rame48d-the-session-mode) on the
 protocol page, and [Suppressing validation](#suppressing-validation) below.
@@ -154,9 +170,28 @@ any of these entry points must address the **fixed upper 32K**
 the space a CP/M-style COM has above its code — is **invisible to the
 routine**.
 
-The reason is the call mechanism. Each entry point is a four-byte thunk
-`RST 10h ; db bank ; dw target`, and `RST 10h` (`ROM00:0010`) compares the
-target bank against the current one:
+The reason is the call mechanism. At runtime each entry point would be a
+four-byte thunk `RST 10h ; db bank ; dw target`, and `RST 10h`
+(`ROM00:0010`) compares the target bank against the current
+one. In the static image `ram:EE00-EE4F` ships as twenty
+`LD HL,1; RET` no-op slots (4 bytes each, `21 01 00
+C9`), **not** `RST 10h` thunks — the computed-call
+xrefs (e.g. `ram:EE04 -> ROM00:48BF`) describe
+intended routing, and the ROM source table at
+`ROM00:7DFA` (20 words, slot *i* at `7DFA+2*i`)
+supplies those targets. **RESOLVED 2026-09-19
+(CONFIRMED, byte-verified): the ROM contains no
+writer of the arena** — `ROM00:7DFA` has no code
+xref, and only one instruction references the arena
+(`ROM01:11A4` calls `0xEE00`); the static image
+remains twenty `LD HL,1; RET` slots. The arena is a
+stub farm: whether/when it becomes `RST 10h` thunks
+cannot be settled from the ROM alone and remains
+**OPEN** — a loaded DIP executable or COM program
+could patch the arena at runtime (plausible/
+unverified; that is the purpose of a stub farm).
+The `RST 10h` shape, if it occurs, would be
+installed by loaded software, not by ROM:
 
 ```text
 ROM00:0010  POP  HL            ; HL = the inline operands
@@ -335,7 +370,7 @@ aborted` with `C-RX-BLK` returning 4. `micronic.peer.MAX_OBJECT_DATA` is that
 limit and `ProgramDownloadPolicy` caps itself at it.
 
 The *mechanism* is not fully derived. `ROM00:620B` sets the `0044` receive
-frame length to `86h` = 134 (`21 86 00 E5`, pushed to `SessionSetParams`),
+frame length to `86h` = 134 (`21 86 00 E5`, pushed to `Session_SetParams`),
 and 134 − 8 = 126 is arithmetically consistent with an eight-byte preamble
 ahead of the object body at `ram:E5C4`. But the RX frame struct at `ram:E5BA`
 is 138 bytes with its data area at `+0Ah`, which would suggest a different
@@ -465,7 +500,7 @@ not the disposition, and the two modes failed for different reasons:
 * with `E48D = 1` the table *is* consulted, and
   `table[CONNECTED][C-END-TX]` is `8Dh` — bit 7 set, illegal, next state
   `CRASHED` (byte-verified at `micron1.bin 0x695B`) — so
-  `SessionStartDataMode` returned non-zero and `ROM00:52F8` exited before the
+  `Session_StartDataMode` returned non-zero and `ROM00:52F8` exited before the
   completion path.
 
 The fix is the same either way: be in a state from which `C-END-TX` is legal.
@@ -731,7 +766,7 @@ Set `ram:E48D = 2` before issuing commands:
 32 8D E4     LD   (0E48Dh),A
 ```
 
-`SessionStartDataMode` then returns without consulting the transition table,
+`Session_StartDataMode` then returns without consulting the transition table,
 so an operation runs whatever the current state. **CONFIRMED:** with this in
 place, `C_ABORT` from `NOT-STARTED` raises no message box and leaves
 `ram:E512 = 0`, the early-return marker; the identical call without it raises
@@ -747,11 +782,11 @@ about it.
 
 ### Why a command blocks
 
-Every command wrapper has the same shape: call `SessionStartDataMode`, treat
+Every command wrapper has the same shape: call `Session_StartDataMode`, treat
 a **zero** result as *proceed*, and only then do the work.
 
 ```text
-ROM00:5473  CALL 452Dh       ; SessionStartDataMode(C_ABORT)
+ROM00:5473  CALL 452Dh       ; Session_StartDataMode(C_ABORT)
 ROM00:547A  LD   A,H / OR L
 ROM00:547C  JP   NZ,54E1h    ; non-zero -> exit
 ROM00:547F  CALL 593Ah       ; zero -> do the work
@@ -760,9 +795,9 @@ ROM00:547F  CALL 593Ah       ; zero -> do the work
 (Note the polarity: a rejected transition returns *non-zero*, and mode 2
 returns *zero* — so suppressing validation makes every command proceed.)
 
-`593A` reaches `SessionTxRunState65`, which prepares a frame header, sets the
+`593A` reaches `Session_TxRunState65`, which prepares a frame header, sets the
 session parameters with wire state `0x65`, sends the frame through service 33
-and then waits in `SessionRxByteLoop`.
+and then waits in `Session_RxByteLoop`.
 
 So these are not local calls that happen to block — **they are link
 transactions**. The routine transmits and waits for the host to answer. A
@@ -774,7 +809,7 @@ is exactly what a Commstar server is. `micronic.peer.CommstarPeer` is that
 peer, and every sequence on this page runs against it.
 
 In the original bare-COM test the link transmit counter never fired, so the
-call blocked somewhere between entering `SessionTxRunState65` and reaching
+call blocked somewhere between entering `Session_TxRunState65` and reaching
 the link driver — because no session had been opened. Opening one with
 `C-INIT-COMMS` first, as the sequences above do, removes the problem.
 

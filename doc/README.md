@@ -46,7 +46,7 @@ addresses, trace bytes, and confidence tags:
 
 * [Method and evidence rules](re-notes/method.md)
 * [Commstar evidence and traces](re-notes/commstar-evidence.md)
-* [InlineTableDispatch tables](re-notes/inline-dispatch.md)
+* [Kernel_TableDispatch tables](re-notes/inline-dispatch.md)
 * [Listing-repair script](re-notes/ghidra-repair-script.md)
 * [OS internals](re-notes/os-diposb.md)
 * [Forms and UI](re-notes/forms-ui.md)

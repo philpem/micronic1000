@@ -55,7 +55,7 @@ source tree (not published here).
   **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
   `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
   `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
-  wire-ID bit 5 **set**, so *if* those ids ever reach `LinkBlockTx`, they
+  wire-ID bit 5 **set**, so *if* those ids ever reach `Link_BlockTx`, they
   select the same likely back-port state. The EXT STORAGE ADAPTER's physical
   attachment remains unadjudicated.
 
@@ -96,7 +96,7 @@ source tree (not published here).
   rule.
   *Resolve:* capture with `fdd4` recorded beside each frame.
 
-* **Meaning of TX `0x7F` at frame offset +4** — `LinkFramePrefixWrite`
+* **Meaning of TX `0x7F` at frame offset +4** — `Link_FramePrefixWrite`
   writes `0x7F`; RX requires offset +4 to equal the active link id.
   Server-side meaning of the M1000’s `0x7F` is **SUSPECTED**, not
   confirmed.
@@ -107,7 +107,7 @@ source tree (not published here).
   code; do not assume unused.
   *Resolve:* inspect loaded-session usage of `+5`.
 
-* **Identity of the two bytes excluded from `LinkBlockRx` `DE`** — On
+* **Identity of the two bytes excluded from `Link_BlockRx` `DE`** — On
   success `DE = bytes_read - 2`; bounded traces show they are copies of
   type (`+2`) and sequence (`+3`), but the controller-level reason is
   open.
@@ -124,7 +124,7 @@ source tree (not published here).
 
 * **Historical fidelity of the recovered session grammar** — Narrowed, not
   closed. What *is* established from the ROM and from firmware-driving
-  traces: the ten wire states `SessionSetParams` can send, the type-1
+  traces: the ten wire states `Session_SetParams` can send, the type-1
   request header, the type-2 response object, the `C-COMMAND` record layout,
   the RECORD stream format `[u8 namelen][name] (1Eh [record])* 1Ch`, and the
   BLOCK stream's marker-0/1 delimiting. What is **not** established is that
@@ -197,7 +197,7 @@ source tree (not published here).
   invokes the body via `D836` = `JP (HL)`, returns the result in `HL`); no
   scheduler is involved. The firmware simply **stops to talk to the user**:
   `C_ABORT` from the boot state is an illegal transition, so it raises a
-  message box and waits in `SessionWaitContinue` for a keypress that a
+  message box and waits in `Session_WaitContinue` for a keypress that a
   headless caller never sends. `Session_InitState` likewise displays
   `Comms in progress` and does not return.
   *Resolved.* A call does not return because the operation is a **link
@@ -211,7 +211,7 @@ source tree (not published here).
 
 * **Watch: anything that writes `ram:E48D`** — The session mode is three
   valued and is read by four sites that do **not** all test it the same way
-  (byte-verified): `SessionStartDataMode` (`ROM00:4533`) compares against
+  (byte-verified): `Session_StartDataMode` (`ROM00:4533`) compares against
   **2** and skips the transition table when it matches; `C-COMMAND`
   (`4B40`), `C-SHUT-DOWN` (`4D92`) and `C-END-TX` (`530D`) each compare
   against **1** and short-circuit without transmitting. So mode 0 is the
@@ -295,20 +295,26 @@ source tree (not published here).
 
 ## Naming and annotation
 
-* **Should `ram:D837` keep the name `CoroutineTaskSwitch`?** — The bytes at
-  `D836`-`D857` are the C compiler's frame-setup helper: it pops its own
-  return address, adds `DE` (the local frame size) to SP, saves IX/IY, and
-  re-enters the popped address via `CALL D836` = `JP (HL)`. That is
-  CONFIRMED and it is what makes `LD DE,nnnn / CALL D837` the entry sequence
-  of all 348 compiled routines — see the
-  [listing-repair script](ghidra-repair-script.md) pass 1. The "coroutine
-  task switch" reading is not supported by those bytes. The symbol has not
-  been renamed, because a rename is the symbol plus its plate plus every doc
-  mention plus a `TASKS.md` entry, in one pass, and this one is the owner's
-  call. The plate at `D837` records both readings and flags the identity as
-  under review.
-  *Resolve:* owner decides the replacement name (`Lib_FrameEnter` and
-  `Compiler_FrameSetup` are the obvious candidates), then one rename pass.
+* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified) —
+  `ram:D837` renamed `Coroutine_Enter`.** It is a
+  coroutine frame-entry / context-switch helper, not a
+  scheduler task switch: pops the continuation (body
+  address) from the stack; switches `SP` to the
+  coroutine frame by the `DE` frame offset; saves
+  `BC`/`IX`/`IY`; calls the body via `ram:D836`
+  (`JP (HL)`); restores; returns the body's `HL`
+  with `Z` iff `HL==0`. Entered by the ubiquitous
+  `LD DE,0; CALL ram:D837` prologue (`DE` = frame
+  size). Plate: In `DE` = frame size, return address
+  = body; Out `HL` = body result, `Z` iff `0`;
+  Clobbers `AF`/`BC`/`DE`/`HL`, `IX`/`IY` preserved;
+  `CONFIRMED ram:D837-D857`. The sibling
+  `Coroutine_SwapContinuation` (`ram:D9F9`) is
+  unchanged. The earlier duplicate `ROM00:3BB8`
+  `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
+  (and `ROM00:3BD0` → `Coroutine_IndexedLookup_6B67`)
+  remains corrected; the `ram:D837` naming question
+  is now closed.
 
 ## How to add a new OPEN item
 
