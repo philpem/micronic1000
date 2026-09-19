@@ -208,24 +208,42 @@ State: continuously updated as work progresses.
   the backlog; no Ghidra function
   created/deleted.
 
-1. **`ram:EE00`–`EE4F` — runtime patching
-   (OPEN).** Twenty static `LD HL,1; RET`
-   no-op slots (4 bytes each, `21 01 00 C9`);
-   whether/when they are patched to `RST 10h`
-   thunks at runtime is OPEN. Source is
-   `ROM00:7DFA` 20-word table; RAM arena is
-   patched at runtime.
+- **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified) — `ram:D837` renamed
+  `Coroutine_Enter`.** Coroutine frame-entry /
+  context-switch helper, not a scheduler task
+  switch: pops the continuation (body address)
+  from the stack; switches `SP` to the coroutine
+  frame by the `DE` frame offset; saves
+  `BC`/`IX`/`IY`; calls the body via `ram:D836`
+  (`JP (HL)`); restores; returns the body's `HL`
+  with `Z` iff `HL==0`. Entered by the ubiquitous
+  `LD DE,0; CALL ram:D837` prologue (`DE` = frame
+  size). Plate: In `DE` = frame size, return
+  address = body; Out `HL` = body result, `Z` iff
+  `0`; Clobbers `AF`/`BC`/`DE`/`HL`, `IX`/`IY`
+  preserved; `CONFIRMED ram:D837-D857`. Sibling
+  `Coroutine_SwapContinuation` (`ram:D9F9`)
+  unchanged. Removed from the backlog; the earlier
+  `ROM00:3BB8` duplicate → `Coroutine_IndexedLookup_6A4A`
+  remains corrected.
 
-2. **`ram:D837` naming — `Coroutine_TaskSwitch`
-   vs compiler frame helper (OPEN).** Bytes are
-   an ordinary stack-frame prologue (saves
-   `IX`/`IY`, `SP` adjust via `DE`), not a task
-   switch; `ROM00:3BB8` duplicate mis-name
-   already corrected to
-   `Coroutine_IndexedLookup_6A4A` (CONFIRMED).
-   Naming question stays OPEN.
+- **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified) — `ram:EE00-EE4F` thunk
+  hypothesis unsupported in ROM.** No ROM code
+  writes the arena: its source table `ROM00:7DFA`
+  (20 words) has no code xref, and only one
+  instruction references the arena (`ROM01:11A4`
+  calls `0xEE00`). The static image remains twenty
+  `LD HL,1; RET` no-op slots (4 bytes each, `21 01
+  00 C9`); the “runtime `RST 10h` thunk” hypothesis
+  has no ROM patching mechanism. Comment added at
+  `ram:EE00`. Whether/when the arena becomes `RST
+  10h` thunks at runtime remains **OPEN only for
+  loaded software** (no ROM evidence). Removed from
+  the backlog.
 
-3. **Data-typing backlog (§12 item 5 remainder,
+1. **Data-typing backlog (§12 item 5 remainder,
    OPEN).** `ROM01:7545`–`7FFF`
    descriptor-record format (needs the
    `TemplateBuilder` decode); `ROM00:7D80` /
@@ -234,7 +252,7 @@ State: continuously updated as work progresses.
    error-string table; `tbl_` labels +
    index→handler plates for the dispatch tables.
 
-4. **Minor / deferred (OPEN, low priority).**
+2. **Minor / deferred (OPEN, low priority).**
    4 documented retained `FUN_*` with open
    questions, the 12 non-code code gaps
    (page-zero vectors, inline dispatchers,
@@ -423,8 +441,9 @@ current priority order; the concise lists above are authoritative.
           verified, docs synced):** `ROM00:3BB8`
           `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
           (indexed lookup into table at `6A4A`; real
-          `Coroutine_TaskSwitch` is `ram:D837` — duplicate
-          mis-name corrected), `ROM00:3BD0`
+          `Coroutine_Enter` is `ram:D837` — duplicate
+          mis-name corrected; `ram:D837` later renamed
+          `Coroutine_Enter` 2026-09-19), `ROM00:3BD0`
           `Coroutine_SessionMul16` →
           `Coroutine_IndexedLookup_6B67` (into `6B67`),
           `ROM00:7C14` `Session_Cmp16Bit` →
@@ -508,11 +527,11 @@ current priority order; the concise lists above are authoritative.
         SUSPECTED `F998` — correct address is `FEA3`
         per byte-verified reference);
          `g_wCoroutineStepResult` — **RESOLVED
-         2026-09-19 (CONFIRMED): not a fixed RAM
-         address.** It names the buffer pointed to by
-         `g_pCoroutineStepResultBuf` at `ram:EA24`;
-         one writer `ROM01:6DF6 LD (0xEA24),HL` (HL
-         from `ROM01:6909` → `Coroutine_TaskSwitch`)
+          2026-09-19 (CONFIRMED): not a fixed RAM
+          address.** It names the buffer pointed to by
+          `g_pCoroutineStepResultBuf` at `ram:EA24`;
+          one writer `ROM01:6DF6 LD (0xEA24),HL` (HL
+          from `ROM01:6909` → `Coroutine_Enter`)
          and six readers in `Fs_SeekByteOffset`
          (`ROM01:6DDF-6EED`); layout `+1` = 16-bit
          step-1 result, `+3` = 16-bit step-2 result,
@@ -3490,16 +3509,22 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   most of the `SessionOpStub_*` farm). All 61 were restored from a pre-run
   `list_functions_enhanced` snapshot — the §11 diff-guard rule paid for
   itself. The flag is now clear and pass 1 re-clears it on every run.
-* **PARTIALLY ADDRESSED 2026-09-19 — duplicate `Coroutine_TaskSwitch`
-  mis-name fixed; the `ram:D837` naming question stays OPEN.** The
-  duplicate was `ROM00:3BB8` `Coroutine_TaskSwitch`, now
-  `Coroutine_IndexedLookup_6A4A` (indexed lookup into table `6A4A`;
-  sibling `ROM00:3BD0` `Coroutine_SessionMul16` →
-  `Coroutine_IndexedLookup_6B67`). `ram:D837` remains the name `doc/`
-  uses (loader entry `LD DE,0; CALL ram:D837`), but whether
-  `Coroutine_TaskSwitch` fits its bytes (an ordinary stack-frame
-  prologue saving `IX`/`IY`) is **not** resolved by this pass. See §12
-  item 2b.
+* **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified) — `ram:D837` renamed
+  `Coroutine_Enter`; duplicate `Coroutine_TaskSwitch`
+  mis-name fixed.** The duplicate was `ROM00:3BB8`
+  `Coroutine_TaskSwitch`, now
+  `Coroutine_IndexedLookup_6A4A` (indexed lookup into
+  table `6A4A`; sibling `ROM00:3BD0`
+  `Coroutine_SessionMul16` → `Coroutine_IndexedLookup_6B67`).
+  `ram:D837` is now `Coroutine_Enter` (`CONFIRMED
+  ram:D837-D857`): coroutine frame-entry / context-switch
+  helper — pops the continuation, switches `SP` by `DE`,
+  saves `BC`/`IX`/`IY`, calls via `ram:D836` (`JP
+  (HL)`), returns `HL` with `Z` iff `HL==0`; entered by
+  `LD DE,0; CALL ram:D837` (`DE` = frame size). See
+  §12 item 2b (now closed) and
+  `doc/re-notes/open-questions.md`.
 * **Two bugs fixed from `AnnotateRst10Calls.java`:** enqueued boot-chain
   targets resolve in the bank whose chain is running (`ROM00`/`ROM01`), not
   in the flat `ram` space — that left 156 dangling references in the bank-0
@@ -5073,7 +5098,13 @@ No Ghidra changes; docs only.
 ### 2026-09-17 — runtime loader `ram:D370` coroutine rendezvous substantially advanced (CONFIRMED, ROM01/ram; docs only, no Ghidra, no new inference; parent-adjudicated, bytes verified)
 
 * **Advances the "runtime loader `ram:D370` input-provider path" open item** carried in `Next` static backlog. Byte-verified in `ROM01`/`ram`. All tags CONFIRMED unless noted.
-* **Finding 1 — coroutine-driven loader (CONFIRMED).** The runtime Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven. Its routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_TaskSwitch`, `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9` (`Coroutine_SwapContinuation`, `ram:D9F9`).
+* **Finding 1 — coroutine-driven loader (CONFIRMED).**
+  The runtime Load/Run loader (`ROM01:0A67`-`ROM01:10CE`)
+  is coroutine-driven. Its routines enter via
+  `LD DE,0; CALL ROM01:D837` (`Coroutine_Enter`,
+  `ram:D837`, `CONFIRMED ram:D837-D857`) and yield to a
+  peer with `LD HL,D370; CALL ROM01:D9F9`
+  (`Coroutine_SwapContinuation`, `ram:D9F9`).
 * **Finding 2 — `Coroutine_SwapContinuation` (CONFIRMED).** `ram:D9F9`-`ram:DA0A` swaps the current continuation with the 16-bit word at the address in `HL`, then returns: `Z` when the peer slot was empty (the caller continues), `NZ` when it yielded to the peer (`EX SP,HL; LD HL,1; RET`).
 * **Finding 3 — `ram:D370` is the loader's peer/rendezvous slot (CONFIRMED).** A byte search for the address (`70 D3`) finds it ONLY inside the loader region: `ROM01:0BA3`, `ROM01:0CEE`, `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`. No code outside the loader writes or reads `D370`, so the peer is resumed by the coroutine scheduler rather than registered by a distinct ROM routine.
 * **Finding 4 — loader request protocol (CONFIRMED).** The loader sets `D368` (destination offset), `D36A` (destination pointer), `D36C` (requested byte count), `D36E` (delivered count), then swaps `D370`; the peer fills the bytes and swaps back. `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)` and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`).
@@ -5763,7 +5794,9 @@ names renamed, 144 unplated functions plated)
   `ROM00:3BB8` `Coroutine_TaskSwitch` →
   `Coroutine_IndexedLookup_6A4A` (indexed lookup into
   table at `6A4A`, not a task switch; real
-  `Coroutine_TaskSwitch` is `ram:D837` — duplicate
+  `Coroutine_Enter` is `ram:D837` — duplicate
+  mis-name corrected; `ram:D837` later renamed
+  `Coroutine_Enter` 2026-09-19), `ROM00:3BD0`
   mis-name corrected), `ROM00:3BD0`
   `Coroutine_SessionMul16` →
   `Coroutine_IndexedLookup_6B67` (into `6B67`),
@@ -6160,7 +6193,7 @@ names renamed, 144 unplated functions plated)
    at `ram:EA24`. Traced: exactly **one writer**
    (`ROM01:6DF6 LD (0xEA24),HL`, HL from the coroutine
    frame allocator `ROM01:6909` →
-   `Coroutine_TaskSwitch`) and **six readers**, all in
+   `Coroutine_Enter`) and **six readers**, all in
    `Fs_SeekByteOffset` (`ROM01:6DDF-6EED`). Buffer
    layout: offset `+1` = 16-bit step-1 result, offset
    `+3` = 16-bit step-2 result, offset `+0`
@@ -6395,4 +6428,78 @@ names renamed, 144 unplated functions plated)
   above; no new inference; evidence tags
   preserved; ~70-col wrapping. `mkdocs build
   --strict` (site_dir `site-mkdocs`) run — see
+  below.
+
+### 2026-09-19 — D837 renamed Coroutine_Enter; EE00 arena not ROM-patched
+  (docs only, no Ghidra, no new inference;
+  parent-verified, Ghidra saved)
+
+* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)
+  — `ram:D837` renamed `Coroutine_Enter`.**
+  Coroutine frame-entry / context-switch helper,
+  not a scheduler task switch: pops the
+  continuation (body address) from the stack;
+  switches `SP` to the coroutine frame by the `DE`
+  frame offset; saves `BC`/`IX`/`IY`; calls the
+  body via `ram:D836` (`JP (HL)`); restores;
+  returns the body's `HL` with `Z` iff `HL==0`.
+  Entered by the ubiquitous `LD DE,0; CALL
+  ram:D837` prologue (`DE` = frame size). Plate
+  updated (In: `DE` = frame size, return address =
+  body; Out: `HL` = body result, `Z` iff `0`;
+  Clobbers `AF`/`BC`/`DE`/`HL`, `IX`/`IY`
+  preserved; `CONFIRMED ram:D837-D857`). Sibling
+  `Coroutine_SwapContinuation` (`ram:D9F9`)
+  unchanged. Rename hygiene: synced every
+  `Coroutine_TaskSwitch` mention in `doc/` to
+  `Coroutine_Enter` for `ram:D837`; historical
+  `ROM00:3BB8` duplicate → `Coroutine_IndexedLookup_6A4A`
+  record retained as former name. The earlier
+  “Should `ram:D837` keep the name
+  `CoroutineTaskSwitch`?” OPEN in
+  `doc/re-notes/open-questions.md` is now RESOLVED
+  (name changed).
+
+* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)
+  — `ram:EE00-EE4F` thunk hypothesis unsupported
+  in ROM.** No ROM code writes the arena: its source
+  table `ROM00:7DFA` (20 words) has no code xref,
+  and only one instruction references the arena
+  (`ROM01:11A4` calls `0xEE00`). The static image
+  remains twenty `LD HL,1; RET` no-op slots (4 bytes
+  each, `21 01 00 C9`); the “runtime `RST 10h`
+  thunk” hypothesis has no ROM patching mechanism.
+  Comment added at `ram:EE00`. Whether/when the arena
+  becomes `RST 10h` thunks at runtime remains **OPEN
+  only for loaded software** (no ROM evidence).
+
+* **TASKS.md:** closed both OPEN items wherever they
+  appeared — `Next` no-hardware priorities
+  `ram:EE00-EE4F` and `ram:D837` marked **RESOLVED
+  2026-09-19 (CONFIRMED)** with evidence and removed
+  from the no-hardware backlog; renumbered/refreshed
+  `Next` so top no-hardware item is now the
+  data-typing backlog (§12 item 5 remainder); updated
+  the 2026-09-01 listing-repair entry (PARTIALLY
+  ADDRESSED → RESOLVED) and the 2026-09-17 loader
+  Finding 1 to `Coroutine_Enter`. No Ghidra function
+  created/deleted beyond the saved rename/comment.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (Next renumbered/refreshed + both RESOLVED entries
+  + this session entry), `re-notes/open-questions.md`
+  (D837 naming OPEN → RESOLVED `Coroutine_Enter`),
+  `re-notes/os-diposb.md` (NOT standard CP/M + Form
+  Builder + Queue purpose + Loader rendezvous updated
+  to `Coroutine_Enter` with `CONFIRMED ram:D837-D857`),
+  `re-notes/unbanked-ram-map.md` (`D681-D892` row),
+  `re-notes/ghidra-repair-script.md` (Pass 1 table +
+  body + identity), `reference/commstar-api.md` (Entry
+  points + Every buffer must live… updated to RESOLVED
+  unsupported in ROM, OPEN only for loaded software),
+  `research/gap-analysis.md` (HL writer). No Ghidra
+  edits in this docs pass beyond the saved rename at
+  `ram:D837`/`ram:EE00` comment; no new inference;
+  evidence tags preserved; ~70-col wrapping. `mkdocs
+  build --strict` (site_dir `site-mkdocs`) run — see
   below.

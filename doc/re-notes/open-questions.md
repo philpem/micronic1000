@@ -295,20 +295,26 @@ source tree (not published here).
 
 ## Naming and annotation
 
-* **PARTIALLY ADDRESSED 2026-09-19 — the duplicate mis-name was
-  `ROM00:3BB8` `Coroutine_TaskSwitch`** (now
-  `Coroutine_IndexedLookup_6A4A`, indexed lookup into the table at
-  `6A4A`; sibling `ROM00:3BD0` `Coroutine_SessionMul16` →
-  `Coroutine_IndexedLookup_6B67`). `ram:D837` remains the
-  `Coroutine_TaskSwitch` that `doc/` references (loader entry
-  `LD DE,0; CALL ram:D837` at `ROM01:0A67`), but the original
-  question — **does the name fit `ram:D837`?** — stays **OPEN**:
-  its bytes are an ordinary stack-frame prologue (saves `IX`/`IY`),
-  and nothing in this pass shows it performs a task switch rather
-  than a compiler frame helper (see
-  [listing-repair script](ghidra-repair-script.md) pass 1). The
-  duplicate-name confusion is fixed; the `ram:D837` naming decision
-  is not resolved here.
+* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified) —
+  `ram:D837` renamed `Coroutine_Enter`.** It is a
+  coroutine frame-entry / context-switch helper, not a
+  scheduler task switch: pops the continuation (body
+  address) from the stack; switches `SP` to the
+  coroutine frame by the `DE` frame offset; saves
+  `BC`/`IX`/`IY`; calls the body via `ram:D836`
+  (`JP (HL)`); restores; returns the body's `HL`
+  with `Z` iff `HL==0`. Entered by the ubiquitous
+  `LD DE,0; CALL ram:D837` prologue (`DE` = frame
+  size). Plate: In `DE` = frame size, return address
+  = body; Out `HL` = body result, `Z` iff `0`;
+  Clobbers `AF`/`BC`/`DE`/`HL`, `IX`/`IY` preserved;
+  `CONFIRMED ram:D837-D857`. The sibling
+  `Coroutine_SwapContinuation` (`ram:D9F9`) is
+  unchanged. The earlier duplicate `ROM00:3BB8`
+  `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
+  (and `ROM00:3BD0` → `Coroutine_IndexedLookup_6B67`)
+  remains corrected; the `ram:D837` naming question
+  is now closed.
 
 ## How to add a new OPEN item
 

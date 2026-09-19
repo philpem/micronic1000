@@ -416,7 +416,7 @@ is `FEA3` per byte-verified reference);
 (CONFIRMED): not a fixed RAM address.** It names the
 buffer pointed to by `g_pCoroutineStepResultBuf` at
 `ram:EA24`; one writer `ROM01:6DF6 LD (0xEA24),HL`
-(HL from `ROM01:6909` → `Coroutine_TaskSwitch`) and
+(HL from `ROM01:6909` → `Coroutine_Enter`) and
 six readers in `Fs_SeekByteOffset` (`ROM01:6DDF-6EED`);
 layout `+1` = 16-bit step-1 result, `+3` = 16-bit
 step-2 result, `+0` unreferenced; `ram:E73E` has

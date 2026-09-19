@@ -18,7 +18,7 @@ put them back, and its report tells you what had drifted.
 | Pass | Repairs | Why auto-analysis fails |
 |---|---|---|
 | 0 | The battery-RAM image | The ROM dumps contain no RAM, so nothing in unpaged RAM exists to analyse |
-| 1 | The `ram:D837` frame-helper's no-return flag | A wrong flag makes Ghidra delete every C function body |
+| 1 | The `ram:D837` (`Coroutine_Enter`) frame-helper's no-return flag | A wrong flag makes Ghidra delete every C function body |
 | 2 | Both banks' boot-load chains | The load script is data that follows no flow edge |
 | 3 | `RST 10h` banked-call inline operands | The three operand bytes look like code |
 | 4 | `Kernel_TableDispatch` inline tables | The table follows a `CALL` and the dispatcher tail-jumps |
@@ -128,23 +128,34 @@ Two facts follow from those bytes.
   what `CALL D836` with `HL` holding the popped return address does. The
   helper is not a non-returning function.
 
-The database had `ram:D837` (still named `Coroutine_TaskSwitch`) flagged
-no-return. With that flag set, Ghidra's non-returning-function repair treats
-the body of every compiled routine as dead code. Measured on this program:
-a run of the other four passes with the flag still set created 143 functions,
-and background auto-analysis then silently deleted **61 existing ones**, 59 of
-them hand-named — `Lib_StrCmp`, `Lib_StrCopy`, `Program_LoadedProgram`,
-`Kernel_RunStagedCall`, the `SessionOpStub_*` farm, and more. It also capped
-every prologue function's body at the six bytes of the prologue itself.
+The database had `ram:D837` (now `Coroutine_Enter`,
+`CONFIRMED ram:D837-D857`) flagged no-return. With that
+flag set, Ghidra's non-returning-function repair treats
+the body of every compiled routine as dead code. Measured
+on this program: a run of the other four passes with the
+flag still set created 143 functions, and background
+auto-analysis then silently deleted **61 existing ones**,
+59 of them hand-named — `Lib_StrCmp`, `Lib_StrCopy`,
+`Program_LoadedProgram`, `Kernel_RunStagedCall`, the
+`SessionOpStub_*` farm, and more. It also capped every
+prologue function's body at the six bytes of the prologue
+itself.
 
-Pass 1 clears the flag, after byte-checking that `D837` really holds the
-helper, so it is inert on any other program. It runs first because everything
-else depends on it.
+Pass 1 clears the flag, after byte-checking that `D837`
+really holds the helper, so it is inert on any other
+program. It runs first because everything else depends on
+it.
 
-The identity of `D837` is therefore **not** a coroutine switch, and its plate
-now records that. The symbol has deliberately **not** been renamed: that is a
-consequential rename needing the owner's call and a full docs pass. See
-[Open questions](open-questions.md).
+`ram:D837` is `Coroutine_Enter` (`CONFIRMED
+ram:D837-D857`): a coroutine frame-entry / context-switch
+helper — pops the continuation (body address) from the
+stack; switches `SP` to the coroutine frame by the `DE`
+frame offset; saves `BC`/`IX`/`IY`; calls the body via
+`ram:D836` (`JP (HL)`); restores; returns the body's `HL`
+with `Z` iff `HL==0`. Entered by `LD DE,0; CALL
+ram:D837` (`DE` = frame size). The sibling
+`Coroutine_SwapContinuation` (`ram:D9F9`) is unchanged.
+Renamed 2026-09-19; see [Open questions](open-questions.md).
 
 ## Pass 2 — boot-load chains
 

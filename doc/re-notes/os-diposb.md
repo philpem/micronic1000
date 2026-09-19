@@ -55,8 +55,14 @@ references:
    MODEM A/DIAL, MODEM MAN/D (ROM01 descriptor table ~7500-76A0).
 5. **Custom file formats beside .COM**: DIP files (block-structured,
    `DIP file has too many blocks`) and Fastcode (`Fastcode:` string).
-6. **Coroutine/thread machinery in the dispatcher**: SP/IX/IY context
-   switch blocks at ram:D837/D850/D858 — no CP/M analogue.
+6. **Coroutine frame-entry helper**: `Coroutine_Enter`
+   (`ram:D837`, `CONFIRMED ram:D837-D857`) pops the
+   continuation, switches `SP` by `DE`, saves
+   `BC`/`IX`/`IY`, calls via `ram:D836` (`JP (HL)`);
+   returns `HL` with `Z` iff `HL==0` — no CP/M
+   analogue. Companion `Coroutine_SwapContinuation`
+   at `ram:D9F9` and context blocks at `ram:D850`/`D858`
+   remain.
 7. **Syscall dispatch is table-driven in RAM**: the caller passes HL
    pointing at a parameter block whose first WORD is the function
    number; handler = word[d6f4 + fn×2], tail-jumped via
@@ -177,7 +183,9 @@ tables section in [Memory and I/O map](../reference/memory-map.md)):
 
 `Form_Builder` (ROM01:0271) processes a block:
 
-1. `Coroutine_TaskSwitch(0)` — yield to the scheduler first
+1. `Coroutine_Enter(0)` — frame-entry helper
+   (`ram:D837`; `DE`=0 frame size; `CONFIRMED
+   ram:D837-D857`)
 2. `dbee` (=ROM00:759D, inside chain-loaded module A) — text-format
    interpreter: decimal accumulation (×10+digit), space/tab/slash
    dispatch — parses the runtime text associated with the block,
@@ -358,9 +366,10 @@ Combined coverage: bank-0 writes **D893-E704**, bank-1 writes
 The fn=2 records build a 1124-byte table at ED1C-F17F of executable
 {RST10h, bank, target} far-call stubs — and this table serves
 TWO roles:
-  1. **Task list**: `Coroutine_TaskSwitch` (ram:D837) runs entries
-     cooperatively (emulation-confirmed; tasks observed at the
-     enqueued targets)
+  1. **Deferred-call queue** (cooperative; tasks observed
+     at the enqueued targets) — **not** driven by
+     `Coroutine_Enter` (`ram:D837`), which is a frame-entry
+     helper (`CONFIRMED ram:D837-D857`), not a scheduler
   2. **Transfer vector table**: Workstation UI object vtables
      (e.g. EFEC/F0F8/EF98/EFD8 in `ui_object_descriptor_1`) point
      DIRECTLY into this arena — calling a vtable slot executes the
@@ -411,8 +420,10 @@ TWO roles:
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
    services. **Loader coroutine rendezvous (CONFIRMED):** the runtime
    Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — its
-   routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_TaskSwitch`,
-   `ram:D837`) and yield to a peer with `LD HL,D370; CALL ROM01:D9F9`
+   routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_Enter`,
+   `ram:D837`, `CONFIRMED ram:D837-D857`: `DE`=frame
+   size, `HL`=body result with `Z` iff `0`) and yield
+   to a peer with `LD HL,D370; CALL ROM01:D9F9`
    (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED). `Coroutine_SwapContinuation`
    (`ram:D9F9`-`ram:DA0A`) swaps the current continuation with the 16-bit
    word at the address in `HL`, then returns: `Z` when the peer slot was
