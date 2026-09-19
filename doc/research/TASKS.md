@@ -95,8 +95,13 @@ State: continuously updated as work progresses.
   FillBatteryRam.java). Module A (D893-E0F3), Module B (D081-D2CA),
   A2 (E104-E233), params (E0F4), misc (E22D), page-zero (E2FA),
   disassembled.
-  * `ram:da13` = BDOS-call wrapper (CALL 0005, fn from E0FE)
-  * `ram:e0b2` = command dispatcher (walks inline {cmd->handler})
+   * `ram:da13` = session-to-BDOS bridge
+     (RESOLVED 2026-09-19, CONFIRMED, byte-verified)
+     — copies function number → C and argument → DE
+     from the session register file (`E0FE`/`E100`,
+     populated from the stack by `ram:D86E`), issues
+     `CALL 0005`, returns BDOS A zero-extended in HL
+   * `ram:e0b2` = command dispatcher (walks inline {cmd->handler})
   * `ram:d86e` = stack-param->E0FE copy then jump
   * `e06a/e085` = 16-bit comparison helpers
   * session RX loop `FUN_ROM00_59fb`, TX loop `FUN_ROM00_5f58`
@@ -150,13 +155,23 @@ State: continuously updated as work progresses.
   and `research/gap-analysis.md` headline. No
   further work scheduled there.
 
-1. **`ram:DA13` semantics — constructor vs
-   stream-read (OPEN).** Decides the
-   `ROM01:6A36` / `6AA9` mapping. Discriminator:
-   trace `DA13`'s callee role and caller
-   conventions (byte-verify at call sites).
+- **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified) — `ram:DA13` session-to-BDOS
+  bridge.** Copies function number → C and
+  argument → DE from the session register file
+  (`E0FE`/`E100`, populated from the stack by
+  `ram:D86E`), issues `CALL 0005`, returns BDOS A
+  zero-extended in HL. Decides `ROM01:6A36`
+  (record constructor, BDOS `0x22` Write Random at
+  `ROM01:6A85`-`6A89`, key at record+0x26, caller
+  `Fs_WriteBytes` at `ROM01:6D58`) vs `ROM01:6AA9`
+  (record stream-reader, BDOS `0x21` Read Random at
+  `ROM01:6AFB`-`6AFF` with `E986`/`E992` key cache,
+  cache hit short-circuits the call, caller
+  `Fs_ReadBytes` at `ROM01:6BD8`). Removed from the
+  backlog; no Ghidra function created/deleted.
 
-2. **Loader's exact staging cell (OPEN).** The
+1. **Loader's exact staging cell (OPEN).** The
    `ram:D370` peer/rendezvous slot is CONFIRMED
    (loader `ROM01:0A67`–`10CE`, `D368`/`D36A`/
    `D36C`/`D36E` protocol, feeder
@@ -164,7 +179,7 @@ State: continuously updated as work progresses.
    but the buffer the peer fills is not pinned.
    Loader otherwise fully mapped.
 
-3. **`ram:EE00`–`EE4F` — runtime patching
+2. **`ram:EE00`–`EE4F` — runtime patching
    (OPEN).** Twenty static `LD HL,1; RET`
    no-op slots (4 bytes each, `21 01 00 C9`);
    whether/when they are patched to `RST 10h`
@@ -172,7 +187,7 @@ State: continuously updated as work progresses.
    `ROM00:7DFA` 20-word table; RAM arena is
    patched at runtime.
 
-4. **`ram:D837` naming — `Coroutine_TaskSwitch`
+3. **`ram:D837` naming — `Coroutine_TaskSwitch`
    vs compiler frame helper (OPEN).** Bytes are
    an ordinary stack-frame prologue (saves
    `IX`/`IY`, `SP` adjust via `DE`), not a task
@@ -181,7 +196,7 @@ State: continuously updated as work progresses.
    `Coroutine_IndexedLookup_6A4A` (CONFIRMED).
    Naming question stays OPEN.
 
-5. **Data-typing backlog (§12 item 5 remainder,
+4. **Data-typing backlog (§12 item 5 remainder,
    OPEN).** `ROM01:7545`–`7FFF`
    descriptor-record format (needs the
    `TemplateBuilder` decode); `ROM00:7D80` /
@@ -190,7 +205,7 @@ State: continuously updated as work progresses.
    error-string table; `tbl_` labels +
    index→handler plates for the dispatch tables.
 
-6. **Minor / deferred (OPEN, low priority).**
+5. **Minor / deferred (OPEN, low priority).**
    4 documented retained `FUN_*` with open
    questions, the 12 non-code code gaps
    (page-zero vectors, inline dispatchers,
@@ -291,8 +306,11 @@ current priority order; the concise lists above are authoritative.
     `e09f`, `Lib_Sub16` `e0a9`, `Lib_Unsigned*` `e0d9`/`e0da`/`e0e7`/`e0e8`,
     memmove at `ram:d9a0`).  Plates added for the two that had none
     (`Lib_Not16`, `Lib_Neg16`); the trivial logic ops carry SHORT-form plates.
-    Still OPEN: `da13` semantics (constructor vs stream-read) deciding the
-    `6A36`/`6AA9` interpretation.
+    **RESOLVED 2026-09-19 (CONFIRMED):** `ram:DA13`
+    session-to-BDOS bridge closes the `6A36`
+    constructor / `6AA9` stream-reader mapping;
+    former `da13` OPEN superseded (see Next
+    priorities and 2026-09-19 session entry).
 8c. **Static writers of d2dc/d2de (06d3 globals)** and of the EA14/
     EA1C chunk-state blocks — not in defined code post-repair;
     re-check after the thunk-sweep and get_callers pass.
@@ -5045,7 +5063,11 @@ No Ghidra changes; docs only.
 
 ### 2026-09-17 — guarded structural repairs, part 2: compiler-runtime plates done; large data regions blocked by tooling
 
-* **`e020`-`e0aa` compiler-runtime page — label + plate DONE.** Every helper is already labelled (`Lib_And16` `e023`, `Lib_Not16` `e02b`, `Lib_Or16` `e033`, `Lib_Xor16` `e03b`, `Lib_Lnot16` `e043`, `Lib_Eq16` `e04b`, `Lib_Ne16` `e05a`, `Lib_SignedLe16` `e06a`, `Lib_SignedGe16` `e06b`, `Lib_SignedGt16` `e085`, `Lib_SignedLt16` `e086`, `Lib_Neg16` `e09f`, `Lib_Sub16` `e0a9`, `Lib_Unsigned*` `e0d9`/`e0da`/`e0e7`/`e0e8`).  The two with no plate were plated: `Lib_Not16` (`ram:E02B`-`E032`, `HL=~HL`, Z iff input FFFFh) and `Lib_Neg16` (`ram:E09F`-`E0A8`, `HL=-HL`, Z iff input 0).  The trivial logic ops keep SHORT-form plates.  Still OPEN: `da13` constructor-vs-stream-read semantics for `6A36`/`6AA9`.
+* **`e020`-`e0aa` compiler-runtime page — label + plate DONE.** Every helper is already labelled (`Lib_And16` `e023`, `Lib_Not16` `e02b`, `Lib_Or16` `e033`, `Lib_Xor16` `e03b`, `Lib_Lnot16` `e043`, `Lib_Eq16` `e04b`, `Lib_Ne16` `e05a`, `Lib_SignedLe16` `e06a`, `Lib_SignedGe16` `e06b`, `Lib_SignedGt16` `e085`, `Lib_SignedLt16` `e086`, `Lib_Neg16` `e09f`, `Lib_Sub16` `e0a9`, `Lib_Unsigned*` `e0d9`/`e0da`/`e0e7`/`e0e8`).  The two with no plate were plated: `Lib_Not16` (`ram:E02B`-`E032`, `HL=~HL`, Z iff input FFFFh) and `Lib_Neg16` (`ram:E09F`-`E0A8`, `HL=-HL`, Z iff input 0).  The trivial logic ops keep SHORT-form plates.  **RESOLVED 2026-09-19 (CONFIRMED):**
+  `ram:DA13` session-to-BDOS bridge closes the
+  `6A36` constructor / `6AA9` stream-reader mapping;
+  former `da13` OPEN superseded (see Next
+  priorities and 2026-09-19 session entry).
 * **`ROM01:7580`-`7670` data-typing — BLOCKED by tooling.** The region is a config-descriptor table misdecoded as code (pointers into ROM01, high byte `75`/`79`/`7a`).  `apply_data_type` with `clear_existing` clears only the single code unit at the start address and then conflicts on the next defined instruction (`Conflicting instruction exists at ROM01::7589`), so a multi-instruction data range cannot be defined; `clear_flow_and_repair` does not free a data/instruction-blocked boundary.  No clear-region/clear-data tool is exposed and the inline-script path is broken (the shared `~/ghidra_scripts` bundle has pre-existing compile errors).  Region remains bookmarked.  Same limitation blocks the `ROM01:6431` full repair.
 * **`ROM00:7409`/`7472` — deferred by design.** They are the ROM images of RAM module A (`ram:D8CE`, `ram:D937`), whose internal addresses resolve against the wrong space; not a repair target.
 * **Validation:** function count `1101` unchanged; `save_program` succeeded.
@@ -6157,3 +6179,60 @@ names renamed, 144 unplated functions plated)
    no new inference; evidence tags preserved;
    ~70-col wrapping. `mkdocs build --strict`
    (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — da13 semantics resolved
+ (session-to-BDOS bridge; 6A36 constructor /
+ 6AA9 stream-reader) (Ghidra saved; docs only
+ in this pass, no new inference;
+ parent-verified, byte-verified)
+
+* **`ram:DA13` RESOLVED (CONFIRMED,
+  byte-verified) — session-to-BDOS bridge.**
+  Copies function number → C and argument → DE
+  from the session register file (`E0FE`/`E100`,
+  populated from the stack by `ram:D86E`), issues
+  `CALL 0005`, returns BDOS A zero-extended in
+  HL. Staged-op wording superseded; plain BDOS
+  `CALL 0005` is the mechanism.
+
+* **`ROM01:6A36` = record constructor
+  (CONFIRMED).** Writes a record via BDOS
+  `0x22` Write Random at `ROM01:6A85`-`6A89`;
+  stores the caller key at record+0x26; called
+  from the write path `Fs_WriteBytes` at
+  `ROM01:6D58`.
+
+* **`ROM01:6AA9` = record stream-reader
+  (CONFIRMED).** Reads a record via BDOS `0x21`
+  Read Random at `ROM01:6AFB`-`6AFF` with an
+  `E986`/`E992` key cache (cache hit
+  short-circuits the call); called from the read
+  path `Fs_ReadBytes` at `ROM01:6BD8`.
+
+* **Plates updated in Ghidra (CONFIRMED,
+  byte-verified) for `ram:DA13`,
+  `ROM01:6A36` (staged-op wording corrected to
+  plain BDOS `CALL 0005`), and `ROM01:6AA9`.**
+  Function list unchanged; saved.
+
+* **TASKS.md:** closed the `da13` OPEN item
+  wherever it appeared — `Next` no-hardware
+  priority 1 marked RESOLVED 2026-09-19
+  (CONFIRMED) with contract + 6A36/6AA9 mapping
+  and removed from the remaining backlog;
+  renumbered/refreshed `Next` no-hardware
+  priorities so the former item 2 (loader staging
+  cell) is now the top item; removed the
+  "Still OPEN: da13" text. Added this session
+  entry.
+
+* **Docs updated in this pass:** `research/
+  TASKS.md` (this entry + `Next` priorities
+  refreshed/renumbered + `ram:da13` In-progress
+  bullet updated to RESOLVED bridge + "Still
+  OPEN: da13" text marked RESOLVED). No Ghidra
+  edits in this docs pass beyond the saved plates
+  above; no new inference; evidence tags
+  preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see
+  below.
