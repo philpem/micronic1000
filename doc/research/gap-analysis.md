@@ -1,10 +1,11 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (16th audit, §12 FINAL PASS items 2b + 3
-— 5 wrong names renamed, 144 unplated functions plated),
-firmware `micron1.bin` (overlay spaces
-`ROM00`/`ROM01`, `ram` resident kernel). This is a
-**documentation-coverage** audit: which functions have
+Status: 2026-09-19 (16th audit updated for §12 item 3
+short-plate review — 141 reviewed: 82 KEEP / 59
+upgraded; plate coverage 100 %, no SHORT-form remains
+that §8 would reject), firmware `micron1.bin` (overlay
+spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
+a **documentation-coverage** audit: which functions have
 *we* named and commented, versus the auto-named `FUN_*`
 that Ghidra merely detected.
 
@@ -22,14 +23,17 @@ that Ghidra merely detected.
 **Refreshed directly from Ghidra on 2026-09-18 — after
 code-gap sweep complete (121 → 12; bodies extended,
 914 internal / 915 guarded total)** — function counts
-unchanged 2026-09-19 (no function renamed/created/deleted
-in the 144-plate batch except the 5 item-2b renames, which
-do not change the count). Auto `FUN_*` = 4
+unchanged through 2026-09-19 (item 2b 5 renames, 144
+unplated plated, and item 3 short-plate review 82 KEEP /
+59 upgraded — all plate-only, no function
+renamed/created/deleted except the 5 item-2b renames,
+which do not change the count). Auto `FUN_*` = 4
 (ROM00 1, ROM01 2, ram 1); named = 910 internal
 (99.6 %; 911 guarded). Previous audit was 914 / 4 /
 910; dispatch-case absorptions (1002 → 915, −87) remain.
-See session log 2026-09-19 and 2026-09-18 code-gap sweep
-and `re-notes/inline-dispatch.md` for the structural model.
+See session log 2026-09-19 (items 2b, unplated, and
+short-plate) and 2026-09-18 code-gap sweep and
+`re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import
@@ -41,10 +45,23 @@ function now carries a plate. The 144 functions that had
 `plateLen=0` (46 `ram` — mostly `SessionOpStub_*`/`Lib_*`/
 `RegFile_*`, notable `Fcb_ParseFilename` CP/M FCB parser,
 `Kernel_RunStagedCall` — 33 `ROM00`, 65 `ROM01`) were
-plated with no renames/creates/deletes. A pre-existing set
-of ~141 plates <120 chars still needs the §8 full-form
-review (brief purpose / mechanics / In-Out-Clobbers /
-evidence tag, ~70 cols, multi-line ASCII) — see
+plated with no renames/creates/deletes. **Item 3
+short-plate review DONE 2026-09-19 (CONFIRMED):** all 141
+plates <120 chars reviewed against §8 — **82 KEEP**
+(genuinely trivial — math primitives, comparators,
+simple port I/O, single-RET stubs, RST vectors,
+constant-return helpers, simple RAM-cell setters, no-op
+coroutine stubs) and **59 UPGRADE** to the full form
+(brief/mechanics/In-Out-Clobbers/evidence tag, ~70 cols,
+multi-line ASCII; 59 applied in Ghidra; function list
+unchanged; saved); plate coverage 100 %, no SHORT-form
+plate remains that §8 would reject. Typical upgrades:
+`Lib_MemMove`, `Bdos_PreparedCall`, the `RegFile_*`
+32-bit math, `Lib_Mulu16`/`Mul16Mod16`, session buffer
+ops (`Session_TxFlush`, `Session_RxRefill`,
+`Session_TxAppendByte`, `Session_RxConsumeByte`), TTY key
+handlers, LCD helpers, message-box displays, link
+init/timeout, clock repack, UI descriptor-chain ops. See
 `research/TASKS.md` §12 item 3. The 4 retained `FUN_*`
 remain with plates but kept symbols (documented open
 questions — see residual pass below).
@@ -361,19 +378,21 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 (see above) and the retains are expected.
 
 Annotation tail per `research/TASKS.md` §12
-(2026-09-19, raw-address cites migrated): plate
-coverage 100 % (closed — 144 unplated plated),
-~141 short plates (<120 chars) remain **OPEN**
-(item 3); comment-style pass — of 356 flagged
-instruction comments, 137 REWRITE (RAM cell / I/O
-port by numeric address → descriptive label,
-applied in Ghidra) and 219 KEEP (value/mask,
-legitimate cross-reference, or label already
-present) (CONFIRMED; function list unchanged; 0
-new labels needed); residual **OPEN**: secondary
-raw addresses (e.g. `(0006)` alongside replaced
-`d682`), decoding remaining magic numbers / bit
-masks, dropping opcode-restating comments;
+(2026-09-19, short-plate review done; raw-address
+cites migrated): plate coverage 100 % (closed —
+144 unplated plated; **item 3 DONE 2026-09-19 —
+141 reviewed: 82 KEEP / 59 upgraded to full form;
+no SHORT-form remains that §8 would reject**);
+comment-style pass — of 356 flagged instruction
+comments, 137 REWRITE (RAM cell / I/O port by
+numeric address → descriptive label, applied in
+Ghidra) and 219 KEEP (value/mask, legitimate
+cross-reference, or label already present)
+(CONFIRMED; function list unchanged; 0 new labels
+needed); residual **OPEN**: secondary raw addresses
+(e.g. `(0006)` alongside replaced `d682`), decoding
+remaining magic numbers / bit masks, dropping
+opcode-restating comments per §8;
 **CAUTION (CONFIRMED):** 2-digit hex in RTC
 contexts ambiguous — register index
 `01h`/`03h`/`05h`/`07h` ≠ I/O port `07h` =

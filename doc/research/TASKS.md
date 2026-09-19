@@ -319,21 +319,40 @@ current priority order; the concise lists above are authoritative.
           `ServiceCall_BdosFn2` (calls `Session_BdosCall`
           `ram:DA13` with fn 2). Grep confirms 0 stale
           mentions in `doc/`.
-    3. **Plate-quality pass**
-       - **Unplated functions — DONE 2026-09-19:** all 144
-         functions with `plateLen=0` now carry plates (46
-         `ram` — mostly `SessionOpStub_*`/`Lib_*`/`RegFile_*`,
-         notable `Fcb_ParseFilename` CP/M FCB parser,
-         `Kernel_RunStagedCall` — 33 `ROM00`, 65 `ROM01`);
-         no function renamed/created/deleted in that batch;
-         plate coverage is now **100 %** (no function lacks
-         a plate; CONFIRMED).
-       - **Short plates — OPEN:** ~141 plates <120 chars still
-         need the §8 full-form review (brief purpose /
-         mechanics / In-Out-Clobbers / evidence tag, ~70
-         cols, multi-line ASCII).
-       Fix plates that contradict their own names and
-       re-flow to ~70 cols as part of that review.
+     3. **Plate-quality pass — DONE 2026-09-19
+        (CONFIRMED, Ghidra saved; function list
+        unchanged; plate coverage 100 %):**
+        - **Unplated functions — DONE 2026-09-19:** all 144
+          functions with `plateLen=0` now carry plates (46
+          `ram` — mostly `SessionOpStub_*`/`Lib_*`/`RegFile_*`,
+          notable `Fcb_ParseFilename` CP/M FCB parser,
+          `Kernel_RunStagedCall` — 33 `ROM00`, 65 `ROM01`);
+          no function renamed/created/deleted in that batch;
+          plate coverage is now **100 %** (no function lacks
+          a plate; CONFIRMED).
+        - **Short plates — DONE 2026-09-19:** all 141 plates
+          <120 chars reviewed against §8 — **82 KEEP**
+          (genuinely trivial — math primitives,
+          comparators, simple port I/O, single-RET stubs,
+          RST vectors, constant-return helpers, simple
+          RAM-cell setters, no-op coroutine stubs) and
+          **59 UPGRADE** to the full form
+          (brief/mechanics/In-Out-Clobbers/evidence tag,
+          ~70 cols, multi-line ASCII; 59 applied in Ghidra;
+          function list unchanged; saved). Typical
+          upgrades: `Lib_MemMove`, `Bdos_PreparedCall`,
+          the `RegFile_*` 32-bit math, `Lib_Mulu16`/
+          `Mul16Mod16`, session buffer ops
+          (`Session_TxFlush`, `Session_RxRefill`,
+          `Session_TxAppendByte`, `Session_RxConsumeByte`),
+          TTY key handlers, LCD helpers, message-box
+          displays, link init/timeout, clock repack, UI
+          descriptor-chain ops. **Item 3 is now DONE** —
+          plate coverage 100 %, no SHORT-form plate
+          remains that §8 would reject (CONFIRMED).
+        Fix plates that contradict their own names and
+        re-flow to ~70 cols was done as part of that
+        review.
      4. **Comment-style pass — PARTIALLY DONE
         2026-09-19; 137 REWRITE / 219 KEEP of 356
         flagged (CONFIRMED; residual OPEN):** of 895
@@ -373,14 +392,15 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-     **Remaining scope after 2026-09-19 (raw-address
-     cites migrated; 137 rewrites):** item 3
-     short-plate review (~141), item 4 residual —
-     secondary raw addresses, magic-number / bit-mask
-     decoding, opcode-restating comments. Items 2a
-     (mass rename) and 2b plus 3 (unplated) remain
-     closed; item 4 raw-address migration is closed,
-     residual is OPEN.
+      **Remaining scope after 2026-09-19 (short-plate
+      review done; raw-address cites migrated):**
+      **only item 4 residual** — secondary raw addresses
+      surviving a rewrite (e.g. `(0006)` alongside
+      replaced `d682`), magic-number / bit-mask
+      decoding, opcode-restating comments per §8.
+      Items 2a, 2b, 3 (unplated + short-plate) remain
+      closed; item 4 raw-address migration is closed,
+      residual is OPEN.
 
 ## Owner corrections to honor
 
@@ -5646,3 +5666,50 @@ names renamed, 144 unplated functions plated)
   edits; no new inference; evidence tags preserved;
   ~70-col wrapping. `mkdocs build --strict`
   (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — §12 item 3 short-plate review
+ (141 reviewed: 82 KEEP / 59 upgraded)
+
+* **Item 3 short-plate review complete (CONFIRMED,
+  Ghidra saved; function list unchanged; no new
+  inference).** All **141** functions with plates
+  <120 chars were reviewed against §8: **82 KEEP**
+  (genuinely trivial — math primitives,
+  comparators, simple port I/O, single-RET stubs,
+  RST vectors, constant-return helpers, simple
+  RAM-cell setters, no-op coroutine stubs) and
+  **59 UPGRADE** to the full form
+  (brief/mechanics/In-Out-Clobbers/evidence tag,
+  ~70 cols, multi-line ASCII). The 59 were applied
+  in Ghidra; function list unchanged; saved.
+  Typical upgrades: `Lib_MemMove`,
+  `Bdos_PreparedCall`, the `RegFile_*` 32-bit math,
+  `Lib_Mulu16`/`Mul16Mod16`, session buffer ops
+  (`Session_TxFlush`, `Session_RxRefill`,
+  `Session_TxAppendByte`, `Session_RxConsumeByte`),
+  TTY key handlers, LCD helpers, message-box
+  displays, link init/timeout, clock repack, UI
+  descriptor-chain ops.
+
+* **Item 3 is now DONE (CONFIRMED):** plate coverage
+  **100 %**, no SHORT-form plate remains that §8
+  would reject.
+
+* **§12 remaining scope after this pass:** **only
+  item 4 residual** — secondary raw addresses
+  surviving a rewrite (e.g. `(0006)` alongside
+  replaced `d682`), magic-number / bit-mask
+  decoding, opcode-restating comments per §8.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (§12 item 3 DONE — short-plate review
+  141: 82 KEEP / 59 upgraded; §12 remaining scope
+  narrowed to only item 4 residual; this
+  2026-09-19 entry), `research/gap-analysis.md`
+  (headline + plate coverage + annotation tail
+  updated — item 3 DONE, 141 reviewed
+  82/59, no SHORT-form remains). No Ghidra edits in
+  this docs pass; no new inference; evidence tags
+  preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see
+  below.
