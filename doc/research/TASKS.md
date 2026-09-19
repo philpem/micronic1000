@@ -252,9 +252,10 @@ current priority order; the concise lists above are authoritative.
     2026-08-27)
 
     One coordinated sweep at the end, not piecemeal ad-hoc
-    patches. Baseline 2026-08-27: 935 functions, 131 still
-    `FUN_*`, 27 dispatch tables. Status 2026-09-19
-    (Ghidra saved; no new inference in this docs pass):
+     patches. Baseline 2026-08-27: 935 functions, 131 still
+     `FUN_*`, 27 dispatch tables. Status 2026-09-19
+     (Ghidra saved; raw-address cites migrated — 137
+     rewrites; no new inference in this docs pass):
 
     1. **Name + plate every `FUN_*` — DONE** (see
        `research/gap-analysis.md`; 914 internal / 915
@@ -333,15 +334,29 @@ current priority order; the concise lists above are authoritative.
          cols, multi-line ASCII).
        Fix plates that contradict their own names and
        re-flow to ~70 cols as part of that review.
-    4. **Comment-style pass — OPEN (scope quantified
-       2026-09-19; CONFIRMED count):** of 895
-       instruction comments, **356 carry
-       raw-address-like tokens** (hex/address cites
-       that §8 says should be descriptive labels, not
-       bare addresses) — not yet migrated; also
-       pending: decoding remaining magic numbers/
-       masks in place and dropping opcode-restating
-       comments per §8 anti-patterns.
+     4. **Comment-style pass — PARTIALLY DONE
+        2026-09-19; 137 REWRITE / 219 KEEP of 356
+        flagged (CONFIRMED; residual OPEN):** of 895
+        instruction comments, 356 carried
+        raw-address-like tokens — 137 REWRITE (RAM
+        cell / I/O port cited by numeric address, now
+        replaced with the descriptive label; all 137
+        applied in Ghidra; function list unchanged;
+        0 new labels needed — every cited address
+        already had a documented label) and 219 KEEP
+        (flagged token was a value/mask, legitimate
+        cross-reference target, or label already
+        present). Residual OPEN: (a) secondary raw
+        addresses surviving a rewrite (e.g. `(0006)`
+        alongside replaced `d682`); (b) decoding
+        remaining magic numbers / bit masks in place;
+        (c) dropping opcode-restating comments per §8.
+        **CAUTION (CONFIRMED):** 2-digit hex in RTC
+        contexts is ambiguous — RTC register index
+        (`01h`/`03h`/`05h`/`07h`) is not I/O port
+        `07h` = `CTRL_07` (`RTC_ADDR`/`RTC_DATA` are
+        `08h`/`28h`); the pass corrected these manually
+        — note this hazard for any future comment edit.
     5. **Data-typing backlog — substantially done** (see
        gap-analysis: `ROM01:757F-768E` typed as
        `undefined[272]`, `ROM00:7409`/`7472` deferred by
@@ -358,12 +373,14 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-    **Remaining scope after 2026-09-19:** item 3
-    short-plate review (~141), item 4 comment-style
-    (356 raw-address comments + magic-number/
-    opcode-restating cleanup). Items 2a (mass
-    rename) and 2b plus 3 (unplated) are closed in
-    this pass.
+     **Remaining scope after 2026-09-19 (raw-address
+     cites migrated; 137 rewrites):** item 3
+     short-plate review (~141), item 4 residual —
+     secondary raw addresses, magic-number / bit-mask
+     decoding, opcode-restating comments. Items 2a
+     (mass rename) and 2b plus 3 (unplated) remain
+     closed; item 4 raw-address migration is closed,
+     residual is OPEN.
 
 ## Owner corrections to honor
 
@@ -5581,3 +5598,51 @@ names renamed, 144 unplated functions plated)
   tags preserved; ~70-col wrapping. `mkdocs build
   --strict` (site_dir `site-mkdocs`) run — see
   below.
+
+### 2026-09-19 — §12 item 4 comment-style
+ (raw-address cites migrated; 137 rewrites)
+
+* **Item 4 comment-style — raw-address cites
+  migrated (CONFIRMED, Ghidra saved; 137 REWRITE
+  / 219 KEEP of 356 flagged; function list
+  unchanged; 0 new labels needed).** Of 356
+  flagged instruction comments, a re-verified pass
+  classified **137 REWRITE** (comments citing a RAM
+  cell or I/O port by numeric address, now replaced
+  with the descriptive label) and **219 KEEP** (the
+  flagged token was a value/mask, legitimate
+  cross-reference target, or label already present).
+  All 137 applied in Ghidra; function list
+  unchanged; 0 new labels needed (every cited
+  address already had a documented label).
+
+* **Residual within item 4 (still OPEN):** (a) some
+  rewrites still contain a secondary raw address
+  (e.g. `(0006)` survived alongside the replaced
+  `d682`); (b) decoding remaining magic numbers /
+  bit masks in place; (c) dropping comments that
+  merely restate the opcode. These are the
+  remainder of the comment-style pass.
+
+* **CAUTION recorded (CONFIRMED):** 2-digit hex in
+  RTC contexts is ambiguous — an RTC register index
+  (`01h`/`03h`/`05h`/`07h`) is not the I/O port of
+  the same number (`07h` = `CTRL_07`);
+  `RTC_ADDR`/`RTC_DATA` are `08h`/`28h`; the pass
+  corrected these manually. Note this hazard for
+  any future comment edit.
+
+* **§12 remaining scope after this pass:** item 3
+  short-plate review (~141), item 4 residual —
+  secondary raw addresses, magic-number / bit-mask
+  decoding, opcode-restating comments.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (§12 item 4 PARTIALLY DONE + CAUTION + remaining
+  scope updated, this 2026-09-19 entry),
+  `research/gap-analysis.md` (annotation tail
+  updated — item 4 raw-address cites migrated with
+  137/219 split + residual + CAUTION). No Ghidra
+  edits; no new inference; evidence tags preserved;
+  ~70-col wrapping. `mkdocs build --strict`
+  (site_dir `site-mkdocs`) run — see below.

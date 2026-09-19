@@ -361,14 +361,27 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 (see above) and the retains are expected.
 
 Annotation tail per `research/TASKS.md` §12
-(2026-09-19): plate coverage 100 % (closed — 144
-unplated plated), ~141 short plates (<120 chars)
-and the comment-style pass (356 raw-address
-comments + magic-number/opcode-restating cleanup)
-remain **OPEN**; the 590-name `Module_Name` mass
-rename (31-module taxonomy, 588 applied in Ghidra
-+ 2 collisions, docs synced across 24 files, commit
-`993a45d`) is **DONE** (CONFIRMED).
+(2026-09-19, raw-address cites migrated): plate
+coverage 100 % (closed — 144 unplated plated),
+~141 short plates (<120 chars) remain **OPEN**
+(item 3); comment-style pass — of 356 flagged
+instruction comments, 137 REWRITE (RAM cell / I/O
+port by numeric address → descriptive label,
+applied in Ghidra) and 219 KEEP (value/mask,
+legitimate cross-reference, or label already
+present) (CONFIRMED; function list unchanged; 0
+new labels needed); residual **OPEN**: secondary
+raw addresses (e.g. `(0006)` alongside replaced
+`d682`), decoding remaining magic numbers / bit
+masks, dropping opcode-restating comments;
+**CAUTION (CONFIRMED):** 2-digit hex in RTC
+contexts ambiguous — register index
+`01h`/`03h`/`05h`/`07h` ≠ I/O port `07h` =
+`CTRL_07`; `RTC_ADDR`/`RTC_DATA` are `08h`/`28h` —
+corrected manually. The 590-name `Module_Name`
+mass rename (31-module taxonomy, 588 applied in
+Ghidra + 2 collisions, docs synced across 24
+files, commit `993a45d`) is **DONE** (CONFIRMED).
 
 ## Notes
 
