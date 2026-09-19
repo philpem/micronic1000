@@ -262,6 +262,276 @@ State: continuously updated as work progresses.
    all recorded as such — no further action
    (CONFIRMED).
 
+### Emulator-coverage / vtable-mapping plan —
+    closing the low-priority retains (no
+    hardware, no new static RE)
+
+   Purpose: close the last low-priority retains
+   left in `research/gap-analysis.md` / TASKS
+   "Minor / deferred" without inventing tooling.
+   All runs reuse the EXISTING harness
+   `analysis/boot_hw.py` — the single canonical
+   harness per `analysis/README.md` — plus its
+   documented options. Older `trace_io.py` /
+   `watch_queue.py` are historical references
+   only (boot-window I/O log, deferred-queue
+   consumer hunt). Entry-point regressions in
+   `analysis/test_boot_upload.py` and
+   `analysis/test_rom_exerciser.py` show the
+   harness patterns to follow. No Ghidra edits in
+   this plan.
+
+   Hazard rule (AGENTS.md §11/§13, CONFIRMED):
+   one emulator process at a time, always under
+   `timeout` (e.g. `timeout 300` / `420`), keep
+   the I/O log bounded (200 k ring,
+   `--max-slices`), no long run while Ghidra +
+   opencode are resident. The harness's
+   `gc.disable()` is load-bearing — manual
+   `collect()` runs every 4096 slices; do not
+   re-enable GC. If `get_function_count` drops
+   unexpectedly mid-session: stop, do not save,
+   reopen last disk state (§11).
+
+   Phase 1 — execution coverage of the 4 retained
+   `FUN_*` (are they reachable or dead?)
+
+   * Hypotheses (SUSPECTED, to test):
+     - `ROM01:0904` — alignment padding
+       (`NOP; NOP; RET`) SUSPECTED dead; zero
+       xrefs, no dispatch-table entry (CONFIRMED
+       zero xrefs, SUSPECTED dead).
+     - `ROM01:1177` — trivial stub SUSPECTED dead;
+       retained with plate, zero xrefs (CONFIRMED
+       plate, SUSPECTED dead).
+     - `ROM00:441b` — zero-xref dead coroutine
+       yield SUSPECTED dead (sibling `443c` is
+       used; CONFIRMED zero xrefs, SUSPECTED
+       dead).
+     - `ram:D937` — zero-xref bit-flag dispatcher
+       over `ram:E104` SUSPECTED reachable only
+       via a session-object vtable slot; static
+       xrefs absent by design (CONFIRMED zero
+       xrefs in ROM, SUSPECTED vtable reach).
+
+   * Harness runs (all via `boot_hw.py`; use the
+     canonical boot path, not a custom stub):
+
+     1. Baseline boot to menu:
+        ```
+        timeout 300 analysis/venv/bin/python3 \
+          analysis/boot_hw.py --no-lcd \
+          --max-slices 300000 \
+          --expect "To Continue Press>>:\r" \
+          --expect "Enter the,Workstation:\r12345678\r" \
+          --expect "Main Menu" \
+          --watch-pc 0904,1177,441b,d937
+        ```
+        Instrumentation: `--watch-pc` lists all
+        four retains — real breakpoints, nothing
+        missed (unlike slice sampling). Also
+        `--watch-pc` report limit is 4 hits per
+        address printed, totals at exit always.
+        Observable: per-address hit counts printed
+        on each hit and totals at exit.
+        Acceptance: hit count `>0` = CONFIRMED
+        reachable; `0` across this and the runs
+        below = SUSPECTED dead (retain plate, do
+        not delete; deletion needs a byte-verified
+        artifact finding per `gap-analysis.md`).
+
+     2. Session-object exercise (vtable already
+        populated): repeat the baseline plus a
+        session-heavy path already in the harness
+        (`--trace-session-builder 4` or
+        `--trace-session-transaction 4` or
+        `--upload <valid COM>` via the `HELLO_COM`
+        used in `analysis/test_boot_upload.py`).
+        Example:
+        ```
+        timeout 300 analysis/venv/bin/python3 \
+          analysis/boot_hw.py --no-lcd \
+          --max-slices 100000 \
+          --trace-session-transaction 4 \
+          --watch-pc 0904,1177,441b,d937
+        ```
+        Observable: same `--watch-pc` totals but
+        now with `ram:D130` / `ROM01:7c80` live.
+        Acceptance: a new hit here upgrades the
+        target from SUSPECTED dead to CONFIRMED
+        vtable-reachable and feeds Phase 2 mapping.
+
+     3. Optional patched-ROM image:
+        `MICRONIC_ROM0=analysis/rom_exerciser/
+        micron1_exerciser.bin` (the `2609`
+        startup-diagnostic / `2E3E` witness builds
+        per `doc/re-notes/exerciser-test-plan.md`;
+        see `analysis/rom_exerciser/README.md` and
+        `analysis/test_rom_exerciser.py` for the
+        burn/verify flow: sum16 `2609` /
+        SHA-256 `ec7d06b0…` and `2E3E` /
+        `aa843c38…`). Same `--watch-pc` set.
+        Observable/acceptance as above; documents
+        that retains stay dead even under the
+        replacement-ROM TX-arm path.
+
+   Phase 2 — session-object dispatch tables
+   `ROM01:7c80` / `ram:D130` (entry format and
+   indexing, not fully decoded)
+
+   * Hypothesis (OPEN, not fully decoded):
+     format/indexing of the session-object vtable
+     that dispatches method-like slots (e.g. the
+     `156F`/`1664`/`16B8` family via `1548`,
+     retained `D937` over `E104`) is SUSPECTED but
+     not byte-verified; raw tables at
+     `ROM01:7c80` and the runtime copy at
+     `ram:D130` (see `gap-analysis.md` data-typing
+     and `doc/re-notes/forms-ui.md`) need a live
+     trace. Do not claim a mapping without a live
+     witness.
+
+   * Harness runs:
+     - Dump tables at menu (static view):
+       ```
+       timeout 300 analysis/venv/bin/python3 \
+         analysis/boot_hw.py --no-lcd \
+         --max-slices 300000 \
+         --expect "To Continue Press>>:\r" \
+         --expect "Enter the,Workstation:\r12345678\r" \
+         --expect "Main Menu" \
+         --dump-mem 7c80:80 --dump-mem d130:80 \
+         --watch-mem 7c80:7cff,d130:d1af
+       ```
+     - Session run with vtable use (same
+       `--trace-session-*` or `--upload` variants
+       as Phase 1, run 2) plus
+       `--watch-mem 7c80:7cff,d130:d1af` and
+       `--watch-pc` on the retained method stubs.
+
+     Instrumentation: `--watch-mem LO:HI` on both
+     tables — inclusive ranges; reports value, PC,
+     SP, bank; hooked via write callback so it
+     catches `LDIR`/`PUSH` too (host-side pokes
+     deliberately bypass it). `--dump-mem
+     ADDR:LEN` for a snapshot at each `--expect`
+     match and at exit; for `8000-FFFF` resident
+     state use `--snapshot` (`d0e0` error-string
+     table `ram:D0E0` `byte[448]` etc.) as in
+     `analysis/README.md`. `--fill-mem` not needed
+     here (tables are not RAM-low-water marks).
+
+     Observable: at exit, per-range write counts,
+     distinct writing PCs with counts, lowest/
+     highest address touched; `--watch-mem` PC
+     correlations show which session-object slot
+     loads which table word and `JP (HL)`s to the
+     retained address. Expected: `ram:D130` shows
+     writes during `Session_Init*` /
+     `Form_Builder (ROM01:0271)` population;
+     `ROM01:7c80` shows only reads (ROM).
+
+     Acceptance: document the entry size (SUSPECTED
+     2-byte LE pointers), stride, terminator, and
+     the index → handler mapping for the retained
+     `FUN_*` with a byte-verified `--watch-mem`
+     trace (PC that indexes the table and
+     `JP (HL)` to the retained address). Do not
+     assert a mapping without that live witness.
+     Update `re-notes/forms-ui.md` and the
+     `ram:D130` / `ROM01:7c80` plates only after a
+     witnessed mapping.
+
+   Phase 3 — `ram:EE00-EE4F` stub-arena patch trace
+   (ROM has no writer; loaded DIP/COM could patch
+   at runtime)
+
+   * Hypothesis (OPEN, plausible/unverified per
+     TASKS `RESOLVED ram:EE00-EE4F` entry): ROM has
+     no writer (`ROM00:7DFA` 20-word source table
+     has no code xref; only `ROM01:11A4` calls
+     `0xEE00`; static image is twenty
+     `LD HL,1; RET` slots, `21 01 00 C9`, 4 bytes
+     each, CONFIRMED); whether/when slots become
+     `RST 10h` thunks is OPEN and can only be
+     settled by tracing the DIP/COM load path.
+     SUSPECTED purpose is a patch farm; do not
+     promote to CONFIRMED without a witnessed
+     write.
+
+   * Harness runs (use the real loader via
+     `Program_LoadByName`/`Program_ConsumeInputChunk`/
+     `Program_FinalizeInput` as exercised by
+     `--upload` / `--synthetic-loadrun` — not a
+     synthetic poke):
+     ```
+     timeout 300 analysis/venv/bin/python3 \
+       analysis/boot_hw.py --no-lcd \
+       --max-slices 100000 \
+       --upload /tmp/hello.com --upload-marker 0200:A5 \
+       --watch-mem ee00:ee4f --dump-mem ee00:50
+     ```
+     and the two canonical load-path variants
+     already regression-tested in
+     `analysis/test_boot_upload.py`:
+     - single-DIP via `--synthetic-loadrun` with
+       `--trace-loadrun-source plinth \
+        --synthetic-loadrun-finalize`
+     - single-COM via `--upload` (COM fallback if
+       first chunk `<14` or `!=C9 C8` per
+       `doc/manual/program-formats.md` /
+       `reference/program-formats.md`)
+
+     Add `--watch-mem-limit 200` if the arena is
+     hot (printing stops but counting does not;
+     exit summary still gives totals).
+
+     Instrumentation: `--watch-mem EE00:EE4F`
+     (inclusive) plus `--dump-mem EE00:50` at
+     entry and at exit; `--fill-mem EE00:EE4F`
+     optionally to mark survival (address-derived
+     pattern `(a ^ (a>>8)) & FF`; do not fill live
+     port shadows `F780-F799` — see
+     `analysis/README.md` warning). For the DIP
+     case also watch the staging protocol
+     (`ram:D36A`/`D36C`/`D368`/`D393` and targets
+     `ram:ECDC` / `ram:D39B` /
+     `ram:D372`/`0x0100+D399`) as documented in
+     TASKS `RESOLVED ram:D36A` pointer protocol.
+
+     Observable: per-range write summary — total
+     writes, distinct writing PCs with counts,
+     `LO..HI` touched. A DIP that patches the farm
+     will show writes from the
+     `Program_LoadDipOrCom` (`ROM01:0CE7`) payload-
+     copy path (type-0 direct copy or type-1
+     `{bank,addr}` → `{D7,bank,addr}` RST10
+     expansion at `ROM01:0BAC-0C9A` / `D36A`
+     protocol) into `EE00-EE4F`. COM path should
+     show no writes (COM copies to `0100`).
+
+     Acceptance: report whether/when slots are
+     written, by which PC, and to what bytes
+     (e.g. `D7 xx yy zz` vs `21 01 00 C9`); a
+     zero-write outcome keeps the current
+     SUSPECTED "load-time patch farm" framing and
+     the plate at `ram:EE00`. Do not promote to
+     CONFIRMED patch without a witnessed
+     `--watch-mem` write to `EE00-EE4F` and a
+     `--dump-mem` capture of the new bytes.
+
+   Sequencing: Phase 1 (coverage) → Phase 2
+   (vtable dump/reads) → Phase 3 (stub-patch
+   writes). Each phase is a bounded `timeout` run
+   from the harness above; collect `site-mkdocs`
+   with `mkdocs build --strict` after doc edits —
+   no Ghidra writes in this plan. If any
+   established finding (e.g. `EE00-EE4F` no ROM
+   writer, `ROM00:7DFA` source-table, `D36A`
+   protocol, retained `FUN_*` counts) conflicts
+   with a new trace, report the conflict rather
+   than reconciling by invention (AGENTS.md §3).
+
 ### Hardware-dependent priorities (unchanged)
 
 1. **Phase 0 gate:** run the `2609` record-stream
