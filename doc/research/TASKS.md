@@ -171,15 +171,44 @@ State: continuously updated as work progresses.
   `Fs_ReadBytes` at `ROM01:6BD8`). Removed from the
   backlog; no Ghidra function created/deleted.
 
-1. **Loader's exact staging cell (OPEN).** The
-   `ram:D370` peer/rendezvous slot is CONFIRMED
-   (loader `ROM01:0A67`–`10CE`, `D368`/`D36A`/
-   `D36C`/`D36E` protocol, feeder
-   `ROM00:3E6A` session program-data receive),
-   but the buffer the peer fills is not pinned.
-   Loader otherwise fully mapped.
+- **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified) — loader staging cell
+  (`ram:D36A` pointer protocol; five targets).**
+  The "staging cell" is the `ram:D36A` pointer
+  protocol: the loader sets `D36A` (pointer),
+  `D36C` (count), `D368` (dest offset) and `D393`
+  (limit), yields via `ram:D370`, and
+  `Program_ConsumeInputChunk`
+  (`ROM01:0BAC-0C9A`) copies `min(D36C,D393)`
+  bytes FROM `D36A` TO `ECD8+D368` (CONFIRMED,
+  byte-verified). Five staging targets:
+  `ram:ECDC` (14 B, initial DIP/COM header —
+  primary; set at `ROM01:0D05`, yield `0xD18`,
+  read `0xD2F`); `ram:D39B` (8 B, DIP block
+  descriptor prefix — `0xE59`, yield `0xE6C`);
+  descriptor[+4] (variable, Type-0 DIP payload —
+  yield `0xEEC`); `ram:D372` (4 B, Type-1 DIP
+  `RST 10h` expansion — yield `0xF6F`, read
+  `0xF94`); `0x0100+D399` (variable, COM body in
+  TPA — yield `0xDB8`) (CONFIRMED). Labels
+  `g_abLoadStagingHeader` (`ram:ECDC`),
+  `g_abDipBlockDescriptor` (`ram:D39B`),
+  `g_abType1ExpandBuf` (`ram:D372`),
+  `g_pLoadStaging` (`ram:D36A`),
+  `g_wLoadStagingCount` (`ram:D36C`),
+  `g_wLoadDestOffset` (`ram:D368`), each with a
+  one-line repeatable comment; function list
+  unchanged, saved. **Residual sub-question
+  (OPEN, does not affect the WHAT):** no ROM00
+  code reads `D36A`/`D36C`/`ECDC`/`D372`/`D39B`;
+  how the session peer learns these addresses
+  (presumably via the RAM coroutine scheduler
+  `ram:D820`-`D85F` feeding the `ROM00:7E00`
+  dispatch table) remains untraced. Removed from
+  the backlog; no Ghidra function
+  created/deleted.
 
-2. **`ram:EE00`–`EE4F` — runtime patching
+1. **`ram:EE00`–`EE4F` — runtime patching
    (OPEN).** Twenty static `LD HL,1; RET`
    no-op slots (4 bytes each, `21 01 00 C9`);
    whether/when they are patched to `RST 10h`
@@ -187,7 +216,7 @@ State: continuously updated as work progresses.
    `ROM00:7DFA` 20-word table; RAM arena is
    patched at runtime.
 
-3. **`ram:D837` naming — `Coroutine_TaskSwitch`
+2. **`ram:D837` naming — `Coroutine_TaskSwitch`
    vs compiler frame helper (OPEN).** Bytes are
    an ordinary stack-frame prologue (saves
    `IX`/`IY`, `SP` adjust via `DE`), not a task
@@ -196,7 +225,7 @@ State: continuously updated as work progresses.
    `Coroutine_IndexedLookup_6A4A` (CONFIRMED).
    Naming question stays OPEN.
 
-4. **Data-typing backlog (§12 item 5 remainder,
+3. **Data-typing backlog (§12 item 5 remainder,
    OPEN).** `ROM01:7545`–`7FFF`
    descriptor-record format (needs the
    `TemplateBuilder` decode); `ROM00:7D80` /
@@ -205,7 +234,7 @@ State: continuously updated as work progresses.
    error-string table; `tbl_` labels +
    index→handler plates for the dispatch tables.
 
-5. **Minor / deferred (OPEN, low priority).**
+4. **Minor / deferred (OPEN, low priority).**
    4 documented retained `FUN_*` with open
    questions, the 12 non-code code gaps
    (page-zero vectors, inline dispatchers,
@@ -5049,10 +5078,64 @@ No Ghidra changes; docs only.
 * **Finding 3 — `ram:D370` is the loader's peer/rendezvous slot (CONFIRMED).** A byte search for the address (`70 D3`) finds it ONLY inside the loader region: `ROM01:0BA3`, `ROM01:0CEE`, `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`. No code outside the loader writes or reads `D370`, so the peer is resumed by the coroutine scheduler rather than registered by a distinct ROM routine.
 * **Finding 4 — loader request protocol (CONFIRMED).** The loader sets `D368` (destination offset), `D36A` (destination pointer), `D36C` (requested byte count), `D36E` (delivered count), then swaps `D370`; the peer fills the bytes and swaps back. `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)` and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`).
 * **Finding 5 — `Program_LoadDipOrCom` routing (CONFIRMED).** `ROM01:0CE7` requests 14 bytes (`D36C=0x0E` at `ROM01:0D08`-`ROM01:0D0B`), routes on the first little-endian word (`0xC8C9` → DIP at `ROM01:0DD7`) and on the first-chunk length (`D399 < 14` → raw COM at `ROM01:0D3B`). The DIP header/block parser is `ROM01:0E40`-`ROM01:0F80` (reads the serialized header at `D39B` +0/+4/+6/…). This matches the existing "Loader-stream boundary" text.
-* **Finding 6 — feeder is the session program-data receive (CONFIRMED); exact staging cell remains OPEN.** The feeder is the session program-data receive path already documented (state-44 → `Session_ReadStreamChunk` `ROM00:3E6A` → the Load/Run staging buffer → `Program_ConsumeInputChunk`). The exact staging cell/buffer the loader's peer fills remains **OPEN**.
+* **Finding 6 — loader staging cell RESOLVED
+  2026-09-19 (CONFIRMED, byte-verified): the
+  `ram:D36A` pointer protocol; five targets.**
+  The "staging cell" is the `ram:D36A` pointer
+  protocol: loader sets `D36A` (pointer), `D36C`
+  (count), `D368` (dest offset) and `D393`
+  (limit), yields via `ram:D370`, and
+  `Program_ConsumeInputChunk`
+  (`ROM01:0BAC-0C9A`) copies `min(D36C,D393)`
+  bytes FROM `D36A` TO `ECD8+D368` (CONFIRMED,
+  byte-verified). Five staging targets:
+  `ram:ECDC` (14 B, initial DIP/COM header —
+  primary; set at `ROM01:0D05`, yield `0xD18`,
+  read `0xD2F`); `ram:D39B` (8 B, DIP block
+  descriptor prefix — `0xE59`, yield `0xE6C`);
+  descriptor[+4] (variable, Type-0 DIP payload —
+  yield `0xEEC`); `ram:D372` (4 B, Type-1 DIP
+  `RST 10h` expansion — yield `0xF6F`, read
+  `0xF94`); `0x0100+D399` (variable, COM body in
+  TPA — yield `0xDB8`) (CONFIRMED). Labels
+  `g_abLoadStagingHeader` (`ram:ECDC`),
+  `g_abDipBlockDescriptor` (`ram:D39B`),
+  `g_abType1ExpandBuf` (`ram:D372`),
+  `g_pLoadStaging` (`ram:D36A`),
+  `g_wLoadStagingCount` (`ram:D36C`),
+  `g_wLoadDestOffset` (`ram:D368`), each with a
+  one-line repeatable comment; function list
+  unchanged, saved. Feeder remains the session
+  program-data receive (state-44 →
+  `Session_ReadStreamChunk` `ROM00:3E6A` →
+  `Program_ConsumeInputChunk`) (CONFIRMED);
+  **residual sub-question (OPEN, does not affect
+  the WHAT):** no ROM00 code reads
+  `D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+  session peer learns these addresses (presumably
+  via the RAM coroutine scheduler `ram:D820`-
+  `D85F` feeding the `ROM00:7E00` dispatch table)
+  remains untraced.
 * **Finding 7 — `UI_FormExitDispatchNext` (CONFIRMED).** `ROM01:06D3` pumps five handler slots at `D081` via `ram:D828`.
-* **Docs updated:** `re-notes/os-diposb.md` (Runtime program loading: replaced "`ram:D370` is `g_pProgramLoaderContinuation` … not an input-provider pointer; upstream provider remains OPEN" with findings 1-4 and 6 — loader is coroutine-driven, `D370` is the peer rendezvous slot with no external refs, feeder is session program-data receive, exact staging cell remains OPEN), `manual/programmer-guide.md` (§7b source-bytes sentence updated to same), `research/TASKS.md` (runtime loader marked substantially advanced 2026-09-17 with findings 1-4; `Next` refreshed so top no-hardware item is now the guarded structural repairs, followed by the deferred final annotation sweep; hardware-dependent priorities unchanged; this log entry). No Ghidra changes; evidence tags preserved; style preserved; no new inference.
-* **Next:** top no-hardware item is now guarded structural repairs (`e020`-`e0aa` plates, `ROM01:6431` re-check, `6e77` inline-data guard, `ROM01:7580`-`7670` data-typing, code-gap and data-typing tail, plus `ROM00:7409`/`7472` module-A deferred sites; diff-guarded, one at a time), followed by the deferred final annotation sweep (TASKS §12 FINAL PASS); the loader's exact staging cell remains the remaining **OPEN** for that item; hardware priorities unchanged.
+* **Docs updated:** `re-notes/os-diposb.md`
+  (Runtime program loading: replaced "exact
+  staging cell remains OPEN" with `ram:D36A`
+  pointer protocol + five targets, labels, and
+  residual peer-learning OPEN),
+  `manual/programmer-guide.md` (§7b source-bytes
+  sentence updated to same), `research/TASKS.md`
+  (runtime loader marked **RESOLVED 2026-09-19
+  (CONFIRMED)** with the pointer protocol + five
+  targets; `Next` refreshed so top no-hardware
+  item is now `ram:EE00-EE4F`; this log entry;
+  prior `SUBSTANTIALLY ADVANCED` wording
+  superseded). No Ghidra changes in this docs
+  pass; evidence tags preserved; style preserved;
+  no new inference.
+* **Next:** loader staging cell is **RESOLVED**;
+  top no-hardware item is now `ram:EE00-EE4F`
+  (see `Next` above); hardware priorities
+  unchanged.
 
 ### 2026-09-17 — guarded structural repairs: 6e77 inline data fixed, 6431 operand documented (Ghidra saved; function count stable)
 
@@ -6232,6 +6315,83 @@ names renamed, 144 unplated functions plated)
   bullet updated to RESOLVED bridge + "Still
   OPEN: da13" text marked RESOLVED). No Ghidra
   edits in this docs pass beyond the saved plates
+  above; no new inference; evidence tags
+  preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see
+  below.
+
+### 2026-09-19 — loader staging cell resolved
+ (D36A pointer protocol; five targets) (Ghidra
+ saved; docs only in this pass, no new
+ inference; parent-verified, byte-verified)
+
+* **Loader staging cell RESOLVED 2026-09-19
+  (CONFIRMED, byte-verified) — the `ram:D36A`
+  pointer protocol; five targets.** The
+  "staging cell" is the `ram:D36A` pointer
+  protocol: the loader sets `D36A` (pointer),
+  `D36C` (count), `D368` (dest offset) and `D393`
+  (limit), yields via `ram:D370`, and
+  `Program_ConsumeInputChunk`
+  (`ROM01:0BAC-0C9A`) copies `min(D36C,D393)`
+  bytes FROM `D36A` TO `ECD8+D368` (CONFIRMED,
+  byte-verified). Five staging targets:
+  `ram:ECDC` (14 B, initial DIP/COM header —
+  primary; set at `ROM01:0D05`, yield `0xD18`,
+  read `0xD2F`); `ram:D39B` (8 B, DIP block
+  descriptor prefix — `0xE59`, yield `0xE6C`);
+  descriptor[+4] (variable, Type-0 DIP payload —
+  yield `0xEEC`); `ram:D372` (4 B, Type-1 DIP
+  `RST 10h` expansion — yield `0xF6F`, read
+  `0xF94`); `0x0100+D399` (variable, COM body in
+  TPA — yield `0xDB8`) (CONFIRMED). Labels
+  `g_abLoadStagingHeader` (`ram:ECDC`),
+  `g_abDipBlockDescriptor` (`ram:D39B`),
+  `g_abType1ExpandBuf` (`ram:D372`),
+  `g_pLoadStaging` (`ram:D36A`),
+  `g_wLoadStagingCount` (`ram:D36C`),
+  `g_wLoadDestOffset` (`ram:D368`), each with a
+  one-line repeatable comment; function list
+  unchanged, saved (Ghidra saved).
+
+* **Residual sub-question (OPEN, does not affect
+  the WHAT):** no ROM00 code reads
+  `D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+  session peer learns these addresses (presumably
+  via the RAM coroutine scheduler `ram:D820`-
+  `D85F` feeding the `ROM00:7E00` dispatch table)
+  remains untraced.
+
+* **TASKS.md:** closed the loader staging-cell
+  OPEN wherever it appeared — `Next` no-hardware
+  priority 1 marked **RESOLVED 2026-09-19
+  (CONFIRMED)** with the pointer protocol + five
+  targets and removed from the remaining backlog;
+  renumbered/refreshed `Next` no-hardware
+  priorities so the top item is now
+  `ram:EE00-EE4F`; updated the
+  `SUBSTANTIALLY ADVANCED … exact staging cell
+  remains OPEN` session-log entry (Finding 6,
+  Docs updated, Next) to the RESOLVED pointer-
+  protocol description with residual OPEN; removed
+  the "Still OPEN: da13" loader-next wording.
+  Added this session entry.
+
+* **Docs updated in this pass:** `research/
+  TASKS.md` (this entry + `Next` priorities
+  refreshed/renumbered + 2026-09-17 Finding 6
+  + Docs updated + Next corrected to RESOLVED),
+  `re-notes/os-diposb.md` (Runtime program loading:
+  replaced "exact staging cell remains OPEN" with
+  `ram:D36A` pointer protocol + five targets,
+  labels, and residual peer-learning OPEN),
+  `manual/programmer-guide.md` (§7b source-bytes
+  sentence updated to same, `0BAC` → `0BAC-0C9A`,
+  loader staging cell RESOLVED with residual
+  OPEN), `research/gap-analysis.md` (loader note
+  updated to RESOLVED `ram:D36A` pointer protocol
+  + five targets with residual OPEN). No Ghidra
+  edits in this docs pass beyond the saved labels
   above; no new inference; evidence tags
   preserved; ~70-col wrapping. `mkdocs build
   --strict` (site_dir `site-mkdocs`) run — see

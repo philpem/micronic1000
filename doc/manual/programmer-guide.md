@@ -443,21 +443,56 @@ checksum).
 
 Loader entry points (stable):
 `Program_PrepareLoadGeometry` (`0A67`), `Program_LoadByName` (`0B82`),
-`Program_ConsumeInputChunk` (`0BAC`), `Program_LoadDipOrCom` (`0CE7`),
-`Program_RunByName` (`106F`), `Program_NormalizeLoadRange` (`0AE3`),
-`Program_ReportLoadError` (`0CCB`), final transfer `ROM01:10C6 -> ram:D7F0`
-(`Program_LoadedProgram`). Source bytes arrive via coroutine rendezvous (CONFIRMED): the loader is
-coroutine-driven (`LD DE,0; CALL ROM01:D837` enter, `LD HL,D370; CALL
-ROM01:D9F9` yield), `ram:D370` is the peer/rendezvous slot (byte search
-`70 D3` finds only loader-internal refs at `ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`;
-no code outside the loader touches `D370`), and the loader request protocol
-sets `D368`/`D36A`/`D36C`/`D36E` then swaps `D370` for the peer to fill
-(`Program_ConsumeInputChunk` `ROM01:0BAC` consumes `min(D36C,D393)`).
-The feeder is the session program-data receive path (state-44 →
-`Session_ReadStreamChunk` `ROM00:3E6A` → staging buffer →
-`Program_ConsumeInputChunk`); the exact staging cell/buffer remains
-**OPEN** — BDOS `open`/`read`/`search` are generic FCB services, there is
-no BDOS execute function.
+`Program_ConsumeInputChunk` (`0BAC-0C9A`), `Program_LoadDipOrCom`
+(`0CE7`), `Program_RunByName` (`106F`),
+`Program_NormalizeLoadRange` (`0AE3`),
+`Program_ReportLoadError` (`0CCB`), final transfer
+`ROM01:10C6 -> ram:D7F0` (`Program_LoadedProgram`).
+Source bytes arrive via coroutine rendezvous
+(CONFIRMED): the loader is coroutine-driven
+(`LD DE,0; CALL ROM01:D837` enter, `LD HL,D370;
+CALL ROM01:D9F9` yield), `ram:D370` is the
+peer/rendezvous slot (byte search `70 D3` finds
+only loader-internal refs at
+`ROM01:0BA3`/`0CEE`/`0D15`/`0DB5`/`0E69`/`0EE9`/`0F6C`;
+no code outside the loader touches `D370`), and
+the loader sets `D36A` (pointer), `D36C` (count),
+`D368` (dest offset) and `D393` (limit), yields
+via `ram:D370`, and `Program_ConsumeInputChunk`
+(`ROM01:0BAC-0C9A`) copies `min(D36C,D393)` bytes
+FROM `D36A` TO `ECD8+D368` (CONFIRMED,
+byte-verified). **Loader staging cell RESOLVED
+2026-09-19 (CONFIRMED, byte-verified): the
+`ram:D36A` pointer protocol; five targets.** Five
+staging targets: `ram:ECDC` (14 B, initial
+DIP/COM header — primary; set at `ROM01:0D05`,
+yield `0xD18`, read `0xD2F`); `ram:D39B` (8 B,
+DIP block descriptor prefix — `0xE59`, yield
+`0xE6C`); descriptor[+4] (variable, Type-0 DIP
+payload — yield `0xEEC`); `ram:D372` (4 B,
+Type-1 DIP `RST 10h` expansion — yield `0xF6F`,
+read `0xF94`); `0x0100+D399` (variable, COM body
+in TPA — yield `0xDB8`) (CONFIRMED). Labels
+`g_abLoadStagingHeader` (`ram:ECDC`),
+`g_abDipBlockDescriptor` (`ram:D39B`),
+`g_abType1ExpandBuf` (`ram:D372`),
+`g_pLoadStaging` (`ram:D36A`),
+`g_wLoadStagingCount` (`ram:D36C`),
+`g_wLoadDestOffset` (`ram:D368`), each with a
+one-line repeatable comment; function list
+unchanged, saved. Feeder is the session
+program-data receive (state-44 →
+`Session_ReadStreamChunk` `ROM00:3E6A` →
+`Program_ConsumeInputChunk`) (CONFIRMED);
+**residual sub-question (OPEN, does not affect
+the WHAT):** no ROM00 code reads
+`D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+session peer learns these addresses (presumably
+via the RAM coroutine scheduler `ram:D820`-
+`D85F` feeding the `ROM00:7E00` dispatch table)
+remains untraced. BDOS `open`/`read`/`search` are
+generic FCB services, there is no BDOS execute
+function.
 
 Fallback to COM (stable): if the first chunk is **<14 bytes** or its
 first word **`!= 0xC8C9`**, the loader treats input as **raw COM**, copies

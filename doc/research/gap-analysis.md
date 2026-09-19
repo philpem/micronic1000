@@ -474,13 +474,27 @@ E73E hypothesis **refuted**.
   over `ram`; MCP cannot read uninit overlay bytes - load a hardware
   RAM dump in the GUI to visualise a RAM bank page.
 - Loader docs are now closed for file format (see
-  `manual/program-formats.md`); the upstream physical/session provider
-  for the loader is now substantially advanced (see
-  `re-notes/os-diposb.md`) — `ram:D370` is the loader's coroutine
-  peer/rendezvous slot (`Coroutine_SwapContinuation` `ram:D9F9`), fed by
-  the session program-data receive (`Session_ReadStreamChunk`
-  `ROM00:3E6A`); only the exact staging cell/buffer the peer fills
-  remains **OPEN**.
+  `manual/program-formats.md`); the upstream
+  physical/session provider for the loader is
+  **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)**
+  — the `ram:D36A` pointer protocol (loader sets
+  `D36A`/`D36C`/`D368`/`D393`, yields via `ram:D370`,
+  `Program_ConsumeInputChunk` `ROM01:0BAC-0C9A`
+  copies `min(D36C,D393)` bytes FROM `D36A` TO
+  `ECD8+D368`) with five staging targets:
+  `ram:ECDC` (14 B DIP/COM header — primary;
+  `0xD05`/`0xD18`/`0xD2F`), `ram:D39B` (8 B DIP
+  block descriptor prefix — `0xE59`/`0xE6C`),
+  descriptor[+4] (Type-0 payload — `0xEEC`),
+  `ram:D372` (4 B Type-1 `RST 10h` expansion —
+  `0xF6F`/`0xF94`), `0x0100+D399` (COM body —
+  `0xDB8`) (see `re-notes/os-diposb.md`);
+  **residual sub-question (OPEN, does not affect
+  the WHAT):** no ROM00 code reads
+  `D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+  session peer learns these addresses (presumably
+  via RAM scheduler `ram:D820`-`D85F` feeding
+  `ROM00:7E00`) remains untraced.
 
 ## Known ghost: ram:8c0c
 

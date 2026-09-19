@@ -423,16 +423,44 @@ TWO roles:
    `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`;
    no code outside the loader writes or reads `D370`, so the peer is
    resumed by the coroutine scheduler rather than registered by a distinct
-   ROM routine (CONFIRMED). **Loader request protocol (CONFIRMED):** the
-   loader sets `D368` (destination offset), `D36A` (destination pointer),
-   `D36C` (requested byte count), `D36E` (delivered count), then swaps
-   `D370`; the peer fills the bytes and swaps back.
-   `Program_ConsumeInputChunk` (`ROM01:0BAC`) consumes `min(D36C, D393)`
-   and advances `D36A`/`D36E` (e.g. `ROM01:0C2B`-`ROM01:0C9A`). The feeder
-   is the session program-data receive path already documented (state-44 →
-   `Session_ReadStreamChunk` `ROM00:3E6A` → the Load/Run staging buffer →
-   `Program_ConsumeInputChunk`) (CONFIRMED); the exact staging cell/buffer
-   the loader's peer fills remains **OPEN**.
+   ROM routine (CONFIRMED). **Loader staging cell RESOLVED 2026-09-19
+   (CONFIRMED, byte-verified): the `ram:D36A` pointer protocol;
+   five targets.** The "staging cell" is the `ram:D36A`
+   pointer protocol: the loader sets `D36A` (pointer),
+   `D36C` (count), `D368` (dest offset) and `D393`
+   (limit), yields via `ram:D370`, and
+   `Program_ConsumeInputChunk` (`ROM01:0BAC-0C9A`)
+   copies `min(D36C,D393)` bytes FROM `D36A` TO
+   `ECD8+D368` and advances `D36A`/`D36E` (e.g.
+   `ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED,
+   byte-verified). Five staging targets:
+   `ram:ECDC` (14 B, initial DIP/COM header —
+   primary; set at `ROM01:0D05`, yield `0xD18`,
+   read `0xD2F`); `ram:D39B` (8 B, DIP block
+   descriptor prefix — `0xE59`, yield `0xE6C`);
+   descriptor[+4] (variable, Type-0 DIP payload —
+   yield `0xEEC`); `ram:D372` (4 B, Type-1 DIP
+   `RST 10h` expansion — yield `0xF6F`, read
+   `0xF94`); `0x0100+D399` (variable, COM body in
+   TPA — yield `0xDB8`) (CONFIRMED). Labels
+   `g_abLoadStagingHeader` (`ram:ECDC`),
+   `g_abDipBlockDescriptor` (`ram:D39B`),
+   `g_abType1ExpandBuf` (`ram:D372`),
+   `g_pLoadStaging` (`ram:D36A`),
+   `g_wLoadStagingCount` (`ram:D36C`),
+   `g_wLoadDestOffset` (`ram:D368`), each with a
+   one-line repeatable comment; function list
+   unchanged, saved. Feeder is the session
+   program-data receive (state-44 →
+   `Session_ReadStreamChunk` `ROM00:3E6A` →
+   `Program_ConsumeInputChunk`) (CONFIRMED);
+   **residual sub-question (OPEN, does not affect
+   the WHAT):** no ROM00 code reads
+   `D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+   session peer learns these addresses (presumably
+   via the RAM coroutine scheduler `ram:D820`-
+   `D85F` feeding the `ROM00:7E00` dispatch table)
+   remains untraced.
 * **Service-33 identities (CONFIRMED):** actual service-33 entry is
   `ROM00:2E02` (`Device_SelectOpen`, retained name); `ROM00:2E72` is
   `Device_Service33Timeout`, not the entry; `ROM00:2E85` is
