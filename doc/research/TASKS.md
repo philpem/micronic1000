@@ -247,40 +247,80 @@ current priority order; the concise lists above are authoritative.
       receive counters; writer trace agent looped - still open) +
       FileSearchNextCb renamed FormatDecU16 (2026-08-27, below).
 
-### 12. FINAL PASS — complete annotation + naming cleanup (defer until the
-    reverse-engineering is done; owner-decision 2026-08-27)
+### 12. FINAL PASS — complete annotation + naming cleanup (defer
+    until the reverse-engineering is done; owner-decision
+    2026-08-27)
 
-    One coordinated sweep at the end, not piecemeal ad-hoc patches. Scope
-    (baseline 2026-08-27: 935 functions, 131 still `FUN_*`, 27 dispatch
-    tables):
+    One coordinated sweep at the end, not piecemeal ad-hoc
+    patches. Baseline 2026-08-27: 935 functions, 131 still
+    `FUN_*`, 27 dispatch tables. Status 2026-09-19
+    (Ghidra saved; no new inference in this docs pass):
 
-    1. **Name + plate every `FUN_*`** (131 today, mostly the new
-       InlineTableDispatch handlers) — proper Module_VerbNoun name + plate
-       per §8 (brief purpose / mechanics / In-Out-Clobbers / evidence tag).
-    2. **Rename wrong or grandfathered names** — the concatenated legacy
-       names (LinkBlockTx, BdosReaderInChar, ...) to `Module_Name` style,
-       plus outright-wrong names (e.g. the former FileSearchNextCb ->
-       FormatDecU16 pattern). Do as one repo-wide pass, then grep doc/ to
-       sync every mention (rename hygiene §7).
-    3. **Plate-quality pass** — every named function gets a real plate;
-       fix the SHORT-form ones that don't actually fit one sentence, fix
-       plates that contradict their own names, re-flow to ~70 cols.
-    4. **Comment-style pass** — migrate raw-address cites to labels,
-       decode remaining magic numbers/masks in place, drop comments that
-       restate the opcode (§8 anti-patterns).
-    5. **Data-typing backlog** — apply the still-open proposals: ROM00 7d80
-       + 7e50 fn-ptr tables, 7c50/7c30 font metrics, ROM01 7545-7fff
-       config-descriptor table, ram:e105 font copy, ram:d0e0 error-string
-       table, and the 27 dispatch tables' `tbl_` labels + index->handler
-       plate comments.
-    6. **Refresh research/gap-analysis.md** (the single coverage tracker) after the
-       sweep; do not keep competing %-named claims elsewhere.
+    1. **Name + plate every `FUN_*` — DONE** (see
+       `research/gap-analysis.md`; 914 internal / 915
+       guarded, 4 retained `FUN_*` with plates and
+       documented open questions; 99.6 % named).
+    2. **Rename wrong or grandfathered names**
+       a. **Grandfathered `Module_Name` churn (~487
+          CamelCase + lowercase-legacy names) — OPEN,
+          owner's deliberate repo-wide pass** per
+          AGENTS.md §7. Do not churn piecemeal; a wrong
+          mass rename is worse than none.
+       b. **Wrong names — DONE 2026-09-19 (5, byte-
+          verified, docs synced):** `ROM00:3BB8`
+          `CoroutineTaskSwitch` → `Coroutine_IndexedLookup_6A4A`
+          (indexed lookup into table at `6A4A`; real
+          `CoroutineTaskSwitch` is `ram:D837` — duplicate
+          mis-name corrected), `ROM00:3BD0`
+          `CoroutineSessionMul16` →
+          `Coroutine_IndexedLookup_6B67` (into `6B67`),
+          `ROM00:7C14` `Session_Cmp16Bit` →
+          `Session_CmpLeU16` (HL=1 iff HL<=DE unsigned),
+          `ROM00:7C22` `Session_Cmp16BitB` →
+          `Session_CmpGtU16` (HL=1 iff HL>DE unsigned),
+          `ROM01:6F29` `ServiceCall_Id2Byte` →
+          `ServiceCall_BdosFn2` (calls `SessionBdosCall`
+          `ram:DA13` with fn 2). Grep confirms 0 stale
+          mentions in `doc/`.
+    3. **Plate-quality pass**
+       - **Unplated functions — DONE 2026-09-19:** all 144
+         functions with `plateLen=0` now carry plates (46
+         `ram` — mostly `SessionOpStub_*`/`Lib_*`/`RegFile_*`,
+         notable `Fcb_ParseFilename` CP/M FCB parser,
+         `Kernel_RunStagedCall` — 33 `ROM00`, 65 `ROM01`);
+         no function renamed/created/deleted in that batch;
+         plate coverage is now **100 %** (no function lacks
+         a plate; CONFIRMED).
+       - **Short plates — OPEN:** ~141 plates <120 chars still
+         need the §8 full-form review (brief purpose /
+         mechanics / In-Out-Clobbers / evidence tag, ~70
+         cols, multi-line ASCII).
+       Fix plates that contradict their own names and
+       re-flow to ~70 cols as part of that review.
+    4. **Comment-style pass — OPEN:** migrate raw-address
+       cites to labels, decode remaining magic numbers/
+       masks in place, drop opcode-restating comments per
+       §8 anti-patterns.
+    5. **Data-typing backlog — substantially done** (see
+       gap-analysis: `ROM01:757F-768E` typed as
+       `undefined[272]`, `ROM00:7409`/`7472` deferred by
+       design (wrong address space), code-gap sweep 121→12;
+       residual `ROM00:7D80` etc. as listed there).
+    6. **Refresh `research/gap-analysis.md` — DONE
+       2026-09-18** (single coverage tracker; headline
+       914/915, 99.6 % named; plate coverage updated
+       2026-09-19).
 
-    Sequencing: one Ghidra-writing agent at a time, `save_program` between,
-    and diff-guard the function list each batch (§11). Hold until the
-    remaining open items (field-cycle key, "No program in memory"
-    qualifier, emulator navigation) are resolved, so we annotate the
-    final picture rather than a moving target.
+    Sequencing: one Ghidra-writing agent at a time,
+    `save_program` between, and diff-guard the function
+    list each batch (§11). Hold until the remaining open
+    items are resolved, so we annotate the final picture
+    rather than a moving target.
+
+    **Remaining scope after 2026-09-19:** item 2a
+    (mass rename, owner), item 3 short-plate review
+    (~141), item 4 (comment-style). Items 2b and 3
+    (unplated) are closed in this pass.
 
 ## Owner corrections to honor
 
@@ -574,7 +614,7 @@ current priority order; the concise lists above are authoritative.
 - 2026-08-25 (service layer closed + RAM02; main agent, saved):
   * tbl_KernelJumps (F238) fully decoded - 24 slots, repeatable now
     carries the full map. STAGED-CALL SERVICES RESOLVED: off 2 =
-    Kernel_CallBank6_0E00 (the service-2 entry of ServiceCall_Id2Byte
+    Kernel_CallBank6_0E00 (the service-2 entry of ServiceCall_BdosFn2
     6f29 -> bank-6:0E00 call), off 7 = Syscall_InvokeServiceFB (the
     service-7 entry of Ui_SvcCall2_07). d893 plate updated.
   * ROM00::2bee decoded + named Diag_FatalScreenDeferred: stores A
@@ -1038,7 +1078,7 @@ current priority order; the concise lists above are authoritative.
     -> Ui_RedrawIfRequested (6280, gate cell is eb18 not ebf7),
     UiHandler1B7D -> Ui_RecordEditModal (1b7d, six stack args, modal
     loop 1CD6-1D72), SessionCoroWaitByte -> Ui_GetStateWordEc41 (2116),
-    TextOutChar -> ServiceCall_Id2Byte (6f29, DA13(2,arg) shim - the
+    TextOutChar -> ServiceCall_BdosFn2 (6f29, DA13(2,arg) shim - the
     TextOut identity was unproven). 183c/198e kept (enriched plates:
     9B->10B field-table build; stride-4/5 item lists).
     DiagFatalErrorScreen (ROM00::2B55) plated with table contents.
@@ -1091,7 +1131,7 @@ current priority order; the concise lists above are authoritative.
   * Two more FUN_* appeared mid-session (deferred auto-analysis):
     ROM01:7288 -> Session_TableRender7288 and ROM01:73de ->
     Session_TableRender73de (both walk 20-byte records in the ea52 pool,
-    TextPosCursor 70ae + char-emit ServiceCall_Id2Byte 6f29; 73de runs
+    TextPosCursor 70ae + char-emit ServiceCall_BdosFn2 6f29; 73de runs
     the record cursor one behind via -0x14). FUN_ram_9cf0 = 16 NOP bytes
     -> DELETED. FUN_* back to 0.
   * Coverage re-enumerated: 750 total (ROM00 394 / ROM01 164 / ram 192),
@@ -1269,7 +1309,7 @@ current priority order; the concise lists above are authoritative.
     --max-slices (~2e6) + fix the ram-page-test skip.
   * CODE GAPS: created functions Kbd_ScanMain (ROM00:18f0, the keyboard
     scan loop) + 4 session helpers (7be0 Session_IncHLOrRet, 7bed
-    Session_LoadDecCmp, 7c14 Session_Cmp16Bit, 7c22 Session_Cmp16BitB).
+    Session_LoadDecCmp, 7c14 Session_CmpLeU16, 7c22 Session_CmpGtU16).
     Data tables identified (not yet typed): ROM00 7c30 lookup, 7c50
     bitmap, 7d80/7e50 fn-ptr tables, ROM01 7545-7fff descriptor table,
     ram:e105 lookup+bitmap, ram:d0e0 string table. 2 mid-instruction
@@ -3168,10 +3208,16 @@ frame-helper flow, boot-load chains, `RST 10h` inline operands,
   most of the `SessionOpStub_*` farm). All 61 were restored from a pre-run
   `list_functions_enhanced` snapshot — the §11 diff-guard rule paid for
   itself. The flag is now clear and pass 1 re-clears it on every run.
-* **OPEN: the name `CoroutineTaskSwitch` at `ram:D837` is wrong** but has not
-  been changed — a rename is symbol + plate + docs + this file in one pass
-  and is the owner's call. The plate now carries both readings, tagged. Filed
-  in `doc/re-notes/open-questions.md` under "Naming and annotation".
+* **PARTIALLY ADDRESSED 2026-09-19 — duplicate `CoroutineTaskSwitch`
+  mis-name fixed; the `ram:D837` naming question stays OPEN.** The
+  duplicate was `ROM00:3BB8` `CoroutineTaskSwitch`, now
+  `Coroutine_IndexedLookup_6A4A` (indexed lookup into table `6A4A`;
+  sibling `ROM00:3BD0` `CoroutineSessionMul16` →
+  `Coroutine_IndexedLookup_6B67`). `ram:D837` remains the name `doc/`
+  uses (loader entry `LD DE,0; CALL ram:D837`), but whether
+  `CoroutineTaskSwitch` fits its bytes (an ordinary stack-frame
+  prologue saving `IX`/`IY`) is **not** resolved by this pass. See §12
+  item 2b.
 * **Two bugs fixed from `AnnotateRst10Calls.java`:** enqueued boot-chain
   targets resolve in the bank whose chain is running (`ROM00`/`ROM01`), not
   in the flat `ram` space — that left 156 dangling references in the bank-0
@@ -5355,3 +5401,72 @@ truncated-body continuations absorbed)
   preserved; ~70-col wrapping.
   `mkdocs build --strict` (site_dir `site-mkdocs`)
   run.
+
+### 2026-09-19 — §12 FINAL PASS items 2b + 3 (5 wrong
+names renamed, 144 unplated functions plated)
+
+* **Item 3 — plate-quality, unplated functions DONE
+  (CONFIRMED, Ghidra saved, no function renamed/
+  created/deleted in that batch).** All 144 functions
+  with `plateLen=0` now carry plates: 46 `ram` (mostly
+  `SessionOpStub_*`/`Lib_*`/`RegFile_*`; notable
+  `Fcb_ParseFilename` CP/M FCB parser,
+  `Kernel_RunStagedCall`), 33 `ROM00`, 65 `ROM01`.
+  **Plate coverage is now 100 %** (no function lacks a
+  plate). A pre-existing set of ~141 plates <120 chars
+  still needs the §8 full-form review (brief purpose /
+  mechanics / In-Out-Clobbers / evidence tag, ~70 cols,
+  multi-line ASCII) — recorded as **OPEN** in §12.
+
+* **Item 2b — wrong names, 5 renamed + docs synced
+  (CONFIRMED, byte-verified, Ghidra saved).**
+  `ROM00:3BB8` `CoroutineTaskSwitch` →
+  `Coroutine_IndexedLookup_6A4A` (indexed lookup into
+  table at `6A4A`, not a task switch; real
+  `CoroutineTaskSwitch` is `ram:D837` — duplicate
+  mis-name corrected), `ROM00:3BD0`
+  `CoroutineSessionMul16` →
+  `Coroutine_IndexedLookup_6B67` (into `6B67`),
+  `ROM00:7C14` `Session_Cmp16Bit` → `Session_CmpLeU16`
+  (HL=1 iff HL<=DE unsigned), `ROM00:7C22`
+  `Session_Cmp16BitB` → `Session_CmpGtU16` (HL=1 iff
+  HL>DE unsigned), `ROM01:6F29`
+  `ServiceCall_Id2Byte` → `ServiceCall_BdosFn2` (calls
+  `SessionBdosCall` `ram:DA13` with fn 2).
+  `doc/research/TASKS.md` mentions updated; grep
+  confirms 0 stale mentions in `doc/` for the 5 old
+  names. Rename hygiene per AGENTS.md §7 (symbol +
+  plate + docs + TASKS in one pass).
+
+* **Item 2a — mass rename of ~487 grandfathered
+  CamelCase + lowercase-legacy names to `Module_Name`
+  style NOT done — OPEN by owner decision per
+  AGENTS.md §7.** Deliberately deferred as the owner's
+  repo-wide pass; a wrong piecemeal mass rename is
+  worse than none. Recorded as **OPEN** in §12
+  remaining scope.
+
+* **Item 4 — comment-style pass NOT done — OPEN.**
+  Migrating raw-address cites to labels, decoding
+  remaining magic numbers/masks in place, dropping
+  opcode-restating comments per §8 — recorded as
+  **OPEN** in §12 remaining scope.
+
+* **§12 remaining scope after this pass:** item 2a
+  (mass rename, owner), item 3 short-plate review
+  (~141), item 4 (comment-style). Items 2b and 3
+  (unplated) are closed; data-typing and gap-analysis
+  items remain as previously closed.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (§12 scope updated, §12 2026-09-19 entry,
+  `ram:D837` duplicate-name correction,
+  `ServiceCall_Id2Byte`/`Session_Cmp*` sync),
+  `research/gap-analysis.md` (headline 2026-09-19,
+  plate coverage 100 % with breakdown, remaining
+  annotation tail), `re-notes/open-questions.md`
+  (`ram:D837` filing resolved). No Ghidra edits in
+  this docs pass; no new inference; evidence tags
+  preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see
+  below.

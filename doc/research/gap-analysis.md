@@ -1,7 +1,8 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-18 (15th audit, code-gap sweep complete
-121 → 12), firmware `micron1.bin` (overlay spaces
+Status: 2026-09-19 (16th audit, §12 FINAL PASS items 2b + 3
+— 5 wrong names renamed, 144 unplated functions plated),
+firmware `micron1.bin` (overlay spaces
 `ROM00`/`ROM01`, `ram` resident kernel). This is a
 **documentation-coverage** audit: which functions have
 *we* named and commented, versus the auto-named `FUN_*`
@@ -20,22 +21,33 @@ that Ghidra merely detected.
 
 **Refreshed directly from Ghidra on 2026-09-18 — after
 code-gap sweep complete (121 → 12; bodies extended,
-914 internal / 915 guarded total).** Auto `FUN_*` = 4
+914 internal / 915 guarded total)** — function counts
+unchanged 2026-09-19 (no function renamed/created/deleted
+in the 144-plate batch except the 5 item-2b renames, which
+do not change the count). Auto `FUN_*` = 4
 (ROM00 1, ROM01 2, ram 1); named = 910 internal
-(99.6 %; 911 guarded). The sweep changed function
-*bodies*, not the count. Previous audit was 914 / 4 /
+(99.6 %; 911 guarded). Previous audit was 914 / 4 /
 910; dispatch-case absorptions (1002 → 915, −87) remain.
-See session log 2026-09-18 code-gap sweep and
-`re-notes/inline-dispatch.md` for the structural model.
+See session log 2026-09-19 and 2026-09-18 code-gap sweep
+and `re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import
 `EXT_FUN_ram_0010` at `EXTERNAL:00000001`, which accounts for the
 remaining named function.
 
-Plate completeness was not recomputed in this pass. The 10 retained
-auto-named functions remain with plates but kept symbols (documented
-open questions — see residual pass below).
+**Plate coverage (CONFIRMED 2026-09-19): 100 %** — every
+function now carries a plate. The 144 functions that had
+`plateLen=0` (46 `ram` — mostly `SessionOpStub_*`/`Lib_*`/
+`RegFile_*`, notable `Fcb_ParseFilename` CP/M FCB parser,
+`Kernel_RunStagedCall` — 33 `ROM00`, 65 `ROM01`) were
+plated with no renames/creates/deletes. A pre-existing set
+of ~141 plates <120 chars still needs the §8 full-form
+review (brief purpose / mechanics / In-Out-Clobbers /
+evidence tag, ~70 cols, multi-line ASCII) — see
+`research/TASKS.md` §12 item 3. The 4 retained `FUN_*`
+remain with plates but kept symbols (documented open
+questions — see residual pass below).
 
 Earlier audits (480/88, 668/58, 686/1, 689/0, 750/0, 849/142, 916, 919,
 1093/109, 1028/42, 1001/42, 914/24) are history.
@@ -347,6 +359,13 @@ see residual pass. Dispatch models (ROM01 14 +
 ROM00 25) and the code-gap sweep are closed.
 Data-typing `ROM01:757F-768E` is `undefined[272]`
 (see above) and the retains are expected.
+
+Annotation tail per `research/TASKS.md` §12
+(2026-09-19): plate coverage 100 % (closed — 144
+unplated plated), ~141 short plates (<120 chars) and
+the comment-style pass remain **OPEN**; the ~487
+grandfathered `Module_Name` renames are **OPEN** by
+owner decision (AGENTS.md §7).
 
 ## Notes
 
