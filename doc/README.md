@@ -52,7 +52,11 @@ addresses, trace bytes, and confidence tags:
 * [Forms and UI](re-notes/forms-ui.md)
 * [CP/M comparison](re-notes/cp-m-comparison.md)
 * [Interrupts](re-notes/interrupts.md)
+* [Unbanked RAM map](re-notes/unbanked-ram-map.md)
+* [Barcode capture](re-notes/barcode-capture.md)
 * [RTC](re-notes/rtc.md)
+* [IR wire protocol](re-notes/ir-wire-protocol.md)
+* [ROM exerciser test plan](re-notes/exerciser-test-plan.md)
 * [Open questions](re-notes/open-questions.md) — single address for every `OPEN`
 
 Legacy paths under `internals/` and `manual/bdos-reference.md` etc. remain

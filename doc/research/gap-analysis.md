@@ -26,30 +26,29 @@ that Ghidra merely detected.
 | Space | Functions | Auto `FUN_*` (undocumented) | Named/non-`FUN_*` |
 |-------|-----------|------------------------------|-------------------|
 | ROM00 | 487 | **1** | 486 |
-| ROM01 | 232 | **2** | 230 |
-| ram | 195 | **1** | 194 |
+| ROM01 | 231 | **2** | 229 |
+| ram | 196 | **1** | 195 |
 | EXTERNAL | 1 | **0** | 1 |
 | **Total (guarded)** | **915** | **4** | **911** |
 | **Total (internal)** | **914** | **4** | **910 (99.6 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-18 — after
-code-gap sweep complete (121 → 12; bodies extended,
-914 internal / 915 guarded total)** — function counts
-unchanged through 2026-09-19 (item 2b 5 renames, 144
-unplated plated, item 3 short-plate review 82 KEEP /
-59 upgraded, item 4 127 rewrites + 90 labels +
-`Boot_entry+1` fixes + pointer-indirected
-`g_wCoroutineStepResult`, and data-typing backlog
-types + 41 `tbl_` labels — all plate/comment/data-
-type-only, no function renamed/created/deleted
-except the 5 item-2b renames, which do not change the
-count). Auto `FUN_*` = 4
-(ROM00 1, ROM01 2, ram 1); named = 910 internal
-(99.6 %; 911 guarded). Previous audit was 914 / 4 /
-910; dispatch-case absorptions (1002 → 915, −87) remain.
-See session log 2026-09-19 (items 2b, unplated,
-short-plate, comment-style, data-typing) and
-2026-09-18 code-gap sweep and
+**Refreshed directly from Ghidra on 2026-09-19 (verified:
+`get_function_count` = 915 guarded, `search_functions FUN_` = 4 at
+`ROM01:0904`/`ROM00:441B`/`ram:D937`/`ROM01:1177`, `DumpFunctions.java`
+= 914 internal: ROM00 487, ROM01 231, ram 196; guarded 915 incl.
+`EXTERNAL:00000001`)** — after code-gap sweep complete (121 → 12;
+bodies extended, 914 internal / 915 guarded total); counts
+unchanged through 2026-09-18 → 2026-09-19 (item 2b 5 renames, 144
+unplated plated, item 3 short-plate review 82 KEEP / 59 upgraded,
+item 4 127 rewrites + 90 labels + `Boot_entry+1` fixes +
+pointer-indirected `g_wCoroutineStepResult`, and data-typing backlog
+types + 41 `tbl_` labels — all plate/comment/data-type-only, no
+function renamed/created/deleted except the 5 item-2b renames, which do
+not change the count). Auto `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1);
+named = 910 internal (99.6 %; 911 guarded). Previous audit was 914 / 4
+/ 910; dispatch-case absorptions (1002 → 915, −87) remain. See session
+log 2026-09-19 (items 2b, unplated, short-plate, comment-style,
+data-typing) and 2026-09-18 code-gap sweep and
 `re-notes/inline-dispatch.md` for the structural model.
 
 The three internal address spaces contain 914 functions. Ghidra's

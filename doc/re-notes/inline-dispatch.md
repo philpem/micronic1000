@@ -83,15 +83,19 @@ check; only `3f20` had `11 00 00 CD 37 D8` among interiors),
 ~113 labels created; site-1 owner corrected to `3f20-4009`
 (`3ede` is separate `3ede-3f1f`, `3f20` carries external callers
 `5346`, `4c3a`, `ROM00::7dbe`, `ram:ed88`); residual ROM00
-`FUN_*` = 5 deferred (`2da5`, `4333`, `441b`, `44ed`, `450d`);
+`FUN_*` is now **1 retained** (`ROM00:441B`; the former 5-deferred set
+`2da5`/`4333`/`44ed`/`450d` were renamed 2026-09-18, see tail pass);
 guarded 1002 → 915 (−87; internal 1001 → 914, labels not loss).
-**Remaining (2026-09-18):** no `CALL ram:e0b2` site remains
-unaudited (ROM01 14, ROM00 25 both closed); `ROM01:757F-768E`
-now `undefined[272]`; 10 `FUN_*` were reduced to 4 (ROM00 1,
-ROM01 2, ram 1) by the tail pass — see
-`research/gap-analysis.md`. Coverage tail is the code-gap
-sweep with the corrected absorb-continuations model
-(see `research/gap-analysis.md`).
+**Remaining (2026-09-19):** no `CALL ram:e0b2` site remains unaudited
+(ROM01 14, ROM00 25 both closed); `ROM01:757F-768E` is **superseded**
+— previously `undefined[272]`, now typed as `ushort[6]` at `757F`
+(`tbl_UiCfgNamePointers`), `UiCfgHeader` at `758B`/`75EB`/`760D`,
+`char[1547]` at `79F4`, etc. (see `research/gap-analysis.md`
+data-typing 2026-09-19); 10 `FUN_*` were reduced to **4 retained**
+(ROM00 1 — `441B`, ROM01 2 — `0904`/`1177`, ram 1 — `D937`) by the
+tail pass — see `research/gap-analysis.md`. Coverage tail is the
+code-gap sweep with the corrected absorb-continuations model (see
+`research/gap-analysis.md`).
 
 ## Matching
 
