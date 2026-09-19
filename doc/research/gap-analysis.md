@@ -244,21 +244,29 @@ kept symbols.** All byte-verified; Ghidra saved.
   `ROM01:7E87` pointer table. The "7E85 vtable" claim is
   **withdrawn**; the validator role is **SUSPECTED** only.
 
-* **Retained (10) with documented open questions (CONFIRMED
-  retained, plates set, symbols kept; updated
-  2026-09-19):**
-  `ROM00:441B` (zero xrefs, dead coroutine yield);
-  `ROM01:0904` (alignment padding `NOP; NOP; RET`);
-  `ROM01:1177` (trivial stub, **CONFIRMED reachable**
-  via Phase 1 `boot_hw.py --watch-pc` — 2 hits at
-  boot/session; identity remains unknown) /
-  `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
-  session-object vtable entries (methods)** at
-  `ROM01:7C80` / `ram:D130`, big-endian hi-first —
-  see Phase 2; retain notes record vtable slot role);
-  `ROM01:4D86`/`4E79` (text-buffer builders; compiler-frame
-  args `SP+0x0E`–`0x16` undecoded);
-  `ram:D937` (zero xrefs, dead stub).
+* **Retained (10) with documented open questions
+   (CONFIRMED retained, plates set, symbols kept;
+   updated 2026-09-19 — vtable reader OPEN):**
+   `ROM00:441B` (zero xrefs, dead coroutine yield);
+   `ROM01:0904` (alignment padding `NOP; NOP; RET`);
+   `ROM01:1177` (trivial stub, **CONFIRMED reachable**
+   via Phase 1 `boot_hw.py --watch-pc` — 2 hits at
+   boot/session; identity remains unknown) /
+   `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
+   session-object vtable entries (methods)** at
+   `ROM01:7C80` / `ram:D128` — 43 big-endian entries,
+   `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
+   alternate entry; `ram:D128` diverges at entries
+   3–6 — see Phase 2; retain notes record vtable
+   slot role; **reader OPEN:** zero xrefs to
+   `ROM01:7C80` / `ram:D128`/`D130`; SUSPECTED
+   `Session_HelperRouter11E5` `ROM01:11E5`; plates
+   at `ROM01:7C80` / `ram:D128`; discriminating
+   `LD HL,(D128)` / indexed `JP (HL)` not yet
+   found);
+   `ROM01:4D86`/`4E79` (text-buffer builders;
+   compiler-frame args `SP+0x0E`–`0x16` undecoded);
+   `ram:D937` (zero xrefs, dead stub).
 
 ## Data-typing — `ROM01:7545`/`757F`/`758B`/
 `75EB`/`760D`/`79F4` + `ROM00:7C30`/`7D80`/`7D88`/
@@ -346,16 +354,19 @@ Deferred by design (wrong address space if created in
 `ROM00`).
 
 **Item C — retained `FUN_*` resolved (CONFIRMED;
-updated 2026-09-19).**
+updated 2026-09-19 — vtable reader OPEN).**
 6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
 `1664`→`Session_Obj_Method_6b6d`,
 `168e`→`Session_Obj_Method_6c84`,
 `16b8`→`Session_Obj_Method_696f` (each prologue → `CALL` a
 work function → tail-call `ROM01:1548`); **these
 four are CONFIRMED session-object vtable entries
-(methods) at `ROM01:7C80` / `ram:D130` (big-endian
-hi-first, Phase 2)** — retain notes record the
-vtable slot role,
+(methods) at `ROM01:7C80` / `ram:D128` (43 entries,
+`FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`; big-
+endian hi-first, Phase 2)** — retain notes record
+the vtable slot role; **reader OPEN** (zero xrefs
+to `ROM01:7C80` / `ram:D128`/`D130`; SUSPECTED
+`ROM01:11E5`);
 `4d86`→`Session_Obj_BuildTextBuf1`,
 `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with

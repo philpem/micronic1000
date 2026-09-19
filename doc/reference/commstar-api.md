@@ -38,7 +38,11 @@ references the arena (`ROM01:11A4` calls `0xEE00`).
 No `D7` (`RST 10h` thunk) writes observed even with
 a COM loaded (`--watch-mem EE00:EE4F` with
 `hello.com`); runtime thunk-patching by loaded
-software is **unobserved (OPEN)**. Comment at
+software is **mechanically possible and unobserved
+(OPEN)** — DIP type-0 `dest=EE00` (no range check
+at `ROM01:0ED1`→`D36A`) or COM `LD (EE00),A`/
+`LDIR` at `0x0100` (`ROM01:0D3B`) (CONFIRMED);
+type-1 only as `{D7,bank,addr}` stubs. Comment at
 `ram:EE00`. Computed-call xrefs such as
 `ram:EE04 -> ROM00:48BF` describe intended routing.
 
@@ -187,11 +191,21 @@ installing `21 01 00 C9`) — earlier scan missed the
 bulk copy (no per-address xref). Only one ROM
 instruction references the arena (`ROM01:11A4` calls
 `0xEE00`); static image remains `LD HL,1; RET`
-slots. The arena is a stub farm: no `D7` thunk writes
-observed even with COM loaded; thunk-patching by
-loaded software is **unobserved (OPEN)**. The `RST
-10h` shape, if it occurs, would be installed by
-loaded software, not by ROM:
+slots. The arena is a stub farm: no `D7` thunk
+writes observed even with COM loaded
+(`--watch-mem EE00:EE4F` with `hello.com`);
+thunk-patching by loaded software is
+**mechanically possible and unobserved (OPEN)** —
+**(i) DIP type-0:** destination from descriptor
+bytes [4:5] (`ROM01:0ED1` → `D36A`) with no range
+check, so `dest = EE00` writes there
+(CONFIRMED); **(ii) COM:** loaded at `0x0100`
+(`ROM01:0D3B`) with full RAM access (CONFIRMED);
+type-1 blocks can also target `EE00` via
+`image_base + bank_offset` but only as
+`{D7,bank,addr}` stubs. The `RST 10h` shape, if
+it occurs, would be installed by loaded software,
+not by ROM:
 
 ```text
 ROM00:0010  POP  HL            ; HL = the inline operands

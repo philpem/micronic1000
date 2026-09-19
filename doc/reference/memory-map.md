@@ -228,30 +228,52 @@ The firmware keeps a whole arena of these: **281 four-byte slots at
 `ram:ED1C`-`F17F`**, filled by the boot chains and used as UI vtable
 targets and deferred-call records.
 
-The arena is initialised by replicating one 4-byte template across all
-281 slots (`ram:D6C0`):
+The arena is initialised by
+`Kernel_InitCopyData` (`ram:D6C0`, entered `ROM00:7039`
+via `CopyKernelDispatchBlock`) replicating one 4-byte
+template across all 281 slots:
 
 ```
-ram:d6c0  21 D7 D6      LD   HL,D6D7      ; template
+ram:d6c0  21 D7 D6      LD   HL,D6D7      ; template source
 ram:d6c3  11 1C ED      LD   DE,ED1C      ; arena base
 ram:d6c6  01 04 00      LD   BC,4
-ram:d6c9  ED B0         LDIR                        ; seed slot 0
+ram:d6c9  ED B0         LDIR              ; D6C9: 4-byte copy D6D7→ED1C
 ram:d6cb  21 1C ED      LD   HL,ED1C
 ram:d6ce  11 20 ED      LD   DE,ED20
 ram:d6d1  01 60 04      LD   BC,460h
-ram:d6d4  ED B0         LDIR                        ; smear it over the rest
+ram:d6d4  ED B0         LDIR              ; D6D4: 0x460-byte copy ED1C→ED20
 ```
 
-CONFIRMED, byte-verified. `4 + 0x460 = 0x464 = 1124`, exactly the arena
-size. **The template is `21 01 00 C9` — `LD HL,0001; RET`** (`ROM00:7086`,
-i.e. `ram:D6D7`), so an *uninstalled* slot is not a banked stub at all:
-it returns `HL = 1` and does nothing. A slot only becomes a
-`{D7, bank, lo, hi}` far-call stub when a boot-chain `fn=2` record
-installs one over the template.
+CONFIRMED, byte-verified (EOLs at `D6D1`/`D6D4`).
+`4 + 0x460 = 0x464 = 1124`, exactly the arena size
+`ED1C-F17F` **including the `EE00-EE4F` stub arena**
+(the old plate claim "does NOT touch `EE00`/`F100`"
+was **wrong** and is corrected; `D6D4` fills
+`ED20-F17F`). **Template is `21 01 00 C9` —
+`LD HL,0001; RET`** (`ROM00:7086`, i.e. `ram:D6D7`),
+so an *uninstalled* slot is not a banked stub: it
+returns `HL = 1` and does nothing. A slot only
+becomes `{D7, bank, lo, hi}` when a boot-chain
+`fn=2` record installs it.
 
-The cursor that tracks the next free slot is `ram:D684`, seeded to `ED1C`
-by the two literal bytes `1C ED` at `ROM00:7033`, which sit inside the
+The cursor `ram:D684` is seeded to `ED1C` by the two
+literal bytes `1C ED` at `ROM00:7033` inside the
 dispatch block image copied to `ram:D681`. CONFIRMED.
+
+**Runtime thunk-patching — mechanically possible,
+unobserved (CONFIRMED mechanics).** The `EE00-EE4F`
+20-slot arena is a sub-range of the above
+(`ED1C-F17F`). (i) **DIP type-0 block:** loader takes
+destination from descriptor bytes [4:5]
+(`ROM01:0ED1` → `D36A`) with **no range check**, so
+`dest = EE00` writes there (CONFIRMED). (ii) **COM
+program:** loaded at `0x0100` (`ROM01:0D3B`) with full
+RAM access, so `LD (EE00),A` / `LDIR` overwrites the
+arena (CONFIRMED). Type-1 blocks can also target
+`EE00` via `image_base + bank_offset` but only write
+`{D7,bank,addr}` stubs. No `D7` writes observed via
+`--watch-mem EE00:EE4F` + `--upload` (OPEN). Matches
+owner note (DIP record/block or COM overwrite).
 
 ### 2.2 The same-bank path
 
