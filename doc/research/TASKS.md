@@ -370,49 +370,70 @@ State: continuously updated as work progresses.
      `--upload` (`0200:A5` marker) + `--watch-mem`;
      `0100:21` early-return artifact corrected — see
      Phase 3.
-       Extended coverage (emulator
-       `analysis/boot_hw.py`, exit 0, bounded) —
-       `--watch-pc 0904,1177,441b,d937` across
-       four run types: boot + `--drive-serial`
-       `1177=2, others 0`;
-       `--trace-session-transaction 4` `1177=2,
-       others 0`; `--upload hello.com
-       --upload-marker 0200:A5` (real COM load)
-       `1177=13, others 0`; `--upload hello.com
-       --commstar-peer` (commstar attach)
-       `0904=0 441B=0 D937=0` (peer saw no
-       requests — test COM does not hold a
-       commstar session). So `ROM01:1177`
-       reachable in every run (up to 13 hits);
-       `ROM01:0904`, `ROM00:441B`, `ram:D937`
-       unhit in all four. Combined with static
-       status — `ROM01:0904` `NOP; NOP; RET`
-       alignment padding (not a real routine),
-       `ROM00:441B`/`ram:D937` **zero xrefs** —
-       these three are **dead/unreachable in
-       every exercised path** (boot, session
-       transaction, COM load, commstar attach).
-       Retained (plates) rather than deleted:
-       could still be reached by other loaded
-       software or the one unexercised path
-       (barcode scan). Tag **SUSPECTED dead →
-       LIKELY dead** (zero xrefs + unhit in four
-       run types); only the barcode-scan capture
-       remains unexercised (CONFIRMED) — now
-       **attempted but not exercised
-       (CONFIRMED):** two bounded runs
-       `--barcode-scan A1 --barcode-probe
-       --watch-pc 0904,441b,d937` — (a) plain
-       boot+scan, (b) expect flow
-       `Enter the Workstation`/`Main Menu` then
-       scan — both ended `barcode_status=pending`
-       with `0904=0 441B=0 D937=0`, wand armed
-       but never triggered, flow did not reach a
-       barcode-entry field; retains remain
-       **LIKELY dead**, discriminator still
-       unexercised, next step is a UI flow that
-       reaches a barcode-entry field before scan
-       (or owner real scan).
+        Extended coverage (emulator
+        `analysis/boot_hw.py`, exit 0, bounded) —
+        `--watch-pc 0904,1177,441b,d937` across
+        four run types: boot + `--drive-serial`
+        `1177=2, others 0`;
+        `--trace-session-transaction 4` `1177=2,
+        others 0`; `--upload hello.com
+        --upload-marker 0200:A5` (real COM load)
+        `1177=13, others 0`; `--upload hello.com
+        --commstar-peer` (commstar attach)
+        `0904=0 441B=0 D937=0` (peer saw no
+        requests — test COM does not hold a
+        commstar session). So `ROM01:1177`
+        reachable in every run (up to 13 hits);
+        `ROM01:0904`, `ROM00:441B`, `ram:D937`
+        unhit in all four. Combined with static
+        status — `ROM01:0904` `NOP; NOP; RET`
+        alignment padding (not a real routine),
+        `ROM00:441B`/`ram:D937` **zero xrefs** —
+        these three are **dead/unreachable in
+        every exercised path** (boot, session
+        transaction, COM load, commstar attach).
+        Retained (plates) rather than deleted:
+        could still be reached by other loaded
+        software or the one unexercised path
+        (barcode scan). Tag **SUSPECTED dead →
+        LIKELY dead** (zero xrefs + unhit in four
+        run types); only the barcode-scan capture
+        remains unexercised (CONFIRMED) — now
+        **attempted but not exercised
+        (CONFIRMED):** two bounded runs
+        `--barcode-scan A1 --barcode-probe
+        --watch-pc 0904,441b,d937` — (a) plain
+        boot+scan, (b) expect flow
+        `Enter the Workstation`/`Main Menu` then
+        scan — both ended `barcode_status=pending`
+        with `0904=0 441B=0 D937=0`, wand armed but
+        never triggered, flow did not reach a
+        barcode-entry field; **plus third whole-path
+        run** `--barcode-scan A1 --barcode-decode
+        --barcode-bdos --barcode-expect A1
+        --watch-pc 0904,441b,d937` also ended
+        `barcode_status=pending` with
+        `0904=0 441B=0 D937=0` (CONFIRMED).
+        **Why (CONFIRMED, `analysis/boot_hw.py`
+        ~3094):** harness drives the capture only
+        when `BARCODE_ENABLED and
+        barcode_status=="pending" and "Main Menu"
+        in fb_txt and not pending_keys and (no
+        expect steps or expect steps exhausted)`;
+        in these `--barcode-*` runs the string
+        `"Main Menu"` never appears in captured LCD
+        text (grep empty), so the trigger is never
+        met — plain boot *does* reach `"Main Menu"`,
+        but barcode-enabled runs do not.
+        `BARCODE_ENABLED = BARCODE_WIDTHS is not
+        None`, so the option does arm the wand; gap
+        is reaching/keeping Main Menu under the
+        barcode flags. Discriminator remains
+        **unexercised for this concrete trigger
+        reason**, not a firmware dead-end; retains
+        remain **LIKELY dead**; next step is to
+        make the harness reach `"Main Menu"` with
+        the barcode flags set (or owner real scan).
 
 ### Emulator-coverage / vtable-mapping plan —
     closing the low-priority retains (no
@@ -7806,7 +7827,8 @@ names renamed, 144 unplated functions plated)
    function list unchanged.
 
 * **Barcode-scan path attempted but not exercised
-   (CONFIRMED).** Two bounded harness runs with
+   (CONFIRMED; trigger identified 2026-09-19).**
+   Two bounded harness runs with
    `--barcode-scan A1 --barcode-probe
    --watch-pc 0904,441b,d937` — (a) a plain
    boot+scan, (b) the harness's documented expect
@@ -7814,13 +7836,32 @@ names renamed, 144 unplated functions plated)
    Workstation:\r12345678\r" --expect "Main Menu"`
    then scan) — both ended `barcode_status=pending`
    with `0904=0 441B=0 D937=0`. So the wand was
-   armed but never triggered: the flow did not
-   reach a barcode-entry field. The three retains
-   therefore remain **LIKELY dead** and the
-   barcode-scan discriminator is **still
-   unexercised**; the needed next step is a UI flow
-   that reaches a barcode-entry field before the
-   scan (or the owner performing a real scan).
+   armed but never triggered. **Plus third
+   whole-path run** `--barcode-scan A1
+   --barcode-decode --barcode-bdos --barcode-expect
+   A1 --watch-pc 0904,441b,d937` also ended
+   `barcode_status=pending` with
+   `0904=0 441B=0 D937=0` (CONFIRMED). **Why
+   (CONFIRMED, `analysis/boot_hw.py` ~3094):**
+   harness drives capture only when
+   `BARCODE_ENABLED and barcode_status=="pending"
+   and "Main Menu" in fb_txt and not pending_keys
+   and (no expect steps or expect steps exhausted)`;
+   in these `--barcode-*` runs `"Main Menu"` never
+   appears in captured LCD text (grep empty), so
+   trigger never met — plain boot *does* reach
+   `"Main Menu"` but barcode-enabled runs do not.
+   `BARCODE_ENABLED = BARCODE_WIDTHS is not None`,
+   so option does arm the wand; gap is
+   reaching/keeping Main Menu under barcode flags.
+   The three retains remain **LIKELY dead** and
+   discriminator **still unexercised for this
+   concrete trigger reason**, not a firmware
+   dead-end; next step is harness reaching
+   `"Main Menu"` with barcode flags set (or owner
+   real scan). Earlier "flow did not reach a
+   barcode-entry field" wording is **superseded**
+   by this Main Menu trigger finding.
 
 * **TASKS.md:** recorded the 5 callback xrefs in the
    vtable/reader notes (minor/deferred header and
@@ -7831,9 +7872,11 @@ names renamed, 144 unplated functions plated)
    barcode path attempted (two flows) →
    `barcode_status=pending`, retains still **LIKELY
    dead**, discriminator unexercised, next step is a
-   barcode-entry field before scan. No Ghidra edits
-   in this docs pass beyond the saved plates above;
-   no new inference; evidence tags preserved
+   barcode-entry field before scan — **now updated
+   with third whole-path run and Main Menu trigger
+   finding** (see next entry). No Ghidra edits in
+   this docs pass beyond the saved plates above; no
+   new inference; evidence tags preserved
    (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
 
 * **Docs updated in this pass:** `research/TASKS.md`
@@ -7841,8 +7884,51 @@ names renamed, 144 unplated functions plated)
    entry), `research/gap-analysis.md` (both
    retained-`FUN_*` sections — callback xrefs
    linked with `D081`→callback mapping and barcode
-   armed but not triggered with two flows). No
+   armed but not triggered with two flows — **now
+   superseded by three-flow + trigger detail**). No
    Ghidra edits; no new inference; evidence tags
    preserved; ~70-col wrapping. `mkdocs build
    --strict` (site_dir `site-mkdocs`) run — see
    below.
+
+### 2026-09-19 — barcode whole-path also pending
+ (Main Menu not reached under --barcode flags)
+
+* **Third barcode attempt also pending
+   (CONFIRMED, emulator `analysis/boot_hw.py`):**
+   whole-path `--barcode-scan A1 --barcode-decode
+   --barcode-bdos --barcode-expect A1 --watch-pc
+   0904,441b,d937` also ended
+   `barcode_status=pending` with
+   `0904=0 441B=0 D937=0`. **Why (CONFIRMED,
+   ~3094):** harness drives capture only when
+   `BARCODE_ENABLED and barcode_status=="pending"
+   and "Main Menu" in fb_txt and not pending_keys
+   and (no expect steps or expect steps exhausted)`;
+   in barcode-enabled runs `"Main Menu"` never
+   appears in captured LCD text (grep empty), so
+   trigger never met — plain boot *does* reach
+   `"Main Menu"` but `--barcode-*` runs do not.
+   `BARCODE_ENABLED = BARCODE_WIDTHS is not None`,
+   so option does arm the wand; gap is
+   reaching/keeping Main Menu under barcode flags.
+   Discriminator remains **unexercised for this
+   concrete trigger reason**, not a firmware
+   dead-end; retains remain **LIKELY dead**; next
+   step is to make the harness reach `"Main Menu"`
+   with barcode flags set (or owner real scan).
+
+* **TASKS.md:** updated retain/barcode note with
+   third whole-path run and trigger detail
+   (Main Menu not reached under `--barcode-*`
+   flags; `BARCODE_ENABLED` arms wand, gap is
+   reaching Main Menu), and appended this
+   one-line session entry. No Ghidra edits; no
+   new inference; evidence tags preserved
+   (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (retain/barcode note + this entry). No Ghidra
+   edits; no new inference; evidence tags preserved;
+   ~70-col wrapping. `mkdocs build --strict`
+   (site_dir `site-mkdocs`) run — see below.
