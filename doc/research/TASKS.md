@@ -229,19 +229,19 @@ State: continuously updated as work progresses.
   remains corrected.
 
 - **RESOLVED 2026-09-19 (CONFIRMED,
-  byte-verified) — `ram:EE00-EE4F` thunk
-  hypothesis unsupported in ROM.** No ROM code
-  writes the arena: its source table `ROM00:7DFA`
-  (20 words) has no code xref, and only one
-  instruction references the arena (`ROM01:11A4`
-  calls `0xEE00`). The static image remains twenty
-  `LD HL,1; RET` no-op slots (4 bytes each, `21 01
-  00 C9`); the “runtime `RST 10h` thunk” hypothesis
-  has no ROM patching mechanism. Comment added at
-  `ram:EE00`. Whether/when the arena becomes `RST
-  10h` thunks at runtime remains **OPEN only for
-  loaded software** (no ROM evidence). Removed from
-  the backlog.
+  byte-verified) — `ram:EE00-EE4F` is a stub farm;
+  ROM has no writer.** No ROM code writes the arena:
+  its source table `ROM00:7DFA` (20 words) has no
+  code xref, and only one instruction references the
+  arena (`ROM01:11A4` calls `0xEE00`). The static
+  image is twenty `LD HL,1; RET` no-op slots (4
+  bytes each, `21 01 00 C9`). Whether/when the arena
+  becomes `RST 10h` thunks cannot be settled from
+  the ROM alone and remains **OPEN** — a loaded DIP
+  executable or COM program could patch the arena at
+  runtime (plausible/unverified; that is the purpose
+  of a stub farm). Comment at `ram:EE00`. Removed
+  from the backlog.
 
 1. **Data-typing backlog (§12 item 5 remainder,
    OPEN).** `ROM01:7545`–`7FFF`
@@ -6461,17 +6461,18 @@ names renamed, 144 unplated functions plated)
   (name changed).
 
 * **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)
-  — `ram:EE00-EE4F` thunk hypothesis unsupported
-  in ROM.** No ROM code writes the arena: its source
+  — `ram:EE00-EE4F` is a stub farm; ROM has no
+  writer.** No ROM code writes the arena: its source
   table `ROM00:7DFA` (20 words) has no code xref,
   and only one instruction references the arena
   (`ROM01:11A4` calls `0xEE00`). The static image
   remains twenty `LD HL,1; RET` no-op slots (4 bytes
-  each, `21 01 00 C9`); the “runtime `RST 10h`
-  thunk” hypothesis has no ROM patching mechanism.
-  Comment added at `ram:EE00`. Whether/when the arena
-  becomes `RST 10h` thunks at runtime remains **OPEN
-  only for loaded software** (no ROM evidence).
+  each, `21 01 00 C9`). Whether/when the arena
+  becomes `RST 10h` thunks cannot be settled from the
+  ROM alone and remains **OPEN** — a loaded DIP
+  executable or COM program could patch the arena at
+  runtime (plausible/unverified; that is the purpose
+  of a stub farm). Comment at `ram:EE00`.
 
 * **TASKS.md:** closed both OPEN items wherever they
   appeared — `Next` no-hardware priorities
@@ -6496,10 +6497,54 @@ names renamed, 144 unplated functions plated)
   `re-notes/ghidra-repair-script.md` (Pass 1 table +
   body + identity), `reference/commstar-api.md` (Entry
   points + Every buffer must live… updated to RESOLVED
-  unsupported in ROM, OPEN only for loaded software),
+  ROM has no writer; stub farm, runtime patching OPEN
+  — loaded-software patching plausible/unverified),
   `research/gap-analysis.md` (HL writer). No Ghidra
   edits in this docs pass beyond the saved rename at
   `ram:D837`/`ram:EE00` comment; no new inference;
   evidence tags preserved; ~70-col wrapping. `mkdocs
   build --strict` (site_dir `site-mkdocs`) run — see
   below.
+
+### 2026-09-19 — EE00 framing corrected (ROM has no
+  writer; loaded-software patching OPEN) (docs only,
+  no Ghidra, no new inference; parent-verified)
+
+* **Correction:** the 2026-09-19 EE00 write wrote
+  that the `RST 10h`-thunk hypothesis “has no ROM
+  patching mechanism” and left the runtime question
+  “OPEN only for loaded software”. That framing
+  under-states the possibility that a loaded DIP
+  executable or COM program can patch the arena at
+  runtime — the ROM not containing patching code does
+  not mean the arena stays no-op.
+
+* **Rewritten:** `reference/commstar-api.md` (both
+  Entry points and Every buffer must live… passages)
+  and `research/TASKS.md` (Next `ram:EE00-EE4F`
+  RESOLVED entry and the 2026-09-19 D837/EE00 session
+  entry's EE00 bullet) to the corrected position:
+  **CONFIRMED** the ROM contains no writer of
+  `ram:EE00-EE4F` (no code xref to `ROM00:7DFA`; only
+  `ROM01:11A4` calls `0xEE00`); the static image is
+  twenty `LD HL,1; RET` no-op slots (`21 01 00 C9`).
+  The arena is a stub farm (source table `ROM00:7DFA`,
+  20 words — no code xref; computed-call xrefs e.g.
+  `ram:EE04 -> ROM00:48BF` describe intended routing)
+  and the runtime patching question is **OPEN and
+  cannot be settled from the ROM alone** — a loaded
+  DIP/COM could write the arena (that is the purpose
+  of a stub farm; plausible/unverified). Do not claim
+  the thunk hypothesis is unsupported; claim only that
+  the ROM provides no patching code.
+
+* **D837 unchanged:** `ram:D837` `Coroutine_Enter`
+  resolution (CONFIRMED `ram:D837-D857`) not
+  modified.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (this entry + two RESOLVED rewrites) and
+  `reference/commstar-api.md` (two passages). No
+  Ghidra edits; no new inference; evidence tags
+  preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see below.
