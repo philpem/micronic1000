@@ -1,9 +1,10 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (17th audit — §12 item 4
-residuals closed: 3 labels pinned, 7 Boot_entry fixes,
-5 magic numbers decoded; only `g_wCoroutineStepResult`
-remains OPEN; item 4 CLOSED; plate coverage 100 %,
+Status: 2026-09-19 (18th audit — §12 FINAL PASS
+fully CLOSED: 3 labels pinned, 7 Boot_entry fixes,
+5 magic numbers decoded, `g_wCoroutineStepResult`
+RESOLVED pointer-indirected at `ram:EA24`, E73E
+refuted; no OPEN items; plate coverage 100 %,
 no SHORT-form remains that §8 would reject), firmware
 `micron1.bin` (overlay
 spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
@@ -381,9 +382,8 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 (see above) and the retains are expected.
 
 Annotation tail per `research/TASKS.md` §12
-(2026-09-19 — §12 item 4 residuals closed: 3 labels
-pinned, 7 Boot_entry fixes, 5 magic numbers decoded;
-only `g_wCoroutineStepResult` remains OPEN):
+(2026-09-19 — §12 FINAL PASS fully CLOSED; no
+OPEN items remain):
 plate coverage 100 % (closed — 144 unplated plated;
 **item 3 DONE 2026-09-19 — 141 reviewed: 82 KEEP /
 59 upgraded to full form; no SHORT-form remains
@@ -412,11 +412,20 @@ address), `g_bLinkCmdShadow` created at `ram:F796`
 `g_bOutputCount` created at `ram:FEA3` (supersedes
 `g_bOutputCount` SUSPECTED `F998` — correct address
 is `FEA3` per byte-verified reference);
-`g_wCoroutineStepResult` SUSPECTED `E73E` remains
-**UNRESOLVED** — zero refs program-wide (CONFIRMED);
-`EA24 = g_pCoroutineStepResultBuf` is CONFIRMED but
-`E73E` needs tracing indirect writes to `EA24` (only
-OPEN label); **`Boot_entry+1` bug — FIXED
+`g_wCoroutineStepResult` — **RESOLVED 2026-09-19
+(CONFIRMED): not a fixed RAM address.** It names the
+buffer pointed to by `g_pCoroutineStepResultBuf` at
+`ram:EA24`; one writer `ROM01:6DF6 LD (0xEA24),HL`
+(HL from `ROM01:6909` → `Coroutine_TaskSwitch`) and
+six readers in `Fs_SeekByteOffset` (`ROM01:6DDF-6EED`);
+layout `+1` = 16-bit step-1 result, `+3` = 16-bit
+step-2 result, `+0` unreferenced; `ram:E73E` has
+zero refs program-wide — E73E hypothesis **refuted**
+(CONFIRMED). `g_pCoroutineStepResultBuf` at `ram:EA24`
+carries a repeatable comment and four EOLs at
+`ROM01:6E8F`/`6E9E`/`6EBB`/`6ED8` now use the
+`[*(g_pCoroutineStepResultBuf)+N]` form; no function
+renamed; saved. **`Boot_entry+1` bug — FIXED
 (CONFIRMED):** 7 comments at `ROM01:1ea1`, `1f96`,
 `28bb`, `2b7b`, `2c95`, `3acb`, `ram:d777` rewritten
 `Boot_entry+1` → `0001h` (intended page-zero cell;
@@ -441,9 +450,11 @@ confirmed plate at `Lcd_Init` (`ROM00:1EEC`). The
 590-name `Module_Name` mass rename (31-module
 taxonomy, 588 applied in Ghidra + 2 collisions,
 docs synced across 24 files, commit `993a45d`) is
-**DONE** (CONFIRMED). **Item 4 is now CLOSED**
-except the single OPEN `g_wCoroutineStepResult`;
-items 1, 2a, 2b, 3, 5, 6 are DONE.
+**DONE** (CONFIRMED). **§12 FINAL PASS is now fully
+CLOSED (CONFIRMED)** — no OPEN items remain (items
+1, 2a, 2b, 3, 4, 5, 6 done); `g_wCoroutineStepResult`
+pointer-indirected buffer was the final OPEN label,
+E73E hypothesis **refuted**.
 
 ## Notes
 

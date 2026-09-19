@@ -392,13 +392,23 @@ current priority order; the concise lists above are authoritative.
         `ram:FEA3` (supersedes `g_bOutputCount`
         SUSPECTED `F998` — correct address is `FEA3`
         per byte-verified reference);
-        `g_wCoroutineStepResult` SUSPECTED `E73E`
-        remains **UNRESOLVED** — zero references
-        program-wide (CONFIRMED); `EA24 =
-        g_pCoroutineStepResultBuf` is CONFIRMED, but
-        `E73E` could not be pinned without tracing
-        indirect writes to `EA24` (the only OPEN
-        label). **`Boot_entry+1` bug — FIXED
+         `g_wCoroutineStepResult` — **RESOLVED
+         2026-09-19 (CONFIRMED): not a fixed RAM
+         address.** It names the buffer pointed to by
+         `g_pCoroutineStepResultBuf` at `ram:EA24`;
+         one writer `ROM01:6DF6 LD (0xEA24),HL` (HL
+         from `ROM01:6909` → `Coroutine_TaskSwitch`)
+         and six readers in `Fs_SeekByteOffset`
+         (`ROM01:6DDF-6EED`); layout `+1` = 16-bit
+         step-1 result, `+3` = 16-bit step-2 result,
+         `+0` unreferenced; `ram:E73E` has zero refs
+         program-wide — E73E hypothesis **refuted**
+         (CONFIRMED). `g_pCoroutineStepResultBuf` at
+         `ram:EA24` carries a repeatable comment and
+         four EOLs at `ROM01:6E8F`/`6E9E`/`6EBB`/`6ED8`
+         now use the `[*(g_pCoroutineStepResultBuf)+N]`
+         form; no function renamed; saved.
+         **`Boot_entry+1` bug — FIXED
         (CONFIRMED):** 7 comments corrected at
         `ROM01:1ea1`, `1f96`, `28bb`, `2b7b`, `2c95`,
         `3acb`, `ram:d777` — each cited `Boot_entry+1`
@@ -429,9 +439,12 @@ current priority order; the concise lists above are authoritative.
         init" but the confirmed plate at `Lcd_Init`
         (`ROM00:1EEC`) says LCD subsystem init, so
         the old comment was factually wrong and was
-        corrected. **Item 4 is now CLOSED** except the
-        single OPEN `g_wCoroutineStepResult` label;
-        items 1, 2a, 2b, 3, 5, 6 are DONE.
+         corrected. **Item 4 is now fully CLOSED**
+         — no OPEN labels remain; items 1, 2a, 2b, 3,
+         5, 6 are DONE (CONFIRMED). The
+         `g_wCoroutineStepResult` pointer-indirected
+         buffer is the final closure; E73E hypothesis
+         **refuted**.
     5. **Data-typing backlog — substantially done** (see
        gap-analysis: `ROM01:757F-768E` typed as
        `undefined[272]`, `ROM00:7409`/`7472` deferred by
@@ -448,17 +461,16 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-       **Remaining scope after 2026-09-19 (§12 item 4
-        residuals closed — 3 labels pinned,
-        7 Boot_entry fixes, 5 magic numbers decoded):**
-        **only the `g_wCoroutineStepResult` label**
-        (`E73E` UNRESOLVED, zero refs program-wide;
-        `EA24 = g_pCoroutineStepResultBuf` CONFIRMED
-        and is the lead for tracing indirect writes to
-        resolve it). Items 1, 2a, 2b, 3, 5, 6 are DONE;
-        item 4 is CLOSED except this single OPEN. The
-        `bdos_entry_impl` proposal for `ROM00:F180` is
-        tracked separately and is not a §12 item.
+        **Remaining scope after 2026-09-19 (§12 FINAL
+         PASS fully CLOSED):** **no OPEN items remain.**
+         Items 1, 2a, 2b, 3, 4, 5, 6 are **DONE** — the
+         `g_wCoroutineStepResult` pointer-indirected
+         buffer (`g_pCoroutineStepResultBuf` at
+         `ram:EA24`, `+1`/`+3` 16-bit results; E73E
+         **refuted**, zero refs) was the final OPEN
+         label. The `bdos_entry_impl` proposal for
+         `ROM00:F180` is tracked separately and is not
+         a §12 item.
 
 ## Owner corrections to honor
 
@@ -5936,13 +5948,62 @@ names renamed, 144 unplated functions plated)
    resolve it).
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (§12 item 4 CLOSED except the single OPEN
-   `g_wCoroutineStepResult`; remaining-scope refreshed;
-   this 2026-09-19 entry), `research/gap-analysis.md`
-   (headline + annotation tail updated — item 4 CLOSED,
-   3 labels pinned, 7 Boot_entry fixes, 5 magic numbers
-   decoded, only `g_wCoroutineStepResult` remains OPEN).
-   No Ghidra edits in this docs pass beyond the saved
-   labels/comments above; no new inference; evidence
-   tags preserved; ~70-col wrapping. `mkdocs build
-   --strict` (site_dir `site-mkdocs`) run — see below.
+    (§12 item 4 CLOSED except the single OPEN
+    `g_wCoroutineStepResult`; remaining-scope refreshed;
+    this 2026-09-19 entry), `research/gap-analysis.md`
+    (headline + annotation tail updated — item 4 CLOSED,
+    3 labels pinned, 7 Boot_entry fixes, 5 magic numbers
+    decoded, only `g_wCoroutineStepResult` remains OPEN).
+    No Ghidra edits in this docs pass beyond the saved
+    labels/comments above; no new inference; evidence
+    tags preserved; ~70-col wrapping. `mkdocs build
+    --strict` (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — §12 final OPEN label closed
+ (g_wCoroutineStepResult is pointer-indirected)
+ (Ghidra saved; docs only in this pass, no new
+ inference; parent-verified)
+
+* **`g_wCoroutineStepResult` — RESOLVED
+   (CONFIRMED): not a fixed RAM address.** It names
+   the buffer pointed to by `g_pCoroutineStepResultBuf`
+   at `ram:EA24`. Traced: exactly **one writer**
+   (`ROM01:6DF6 LD (0xEA24),HL`, HL from the coroutine
+   frame allocator `ROM01:6909` →
+   `Coroutine_TaskSwitch`) and **six readers**, all in
+   `Fs_SeekByteOffset` (`ROM01:6DDF-6EED`). Buffer
+   layout: offset `+1` = 16-bit step-1 result, offset
+   `+3` = 16-bit step-2 result, offset `+0`
+   unreferenced. `ram:E73E` has **zero references
+   program-wide** — the earlier `E73E` hypothesis is
+   **refuted** (CONFIRMED).
+
+* **Applied (CONFIRMED, Ghidra saved; function list
+   unchanged):** `g_pCoroutineStepResultBuf` label
+   created at `ram:EA24` with a repeatable comment
+   ("Pointer to coroutine step-result workspace
+   buffer (offsets +1/+3 hold 16-bit step results).");
+   the four EOL comments at `ROM01:6E8F`/`6E9E`/
+   `6EBB`/`6ED8` rewritten from `g_wCoroutineStepResult`
+   to the `[*(g_pCoroutineStepResultBuf)+N]`
+   pointer-dereference form. No function renamed;
+   function list unchanged; saved.
+
+* **§12 FINAL PASS is now fully CLOSED (CONFIRMED)**
+   — no OPEN items remain (items 1, 2a, 2b, 3, 4, 5,
+   6 done). The `g_wCoroutineStepResult` label was
+   the final OPEN item; the earlier `E73E` hypothesis
+   is refuted and superseded by the `EA24` pointer-
+   indirected model.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (this entry + §12 item 4 marked fully CLOSED and
+   remaining scope emptied; E73E hypothesis noted as
+   refuted), `research/gap-analysis.md` (headline +
+   annotation tail updated — §12 fully CLOSED, no
+   OPEN labels; `g_wCoroutineStepResult` RESOLVED
+   pointer-indirected, E73E refuted). No Ghidra edits
+   in this docs pass beyond the saved label/comments
+   above; no new inference; evidence tags preserved;
+   ~70-col wrapping. `mkdocs build --strict`
+   (site_dir `site-mkdocs`) run — see below.
