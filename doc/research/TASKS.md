@@ -294,7 +294,8 @@ State: continuously updated as work progresses.
    reopen last disk state (§11).
 
    Phase 1 — execution coverage of the 4 retained
-   `FUN_*` (are they reachable or dead?)
+   `FUN_*` (are they reachable or dead?) —
+   **partial result 2026-09-19** (see below)
 
    * Hypotheses (SUSPECTED, to test):
      - `ROM01:0904` — alignment padding
@@ -303,7 +304,10 @@ State: continuously updated as work progresses.
        zero xrefs, SUSPECTED dead).
      - `ROM01:1177` — trivial stub SUSPECTED dead;
        retained with plate, zero xrefs (CONFIRMED
-       plate, SUSPECTED dead).
+       plate, SUSPECTED dead) — **superseded
+       2026-09-19: now CONFIRMED reachable (see
+       Phase 1 partial result below); identity
+       remains unknown**.
      - `ROM00:441b` — zero-xref dead coroutine
        yield SUSPECTED dead (sibling `443c` is
        used; CONFIRMED zero xrefs, SUSPECTED
@@ -374,6 +378,45 @@ State: continuously updated as work progresses.
         Observable/acceptance as above; documents
         that retains stay dead even under the
         replacement-ROM TX-arm path.
+
+   **Phase 1 — partial result 2026-09-19**
+   (emulator `analysis/boot_hw.py`, exit 0,
+   bounded — CONFIRMED for `ROM01:1177`;
+   others SUSPECTED):
+
+     * Run 1 — baseline:
+       `analysis/boot_hw.py --watch-pc
+       0904,1177,441b,d937 --drive-serial
+       --max-slices 400000` — totals
+       `0904=0 1177=2 441B=0 D937=0`.
+       `ROM01:1177` hit twice (`bank=01`,
+       `AF=7742 BC=06AB DE=D101 HL=1177
+       SP=D671`) (CONFIRMED reachable — it is
+       not dead; identity remains unknown; the
+       retain's open question was identity,
+       not reachability).
+
+     * Run 2 — session-heavy:
+       `--trace-session-transaction 4
+       --max-slices 600000` — same totals
+       (`1177=2`, others 0) (CONFIRMED for
+       `ROM01:1177`).
+
+     * Conclusion: `ROM01:1177` is **CONFIRMED
+       reachable** (2 hits at boot/session) —
+       not dead; identity remains unknown.
+       `ROM01:0904`, `ROM00:441B`, `ram:D937`
+       were **not reached** in either run →
+       **SUSPECTED dead or state-specific**
+       (candidates not yet exercised: DIP/COM
+       load, commstar session, barcode scan).
+       No conclusion is warranted from
+       absence in these two runs alone.
+
+     * Phases 2 (vtable dump `ROM01:7C80`/
+       `ram:D130`) and 3 (stub-patch trace
+       `--watch-mem EE00:EE4F` on a load path)
+       are **not yet run** (pending).
 
    Phase 2 — session-object dispatch tables
    `ROM01:7c80` / `ram:D130` (entry format and
@@ -6910,3 +6953,57 @@ names renamed, 144 unplated functions plated)
    preserved; ~70-col wrapping. `mkdocs build
    --strict` (site_dir `site-mkdocs`) run — see
    below.
+
+### 2026-09-19 — emulator Phase 1 coverage
+ (1177 reachable; 0904/441b/d937 unhit)
+ (emulator `analysis/boot_hw.py`, exit 0,
+ bounded; docs only, no Ghidra, no new
+ inference; parent-verified)
+
+* **Phase 1 (coverage of the 4 retained
+   `FUN_*`) — partial result (CONFIRMED for
+   `ROM01:1177`; others SUSPECTED).**
+  Two bounded runs via `analysis/boot_hw.py`
+  (exit 0):
+   - `--watch-pc 0904,1177,441b,d937
+     --drive-serial --max-slices 400000`:
+     totals `0904=0 1177=2 441B=0 D937=0`.
+     `ROM01:1177` hit twice (`bank=01`,
+     `AF=7742 BC=06AB DE=D101 HL=1177
+     SP=D671`) (CONFIRMED reachable — it is
+     not dead; identity remains unknown; the
+     retain's open question was identity,
+     not reachability).
+   - Session-heavy rerun
+     `--trace-session-transaction 4
+     --max-slices 600000`: same totals
+     (`1177=2`, others 0) (CONFIRMED for
+     `ROM01:1177`).
+  Conclusion: `ROM01:1177` is **CONFIRMED
+  reachable** (2 hits at boot/session) — it
+  is not dead; its identity remains unknown
+  (the retain's open question was identity,
+  not reachability). `ROM01:0904`,
+  `ROM00:441B`, `ram:D937` were **not
+  reached** in either run → **SUSPECTED dead
+  or state-specific** (candidates not yet
+  exercised: DIP/COM load, commstar session,
+  barcode scan). No conclusion is warranted
+  from absence in these two runs alone.
+* **Phases 2 (vtable dump `ROM01:7C80`/
+  `ram:D130`) and 3 (stub-patch trace
+  `--watch-mem EE00:EE4F` on a load path) are
+  not yet run** (pending).
+* **TASKS.md:** updated the emulator plan
+  section — marked Phase 1 partially done with
+  the above result, noted `ROM01:1177`
+  reachable, and listed the unexercised state
+  candidates for the three unhit addresses;
+  kept Phases 2–3 pending. No Ghidra edits.
+* **Docs updated in this pass:**
+  `research/TASKS.md` (emulator plan partial
+  result + this entry). No Ghidra edits; no
+  new inference; evidence tags preserved;
+  ~70-col wrapping. `mkdocs build --strict`
+  (site_dir `site-mkdocs`) run — see below.
+
