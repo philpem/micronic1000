@@ -261,11 +261,47 @@ current priority order; the concise lists above are authoritative.
        guarded, 4 retained `FUN_*` with plates and
        documented open questions; 99.6 % named).
     2. **Rename wrong or grandfathered names**
-       a. **Grandfathered `Module_Name` churn (~487
-          CamelCase + lowercase-legacy names) — OPEN,
-          owner's deliberate repo-wide pass** per
-          AGENTS.md §7. Do not churn piecemeal; a wrong
-          mass rename is worse than none.
+       a. **Grandfathered `Module_Name` churn —
+          DONE 2026-09-19 (590 names → 31-module
+          taxonomy; 588 applied in Ghidra + 2
+          already-renamed collisions; word-boundary
+          doc sync across 24 files, commit
+          `993a45d`; CONFIRMED):** canonical 31
+          modules `Session_` `Bdos_` `Fs_` `Lib_`
+          `Link_` `UI_` `Syscall_` `Field_`
+          `RegFile_` `Lcd_` `Program_` `Disk_`
+          `Tty_` `RTC_` `ExtBus_` `Diag_` `Kernel_`
+          `KernelImage_` `Kbd_` `Device_` `Dialog_`
+          `Text_` `Comms_` `Clock_` `Power_` `Util_`
+          `Coroutine_` `Monitor_` `SelfTest_`
+          `Sound_` `Fcb_` `Form_` `Boot_`
+          `Barcode_`; normalizations `Kern*`→
+          `Kernel_`, `Rtc*`→`RTC_`, `Ui*`→`UI_`
+          (owner choice, uppercase per AGENTS.md
+          §7), `lcd_*`→`Lcd_`, `tty_*`→`Tty_`,
+          `dialog_*`→`Dialog_`,
+          `session_*`→`Session_`,
+          `Coro*`→`Coroutine_`,
+          `Keyboard*`/`Key*`→`Kbd_`,
+          `Reg*`→`RegFile_`, `Self*`→`SelfTest_`;
+          reassignments `Banked*`→`Kernel_`,
+          `Console*`→`Device_`, `Delay*`→`Util_`,
+          `Str*`/`Arith*`/`Bcd*`/`Checksum*`/
+          `Format*`/`Num*`/`Pack*`/`Table*`→`Lib_`,
+          `BlockAlloc*`/`FileSearch*`→`Fs_`,
+          `StateWord*`/`CmdDispatch*`→`Session_`,
+          `ServiceCall*`/`thunk_*`→`Syscall_`,
+          `Nop*`→`Diag_`, `TemplateBuilder`→`Form_`,
+          `Port2b*`→`Sound_`,
+          `ExtDecodeHook*`→`ExtBus_`,
+          `Descriptor*`→`UI_`; do-not-regress
+          identities preserved (`RTC_`, `Link_`,
+          `Session_`, `ExtBus_`); protected exact
+          names kept (`BankedRst08/20/28/30/38`,
+          `Rst2Dispatch`/`Rst4IrqPoll`/
+          `Rst5FatalScreen`/`Rst6ZeroRet`/
+          `Rst7IrqPoll`, `ColdStartSelfTestBanner`,
+          `LinkRxDispatcher`).
        b. **Wrong names — DONE 2026-09-19 (5, byte-
           verified, docs synced):** `ROM00:3BB8`
           `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
@@ -297,10 +333,15 @@ current priority order; the concise lists above are authoritative.
          cols, multi-line ASCII).
        Fix plates that contradict their own names and
        re-flow to ~70 cols as part of that review.
-    4. **Comment-style pass — OPEN:** migrate raw-address
-       cites to labels, decode remaining magic numbers/
-       masks in place, drop opcode-restating comments per
-       §8 anti-patterns.
+    4. **Comment-style pass — OPEN (scope quantified
+       2026-09-19; CONFIRMED count):** of 895
+       instruction comments, **356 carry
+       raw-address-like tokens** (hex/address cites
+       that §8 says should be descriptive labels, not
+       bare addresses) — not yet migrated; also
+       pending: decoding remaining magic numbers/
+       masks in place and dropping opcode-restating
+       comments per §8 anti-patterns.
     5. **Data-typing backlog — substantially done** (see
        gap-analysis: `ROM01:757F-768E` typed as
        `undefined[272]`, `ROM00:7409`/`7472` deferred by
@@ -317,10 +358,12 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-    **Remaining scope after 2026-09-19:** item 2a
-    (mass rename, owner), item 3 short-plate review
-    (~141), item 4 (comment-style). Items 2b and 3
-    (unplated) are closed in this pass.
+    **Remaining scope after 2026-09-19:** item 3
+    short-plate review (~141), item 4 comment-style
+    (356 raw-address comments + magic-number/
+    opcode-restating cleanup). Items 2a (mass
+    rename) and 2b plus 3 (unplated) are closed in
+    this pass.
 
 ## Owner corrections to honor
 
@@ -5468,5 +5511,73 @@ names renamed, 144 unplated functions plated)
   (`ram:D837` filing resolved). No Ghidra edits in
   this docs pass; no new inference; evidence tags
   preserved; ~70-col wrapping. `mkdocs build
+  --strict` (site_dir `site-mkdocs`) run — see
+  below.
+
+### 2026-09-19 — §12 item 2a mass rename (590 names
+→ 31-module Module_Name taxonomy)
+
+* **Item 2a — mass rename DONE 2026-09-19 (590
+  names → 31-module `Module_Name` taxonomy; 588
+  applied in Ghidra + 2 already-renamed
+  collisions; word-boundary doc sync across 24
+  files, commit `993a45d`; CONFIRMED):** canonical
+  taxonomy `Session_` `Bdos_` `Fs_` `Lib_` `Link_`
+  `UI_` `Syscall_` `Field_` `RegFile_` `Lcd_`
+  `Program_` `Disk_` `Tty_` `RTC_` `ExtBus_`
+  `Diag_` `Kernel_` `KernelImage_` `Kbd_`
+  `Device_` `Dialog_` `Text_` `Comms_` `Clock_`
+  `Power_` `Util_` `Coroutine_` `Monitor_`
+  `SelfTest_` `Sound_` `Fcb_` `Form_` `Boot_`
+  `Barcode_` (31 modules); normalizations
+  `Kern*`→`Kernel_`, `Rtc*`→`RTC_`, `Ui*`→`UI_`
+  (owner choice, uppercase per AGENTS.md §7),
+  `lcd_*`→`Lcd_`, `tty_*`→`Tty_`,
+  `dialog_*`→`Dialog_`, `session_*`→`Session_`,
+  `Coro*`→`Coroutine_`, `Keyboard*`/`Key*`→`Kbd_`,
+  `Reg*`→`RegFile_`, `Self*`→`SelfTest_`;
+  reassignments `Banked*`→`Kernel_`,
+  `Console*`→`Device_`, `Delay*`→`Util_`,
+  `Str*`/`Arith*`/`Bcd*`/`Checksum*`/`Format*`/
+  `Num*`/`Pack*`/`Table*`→`Lib_`,
+  `BlockAlloc*`/`FileSearch*`→`Fs_`,
+  `StateWord*`/`CmdDispatch*`→`Session_`,
+  `ServiceCall*`/`thunk_*`→`Syscall_`,
+  `Nop*`→`Diag_`, `TemplateBuilder`→`Form_`,
+  `Port2b*`→`Sound_`, `ExtDecodeHook*`→`ExtBus_`,
+  `Descriptor*`→`UI_`; do-not-regress identities
+  preserved (`RTC_`, `Link_`, `Session_`,
+  `ExtBus_`); protected exact names kept
+  (`BankedRst08/20/28/30/38`,
+  `Rst2Dispatch`/`Rst4IrqPoll`/
+  `Rst5FatalScreen`/`Rst6ZeroRet`/`Rst7IrqPoll`,
+  `ColdStartSelfTestBanner`,
+  `LinkRxDispatcher`); docs name-synced across
+  24 files (word-boundary replace).
+
+* **Item 4 — scope quantified 2026-09-19
+  (CONFIRMED count; OPEN):** of 895 instruction
+  comments, **356 carry raw-address-like tokens**
+  (hex/address cites that §8 says should be
+  descriptive labels, not bare addresses) — not
+  yet migrated; also pending: decoding remaining
+  magic numbers/masks in place and dropping
+  opcode-restating comments per §8 anti-patterns.
+  Recorded as **OPEN** with the 356 figure in §12.
+
+* **§12 remaining scope after this pass:** item 3
+  short-plate review (~141), item 4 comment-style
+  (356 raw-address comments + magic-number/
+  opcode-restating cleanup). Item 2a is **DONE**;
+  items 2b and 3 (unplated) already closed.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+  (§12 item 2a DONE with 31-module taxonomy +
+  normalizations/reassignments, §12 item 4 quantified
+  356, §12 remaining scope updated, this 2026-09-19
+  entry), `research/gap-analysis.md` (annotation
+  tail updated — item 2a DONE, item 4 with 356).
+  No Ghidra edits; no new inference; evidence
+  tags preserved; ~70-col wrapping. `mkdocs build
   --strict` (site_dir `site-mkdocs`) run — see
   below.

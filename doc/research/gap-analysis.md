@@ -362,10 +362,13 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 
 Annotation tail per `research/TASKS.md` §12
 (2026-09-19): plate coverage 100 % (closed — 144
-unplated plated), ~141 short plates (<120 chars) and
-the comment-style pass remain **OPEN**; the ~487
-grandfathered `Module_Name` renames are **OPEN** by
-owner decision (AGENTS.md §7).
+unplated plated), ~141 short plates (<120 chars)
+and the comment-style pass (356 raw-address
+comments + magic-number/opcode-restating cleanup)
+remain **OPEN**; the 590-name `Module_Name` mass
+rename (31-module taxonomy, 588 applied in Ghidra
++ 2 collisions, docs synced across 24 files, commit
+`993a45d`) is **DONE** (CONFIRMED).
 
 ## Notes
 
