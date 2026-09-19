@@ -246,12 +246,20 @@ kept symbols.** All byte-verified; Ghidra saved.
 
 * **Retained (10) with documented open questions
    (CONFIRMED retained, plates set, symbols kept;
-   updated 2026-09-19 — vtable reader LOCATED):**
-   `ROM00:441B` (zero xrefs, dead coroutine yield);
-   `ROM01:0904` (alignment padding `NOP; NOP; RET`);
-   `ROM01:1177` (trivial stub, **CONFIRMED reachable**
-   via Phase 1 `boot_hw.py --watch-pc` — 2 hits at
-   boot/session; identity remains unknown) /
+   updated 2026-09-19 — vtable reader LOCATED +
+   extended coverage):**
+   `ROM00:441B` (zero xrefs, **LIKELY dead** —
+   unhit in four bounded runs: boot,
+   session-transaction, COM load, commstar
+   attach; only barcode scan unexercised);
+   `ROM01:0904` (alignment padding
+   `NOP; NOP; RET`, not a real routine,
+   zero xrefs, **LIKELY dead** — unhit in
+   four runs; only barcode unexercised);
+   `ROM01:1177` (trivial stub, **CONFIRMED
+   reachable** in every run via extended
+   `boot_hw.py --watch-pc` — up to 13 hits;
+   identity remains unknown) /
    `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
    session-object vtable entries (methods)** at
    `ROM01:7C80` / `ram:D128` — 43 big-endian entries,
@@ -404,12 +412,17 @@ ROM01 address (`D12F/D130=0x1177`,
 `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with
 plates: `ROM01:1177` (trivial stub, **CONFIRMED
-reachable** — 2 hits at boot/session via
-`boot_hw.py --watch-pc`, Phase 1; identity remains
-unknown), `ROM00:441b` (zero-xref dead, sibling
-`443c` used), `ram:d937` (zero-xref bit-flag
-dispatcher over `ram:e104`), `ROM01:0904` (alignment
-padding).
+reachable** in every run via extended
+`boot_hw.py --watch-pc` — up to 13 hits; identity
+remains unknown), `ROM00:441b` (zero-xref dead,
+**LIKELY dead** — unhit in four bounded runs;
+only barcode scan unexercised; sibling `443c`
+used), `ram:d937` (zero-xref bit-flag dispatcher
+over `ram:e104`, **LIKELY dead** — unhit in four
+runs; only barcode unexercised), `ROM01:0904`
+(alignment padding `NOP; NOP; RET`, not a real
+routine, zero xrefs, **LIKELY dead** — unhit in
+four runs; only barcode unexercised).
 
 Coverage after Items A–C is the headline above: auto
 `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910

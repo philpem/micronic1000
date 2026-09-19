@@ -279,17 +279,18 @@ State: continuously updated as work progresses.
    the "harness gap" framing (it was a marker
    artifact).
 
-   1. **Minor / deferred (OPEN, low priority —
-     nothing actionable without new data).**
-     4 documented retained `FUN_*`
-     (`ROM01:0904` alignment padding `NOP; NOP; RET`,
-     `ROM00:441B` dead yield, `ram:D937` bit-flag
-     dispatcher, `ROM01:1177` trivial stub) — now
-     updated: `ROM01:1177` **CONFIRMED reachable**
-     (Phase 1, 2 hits at boot/session; identity
-     remains unknown) and `ROM01:156F`/`1664`/`168E`/
-     `16B8` are **CONFIRMED session-object vtable
-     entries** (methods) at `ROM01:7C80` /
+    1. **Minor / deferred (OPEN, low priority —
+      nothing actionable without new data).**
+      4 documented retained `FUN_*`
+      (`ROM01:0904` alignment padding `NOP; NOP; RET`,
+      `ROM00:441B` dead yield, `ram:D937` bit-flag
+      dispatcher, `ROM01:1177` trivial stub) — now
+      updated: `ROM01:1177` **CONFIRMED reachable**
+      in every run (extended coverage; up to 13
+      hits; identity remains unknown) and
+      `ROM01:156F`/`1664`/`168E`/`16B8` are
+      **CONFIRMED session-object vtable entries**
+      (methods) at `ROM01:7C80` /
      `ram:D128` (43 big-endian entries,
      `FFFF` at `ROM01:7CD8`; `ram:D130 = D128+8`
      alternate entry; `ram:D128` diverges at
@@ -355,6 +356,35 @@ State: continuously updated as work progresses.
      `--upload` (`0200:A5` marker) + `--watch-mem`;
      `0100:21` early-return artifact corrected — see
      Phase 3.
+      Extended coverage (emulator
+      `analysis/boot_hw.py`, exit 0, bounded) —
+      `--watch-pc 0904,1177,441b,d937` across
+      four run types: boot + `--drive-serial`
+      `1177=2, others 0`;
+      `--trace-session-transaction 4` `1177=2,
+      others 0`; `--upload hello.com
+      --upload-marker 0200:A5` (real COM load)
+      `1177=13, others 0`; `--upload hello.com
+      --commstar-peer` (commstar attach)
+      `0904=0 441B=0 D937=0` (peer saw no
+      requests — test COM does not hold a
+      commstar session). So `ROM01:1177`
+      reachable in every run (up to 13 hits);
+      `ROM01:0904`, `ROM00:441B`, `ram:D937`
+      unhit in all four. Combined with static
+      status — `ROM01:0904` `NOP; NOP; RET`
+      alignment padding (not a real routine),
+      `ROM00:441B`/`ram:D937` **zero xrefs** —
+      these three are **dead/unreachable in
+      every exercised path** (boot, session
+      transaction, COM load, commstar attach).
+      Retained (plates) rather than deleted:
+      could still be reached by other loaded
+      software or the one unexercised path
+      (barcode scan). Tag **SUSPECTED dead →
+      LIKELY dead** (zero xrefs + unhit in four
+      run types); only the barcode-scan capture
+      remains unexercised (CONFIRMED).
 
 ### Emulator-coverage / vtable-mapping plan —
     closing the low-priority retains (no
@@ -473,10 +503,11 @@ State: continuously updated as work progresses.
         that retains stay dead even under the
         replacement-ROM TX-arm path.
 
-   **Phase 1 — partial result 2026-09-19**
+   **Phase 1 — extended result 2026-09-19**
    (emulator `analysis/boot_hw.py`, exit 0,
-   bounded — CONFIRMED for `ROM01:1177`;
-   others SUSPECTED):
+   bounded — `ROM01:1177` CONFIRMED
+   reachable in every run; others LIKELY dead
+   — four-run coverage):
 
      * Run 1 — baseline:
        `analysis/boot_hw.py --watch-pc
@@ -496,21 +527,48 @@ State: continuously updated as work progresses.
        (`1177=2`, others 0) (CONFIRMED for
        `ROM01:1177`).
 
-     * Conclusion: `ROM01:1177` is **CONFIRMED
-       reachable** (2 hits at boot/session) —
-       not dead; identity remains unknown.
-       `ROM01:0904`, `ROM00:441B`, `ram:D937`
-       were **not reached** in either run →
-       **SUSPECTED dead or state-specific**
-       (candidates not yet exercised: DIP/COM
-       load, commstar session, barcode scan).
-       No conclusion is warranted from
-       absence in these two runs alone.
+     * Run 3 — real COM load path:
+       `--upload hello.com --upload-marker
+       0200:A5` (real COM load) — totals
+       `0904=0 1177=13 441B=0 D937=0`.
+       `ROM01:1177` reachable (13 hits);
+       others unhit.
+
+     * Run 4 — commstar session attach:
+       `--upload hello.com --commstar-peer`
+       (commstar attach; test COM does not hold
+       a commstar session, peer saw no requests)
+       — totals `0904=0 441B=0 D937=0`
+       (`1177` not re-measured here but
+       reachable in the three prior runs).
+
+     * Conclusion (four-run): `ROM01:1177` is
+       **CONFIRMED reachable** in every run
+       (up to 13 hits) — not dead; identity
+       remains unknown. `ROM01:0904`,
+       `ROM00:441B`, `ram:D937` were **unhit
+       in all four** (boot, session
+       transaction, COM load, commstar attach)
+       and have **zero xrefs** (`ROM01:0904`
+       is `NOP; NOP; RET` alignment padding,
+       not a real routine) — **dead/
+       unreachable in every exercised path**.
+       Retained (plates) rather than deleted:
+       could still be reached by other loaded
+       software or the one unexercised path
+       (barcode scan). Tag upgraded
+       **SUSPECTED dead → LIKELY dead** (zero
+       xrefs + unhit in four run types); only
+       the barcode-scan capture remains
+       unexercised (CONFIRMED).
 
      * Phases 2 (vtable dump `ROM01:7C80`/
-       `ram:D130`) and 3 (stub-patch trace
+       `ram:D128`) and 3 (stub-patch trace
        `--watch-mem EE00:EE4F` on a load path)
-       are **not yet run** (pending).
+       are **DONE 2026-09-19** — see Phase 2
+       (43 big-endian entries, reader LOCATED)
+       and Phase 3 (boot bulk-copy + witnessed
+       `D7` patch) below.
 
       Phase 2 — session-object dispatch tables
      `ROM01:7C80` / `ram:D128` — **DONE 2026-09-19
@@ -7628,4 +7686,57 @@ names renamed, 144 unplated functions plated)
     evidence tags preserved (`CONFIRMED`/`CORRECTION`);
     ~70-col wrapping. `mkdocs build --strict`
     (site_dir `site-mkdocs`) run — see below.
+### 2026-09-19 — extended coverage of the unhit
+ retains (0904/441b/d937 unhit in four run types
+ → LIKELY dead) (emulator `analysis/boot_hw.py`,
+ exit 0, bounded; docs only, no Ghidra, no new
+ inference; parent-verified)
 
+* **Extended coverage of the three unhit retains
+   (CONFIRMED, emulator `analysis/boot_hw.py`,
+   exit 0, bounded).** `--watch-pc
+   0904,1177,441b,d937` across four run types:
+   boot + `--drive-serial` `1177=2, others 0`;
+   `--trace-session-transaction 4` `1177=2,
+   others 0`; `--upload hello.com
+   --upload-marker 0200:A5` (real COM load path)
+   `1177=13, others 0`; `--upload hello.com
+   --commstar-peer` (commstar session attach)
+   `0904=0 441B=0 D937=0` (peer saw no requests
+   — test COM does not hold a commstar session).
+   So `ROM01:1177` reachable in every run (now
+   up to 13 hits); `ROM01:0904`, `ROM00:441B`,
+   `ram:D937` unhit in all four.
+
+* **Conclusion (CONFIRMED static status +
+   extended coverage).** Combined with static
+   status — `ROM01:0904` is `NOP; NOP; RET`
+   alignment padding (not a real routine),
+   `ROM00:441B` and `ram:D937` have **zero xrefs**
+   — these three are **dead/unreachable in every
+   exercised path** (boot, session transaction,
+   COM load, commstar attach). Retained (plates)
+   rather than deleted: could still be reached by
+   other loaded software or the one unexercised
+   path (barcode scan). Tag **SUSPECTED dead →
+   LIKELY dead** (zero xrefs + unhit in four run
+   types); only the barcode-scan capture remains
+   unexercised.
+
+* **TASKS.md:** updated the minor/deferred retain
+   block with the four-run coverage table and the
+   **LIKELY dead** conclusion (only barcode path
+   unexercised), and refreshed the Phase 1
+   coverage block from partial (2 runs, SUSPECTED)
+   to extended (4 runs, LIKELY dead).
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (minor/deferred block + Phase 1 block + this
+   entry), `research/gap-analysis.md` (both
+   retained-`FUN_*` sections — `0904`/`441B`/`D937`
+   upgraded to **LIKELY dead** with four-run
+   coverage, `1177` to up to 13 hits). No Ghidra
+   edits; no new inference; evidence tags preserved
+   (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
+   `mkdocs build --strict` (site_dir `site-mkdocs`)
+   run — see below.
