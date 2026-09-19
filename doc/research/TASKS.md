@@ -273,9 +273,15 @@ State: continuously updated as work progresses.
     alternate entry; `ram:D128` diverges at
     entries 3–6 — see Phase 2) — retain notes
     record the vtable slot role; **reader
-    OPEN** (zero xrefs to `ROM01:7C80` /
-    `ram:D128` / `D130`; SUSPECTED
-    `Session_HelperRouter11E5` `ROM01:11E5`).
+    OPEN — static search exhausted** (zero xrefs
+    to `ROM01:7C80` / `ram:D128` / `D130`;
+    byte-pattern `28 d1` hits at `ROM01:2A22` and
+    `ROM01:3412` falsified as `CALL 28FE` /
+    `POP DE` (`CD FE 28 D1 …`) (CONFIRMED);
+    `d128`/`d130` operands zero (CONFIRMED);
+    SUSPECTED `Session_HelperRouter11E5`
+    `ROM01:11E5` not supported by a table
+    reference; next tool is emulator read-trace).
     The 12 non-code code gaps (page-zero RST
     vectors, the `254b` inline dispatcher,
     padding, and the `7545-7FFF` data region),
@@ -488,23 +494,43 @@ State: continuously updated as work progresses.
       hypotheses are superseded.
 
     * **Reader / dispatcher — not yet located
-      (OPEN, SUSPECTED).** There are **zero
-      xrefs** to `ROM01:7C80` and to
-      `ram:D128`/`D12A`/`D130`; only `ram:D100`
-      in that area has xrefs (6, in
-      `Dialog_IdleRelease`,
+      (OPEN, SUSPECTED) — static search
+      exhausted.** There are **zero xrefs** to
+      `ROM01:7C80` and to `ram:D128`/`D12A`/
+      `D130`; only `ram:D100` in that area has
+      xrefs (6, in `Dialog_IdleRelease`,
       `Session_AdvanceStageOnZero`,
-      `Session_HelperRouter11E5`). So the
-      vtable's reader/dispatcher is **not yet
-      identified** — **SUSPECTED** to be in
-      `Session_HelperRouter11E5`
-      (`ROM01:11E5`), not proven. **Discriminating
-      observation:** find the `LD HL,(D128)` /
-      indexed `JP (HL)` site — e.g. `LD HL,(D128)`
-      then `ADD HL,DE` / `LD E,(HL)` / `JP (HL)`
-      or equivalent — suspected `ROM01:11E5`.
-      Recorded as an OPEN item; do not claim
-      proven dispatch.
+      `Session_HelperRouter11E5`). Byte-pattern
+      search for the little-endian pointer to
+      `D128` (`28 d1`) found only two hits —
+      `ROM01:2A22` and `ROM01:3412` — and both
+      are **false positives** (CONFIRMED,
+      byte-verified): the bytes are the tail of
+      `CALL 28FE` followed by `POP DE`
+      (`CD FE 28 D1 …`), not a pointer.
+      `search_instructions` for `d128`/`d130`
+      operands also returned zero (CONFIRMED).
+      So there is no `LD HL,(D128)`, no
+      immediate base, and no data pointer to the
+      table in the ROM — the dispatcher cannot
+      be located statically. It must reach the
+      table by a **computed address** (e.g. a
+      pointer chain or a base computed at
+      runtime), or by direct execution out of
+      the RAM copy per the coroutine model
+      (OPEN). The static lead
+      `Session_HelperRouter11E5` (`ROM01:11E5`)
+      is **not** supported by a table reference
+      (its plate documents a different,
+      6-byte-stride table at `ram:D108` plus the
+      `ram:D100` scratch buffer).
+      **Discriminating observation now:** an
+      **emulator read-trace** of `ram:D128`/
+      `ROM01:7C80` (execution watching the table
+      addresses) or a computed-address/
+      pointer-chain trace, since byte/xref
+      search is exhausted. Recorded as an OPEN
+      item; do not claim proven dispatch.
 
     * Harness notes (for reference; Phase 2 static
       decode required no live index→handler trace):
@@ -7150,29 +7176,51 @@ names renamed, 144 unplated functions plated)
  inference; parent-verified, Ghidra saved)
 
 * **Finding 1 — vtable readers not yet located
-   (CONFIRMED zero-xref; reader SUSPECTED).**
+   (CONFIRMED zero-xref; reader SUSPECTED) —
+   static search exhausted.**
    There are **zero xrefs** to `ROM01:7C80` and
    to `ram:D128`/`D12A`/`D130`; only `ram:D100`
    in that area has xrefs (6, in
    `Dialog_IdleRelease`,
    `Session_AdvanceStageOnZero`,
-   `Session_HelperRouter11E5`). So the vtable's
-   reader/dispatcher is **not yet identified** —
-   **SUSPECTED** to be in
-   `Session_HelperRouter11E5` (`ROM01:11E5`), not
-   proven. Facts (CONFIRMED, byte-verified):
-   table is **43 big-endian 16-bit entries,
-   `FFFF`-terminated at `ROM01:7CD8`**; RAM copy
-   at `ram:D128` diverges at entries 3–6
-   (`1577`/`11B1`/`13BB`/`13D8` vs ROM's
-   `156F`/`15D8`/`1512`/`1664`) — i.e.
-   runtime-patched; `ram:D130 = D128+8` is an
-   alternate entry point, not a separate table.
-   Plates added at `ROM01:7C80` and `ram:D128`
-   (Ghidra saved). Recorded as an **OPEN** item;
-   **discriminating observation:** find the
-   `LD HL,(D128)` / indexed `JP (HL)` site,
-   suspected `ROM01:11E5`.
+   `Session_HelperRouter11E5`). Byte-pattern
+   search for the little-endian pointer to
+   `D128` (`28 d1`) found only two hits —
+   `ROM01:2A22` and `ROM01:3412` — and both are
+   **false positives** (CONFIRMED, byte-verified):
+   the bytes are the tail of `CALL 28FE`
+   followed by `POP DE` (`CD FE 28 D1 …`), not
+   a pointer. `search_instructions` for
+   `d128`/`d130` operands also returned zero
+   (CONFIRMED), so there is no `LD HL,(D128)`,
+   no immediate base, and no data pointer to
+   the table in the ROM. The dispatcher cannot
+   be located statically — it must reach the
+   table by a **computed address** (e.g. a
+   pointer chain or a base computed at runtime),
+   or by direct execution out of the RAM copy
+   per the coroutine model (OPEN). The static
+   lead `Session_HelperRouter11E5`
+   (`ROM01:11E5`) is **not** supported by a
+   table reference (its plate documents a
+   different, 6-byte-stride table at `ram:D108`
+   plus the `ram:D100` scratch buffer). Facts
+   (CONFIRMED, byte-verified): table is **43
+   big-endian 16-bit entries, `FFFF`-terminated
+   at `ROM01:7CD8`**; RAM copy at `ram:D128`
+   diverges at entries 3–6 (`1577`/`11B1`/
+   `13BB`/`13D8` vs ROM's `156F`/`15D8`/
+   `1512`/`1664`) — i.e. runtime-patched;
+   `ram:D130 = D128+8` is an alternate entry
+   point, not a separate table. Plates added at
+   `ROM01:7C80` and `ram:D128` (Ghidra saved).
+   Recorded as an **OPEN** item;
+   **discriminating observation now:** an
+   **emulator read-trace** of `ram:D128`/
+   `ROM01:7C80` (execution watching the table
+   addresses) or a computed-address/
+   pointer-chain trace, since byte/xref search
+   is exhausted.
 
 * **Finding 2 — boot copy corrected
    (CONFIRMED, byte-verified).**
@@ -7227,4 +7275,53 @@ names renamed, 144 unplated functions plated)
    inference; evidence tags preserved;
    ~70-col wrapping. `mkdocs build --strict`
    (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — vtable reader: static search
+ exhausted (no pointer; 28 d1 = CALL 28FE/POP DE)
+ (docs only, no Ghidra, no new inference;
+ parent-verified)
+
+* **The `ROM01:7C80` / `ram:D128` vtable has no
+  static reference at all (CONFIRMED).**
+  Byte-pattern search for the little-endian
+  pointer to `D128` (`28 d1`) found only two
+  hits — `ROM01:2A22` and `ROM01:3412` — and
+  both are **false positives** (CONFIRMED,
+  byte-verified): the bytes are the tail of
+  `CALL 28FE` followed by `POP DE`
+  (`CD FE 28 D1 …`), not a pointer.
+  `search_instructions` for `d128`/`d130`
+  operands also returned zero (CONFIRMED). So
+  there is no `LD HL,(D128)`, no immediate
+  base, and no data pointer to the table in
+  the ROM.
+
+* **Conclusion (OPEN):** the vtable
+  reader/dispatcher cannot be located
+  statically — it must reach the table by a
+  **computed address** (e.g. a pointer chain
+  or a base computed at runtime), or by direct
+  execution out of the RAM copy per the
+  coroutine model. This remains **OPEN**; the
+  static lead `Session_HelperRouter11E5`
+  (`ROM01:11E5`) is **not** supported by a
+  table reference (its plate documents a
+  different, 6-byte-stride table at `ram:D108`
+  plus the `ram:D100` scratch buffer).
+
+* **Discriminating observation now:** an
+  **emulator read-trace** of `ram:D128`/
+  `ROM01:7C80` (execution watching the table
+  addresses) or a computed-address/
+  pointer-chain trace, since byte/xref search
+  is exhausted.
+
+* **TASKS.md:** updated the vtable-reader OPEN
+  item (both `28 d1` hits falsified as
+  `CALL 28FE`/`POP DE`; zero operand refs;
+  static search exhausted; next tool = emulator
+  read-trace) and appended this entry. No Ghidra
+  edits; evidence tags preserved; ~70-col
+  wrapping. `mkdocs build --strict` (site_dir
+  `site-mkdocs`) run — see below.
 
