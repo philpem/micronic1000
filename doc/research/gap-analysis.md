@@ -1,9 +1,10 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
 Status: 2026-09-19 (16th audit updated for §12 item 4
-residual — 127 more comments rewritten; item 4
-substantially done; plate coverage 100 %, no
-SHORT-form remains that §8 would reject), firmware
+residual — 90 missing labels created, 4 unresolved,
+`Boot_entry+1` bug OPEN; item 4 substantially done;
+plate coverage 100 %, no SHORT-form remains that §8
+would reject), firmware
 `micron1.bin` (overlay
 spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
 a **documentation-coverage** audit: which functions have
@@ -381,7 +382,8 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 
 Annotation tail per `research/TASKS.md` §12
 (2026-09-19, short-plate review done; raw-address
-cites substantially done — 137 + 127 migrated):
+cites substantially done — 137 + 127 migrated;
+missing-label scan 99 → 90 created):
 plate coverage 100 % (closed — 144 unplated plated;
 **item 3 DONE 2026-09-19 — 141 reviewed: 82 KEEP /
 59 upgraded to full form; no SHORT-form remains
@@ -396,15 +398,26 @@ unchanged; 0 new labels needed); second pass
 address cite → label, magic numbers / bit masks
 decoded, opcode-restating text dropped; function
 list unchanged; saved; no new labels needed)
-(CONFIRMED); **item 4 now substantially DONE:**
-raw-address cites (137 + 127) migrated;
-magic-number decoding and opcode-restating
-cleanup applied across both passes; remaining
-**OPEN (minor):** `bdos_entry_impl` label proposal
-for `ROM00:F180` (unlabelled, not yet applied) and
-any deeper magic-number decoding not covered by
-the two scans; **CAUTION (CONFIRMED):** 2-digit hex
-in RTC contexts ambiguous — register index
+(CONFIRMED); missing-label scan found 99 distinct
+labels cited with no Ghidra symbol, 95 resolved to
+concrete addresses, 90 created (6 already present;
+function list unchanged; saved) (CONFIRMED);
+**item 4 now substantially DONE:** raw-address
+cites (137 + 127) migrated and missing-label
+residual addressed (90 created); magic-number
+decoding and opcode-restating cleanup applied
+across both passes; remaining **OPEN:** 4 labels
+UNRESOLVED (`g_bEchoChar` SUSPECTED `F954`,
+`g_bIrStrobeShadow` SUSPECTED `F796`,
+`g_bOutputCount` SUSPECTED `F998`,
+`g_wCoroutineStepResult` SUSPECTED `E73E`),
+`Boot_entry+1` bug (`Boot_entry` is `ROM00:014b`;
+`Boot_entry+1` = `014c`, not `0001`) — correct to
+a page-zero label or address, plus
+`bdos_entry_impl` proposal for `ROM00:F180` and any
+deeper magic-number decoding not covered by the two
+scans; **CAUTION (CONFIRMED):** 2-digit hex in RTC
+contexts ambiguous — register index
 `01h`/`03h`/`05h`/`07h` ≠ I/O port `07h` =
 `CTRL_07`; `RTC_ADDR`/`RTC_DATA` are `08h`/`28h` —
 both passes corrected manually; **review note

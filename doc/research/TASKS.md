@@ -254,8 +254,9 @@ current priority order; the concise lists above are authoritative.
     One coordinated sweep at the end, not piecemeal ad-hoc
      patches. Baseline 2026-08-27: 935 functions, 131 still
      `FUN_*`, 27 dispatch tables. Status 2026-09-19
-     (Ghidra saved; raw-address cites migrated — 137
-     rewrites; no new inference in this docs pass):
+      (Ghidra saved; raw-address cites migrated —
+      137 + 127 rewrites, missing-label scan 99 → 90
+      created; no new inference in this docs pass):
 
     1. **Name + plate every `FUN_*` — DONE** (see
        `research/gap-analysis.md`; 914 internal / 915
@@ -355,8 +356,9 @@ current priority order; the concise lists above are authoritative.
         review.
      4. **Comment-style pass — SUBSTANTIALLY DONE
         2026-09-19; 264 REWRITE (137 + 127) / 219 KEEP
-        of 356 flagged + residual scan
-        (CONFIRMED; minor residual OPEN):** of 895
+        of 356 flagged + residual scan, plus
+        missing-label scan 99 → 90 created
+        (CONFIRMED; residual OPEN):** of 895
         instruction comments, 356 carried
         raw-address-like tokens — 137 REWRITE (first
         pass, RAM cell / I/O port cited by numeric
@@ -373,20 +375,43 @@ current priority order; the concise lists above are authoritative.
         remaining magic numbers / bit masks decoded
         in place, opcode-restating text dropped;
         function list unchanged; saved; no new
-        labels needed. **Item 4 now substantially
+        labels needed. Missing-label scan found
+        **99** distinct descriptive labels cited in
+        comments with no Ghidra symbol; **95**
+        resolved to concrete addresses (from
+        referencing instructions +
+        `memory-map.md`/`unbanked-ram-map.md`);
+        **90** created as labels in Ghidra (6 already
+        present); function list unchanged; saved
+        (CONFIRMED). **Item 4 now substantially
         DONE:** raw-address cites (137 + 127)
-        migrated; magic-number decoding and
+        migrated and missing-label residual addressed
+        (90 created); magic-number decoding and
         opcode-restating cleanup applied across both
-        passes. Remaining **OPEN (minor):** (a) the
-        `bdos_entry_impl` label proposal for
-        `ROM00:F180` (unlabelled; not yet applied);
-        (b) any deeper magic-number decoding in
-        comments not covered by the two scans.
-        **CAUTION (CONFIRMED):** 2-digit hex in RTC
-        contexts is ambiguous — RTC register index
-        (`01h`/`03h`/`05h`/`07h`) is not I/O port
-        `07h` = `CTRL_07` (`RTC_ADDR`/`RTC_DATA` are
-        `08h`/`28h`); both passes corrected these
+        passes. Remaining **OPEN:** (a) **4 labels
+        remain UNRESOLVED** — `g_bEchoChar`
+        (SUSPECTED `F954`, may share with
+        `g_bRxRingHead`), `g_bIrStrobeShadow`
+        (SUSPECTED `F796`), `g_bOutputCount`
+        (SUSPECTED `F998`), `g_wCoroutineStepResult`
+        (SUSPECTED `E73E`, `SP+0E` indirection) —
+        each needs the specific path read to confirm;
+        (b) **`Boot_entry+1` bug — OPEN:**
+        `Boot_entry` is `ROM00:014b`, but several
+        comments use `Boot_entry+1` to mean address
+        `0001` — wrong (`Boot_entry+1` = `014c`);
+        correct to a proper label for `0000`/`0001`
+        (e.g. `reset_entry`/page-zero label) or back
+        to the address; specific comment addresses to
+        be enumerated; (c) **`bdos_entry_impl` label
+        proposal for `ROM00:F180`** (unlabelled; not
+        yet applied); (d) any deeper magic-number
+        decoding in comments not covered by the two
+        scans. **CAUTION (CONFIRMED):** 2-digit hex
+        in RTC contexts is ambiguous — RTC register
+        index (`01h`/`03h`/`05h`/`07h`) is not I/O
+        port `07h` = `CTRL_07` (`RTC_ADDR`/`RTC_DATA`
+        are `08h`/`28h`); both passes corrected these
         manually — note this hazard for any future
         comment edit. **Review note (CONFIRMED):**
         comment at `ROM00:0178` said "keyboard scan
@@ -410,18 +435,26 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-      **Remaining scope after 2026-09-19 (short-plate
-       review done; raw-address cites substantially
-       done — 137 + 127 migrated):**
-       **only item 4 minor residual** — the
-       `bdos_entry_impl` label proposal for
-       `ROM00:F180` and any deeper magic-number
-       decoding in comments not covered by the two
-       scans. Items 2a, 2b, 3 (unplated + short-plate)
-       remain closed; item 4 raw-address cites and
-       opcode-restating/magic-number cleanup are
-       substantially DONE; the two minor items above
-       remain OPEN.
+       **Remaining scope after 2026-09-19 (short-plate
+        review done; raw-address cites substantially
+        done — 137 + 127 migrated; missing-label scan
+        99 → 90 created):**
+        **only item 4 residual** — (a) the 4
+        unresolved labels (`g_bEchoChar` SUSPECTED
+        `F954`, `g_bIrStrobeShadow` SUSPECTED `F796`,
+        `g_bOutputCount` SUSPECTED `F998`,
+        `g_wCoroutineStepResult` SUSPECTED `E73E`),
+        (b) the `Boot_entry+1` comment corrections
+        (`Boot_entry` is `ROM00:014b`;
+        `Boot_entry+1` = `014c`, not `0001`), and
+        (c) any deeper magic-number decoding in
+        comments not covered by the two scans (plus
+        the `bdos_entry_impl` proposal for
+        `ROM00:F180`). Items 2a, 2b, 3 (unplated +
+        short-plate) remain closed; item 4 raw-address
+        cites and opcode-restating/magic-number cleanup
+        are substantially DONE; the items above remain
+        OPEN.
 
 ## Owner corrections to honor
 
@@ -5770,13 +5803,71 @@ names renamed, 144 unplated functions plated)
    by the two scans.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (§12 item 4 SUBSTANTIALLY DONE — 264 rewrites
-   with breakdown + review notes + CAUTION retained
-   + remaining scope narrowed to two minor items;
-   this 2026-09-19 entry), `research/gap-analysis.md`
-   (annotation tail updated — item 4 substantially
-   done, 137+127 migrated, residual narrowed).
-   No Ghidra edits in this docs pass; no new
-   inference; evidence tags preserved; ~70-col
-   wrapping. `mkdocs build --strict` (site_dir
-   `site-mkdocs`) run — see below.
+    (§12 item 4 SUBSTANTIALLY DONE — 264 rewrites
+    with breakdown + review notes + CAUTION retained
+    + remaining scope narrowed to two minor items;
+    this 2026-09-19 entry), `research/gap-analysis.md`
+    (annotation tail updated — item 4 substantially
+    done, 137+127 migrated, residual narrowed).
+    No Ghidra edits in this docs pass; no new
+    inference; evidence tags preserved; ~70-col
+    wrapping. `mkdocs build --strict` (site_dir
+    `site-mkdocs`) run — see below.
+
+### 2026-09-19 — §12 item 4 residual: missing comment
+ labels (90 created; 4 unresolved; Boot_entry+1 bug)
+ (Ghidra saved; docs only in this pass, no new
+ inference; parent-verified)
+
+* **Missing-label residual addressed (CONFIRMED,
+   Ghidra saved; function list unchanged; no new
+   inference).** Scanning all instruction comments for
+   label-like tokens (`g_*`, `tbl_*`, `str_*`,
+   `bdos_*`, `Boot_*`) found **99 distinct
+   descriptive labels cited in comments that had no
+   Ghidra symbol**. **95** were resolved to concrete
+   addresses (from the referencing instructions +
+   `memory-map.md`/`unbanked-ram-map.md`); **90 were
+   created as labels in Ghidra** (6 were already
+   present), function list unchanged, saved
+   (CONFIRMED).
+
+* **4 labels remain UNRESOLVED (SUSPECTED, address
+   not pinned; each needs the specific path read to
+   confirm) — OPEN:** `g_bEchoChar` (SUSPECTED
+   `F954`, may share with `g_bRxRingHead`),
+   `g_bIrStrobeShadow` (SUSPECTED `F796`),
+   `g_bOutputCount` (SUSPECTED `F998`),
+   `g_wCoroutineStepResult` (SUSPECTED `E73E`,
+   `SP+0E` indirection).
+
+* **New issue found — `Boot_entry+1` bug (OPEN,
+   CONFIRMED mechanics).** `Boot_entry` exists at
+   `ROM00:014b`, but several comments written during
+   the comment-style pass use `Boot_entry+1` to mean
+   address `0001` — which is wrong (`Boot_entry+1`
+   = `014c`). These comments need correcting to a
+   correct label for `0000`/`0001` (e.g. a
+   `reset_entry`/page-zero label) or back to the
+   address. Record as an **OPEN** sub-item of item
+   4; specific comment addresses to be enumerated
+   and fixed in the next comment pass.
+
+* **TASKS.md:** this entry added and §12 remaining
+   scope updated to: the 4 unresolved labels, the
+   `Boot_entry+1` comment corrections, and any deeper
+   magic-number decoding in comments not covered by
+   the two scans. `bdos_entry_impl` proposal for
+   `ROM00:F180` remains OPEN alongside these.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (§12 item 4 updated with missing-label 99→95→90
+   + 4 UNRESOLVED + `Boot_entry+1` OPEN + §12
+   header/remaining-scope refreshed; this 2026-09-19
+   entry), `research/gap-analysis.md` (annotation
+   tail updated — item 4 now includes 90 created,
+   4 UNRESOLVED, `Boot_entry+1` OPEN). No Ghidra
+   edits in this docs pass; no new inference;
+   evidence tags preserved; ~70-col wrapping.
+   `mkdocs build --strict` (site_dir `site-mkdocs`)
+   run — see below.
