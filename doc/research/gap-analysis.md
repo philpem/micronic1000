@@ -245,12 +245,17 @@ kept symbols.** All byte-verified; Ghidra saved.
   **withdrawn**; the validator role is **SUSPECTED** only.
 
 * **Retained (10) with documented open questions (CONFIRMED
-  retained, plates set, symbols kept):**
+  retained, plates set, symbols kept; updated
+  2026-09-19):**
   `ROM00:441B` (zero xrefs, dead coroutine yield);
   `ROM01:0904` (alignment padding `NOP; NOP; RET`);
-  `ROM01:1177`/`156F`/`1664`/`168E`/`16B8` (compiler retain
-  stubs reachable only via session-object dispatch — need
-  vtable mapping);
+  `ROM01:1177` (trivial stub, **CONFIRMED reachable**
+  via Phase 1 `boot_hw.py --watch-pc` — 2 hits at
+  boot/session; identity remains unknown) /
+  `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
+  session-object vtable entries (methods)** at
+  `ROM01:7C80` / `ram:D130`, big-endian hi-first —
+  see Phase 2; retain notes record vtable slot role);
   `ROM01:4D86`/`4E79` (text-buffer builders; compiler-frame
   args `SP+0x0E`–`0x16` undecoded);
   `ram:D937` (zero xrefs, dead stub).
@@ -340,19 +345,27 @@ data (`tbl_ModuleA_RomImage_7409`,
 Deferred by design (wrong address space if created in
 `ROM00`).
 
-**Item C — retained `FUN_*` resolved (CONFIRMED).**
+**Item C — retained `FUN_*` resolved (CONFIRMED;
+updated 2026-09-19).**
 6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
 `1664`→`Session_Obj_Method_6b6d`,
 `168e`→`Session_Obj_Method_6c84`,
 `16b8`→`Session_Obj_Method_696f` (each prologue → `CALL` a
-work function → tail-call `ROM01:1548`),
+work function → tail-call `ROM01:1548`); **these
+four are CONFIRMED session-object vtable entries
+(methods) at `ROM01:7C80` / `ram:D130` (big-endian
+hi-first, Phase 2)** — retain notes record the
+vtable slot role,
 `4d86`→`Session_Obj_BuildTextBuf1`,
 `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with
-plates: `ROM01:1177` (trivial stub), `ROM00:441b`
-(zero-xref dead, sibling `443c` used), `ram:d937`
-(zero-xref bit-flag dispatcher over `ram:e104`),
-`ROM01:0904` (alignment padding).
+plates: `ROM01:1177` (trivial stub, **CONFIRMED
+reachable** — 2 hits at boot/session via
+`boot_hw.py --watch-pc`, Phase 1; identity remains
+unknown), `ROM00:441b` (zero-xref dead, sibling
+`443c` used), `ram:d937` (zero-xref bit-flag
+dispatcher over `ram:e104`), `ROM01:0904` (alignment
+padding).
 
 Coverage after Items A–C is the headline above: auto
 `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910

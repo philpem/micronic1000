@@ -26,21 +26,21 @@ Each entry occupies four bytes at a fixed address in battery-backed RAM.
 Call it like an ordinary subroutine; see the calling convention below for
 the important caveat. In the static image `ram:EE00-EE4F` holds twenty
 `LD HL,1; RET` no-op slots (4 bytes each, `21 01 00
-C9`), **not** `RST 10h` thunks. **RESOLVED 2026-09-19
-(CONFIRMED, byte-verified): the ROM contains no writer
-of the arena** — its source table `ROM00:7DFA` (20
-words) has no code xref, and only one instruction
+C9`), **not** `RST 10h` thunks. **CORRECTED
+2026-09-19 (CONFIRMED, byte-verified + emulator):
+the ROM populates the arena at boot by bulk copy
+(writer PCs `D6D6` ×80 and
+`D736`/`D73B`/`D73E`/`D740` ×20 each) installing the
+no-op stubs** — earlier static scan missed the bulk
+copy (no per-address xref; source `ROM00:7DFA` 20
+words copied en bloc). Only one ROM instruction
 references the arena (`ROM01:11A4` calls `0xEE00`).
-The static image is twenty `LD HL,1; RET` slots; the
-arena is a stub farm whose real routing would be
-installed at runtime by loaded software.
-Whether/when it becomes `RST 10h` thunks cannot be
-settled from the ROM alone and remains **OPEN** — a
-loaded DIP executable or COM program could patch the
-arena at runtime (plausible/unverified; that is the
-purpose of a stub farm). Comment at `ram:EE00`.
-Computed-call xrefs such as `ram:EE04 -> ROM00:48BF`
-describe intended routing.
+No `D7` (`RST 10h` thunk) writes observed even with
+a COM loaded (`--watch-mem EE00:EE4F` with
+`hello.com`); runtime thunk-patching by loaded
+software is **unobserved (OPEN)**. Comment at
+`ram:EE00`. Computed-call xrefs such as
+`ram:EE04 -> ROM00:48BF` describe intended routing.
 
 | Address | Routine | Command dispatched | Session screen |
 |---|---|---|---|
@@ -179,19 +179,19 @@ C9`), **not** `RST 10h` thunks — the computed-call
 xrefs (e.g. `ram:EE04 -> ROM00:48BF`) describe
 intended routing, and the ROM source table at
 `ROM00:7DFA` (20 words, slot *i* at `7DFA+2*i`)
-supplies those targets. **RESOLVED 2026-09-19
-(CONFIRMED, byte-verified): the ROM contains no
-writer of the arena** — `ROM00:7DFA` has no code
-xref, and only one instruction references the arena
-(`ROM01:11A4` calls `0xEE00`); the static image
-remains twenty `LD HL,1; RET` slots. The arena is a
-stub farm: whether/when it becomes `RST 10h` thunks
-cannot be settled from the ROM alone and remains
-**OPEN** — a loaded DIP executable or COM program
-could patch the arena at runtime (plausible/
-unverified; that is the purpose of a stub farm).
-The `RST 10h` shape, if it occurs, would be
-installed by loaded software, not by ROM:
+supplies those targets. **CORRECTED 2026-09-19
+(CONFIRMED, byte-verified + emulator): the ROM
+populates the arena at boot by bulk copy (writer PCs
+`D6D6` ×80 and `D736`/`D73B`/`D73E`/`D740` ×20 each,
+installing `21 01 00 C9`) — earlier scan missed the
+bulk copy (no per-address xref). Only one ROM
+instruction references the arena (`ROM01:11A4` calls
+`0xEE00`); static image remains `LD HL,1; RET`
+slots. The arena is a stub farm: no `D7` thunk writes
+observed even with COM loaded; thunk-patching by
+loaded software is **unobserved (OPEN)**. The `RST
+10h` shape, if it occurs, would be installed by
+loaded software, not by ROM:
 
 ```text
 ROM00:0010  POP  HL            ; HL = the inline operands

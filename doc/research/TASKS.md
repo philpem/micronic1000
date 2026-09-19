@@ -236,25 +236,40 @@ State: continuously updated as work progresses.
   remains corrected.
 
 - **RESOLVED 2026-09-19 (CONFIRMED,
-  byte-verified) — `ram:EE00-EE4F` is a stub farm;
-  ROM has no writer.** No ROM code writes the arena:
-  its source table `ROM00:7DFA` (20 words) has no
-  code xref, and only one instruction references the
-  arena (`ROM01:11A4` calls `0xEE00`). The static
-  image is twenty `LD HL,1; RET` no-op slots (4
-  bytes each, `21 01 00 C9`). Whether/when the arena
-  becomes `RST 10h` thunks cannot be settled from
-  the ROM alone and remains **OPEN** — a loaded DIP
-  executable or COM program could patch the arena at
-  runtime (plausible/unverified; that is the purpose
-  of a stub farm). Comment at `ram:EE00`. Removed
-  from the backlog.
+  byte-verified + emulator) — `ram:EE00-EE4F` is a
+  stub farm populated by ROM at boot via bulk copy
+  (CORRECTION).** `--watch-mem EE00:EE4F` with
+  `hello.com` via `--upload` shows the arena written
+  at boot: writer PCs `D6D6` (×80) and
+  `D736`/`D73B`/`D73E`/`D740` (×20 each), installing
+  the `21 01 00 C9` (`LD HL,1; RET`) no-op pattern
+  into all 20 slots (CONFIRMED). Earlier static
+  scan saw no per-address writer because the ROM
+  populates the arena by **bulk copy** (not per-slot
+  stores), so no per-address xref exists; source is
+  the `ROM00:7DFA` 20-word table copied en bloc.
+  Only one ROM instruction references the arena
+  (`ROM01:11A4` calls `0xEE00`). No `D7` (`RST 10h`
+  thunk) writes observed even with COM loaded;
+  runtime patching by loaded software remains
+  possible but unobserved (OPEN — not seen).
+  Comment at `ram:EE00`. Removed from the backlog.
+  **Corrects** the earlier "no ROM code writes
+  `EE00-EE4F`" claim (bulk-copy blind spot).
 
-1. **Minor / deferred (OPEN, low priority —
+ 1. **Minor / deferred (OPEN, low priority —
    nothing actionable without new data).**
-   4 documented retained `FUN_*` with open
-   questions needing emulator coverage / vtable
-   mapping, the 12 non-code code gaps
+   4 documented retained `FUN_*`
+   (`ROM01:0904` alignment padding `NOP; NOP; RET`,
+   `ROM00:441B` dead yield, `ram:D937` bit-flag
+   dispatcher, `ROM01:1177` trivial stub) — now
+   updated: `ROM01:1177` **CONFIRMED reachable**
+   (Phase 1, 2 hits at boot/session; identity
+   remains unknown) and `ROM01:156F`/`1664`/`168E`/
+   `16B8` are **CONFIRMED session-object vtable
+   entries** (methods) at `ROM01:7C80` / `ram:D130`
+   (big-endian; see Phase 2) — retain notes record
+   the vtable slot role. The 12 non-code code gaps
    (page-zero RST vectors, the `254b` inline
    dispatcher, padding, and the `7545-7FFF`
    data region), and `ROM00:7409`/`7472`
@@ -418,162 +433,115 @@ State: continuously updated as work progresses.
        `--watch-mem EE00:EE4F` on a load path)
        are **not yet run** (pending).
 
-   Phase 2 — session-object dispatch tables
-   `ROM01:7c80` / `ram:D130` (entry format and
-   indexing, not fully decoded)
+    Phase 2 — session-object dispatch tables
+   `ROM01:7c80` / `ram:D130` — **DONE 2026-09-19
+   (CONFIRMED, static + emulator)**
 
-   * Hypothesis (OPEN, not fully decoded):
-     format/indexing of the session-object vtable
-     that dispatches method-like slots (e.g. the
-     `156F`/`1664`/`16B8` family via `1548`,
-     retained `D937` over `E104`) is SUSPECTED but
-     not byte-verified; raw tables at
-     `ROM01:7c80` and the runtime copy at
-     `ram:D130` (see `gap-analysis.md` data-typing
-     and `doc/re-notes/forms-ui.md`) need a live
-     trace. Do not claim a mapping without a live
-     witness.
+   * **Resolved (CONFIRMED, static).**
+     `ROM01:7C80` and its RAM copy `ram:D130` are
+     tables of **big-endian 16-bit ROM01 addresses**
+     (hi byte first), not little-endian words.
+     Decoded `ROM01:7C80`:
+     `13C8 14CF 143E 156F 15D8 1512 1664 168E 16B8
+     16D0 166F 15F5 153B 1664 168E 16B8 16ED 1675
+     1791` … (19 entries then a different structure
+     at `7CA6`). `ram:D130` holds the same entries
+     (`11B1 13BB 13D8 13C8 14CF 143E 156F 15D8 1512
+     1664 168E 16B8 16D0 166F 15F5 153B`), i.e. the
+     vtable copied to RAM. **Byte-order evidence:
+     only big-endian interpretation yields valid
+     ROM01 code addresses matching the known stubs.**
 
-   * Harness runs:
-     - Dump tables at menu (static view):
-       ```
-       timeout 300 analysis/venv/bin/python3 \
-         analysis/boot_hw.py --no-lcd \
-         --max-slices 300000 \
-         --expect "To Continue Press>>:\r" \
-         --expect "Enter the,Workstation:\r12345678\r" \
-         --expect "Main Menu" \
-         --dump-mem 7c80:80 --dump-mem d130:80 \
-         --watch-mem 7c80:7cff,d130:d1af
-       ```
-     - Session run with vtable use (same
-       `--trace-session-*` or `--upload` variants
-       as Phase 1, run 2) plus
-       `--watch-mem 7c80:7cff,d130:d1af` and
-       `--watch-pc` on the retained method stubs.
+   * **Retained stubs appear as entries
+     (CONFIRMED):** `156F`, `1664`, `168E`, `16B8`
+     occur in the table — so those four are
+     session-object vtable entries (methods),
+     which is their vtable mapping. Their retain
+     notes now record the vtable slot role; plates
+     at `ROM01:7C80` / `ram:D130` to be updated
+     accordingly (no Ghidra edits in this docs
+     pass). The earlier "entry format not fully
+     decoded / SUSPECTED LE" hypothesis is
+     superseded.
 
-     Instrumentation: `--watch-mem LO:HI` on both
-     tables — inclusive ranges; reports value, PC,
-     SP, bank; hooked via write callback so it
-     catches `LDIR`/`PUSH` too (host-side pokes
-     deliberately bypass it). `--dump-mem
-     ADDR:LEN` for a snapshot at each `--expect`
-     match and at exit; for `8000-FFFF` resident
-     state use `--snapshot` (`d0e0` error-string
-     table `ram:D0E0` `byte[448]` etc.) as in
-     `analysis/README.md`. `--fill-mem` not needed
-     here (tables are not RAM-low-water marks).
+   * Harness notes (for reference; Phase 2 static
+     decode required no live index→handler trace):
+     dump tables at menu via
+     `--dump-mem 7c80:80 --dump-mem d130:80
+     --watch-mem 7c80:7cff,d130:d1af`; session run
+     with `--trace-session-*` / `--upload` plus
+     `--watch-mem` on both tables would show
+     `ram:D130` writes during `Session_Init*` /
+     `Form_Builder (ROM01:0271)` and `ROM01:7c80`
+     reads only — kept for any future slot-index
+     trace, but the entry format and the four
+     method mappings are now CONFIRMED without it.
 
-     Observable: at exit, per-range write counts,
-     distinct writing PCs with counts, lowest/
-     highest address touched; `--watch-mem` PC
-     correlations show which session-object slot
-     loads which table word and `JP (HL)`s to the
-     retained address. Expected: `ram:D130` shows
-     writes during `Session_Init*` /
-     `Form_Builder (ROM01:0271)` population;
-     `ROM01:7c80` shows only reads (ROM).
+    Phase 3 — `ram:EE00-EE4F` stub arena —
+   **DONE 2026-09-19 (CONFIRMED boot-copy +
+   correction; OPEN patch question)**
 
-     Acceptance: document the entry size (SUSPECTED
-     2-byte LE pointers), stride, terminator, and
-     the index → handler mapping for the retained
-     `FUN_*` with a byte-verified `--watch-mem`
-     trace (PC that indexes the table and
-     `JP (HL)` to the retained address). Do not
-     assert a mapping without that live witness.
-     Update `re-notes/forms-ui.md` and the
-     `ram:D130` / `ROM01:7c80` plates only after a
-     witnessed mapping.
+   * **Resolved + CORRECTION (CONFIRMED,
+     emulator).** `--watch-mem EE00:EE4F` with a
+     loaded `hello.com` via `--upload` shows the
+     arena **is written by ROM at boot**: writer
+     PCs `D6D6` (×80) and
+     `D736`/`D73B`/`D73E`/`D740` (×20 each),
+     installing the `21 01 00 C9` (`LD HL,1; RET`)
+     no-op pattern into all 20 slots (CONFIRMED).
+     **This corrects the earlier "no ROM code
+     writes `EE00-EE4F`" claim** — the earlier
+     static scan missed it because the ROM
+     populates the arena by **bulk copy** (not
+     per-slot stores), so no per-address xref
+     exists; source table is `ROM00:7DFA` (20 words)
+     copied en bloc. Only one ROM instruction
+     references the arena (`ROM01:11A4` calls
+     `0xEE00`). No `D7` (`RST 10h` thunk) writes
+     observed even with COM loaded; runtime
+     patching by loaded software remains possible
+     but **unobserved (OPEN)** — do not claim a
+     patch without a witnessed `--watch-mem` write
+     of `D7` bytes and a `--dump-mem` capture.
 
-   Phase 3 — `ram:EE00-EE4F` stub-arena patch trace
-   (ROM has no writer; loaded DIP/COM could patch
-   at runtime)
-
-   * Hypothesis (OPEN, plausible/unverified per
-     TASKS `RESOLVED ram:EE00-EE4F` entry): ROM has
-     no writer (`ROM00:7DFA` 20-word source table
-     has no code xref; only `ROM01:11A4` calls
-     `0xEE00`; static image is twenty
-     `LD HL,1; RET` slots, `21 01 00 C9`, 4 bytes
-     each, CONFIRMED); whether/when slots become
-     `RST 10h` thunks is OPEN and can only be
-     settled by tracing the DIP/COM load path.
-     SUSPECTED purpose is a patch farm; do not
-     promote to CONFIRMED without a witnessed
-     write.
-
-   * Harness runs (use the real loader via
+   * Harness (for reference; Phase 3 boot-copy
+     witnessed via `--watch-mem ee00:ee4f
+     --dump-mem ee00:50` with `--upload
+     /tmp/hello.com --upload-marker 0200:A5`):
+     use the real loader via
      `Program_LoadByName`/`Program_ConsumeInputChunk`/
      `Program_FinalizeInput` as exercised by
      `--upload` / `--synthetic-loadrun` — not a
-     synthetic poke):
-     ```
-     timeout 300 analysis/venv/bin/python3 \
-       analysis/boot_hw.py --no-lcd \
-       --max-slices 100000 \
-       --upload /tmp/hello.com --upload-marker 0200:A5 \
-       --watch-mem ee00:ee4f --dump-mem ee00:50
-     ```
-     and the two canonical load-path variants
-     already regression-tested in
-     `analysis/test_boot_upload.py`:
-     - single-DIP via `--synthetic-loadrun` with
-       `--trace-loadrun-source plinth \
-        --synthetic-loadrun-finalize`
-     - single-COM via `--upload` (COM fallback if
-       first chunk `<14` or `!=C9 C8` per
-       `doc/manual/program-formats.md` /
-       `reference/program-formats.md`)
-
-     Add `--watch-mem-limit 200` if the arena is
-     hot (printing stops but counting does not;
-     exit summary still gives totals).
-
-     Instrumentation: `--watch-mem EE00:EE4F`
-     (inclusive) plus `--dump-mem EE00:50` at
-     entry and at exit; `--fill-mem EE00:EE4F`
-     optionally to mark survival (address-derived
-     pattern `(a ^ (a>>8)) & FF`; do not fill live
-     port shadows `F780-F799` — see
-     `analysis/README.md` warning). For the DIP
-     case also watch the staging protocol
+     synthetic poke — plus the two canonical
+     variants in `analysis/test_boot_upload.py`
+     (single-DIP via `--synthetic-loadrun
+     --trace-loadrun-source plinth
+     --synthetic-loadrun-finalize`; single-COM via
+     `--upload` with COM fallback if first chunk
+     `<14` or `!=C9 C8`). Add `--watch-mem-limit
+     200` if hot; optional `--fill-mem EE00:EE4F`
+     survival check and staging-protocol watches
      (`ram:D36A`/`D36C`/`D368`/`D393` and targets
-     `ram:ECDC` / `ram:D39B` /
-     `ram:D372`/`0x0100+D399`) as documented in
-     TASKS `RESOLVED ram:D36A` pointer protocol.
+     `ram:ECDC` / `ram:D39B` / `ram:D372`/
+     `0x0100+D399`) per TASKS `RESOLVED ram:D36A`
+     pointer protocol. Observables as above; no
+     `D7` patch seen — SUSPECTED "load-time patch
+     farm" remains OPEN until witnessed.
 
-     Observable: per-range write summary — total
-     writes, distinct writing PCs with counts,
-     `LO..HI` touched. A DIP that patches the farm
-     will show writes from the
-     `Program_LoadDipOrCom` (`ROM01:0CE7`) payload-
-     copy path (type-0 direct copy or type-1
-     `{bank,addr}` → `{D7,bank,addr}` RST10
-     expansion at `ROM01:0BAC-0C9A` / `D36A`
-     protocol) into `EE00-EE4F`. COM path should
-     show no writes (COM copies to `0100`).
-
-     Acceptance: report whether/when slots are
-     written, by which PC, and to what bytes
-     (e.g. `D7 xx yy zz` vs `21 01 00 C9`); a
-     zero-write outcome keeps the current
-     SUSPECTED "load-time patch farm" framing and
-     the plate at `ram:EE00`. Do not promote to
-     CONFIRMED patch without a witnessed
-     `--watch-mem` write to `EE00-EE4F` and a
-     `--dump-mem` capture of the new bytes.
-
-   Sequencing: Phase 1 (coverage) → Phase 2
-   (vtable dump/reads) → Phase 3 (stub-patch
-   writes). Each phase is a bounded `timeout` run
-   from the harness above; collect `site-mkdocs`
-   with `mkdocs build --strict` after doc edits —
-   no Ghidra writes in this plan. If any
-   established finding (e.g. `EE00-EE4F` no ROM
-   writer, `ROM00:7DFA` source-table, `D36A`
+    Sequencing: Phase 1 (coverage) → Phase 2
+   (vtable big-endian decode) → Phase 3 (boot
+   bulk-copy correction + patch trace). Each phase
+   is a bounded `timeout` run from the harness
+   above; collect `site-mkdocs` with
+   `mkdocs build --strict` after doc edits — no
+   Ghidra writes in this plan. If any established
+   finding (e.g. prior `EE00-EE4F` no-ROM-writer
+   framing, `ROM00:7DFA` source-table, `D36A`
    protocol, retained `FUN_*` counts) conflicts
    with a new trace, report the conflict rather
-   than reconciling by invention (AGENTS.md §3).
+   than reconciling by invention (AGENTS.md §3);
+   Phase 3's conflict was so reported and
+   corrected (bulk-copy blind spot).
 
 ### Hardware-dependent priorities (unchanged)
 
@@ -6773,9 +6741,10 @@ names renamed, 144 unplated functions plated)
   --strict` (site_dir `site-mkdocs`) run — see
   below.
 
-### 2026-09-19 — D837 renamed Coroutine_Enter; EE00 arena not ROM-patched
-  (docs only, no Ghidra, no new inference;
-  parent-verified, Ghidra saved)
+### 2026-09-19 — D837 renamed Coroutine_Enter; EE00 arena
+  populated by ROM at boot (CORRECTION to "not
+  ROM-patched") (docs only, no Ghidra, no new
+  inference; parent-verified, Ghidra saved)
 
 * **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)
   — `ram:D837` renamed `Coroutine_Enter`.**
@@ -6803,19 +6772,22 @@ names renamed, 144 unplated functions plated)
   `doc/re-notes/open-questions.md` is now RESOLVED
   (name changed).
 
-* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified)
-  — `ram:EE00-EE4F` is a stub farm; ROM has no
-  writer.** No ROM code writes the arena: its source
-  table `ROM00:7DFA` (20 words) has no code xref,
-  and only one instruction references the arena
-  (`ROM01:11A4` calls `0xEE00`). The static image
-  remains twenty `LD HL,1; RET` no-op slots (4 bytes
-  each, `21 01 00 C9`). Whether/when the arena
-  becomes `RST 10h` thunks cannot be settled from the
-  ROM alone and remains **OPEN** — a loaded DIP
-  executable or COM program could patch the arena at
-  runtime (plausible/unverified; that is the purpose
-  of a stub farm). Comment at `ram:EE00`.
+* **RESOLVED 2026-09-19 (CONFIRMED,
+  byte-verified + emulator; CORRECTED 2026-09-19) —
+  `ram:EE00-EE4F` is a stub farm populated by ROM
+  at boot via bulk copy.** `--watch-mem EE00:EE4F`
+  with `hello.com` shows arena written at boot:
+  writer PCs `D6D6` (×80) and
+  `D736`/`D73B`/`D73E`/`D740` (×20 each), installing
+  the `21 01 00 C9` (`LD HL,1; RET`) no-op pattern
+  into all 20 slots (CONFIRMED). Earlier "no ROM
+  writer" claim missed the bulk copy (no per-slot
+  xref; `ROM00:7DFA` 20-word source copied en bloc);
+  only `ROM01:11A4` calls `0xEE00`. No `D7` (`RST
+  10h` thunk) writes observed even with COM loaded;
+  runtime patching by loaded software remains
+  possible but unobserved (OPEN). Comment at
+  `ram:EE00`.
 
 * **TASKS.md:** closed both OPEN items wherever they
   appeared — `Next` no-hardware priorities
@@ -6850,36 +6822,35 @@ names renamed, 144 unplated functions plated)
   below.
 
 ### 2026-09-19 — EE00 framing corrected (ROM has no
-  writer; loaded-software patching OPEN) (docs only,
+  writer; loaded-software patching OPEN) — **SUPERSEDED
+  2026-09-19 by boot-copy correction** (docs only,
   no Ghidra, no new inference; parent-verified)
 
-* **Correction:** the 2026-09-19 EE00 write wrote
-  that the `RST 10h`-thunk hypothesis “has no ROM
+* **Correction at that time:** the earlier EE00 write
+  had said the `RST 10h`-thunk hypothesis “has no ROM
   patching mechanism” and left the runtime question
   “OPEN only for loaded software”. That framing
-  under-states the possibility that a loaded DIP
-  executable or COM program can patch the arena at
-  runtime — the ROM not containing patching code does
-  not mean the arena stays no-op.
+  under-stated that loaded software could patch.
 
-* **Rewritten:** `reference/commstar-api.md` (both
-  Entry points and Every buffer must live… passages)
-  and `research/TASKS.md` (Next `ram:EE00-EE4F`
-  RESOLVED entry and the 2026-09-19 D837/EE00 session
-  entry's EE00 bullet) to the corrected position:
-  **CONFIRMED** the ROM contains no writer of
-  `ram:EE00-EE4F` (no code xref to `ROM00:7DFA`; only
-  `ROM01:11A4` calls `0xEE00`); the static image is
-  twenty `LD HL,1; RET` no-op slots (`21 01 00 C9`).
-  The arena is a stub farm (source table `ROM00:7DFA`,
-  20 words — no code xref; computed-call xrefs e.g.
-  `ram:EE04 -> ROM00:48BF` describe intended routing)
-  and the runtime patching question is **OPEN and
-  cannot be settled from the ROM alone** — a loaded
-  DIP/COM could write the arena (that is the purpose
-  of a stub farm; plausible/unverified). Do not claim
-  the thunk hypothesis is unsupported; claim only that
-  the ROM provides no patching code.
+* **Rewritten then:** `reference/commstar-api.md`
+  (both Entry points and Every buffer must live…
+  passages) and `research/TASKS.md` (Next
+  `ram:EE00-EE4F` RESOLVED entry and the 2026-09-19
+  D837/EE00 session entry's EE00 bullet) to:
+  **CONFIRMED** no per-address ROM writer of
+  `ram:EE00-EE4F`; static image twenty
+  `LD HL,1; RET` slots.
+
+* **SUPERSEDED 2026-09-19 (CORRECTION):** emulator
+  `--watch-mem EE00:EE4F` with `hello.com` shows
+  **ROM populates the arena at boot by bulk copy
+  (D6D6/D736/D73B/D73E/D740)** installing the no-op
+  stubs (`21 01 00 C9`); earlier scan missed the
+  bulk copy (no per-address xref). No `D7` thunk
+  writes observed even with COM loaded; thunk-
+  patching by loaded software is **unobserved
+  (OPEN)**. See current `commstar-api.md` and
+  the emulator Phases 2–3 entry below.
 
 * **D837 unchanged:** `ram:D837` `Coroutine_Enter`
   resolution (CONFIRMED `ram:D837-D857`) not
@@ -7006,4 +6977,84 @@ names renamed, 144 unplated functions plated)
   new inference; evidence tags preserved;
   ~70-col wrapping. `mkdocs build --strict`
   (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — emulator Phases 2-3 (vtable
+  big-endian; EE00 boot-copy correction) (emulator
+  + static read; docs only, no Ghidra, no new
+  inference; parent-verified)
+
+* **Phase 2 — session-object vtable resolved
+   (CONFIRMED, static).** `ROM01:7C80` and its RAM
+   copy `ram:D130` are tables of **big-endian
+   16-bit ROM01 addresses** (hi byte first), not
+   little-endian words. Decoded `ROM01:7C80`:
+   `13C8 14CF 143E 156F 15D8 1512 1664 168E 16B8
+   16D0 166F 15F5 153B 1664 168E 16B8 16ED 1675
+   1791` … (19 entries then a different structure
+   at `7CA6`). Crucially, the retained stubs appear
+   as entries: **`156F`, `1664`, `168E`, `16B8`**
+   — so those four are session-object vtable
+   entries (methods), which is their vtable mapping.
+   `ram:D130` holds the same entries (`11B1 13BB
+   13D8 13C8 14CF 143E 156F 15D8 1512 1664 168E
+   16B8 16D0 166F 15F5 153B`), i.e. the vtable
+   copied to RAM. **Byte-order evidence: only
+   big-endian interpretation yields valid ROM01
+   code addresses matching the known stubs.**
+
+* **Phase 3 — stub arena IS written by ROM at
+   boot (CORRECTION; CONFIRMED, emulator).**
+   `--watch-mem EE00:EE4F` with `hello.com` via
+   `--upload` shows the arena written at boot:
+   writer PCs `D6D6` (×80) and
+   `D736`/`D73B`/`D73E`/`D740` (×20 each),
+   installing the `21 01 00 C9` (`LD HL,1; RET`)
+   no-op pattern into all 20 slots (CONFIRMED).
+   **Corrects the earlier "no ROM code writes
+   `EE00-EE4F`" claim** — the earlier static scan
+   missed it because the ROM populates the arena
+   by **bulk copy** (not per-slot stores), so no
+   per-address xref exists; source is the
+   `ROM00:7DFA` 20-word table copied en bloc (no
+   per-address xref by design). No `D7` (`RST 10h`
+   thunk) writes observed even with COM loaded;
+   runtime patching by loaded software remains
+   possible but **unobserved (OPEN)** — do not
+   claim a thunk patch without a witnessed `D7`
+   write and `--dump-mem` capture.
+
+* **TASKS.md:** updated the emulator plan —
+   marked Phase 2 DONE with the vtable decode
+   (big-endian, entries, evidence, retain
+   mapping) and Phase 3 DONE with the boot-copy
+   finding + correction (bulk-copy blind spot,
+   writer PCs, no `D7` observed, OPEN patch);
+   fixed the earlier EE00 framing correction
+   (now superseded) and the top `RESOLVED
+   ram:EE00-EE4F` entry to the bulk-copy wording;
+   updated `Minor / deferred` retain notes:
+   `ROM01:1177` reachable (Phase 1) and
+   `156F`/`1664`/`168E`/`16B8` are vtable entries
+   (retain notes record slot role); refreshed
+   Phase 2/Phase 3 harness/acceptance notes to
+   DONE; updated sequencing note to report the
+   bulk-copy conflict as corrected.
+
+* **Docs updated in this pass:**
+   `research/TASKS.md` (emulator plan Phase 2 DONE
+   + Phase 3 DONE + correction + `Minor / deferred`
+   retain notes + sequencing note + two historical
+   EE00 entries corrected/superseded + this entry),
+   `reference/commstar-api.md` (both Entry points
+   passages corrected to ROM boot bulk-copy
+   `D6D6`/`D736`/`D73B`/`D73E`/`D740`, no `D7`
+   observed, OPEN patch),
+   `research/gap-analysis.md` (Retained (10) and
+   Item C updated — `ROM01:1177` reachable,
+   `156F`/`1664`/`168E`/`16B8` are vtable entries,
+   big-endian at `ROM01:7C80`/`ram:D130`).
+   No Ghidra edits; no new inference; evidence
+   tags preserved; ~70-col wrapping. `mkdocs
+   build --strict` (site_dir `site-mkdocs`) run —
+   see below.
 
