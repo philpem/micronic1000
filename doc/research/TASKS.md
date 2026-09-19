@@ -354,17 +354,14 @@ current priority order; the concise lists above are authoritative.
         Fix plates that contradict their own names and
         re-flow to ~70 cols was done as part of that
         review.
-     4. **Comment-style pass — SUBSTANTIALLY DONE
-        2026-09-19; 264 REWRITE (137 + 127) / 219 KEEP
-        of 356 flagged + residual scan, plus
-        missing-label scan 99 → 90 created
-        (CONFIRMED; residual OPEN):** of 895
-        instruction comments, 356 carried
-        raw-address-like tokens — 137 REWRITE (first
-        pass, RAM cell / I/O port cited by numeric
-        address → descriptive label; all 137 applied
-        in Ghidra; function list unchanged; 0 new
-        labels needed) and 219 KEEP (value/mask,
+     4. **Comment-style pass — CLOSED 2026-09-19
+        except one OPEN label (CONFIRMED; no new
+        inference):** of 895 instruction comments, 356
+        carried raw-address-like tokens — 137 REWRITE
+        (first pass, RAM cell / I/O port cited by
+        numeric address → descriptive label; all 137
+        applied in Ghidra; function list unchanged;
+        0 new labels needed) and 219 KEEP (value/mask,
         legitimate cross-reference, or label already
         present). Second pass found **127** further
         comments still containing a numeric address
@@ -383,42 +380,58 @@ current priority order; the concise lists above are authoritative.
         `memory-map.md`/`unbanked-ram-map.md`);
         **90** created as labels in Ghidra (6 already
         present); function list unchanged; saved
-        (CONFIRMED). **Item 4 now substantially
-        DONE:** raw-address cites (137 + 127)
-        migrated and missing-label residual addressed
-        (90 created); magic-number decoding and
-        opcode-restating cleanup applied across both
-        passes. Remaining **OPEN:** (a) **4 labels
-        remain UNRESOLVED** — `g_bEchoChar`
-        (SUSPECTED `F954`, may share with
-        `g_bRxRingHead`), `g_bIrStrobeShadow`
-        (SUSPECTED `F796`), `g_bOutputCount`
-        (SUSPECTED `F998`), `g_wCoroutineStepResult`
-        (SUSPECTED `E73E`, `SP+0E` indirection) —
-        each needs the specific path read to confirm;
-        (b) **`Boot_entry+1` bug — OPEN:**
-        `Boot_entry` is `ROM00:014b`, but several
-        comments use `Boot_entry+1` to mean address
-        `0001` — wrong (`Boot_entry+1` = `014c`);
-        correct to a proper label for `0000`/`0001`
-        (e.g. `reset_entry`/page-zero label) or back
-        to the address; specific comment addresses to
-        be enumerated; (c) **`bdos_entry_impl` label
-        proposal for `ROM00:F180`** (unlabelled; not
-        yet applied); (d) any deeper magic-number
-        decoding in comments not covered by the two
-        scans. **CAUTION (CONFIRMED):** 2-digit hex
-        in RTC contexts is ambiguous — RTC register
-        index (`01h`/`03h`/`05h`/`07h`) is not I/O
-        port `07h` = `CTRL_07` (`RTC_ADDR`/`RTC_DATA`
-        are `08h`/`28h`); both passes corrected these
+        (CONFIRMED). **Residual closed 2026-09-19
+        (CONFIRMED, Ghidra saved):** 3 of the 4
+        SUSPECTED labels pinned — `g_bRxRingHead`
+        already at `ram:F954` (verified, skipped;
+        supersedes `g_bEchoChar` SUSPECTED at same
+        address), `g_bLinkCmdShadow` created at
+        `ram:F796` (port `4Ch` `LINK_CMD` shadow;
+        supersedes `g_bIrStrobeShadow` SUSPECTED at
+        same address), `g_bOutputCount` created at
+        `ram:FEA3` (supersedes `g_bOutputCount`
+        SUSPECTED `F998` — correct address is `FEA3`
+        per byte-verified reference);
+        `g_wCoroutineStepResult` SUSPECTED `E73E`
+        remains **UNRESOLVED** — zero references
+        program-wide (CONFIRMED); `EA24 =
+        g_pCoroutineStepResultBuf` is CONFIRMED, but
+        `E73E` could not be pinned without tracing
+        indirect writes to `EA24` (the only OPEN
+        label). **`Boot_entry+1` bug — FIXED
+        (CONFIRMED):** 7 comments corrected at
+        `ROM01:1ea1`, `1f96`, `28bb`, `2b7b`, `2c95`,
+        `3acb`, `ram:d777` — each cited `Boot_entry+1`
+        to mean `0001h` (wrong; `Boot_entry` is
+        `ROM00:014b`, so `Boot_entry+1 = 014c`);
+        rewritten to `0001h` (intended page-zero cell;
+        note CP/M IOBYTE is at `0003h`, not `0001h`).
+        3 non-buggy uses of `Boot_entry` retained
+        (range marker / state name). **Magic numbers
+        — 5 decoded (CONFIRMED):** applied at
+        `ROM00:15c4`, `02e5`, `02f1`, `0f37` (PRE) and
+        one more — `0x80` = local-console flag, `10h`
+        = 16-drive guard, `12h`/`01h` = key scan codes,
+        coroutine step-zeroed slots (per-site as
+        applied); 12+ comments kept as already
+        adequately explained; one intended fix at
+        `ROM01:6e8b` had no comment present — skipped
+        (CONFIRMED absent). `bdos_entry_impl` proposal
+        for `ROM00:F180` remains OPEN but is not a §12
+        item. **CAUTION (CONFIRMED):** 2-digit hex in
+        RTC contexts is ambiguous — RTC register index
+        (`01h`/`03h`/`05h`/`07h`) is not I/O port `07h`
+        = `CTRL_07` (`RTC_ADDR`/`RTC_DATA` are
+        `08h`/`28h`); both passes corrected these
         manually — note this hazard for any future
         comment edit. **Review note (CONFIRMED):**
         comment at `ROM00:0178` said "keyboard scan
         init" but the confirmed plate at `Lcd_Init`
         (`ROM00:1EEC`) says LCD subsystem init, so
         the old comment was factually wrong and was
-        corrected.
+        corrected. **Item 4 is now CLOSED** except the
+        single OPEN `g_wCoroutineStepResult` label;
+        items 1, 2a, 2b, 3, 5, 6 are DONE.
     5. **Data-typing backlog — substantially done** (see
        gap-analysis: `ROM01:757F-768E` typed as
        `undefined[272]`, `ROM00:7409`/`7472` deferred by
@@ -435,26 +448,17 @@ current priority order; the concise lists above are authoritative.
     items are resolved, so we annotate the final picture
     rather than a moving target.
 
-       **Remaining scope after 2026-09-19 (short-plate
-        review done; raw-address cites substantially
-        done — 137 + 127 migrated; missing-label scan
-        99 → 90 created):**
-        **only item 4 residual** — (a) the 4
-        unresolved labels (`g_bEchoChar` SUSPECTED
-        `F954`, `g_bIrStrobeShadow` SUSPECTED `F796`,
-        `g_bOutputCount` SUSPECTED `F998`,
-        `g_wCoroutineStepResult` SUSPECTED `E73E`),
-        (b) the `Boot_entry+1` comment corrections
-        (`Boot_entry` is `ROM00:014b`;
-        `Boot_entry+1` = `014c`, not `0001`), and
-        (c) any deeper magic-number decoding in
-        comments not covered by the two scans (plus
-        the `bdos_entry_impl` proposal for
-        `ROM00:F180`). Items 2a, 2b, 3 (unplated +
-        short-plate) remain closed; item 4 raw-address
-        cites and opcode-restating/magic-number cleanup
-        are substantially DONE; the items above remain
-        OPEN.
+       **Remaining scope after 2026-09-19 (§12 item 4
+        residuals closed — 3 labels pinned,
+        7 Boot_entry fixes, 5 magic numbers decoded):**
+        **only the `g_wCoroutineStepResult` label**
+        (`E73E` UNRESOLVED, zero refs program-wide;
+        `EA24 = g_pCoroutineStepResultBuf` CONFIRMED
+        and is the lead for tracing indirect writes to
+        resolve it). Items 1, 2a, 2b, 3, 5, 6 are DONE;
+        item 4 is CLOSED except this single OPEN. The
+        `bdos_entry_impl` proposal for `ROM00:F180` is
+        tracked separately and is not a §12 item.
 
 ## Owner corrections to honor
 
@@ -5871,3 +5875,74 @@ names renamed, 144 unplated functions plated)
    evidence tags preserved; ~70-col wrapping.
    `mkdocs build --strict` (site_dir `site-mkdocs`)
    run — see below.
+
+### 2026-09-19 — §12 item 4 residuals closed (3 labels pinned,
+ 7 Boot_entry fixes, 5 magic numbers decoded) (Ghidra
+ saved; docs only in this pass, no new inference;
+ parent-verified)
+
+* **Missing-label residual CLOSED except one OPEN
+   (CONFIRMED, Ghidra saved; function list unchanged;
+   no new inference).** Of the 4 SUSPECTED labels from
+   the 99→90 scan, **3 pinned:** `g_bRxRingHead`
+   already at `ram:F954` (verified, skipped — no new
+   symbol; the `g_bEchoChar` SUSPECTED at same address
+   was a mis-identification), `g_bLinkCmdShadow`
+   created at `ram:F796` (port `4Ch` `LINK_CMD` shadow;
+   supersedes `g_bIrStrobeShadow` SUSPECTED at same
+   address), `g_bOutputCount` created at `ram:FEA3`
+   (supersedes `g_bOutputCount` SUSPECTED `F998` —
+   correct address is `FEA3` per byte-verified
+   reference). **1 remains OPEN:**
+   `g_wCoroutineStepResult` SUSPECTED `E73E`
+   **UNRESOLVED** — zero references program-wide
+   (CONFIRMED); `EA24 = g_pCoroutineStepResultBuf` is
+   CONFIRMED, but `E73E` could not be pinned without
+   tracing indirect writes to `EA24` (the only OPEN
+   label).
+
+* **`Boot_entry+1` bug FIXED (CONFIRMED, Ghidra saved).**
+   7 comments corrected at `ROM01:1ea1`, `1f96`, `28bb`,
+   `2b7b`, `2c95`, `3acb`, `ram:d777` — each cited
+   `Boot_entry+1` to mean `0001h` (wrong; `Boot_entry`
+   is `ROM00:014b`, so `Boot_entry+1 = 014c`);
+   rewritten to `0001h` (intended page-zero cell; note
+   CP/M IOBYTE is at `0003h`, not `0001h`). 3 non-buggy
+   uses of `Boot_entry` retained (range marker / state
+   name) — no change. The `Boot_entry+1` bug is now
+   CLOSED.
+
+* **Magic numbers decoded (CONFIRMED, Ghidra saved).**
+   5 comments decoded at `ROM00:15c4`, `02e5`, `02f1`,
+   `0f37` (PRE) and one more — `0x80` = local-console
+   flag, `10h` = 16-drive guard, `12h`/`01h` = key scan
+   codes, coroutine step-zeroed slots (per-site as
+   applied); 12+ comments kept as already adequately
+   explained (CONFIRMED); one intended fix at
+   `ROM01:6e8b` had no comment present — skipped
+   (CONFIRMED absent).
+
+* **§12 item 4 is now CLOSED** except the single OPEN
+   `g_wCoroutineStepResult` label. Items 1, 2a, 2b, 3,
+   5, 6 are DONE. The `bdos_entry_impl` proposal for
+   `ROM00:F180` is tracked separately and is not a §12
+   item.
+
+* **TASKS.md:** this entry added and §12 remaining scope
+   narrowed to: **only** the `g_wCoroutineStepResult`
+   label (`E73E` UNRESOLVED; `EA24` pointer
+   `g_pCoroutineStepResultBuf` is CONFIRMED and is the
+   lead for any future trace of indirect writes to
+   resolve it).
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (§12 item 4 CLOSED except the single OPEN
+   `g_wCoroutineStepResult`; remaining-scope refreshed;
+   this 2026-09-19 entry), `research/gap-analysis.md`
+   (headline + annotation tail updated — item 4 CLOSED,
+   3 labels pinned, 7 Boot_entry fixes, 5 magic numbers
+   decoded, only `g_wCoroutineStepResult` remains OPEN).
+   No Ghidra edits in this docs pass beyond the saved
+   labels/comments above; no new inference; evidence
+   tags preserved; ~70-col wrapping. `mkdocs build
+   --strict` (site_dir `site-mkdocs`) run — see below.

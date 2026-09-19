@@ -1,10 +1,10 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (16th audit updated for §12 item 4
-residual — 90 missing labels created, 4 unresolved,
-`Boot_entry+1` bug OPEN; item 4 substantially done;
-plate coverage 100 %, no SHORT-form remains that §8
-would reject), firmware
+Status: 2026-09-19 (17th audit — §12 item 4
+residuals closed: 3 labels pinned, 7 Boot_entry fixes,
+5 magic numbers decoded; only `g_wCoroutineStepResult`
+remains OPEN; item 4 CLOSED; plate coverage 100 %,
+no SHORT-form remains that §8 would reject), firmware
 `micron1.bin` (overlay
 spaces `ROM00`/`ROM01`, `ram` resident kernel). This is
 a **documentation-coverage** audit: which functions have
@@ -381,9 +381,9 @@ Data-typing `ROM01:757F-768E` is `undefined[272]`
 (see above) and the retains are expected.
 
 Annotation tail per `research/TASKS.md` §12
-(2026-09-19, short-plate review done; raw-address
-cites substantially done — 137 + 127 migrated;
-missing-label scan 99 → 90 created):
+(2026-09-19 — §12 item 4 residuals closed: 3 labels
+pinned, 7 Boot_entry fixes, 5 magic numbers decoded;
+only `g_wCoroutineStepResult` remains OPEN):
 plate coverage 100 % (closed — 144 unplated plated;
 **item 3 DONE 2026-09-19 — 141 reviewed: 82 KEEP /
 59 upgraded to full form; no SHORT-form remains
@@ -402,32 +402,48 @@ list unchanged; saved; no new labels needed)
 labels cited with no Ghidra symbol, 95 resolved to
 concrete addresses, 90 created (6 already present;
 function list unchanged; saved) (CONFIRMED);
-**item 4 now substantially DONE:** raw-address
-cites (137 + 127) migrated and missing-label
-residual addressed (90 created); magic-number
-decoding and opcode-restating cleanup applied
-across both passes; remaining **OPEN:** 4 labels
-UNRESOLVED (`g_bEchoChar` SUSPECTED `F954`,
-`g_bIrStrobeShadow` SUSPECTED `F796`,
-`g_bOutputCount` SUSPECTED `F998`,
-`g_wCoroutineStepResult` SUSPECTED `E73E`),
-`Boot_entry+1` bug (`Boot_entry` is `ROM00:014b`;
-`Boot_entry+1` = `014c`, not `0001`) — correct to
-a page-zero label or address, plus
-`bdos_entry_impl` proposal for `ROM00:F180` and any
-deeper magic-number decoding not covered by the two
-scans; **CAUTION (CONFIRMED):** 2-digit hex in RTC
-contexts ambiguous — register index
-`01h`/`03h`/`05h`/`07h` ≠ I/O port `07h` =
-`CTRL_07`; `RTC_ADDR`/`RTC_DATA` are `08h`/`28h` —
-both passes corrected manually; **review note
-(CONFIRMED):** `ROM00:0178` "keyboard scan init"
-corrected to LCD subsystem init per confirmed plate
-at `Lcd_Init` (`ROM00:1EEC`). The 590-name
-`Module_Name` mass rename (31-module taxonomy,
-588 applied in Ghidra + 2 collisions, docs synced
-across 24 files, commit `993a45d`) is **DONE**
-(CONFIRMED).
+**residual closed 2026-09-19 (CONFIRMED, Ghidra
+saved):** 3 of 4 SUSPECTED labels pinned —
+`g_bRxRingHead` already at `ram:F954` (verified,
+skipped; supersedes `g_bEchoChar` SUSPECTED at same
+address), `g_bLinkCmdShadow` created at `ram:F796`
+(port `4Ch` `LINK_CMD` shadow; supersedes
+`g_bIrStrobeShadow` SUSPECTED at same address),
+`g_bOutputCount` created at `ram:FEA3` (supersedes
+`g_bOutputCount` SUSPECTED `F998` — correct address
+is `FEA3` per byte-verified reference);
+`g_wCoroutineStepResult` SUSPECTED `E73E` remains
+**UNRESOLVED** — zero refs program-wide (CONFIRMED);
+`EA24 = g_pCoroutineStepResultBuf` is CONFIRMED but
+`E73E` needs tracing indirect writes to `EA24` (only
+OPEN label); **`Boot_entry+1` bug — FIXED
+(CONFIRMED):** 7 comments at `ROM01:1ea1`, `1f96`,
+`28bb`, `2b7b`, `2c95`, `3acb`, `ram:d777` rewritten
+`Boot_entry+1` → `0001h` (intended page-zero cell;
+`Boot_entry` is `ROM00:014b`, so `Boot_entry+1 =
+014c`; note CP/M IOBYTE is at `0003h`, not `0001h`);
+3 non-buggy uses retained; **magic numbers — 5
+decoded (CONFIRMED):** `ROM00:15c4`, `02e5`, `02f1`,
+`0f37` (PRE) and one more — `0x80` local-console
+flag, `10h` 16-drive guard, `12h`/`01h` key scan
+codes, coroutine step-zeroed slots (per-site as
+applied); 12+ kept as adequate; one intended at
+`ROM01:6e8b` had no comment — skipped (CONFIRMED
+absent). **`bdos_entry_impl` for `ROM00:F180`
+remains a proposal, not a §12 item.** **CAUTION
+(CONFIRMED):** 2-digit hex in RTC contexts ambiguous
+— register index `01h`/`03h`/`05h`/`07h` ≠ I/O port
+`07h` = `CTRL_07`; `RTC_ADDR`/`RTC_DATA` are
+`08h`/`28h` — both passes corrected manually;
+**review note (CONFIRMED):** `ROM00:0178` "keyboard
+scan init" corrected to LCD subsystem init per
+confirmed plate at `Lcd_Init` (`ROM00:1EEC`). The
+590-name `Module_Name` mass rename (31-module
+taxonomy, 588 applied in Ghidra + 2 collisions,
+docs synced across 24 files, commit `993a45d`) is
+**DONE** (CONFIRMED). **Item 4 is now CLOSED**
+except the single OPEN `g_wCoroutineStepResult`;
+items 1, 2a, 2b, 3, 5, 6 are DONE.
 
 ## Notes
 
