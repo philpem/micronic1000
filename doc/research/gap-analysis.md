@@ -438,9 +438,17 @@ flag, `10h` 16-drive guard, `12h`/`01h` key scan
 codes, coroutine step-zeroed slots (per-site as
 applied); 12+ kept as adequate; one intended at
 `ROM01:6e8b` had no comment — skipped (CONFIRMED
-absent). **`bdos_entry_impl` for `ROM00:F180`
-remains a proposal, not a §12 item.** **CAUTION
-(CONFIRMED):** 2-digit hex in RTC contexts ambiguous
+absent). **`bdos_entry_impl` proposal for
+`ROM00:F180` — REJECTED (CONFIRMED, byte-verified):
+`ROM00:0005` is `C3 80 F1` = `JP F180` outside
+`ROM00`'s `0000h..7FFFh` window → target is
+`ram:F180` (`Bdos_DispatchFn`, existing label);
+phantom `ROM00:bdos_entry_impl` was wrong-space;
+comment now `JP Bdos_DispatchFn (ram:F180) vectors
+into the DIPOS kernel (battery RAM)` — not a §12
+item and now closed (Ghidra saved).**
+**CAUTION (CONFIRMED):** 2-digit hex in RTC
+contexts ambiguous
 — register index `01h`/`03h`/`05h`/`07h` ≠ I/O port
 `07h` = `CTRL_07`; `RTC_ADDR`/`RTC_DATA` are
 `08h`/`28h` — both passes corrected manually;

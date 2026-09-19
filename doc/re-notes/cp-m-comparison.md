@@ -18,8 +18,17 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
 
 ## BDOS entry and dispatch
 
-- Entry: `bdos_entry_call5` (ROM00:0005) → `FUN_ram_f180` (kernel
-  RAM image).
+- Entry: `ROM00:0005` is `C3 80 F1` = `JP F180`
+  (CONFIRMED, byte-verified); `F180` lies outside
+  `ROM00`'s `0000h..7FFFh` bank window, so it
+  targets the RAM-resident kernel at `ram:F180`,
+  whose existing label is `Bdos_DispatchFn`
+  (CONFIRMED). The phantom `ROM00:bdos_entry_impl`
+  at `F180` was a wrong-space invention and is
+  **REJECTED** — the Ghidra comment now reads
+  `JP Bdos_DispatchFn (ram:F180) vectors into the
+  DIPOS kernel (battery RAM)`; no new label needed
+  (Ghidra saved).
 - `Kernel_Image_BdosMain` (ROM00:36A0, RAM image F183) is the
   dispatcher:
   - fn 0-24h: `handler = word[F1EB + fn*2]` (the 3708 table).

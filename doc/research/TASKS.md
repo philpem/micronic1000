@@ -426,9 +426,17 @@ current priority order; the concise lists above are authoritative.
         applied); 12+ comments kept as already
         adequately explained; one intended fix at
         `ROM01:6e8b` had no comment present — skipped
-        (CONFIRMED absent). `bdos_entry_impl` proposal
-        for `ROM00:F180` remains OPEN but is not a §12
-        item. **CAUTION (CONFIRMED):** 2-digit hex in
+         (CONFIRMED absent). `bdos_entry_impl`
+         proposal for `ROM00:F180` — **REJECTED**
+         (CONFIRMED, byte-verified): `ROM00:0005` is
+         `C3 80 F1` = `JP F180` outside `ROM00`'s
+         `0000h..7FFFh` window → target is `ram:F180`
+         (`Bdos_DispatchFn`, existing label); phantom
+         `ROM00:bdos_entry_impl` was wrong-space; comment
+         now `JP Bdos_DispatchFn (ram:F180) vectors
+         into the DIPOS kernel (battery RAM)` — not a
+         §12 item and now closed (Ghidra saved).
+         **CAUTION (CONFIRMED):** 2-digit hex in
         RTC contexts is ambiguous — RTC register index
         (`01h`/`03h`/`05h`/`07h`) is not I/O port `07h`
         = `CTRL_07` (`RTC_ADDR`/`RTC_DATA` are
@@ -462,15 +470,24 @@ current priority order; the concise lists above are authoritative.
     rather than a moving target.
 
         **Remaining scope after 2026-09-19 (§12 FINAL
-         PASS fully CLOSED):** **no OPEN items remain.**
-         Items 1, 2a, 2b, 3, 4, 5, 6 are **DONE** — the
-         `g_wCoroutineStepResult` pointer-indirected
-         buffer (`g_pCoroutineStepResultBuf` at
-         `ram:EA24`, `+1`/`+3` 16-bit results; E73E
-         **refuted**, zero refs) was the final OPEN
-         label. The `bdos_entry_impl` proposal for
-         `ROM00:F180` is tracked separately and is not
-         a §12 item.
+          PASS fully CLOSED):** **no OPEN items remain.**
+          Items 1, 2a, 2b, 3, 4, 5, 6 are **DONE** — the
+          `g_wCoroutineStepResult` pointer-indirected
+          buffer (`g_pCoroutineStepResultBuf` at
+          `ram:EA24`, `+1`/`+3` 16-bit results; E73E
+          **refuted**, zero refs) was the final OPEN
+          label. The `bdos_entry_impl` proposal for
+          `ROM00:F180` was a non-§12 item and is now
+          **REJECTED** (CONFIRMED) — `ROM00:0005` is
+          `C3 80 F1` = `JP F180` outside `ROM00`'s
+          `0000h..7FFFh` window → `ram:F180`
+          (`Bdos_DispatchFn`, existing label); phantom
+          `ROM00:bdos_entry_impl` was wrong-space; Ghidra
+          comment now `JP Bdos_DispatchFn (ram:F180)
+          vectors into the DIPOS kernel (battery RAM)`;
+          no new label needed — §12 remains fully
+          CLOSED and the page-zero cleanup below did not
+          reopen it.
 
 ## Owner corrections to honor
 
@@ -5997,13 +6014,78 @@ names renamed, 144 unplated functions plated)
    indirected model.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (this entry + §12 item 4 marked fully CLOSED and
-   remaining scope emptied; E73E hypothesis noted as
-   refuted), `research/gap-analysis.md` (headline +
-   annotation tail updated — §12 fully CLOSED, no
-   OPEN labels; `g_wCoroutineStepResult` RESOLVED
-   pointer-indirected, E73E refuted). No Ghidra edits
-   in this docs pass beyond the saved label/comments
-   above; no new inference; evidence tags preserved;
+    (this entry + §12 item 4 marked fully CLOSED and
+    remaining scope emptied; E73E hypothesis noted as
+    refuted), `research/gap-analysis.md` (headline +
+    annotation tail updated — §12 fully CLOSED, no
+    OPEN labels; `g_wCoroutineStepResult` RESOLVED
+    pointer-indirected, E73E refuted). No Ghidra edits
+    in this docs pass beyond the saved label/comments
+    above; no new inference; evidence tags preserved;
+    ~70-col wrapping. `mkdocs build --strict`
+    (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — page-zero comment corrections
+ (bdos_entry_impl rejected; Boot_entry
+ over-substitution fixed) (Ghidra saved; docs only
+ in this pass, no new inference; parent-verified)
+
+* **`bdos_entry_impl` proposal — REJECTED
+   (CONFIRMED, byte-verified, Ghidra saved; no new
+   label needed).** `ROM00:0005` is `C3 80 F1` =
+   `JP F180` (CONFIRMED, byte-verified); `F180`
+   lies outside `ROM00`'s `0000h..7FFFh` 32K bank
+   window, so it targets the RAM-resident kernel at
+   `ram:F180`, whose existing label is
+   `Bdos_DispatchFn` (CONFIRMED, existing symbol).
+   The phantom `ROM00:bdos_entry_impl` at `F180`
+   was a wrong-space invention — `F180` cannot be
+   in `ROM00` — and is **REJECTED** (CONFIRMED).
+   The Ghidra comment at `ROM00:0005` now reads
+   `JP Bdos_DispatchFn (ram:F180) vectors into the
+   DIPOS kernel (battery RAM)`; no new label was
+   created. The non-§12 `bdos_entry_impl` proposal
+   tracked alongside §12 is now **closed as
+   REJECTED**; correct label remains the existing
+   `Bdos_DispatchFn` at `ram:F180` (Ghidra saved).
+
+* **`Boot_entry` over-substitution — FIXED
+   (CONFIRMED, Ghidra saved; 4 comments).**
+   `Boot_entry` is `ROM00:014b` (CONFIRMED). An
+   earlier comment-style pass replaced literal
+   `0000` with `Boot_entry` in four comments where
+   `0000` was not the boot entry: two were
+   **memory-range starts** at `ROM00:0000` and
+   `ROM00:17d3` — restored to
+   `0000h..ROM00:7FFFh` (CONFIRMED); two were
+   **state identifiers** at `ROM00:5c1f`/`5d05` —
+   restored to `State-0000` (CONFIRMED). All four
+   corrected (Ghidra saved); no function
+   renamed/created/deleted. Distinct from the
+   earlier 7-comment `Boot_entry+1` → `0001h` fix
+   (already CLOSED).
+
+* **§12 FINAL PASS — remains fully CLOSED
+   (CONFIRMED).** This was cleanup of the last
+   page-zero comment artefacts; items 1, 2a, 2b, 3,
+   4, 5, 6 remain **DONE**, no OPEN items remain,
+   and no Ghidra inference was performed in this
+   pass. Gap-analysis tail and §12 item-4 /
+   remaining-scope wording already carried the
+   pre-cleanup CLOSED state — this entry only
+   corrects the artefact comments and the rejected
+   phantom proposal; §12 is not reopened.
+
+* **Docs updated in this pass:** `re-notes/
+   cp-m-comparison.md` (BDOS entry corrected to
+   `JP Bdos_DispatchFn (ram:F180)` with
+   byte-verified `C3 80 F1` and REJECTED phantom
+   note), `research/TASKS.md` (§12 item-4 and
+   remaining-scope `bdos_entry_impl` notes updated
+   to REJECTED/CLOSED + this 2026-09-19 entry),
+   `research/gap-analysis.md` (annotation tail
+   `bdos_entry_impl` proposal → REJECTED, CLOSED).
+   No Ghidra edits beyond the saved comments above;
+   no new inference; evidence tags preserved;
    ~70-col wrapping. `mkdocs build --strict`
    (site_dir `site-mkdocs`) run — see below.
