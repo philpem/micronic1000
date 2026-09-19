@@ -35,16 +35,30 @@ no-op stubs** — earlier static scan missed the bulk
 copy (no per-address xref; source `ROM00:7DFA` 20
 words copied en bloc). Only one ROM instruction
 references the arena (`ROM01:11A4` calls `0xEE00`).
-No `D7` (`RST 10h` thunk) writes observed even with
-a COM loaded (`--watch-mem EE00:EE4F` with
-`hello.com`); runtime thunk-patching by loaded
-software is **mechanically possible and unobserved
-(OPEN)** — DIP type-0 `dest=EE00` (no range check
-at `ROM01:0ED1`→`D36A`) or COM `LD (EE00),A`/
-`LDIR` at `0x0100` (`ROM01:0D3B`) (CONFIRMED);
-type-1 only as `{D7,bank,addr}` stubs. Comment at
-`ram:EE00`. Computed-call xrefs such as
-`ram:EE04 -> ROM00:48BF` describe intended routing.
+**`D7` (`RST 10h` thunk) patch RESOLVED/WITNESSED
+2026-09-19 (CONFIRMED, emulator
+`analysis/boot_hw.py`):** crafted COM writes thunk
+`D7 00 BF 48` into `EE00`-`EE03` (`LD HL,EE00;
+LD (HL),D7; INC HL; LD (HL),00; INC HL;
+LD (HL),BF; INC HL; LD (HL),48; LD A,A5;
+LD (0200),A; RET`) via `--upload` with
+`--upload-marker 0200:A5` and `--watch-mem
+EE00:EE4F` — `execution entered bank 2 at 0100`,
+`marker 0200=A5 observed`, `upload_status=succeeded`;
+arena totals **164 writes** with `D6D6×80 D736×20
+D73B×20 D73E×20 D740×20` (boot bulk copy) **plus
+`0105×1 0108×1 010B×1 010E×1`** (COM's four stores
+into `EE00`-`EE03`) (CONFIRMED). Earlier `0100:21`
+marker (COM's own `LD HL` opcode `21h`) caused early
+return before COM execution — corrected to `0200:A5`;
+`--watch-mem` **was** active (CORRECTION of the
+previous "watch not active" conclusion). DIP type-0
+`dest=EE00` (no range check at `ROM01:0ED1`→`D36A`)
+or COM `LD (EE00),A`/`LDIR` at `0x0100`
+(`ROM01:0D3B`) (CONFIRMED); type-1 only as
+`{D7,bank,addr}` stubs. Comment at `ram:EE00`.
+Computed-call xrefs such as `ram:EE04 -> ROM00:48BF`
+describe intended routing.
 
 | Address | Routine | Command dispatched | Session screen |
 |---|---|---|---|
@@ -191,20 +205,30 @@ installing `21 01 00 C9`) — earlier scan missed the
 bulk copy (no per-address xref). Only one ROM
 instruction references the arena (`ROM01:11A4` calls
 `0xEE00`); static image remains `LD HL,1; RET`
-slots. The arena is a stub farm: no `D7` thunk
-writes observed even with COM loaded
-(`--watch-mem EE00:EE4F` with `hello.com`);
-thunk-patching by loaded software is
-**mechanically possible and unobserved (OPEN)** —
+slots. The arena is a stub farm: **`D7` thunk-patch
+RESOLVED/WITNESSED 2026-09-19 (CONFIRMED, emulator
+`analysis/boot_hw.py`):** crafted COM writes
+`D7 00 BF 48` into `EE00`-`EE03` (`LD HL,EE00;
+LD (HL),D7; INC HL; LD (HL),00; INC HL;
+LD (HL),BF; INC HL; LD (HL),48; LD A,A5;
+LD (0200),A; RET`) via `--upload` with
+`--upload-marker 0200:A5` and `--watch-mem
+EE00:EE4F` (`execution entered bank 2 at 0100`,
+`marker 0200=A5 observed`, `164 writes`
+`D6D6×80 D736×20 D73B×20 D73E×20 D740×20` boot
+**plus `0105×1 0108×1 010B×1 010E×1`** COM stores)
+(CONFIRMED); earlier `0100:21` marker caused early
+return (CORRECTION — `--watch-mem` **was** active).
 **(i) DIP type-0:** destination from descriptor
 bytes [4:5] (`ROM01:0ED1` → `D36A`) with no range
 check, so `dest = EE00` writes there
 (CONFIRMED); **(ii) COM:** loaded at `0x0100`
-(`ROM01:0D3B`) with full RAM access (CONFIRMED);
+(`ROM01:0D3B`) with full RAM access and now
+**WITNESSED** overwriting `EE00`-`EE03` (CONFIRMED);
 type-1 blocks can also target `EE00` via
 `image_base + bank_offset` but only as
-`{D7,bank,addr}` stubs. The `RST 10h` shape, if
-it occurs, would be installed by loaded software,
+`{D7,bank,addr}` stubs. The `RST 10h` shape, when
+it occurs, is installed by loaded software,
 not by ROM:
 
 ```text

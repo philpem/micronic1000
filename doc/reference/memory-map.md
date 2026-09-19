@@ -260,20 +260,36 @@ The cursor `ram:D684` is seeded to `ED1C` by the two
 literal bytes `1C ED` at `ROM00:7033` inside the
 dispatch block image copied to `ram:D681`. CONFIRMED.
 
-**Runtime thunk-patching — mechanically possible,
-unobserved (CONFIRMED mechanics).** The `EE00-EE4F`
-20-slot arena is a sub-range of the above
-(`ED1C-F17F`). (i) **DIP type-0 block:** loader takes
-destination from descriptor bytes [4:5]
-(`ROM01:0ED1` → `D36A`) with **no range check**, so
-`dest = EE00` writes there (CONFIRMED). (ii) **COM
-program:** loaded at `0x0100` (`ROM01:0D3B`) with full
-RAM access, so `LD (EE00),A` / `LDIR` overwrites the
-arena (CONFIRMED). Type-1 blocks can also target
-`EE00` via `image_base + bank_offset` but only write
-`{D7,bank,addr}` stubs. No `D7` writes observed via
-`--watch-mem EE00:EE4F` + `--upload` (OPEN). Matches
-owner note (DIP record/block or COM overwrite).
+**Runtime thunk-patching — RESOLVED/WITNESSED
+2026-09-19 (CONFIRMED, emulator
+`analysis/boot_hw.py`).** The `EE00-EE4F` 20-slot
+arena is a sub-range of the above (`ED1C-F17F`). (i)
+**DIP type-0 block:** loader takes destination from
+descriptor bytes [4:5] (`ROM01:0ED1` → `D36A`) with
+**no range check**, so `dest = EE00` writes there
+(CONFIRMED, mechanism). (ii) **COM program:** loaded
+at `0x0100` (`ROM01:0D3B`) with full RAM access, so
+`LD (EE00),A` / `LDIR` overwrites the arena —
+**WITNESSED:** crafted COM writes thunk `D7 00 BF 48`
+into `EE00`-`EE03` (`LD HL,EE00; LD (HL),D7; INC HL;
+LD (HL),00; INC HL; LD (HL),BF; INC HL;
+LD (HL),48; LD A,A5; LD (0200),A; RET`) via
+`--upload` with `--upload-marker 0200:A5` and
+`--watch-mem EE00:EE4F` — `execution entered bank 2
+at 0100`, `marker 0200=A5 observed`,
+`upload_status=succeeded`; arena totals **164 writes**
+with `D6D6×80 D736×20 D73B×20 D73E×20 D740×20` (boot
+bulk copy) **plus `0105×1 0108×1 010B×1 010E×1`**
+(COM's four stores into `EE00`-`EE03`) (CONFIRMED).
+Earlier `0100:21` marker (COM's own `21h` opcode)
+caused early return before COM execution — corrected
+to `0200:A5`; `--watch-mem` **was** active during the
+loaded-program run (CORRECTION of the previous "no
+`D7` observed / watch not active" wording). Type-1
+blocks can also target `EE00` via `image_base +
+bank_offset` but only write `{D7,bank,addr}` stubs.
+Matches owner note (DIP record/block or COM
+overwrite).
 
 ### 2.2 The same-bank path
 

@@ -269,13 +269,18 @@ kept symbols.** All byte-verified; Ghidra saved.
    ROM01 address (`D12F/D130=0x1177`,
    `D13D/D13E=0x156F`); `ram:D081` entries
    `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-   (NULL-terminated); no static xref by double
-   indirection — manual DATA xref `ROM01:06EF` →
-   `ram:D081` added; plates at `ROM01:06D3`,
-   `ram:D081`, `ram:D12F` (Ghidra saved); residual
-   OPEN is only the witnessed `D7` stub-patch
-   (DIP/COM));
-   `ROM01:4D86`/`4E79` (text-buffer builders;
+    (NULL-terminated); no static xref by double
+    indirection — manual DATA xref `ROM01:06EF` →
+    `ram:D081` added; plates at `ROM01:06D3`,
+    `ram:D081`, `ram:D12F` (Ghidra saved); residual
+    **RESOLVED/WITNESSED 2026-09-19 (CONFIRMED,
+    emulator):** `D7` stub-patch **WITNESSED** —
+    COM writes `D7 00 BF 48` into `EE00`-`EE03`
+    (`0105/0108/010B/010E`, `0200:A5` marker;
+    `164 writes` `D6D6×80 D736×20 D73B×20 D73E×20
+    D740×20` boot plus COM stores; `0100:21`
+    artifact corrected));
+    `ROM01:4D86`/`4E79` (text-buffer builders;
    compiler-frame args `SP+0x0E`–`0x16` undecoded);
    `ram:D937` (zero xrefs, dead stub).
 
@@ -386,12 +391,15 @@ table at `ram:D081` (`LD DE,0xD081; ADD HL,DE` at
 ROM01 address (`D12F/D130=0x1177`,
 `D13D/D13E=0x156F`); `ram:D081` entries
 `0xD0F0/0xD13D/0xD121/0xD12F/0xD14B`
-(NULL-terminated); no static xref by double
-indirection — manual DATA xref `ROM01:06EF` →
-`ram:D081` added; plates at `ROM01:06D3`,
-`ram:D081`, `ram:D12F` (Ghidra saved); residual
-OPEN is only the witnessed `D7` stub-patch
-(DIP/COM);
+    (NULL-terminated); no static xref by double
+    indirection — manual DATA xref `ROM01:06EF` →
+    `ram:D081` added; plates at `ROM01:06D3`,
+    `ram:D081`, `ram:D12F` (Ghidra saved); residual
+    **RESOLVED/WITNESSED 2026-09-19 (CONFIRMED,
+    emulator):** `D7` stub-patch **WITNESSED**
+    (`D7 00 BF 48` into `EE00`-`EE03`,
+    `0105/0108/010B/010E`, `0200:A5` marker;
+    `0100:21` artifact corrected);
 `4d86`→`Session_Obj_BuildTextBuf1`,
 `4e79`→`Session_Obj_BuildTextBuf2` (text-buffer builders,
 `COMPUTED_CALL` from `ROM01:7f1d`/`7f1f`). 4 retained with

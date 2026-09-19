@@ -235,27 +235,49 @@ State: continuously updated as work progresses.
   `ROM00:3BB8` duplicate → `Coroutine_IndexedLookup_6A4A`
   remains corrected.
 
-- **RESOLVED 2026-09-19 (CONFIRMED,
-  byte-verified + emulator) — `ram:EE00-EE4F` is a
-  stub farm populated by ROM at boot via bulk copy
-  (CORRECTION).** `--watch-mem EE00:EE4F` with
-  `hello.com` via `--upload` shows the arena written
-  at boot: writer PCs `D6D6` (×80) and
-  `D736`/`D73B`/`D73E`/`D740` (×20 each), installing
-  the `21 01 00 C9` (`LD HL,1; RET`) no-op pattern
-  into all 20 slots (CONFIRMED). Earlier static
-  scan saw no per-address writer because the ROM
-  populates the arena by **bulk copy** (not per-slot
-  stores), so no per-address xref exists; source is
-  the `ROM00:7DFA` 20-word table copied en bloc.
-  Only one ROM instruction references the arena
-  (`ROM01:11A4` calls `0xEE00`). No `D7` (`RST 10h`
-  thunk) writes observed even with COM loaded;
-  runtime patching by loaded software remains
-  possible but unobserved (OPEN — not seen).
-  Comment at `ram:EE00`. Removed from the backlog.
-  **Corrects** the earlier "no ROM code writes
-  `EE00-EE4F`" claim (bulk-copy blind spot).
+- **RESOLVED/WITNESSED 2026-09-19 (CONFIRMED,
+   byte-verified + emulator) — `ram:EE00-EE4F` is a
+   stub farm populated by ROM at boot via bulk copy
+   (CORRECTION) and patchable at runtime by a loaded
+   COM (WITNESSED).** `--watch-mem EE00:EE4F` with
+   `hello.com` via `--upload` shows the arena written
+   at boot: writer PCs `D6D6` (×80) and
+   `D736`/`D73B`/`D73E`/`D740` (×20 each), installing
+   the `21 01 00 C9` (`LD HL,1; RET`) no-op pattern
+   into all 20 slots (CONFIRMED). Earlier static
+   scan saw no per-address writer because the ROM
+   populates the arena by **bulk copy** (not per-slot
+   stores), so no per-address xref exists; source is
+   the `ROM00:7DFA` 20-word table copied en bloc.
+   Only one ROM instruction references the arena
+   (`ROM01:11A4` calls `0xEE00`). **Plus
+   WITNESSED `D7` (`RST 10h` thunk) patch
+   (CONFIRMED, emulator `analysis/boot_hw.py`):**
+   crafted COM writes thunk `D7 00 BF 48` into
+   `EE00`-`EE03` (`LD HL,EE00; LD (HL),D7; INC HL;
+   LD (HL),00; INC HL; LD (HL),BF; INC HL;
+   LD (HL),48; LD A,A5; LD (0200),A; RET`) via
+   `--upload` with `--upload-marker 0200:A5` and
+   `--watch-mem EE00:EE4F` — `execution entered
+   bank 2 at 0100`, `marker 0200=A5 observed`,
+   `upload_status=succeeded`; arena totals
+   **164 writes** with `D6D6×80 D736×20 D73B×20
+   D73E×20 D740×20` (boot bulk copy) **plus
+   `0105×1 0108×1 010B×1 010E×1`** (loaded COM's
+   four stores into `EE00`-`EE03`). Loaded COM can
+   and does overwrite the stub arena at runtime
+   (CONFIRMED). Earlier `0100:21` marker (COM's own
+   `LD HL` opcode `21h` at `0100`) caused
+   `run_loaded_program` to see the marker before
+   execution and return without running the COM —
+   corrected to `0200:A5`; `--watch-mem` **was**
+   active during the loaded-program run (CORRECTION
+   of the previous "watch not active" conclusion).
+   Comment at `ram:EE00`. Removed from the backlog.
+   **Corrects** the earlier "no ROM code writes
+   `EE00-EE4F`" claim (bulk-copy blind spot) and
+   the "harness gap" framing (it was a marker
+   artifact).
 
    1. **Minor / deferred (OPEN, low priority —
      nothing actionable without new data).**
@@ -295,34 +317,44 @@ State: continuously updated as work progresses.
      `ROM01:7C80` / `ram:D128` / `D130`; `28 d1`
      hits at `ROM01:2A22`/`3412` falsified as
      `CALL 28FE`/`POP DE` CONFIRMED) failed due to
-      double indirection. Residual OPEN is only the
-      witnessed `D7` stub-patch (DIP/COM) — **OPEN
-      as a harness-instrumentation gap (CONFIRMED,
-      emulator `analysis/boot_hw.py`):**
-      `--watch-mem` (and by extension `--watch-read`)
-      is not active during the post-load `Run` of the
-      loaded COM, so loaded-program stores are
-      unwatched (control `E000` likewise shows only
-      boot writes `pc-after=D723x4`); `EE00:EE4F`
-      harness run showed 160 boot-bulk writes
-      (`pc-after=D6D6/D736/D73B/D73E/D740`) and no
-      bank-2 PC write of `D7 00 BF 48`; patch
-      *mechanism* stays **CONFIRMED possible** (DIP
-      type-0 dest with no range check; COM overwrite);
-      `D7` witness needs watch armed for the
-      loaded-program run + `--dump-mem` capture.
-      The 12 non-code code gaps (page-zero RST
+       double indirection. Residual **RESOLVED/
+       WITNESSED 2026-09-19 (CONFIRMED, emulator
+       `analysis/boot_hw.py`):** `D7` stub-patch
+       **WITNESSED** — crafted COM writes thunk
+       `D7 00 BF 48` into `EE00`-`EE03` via `--upload`
+       with `--upload-marker 0200:A5` and
+       `--watch-mem EE00:EE4F`; `execution entered
+       bank 2 at 0100`, `marker 0200=A5 observed`,
+       `upload_status=succeeded`; 164 writes
+       `D6D6×80 D736×20 D73B×20 D73E×20 D740×20`
+       (boot) **plus `0105×1 0108×1 010B×1 010E×1`**
+       (COM stores into `EE00`-`EE03`) (CONFIRMED).
+       **CORRECTION:** previous "watch not active
+       during loaded-program Run" was wrong — it was
+       an upload-marker artifact (`0100:21` = COM's
+       own `LD HL` opcode at `0100`; `run_loaded_
+       program` checks marker before running and
+       returned immediately). Using `0200:A5` (byte
+       the COM writes after the patch) makes it run
+       and `--watch-mem` **was** active. Practical
+       lesson: for future `--upload` runs pick a
+       marker the program writes *after* the effect
+       under test, not an opcode byte present at load.
+       The 12 non-code code gaps (page-zero RST
      vectors, the `254b` inline dispatcher,
      padding, and the `7545-7FFF` data region),
      and `ROM00:7409`/`7472` (module-A ROM
      images, deferred by design); all recorded
      as such — no further action (CONFIRMED).
-    Boot copy **corrected** (`Kernel_InitCopyData`
-    `ram:D6C0` `D6C9`/`D6D4` fills `EE00-EE4F`;
-    old "does NOT touch `EE00`" wrong);
-    thunk-write **mechanically possible**
-    (DIP type-0 `dest=EE00` / COM `LD (EE00),A`;
-    unobserved) — see Phase 3.
+     Boot copy **corrected** (`Kernel_InitCopyData`
+     `ram:D6C0` `D6C9`/`D6D4` fills `EE00-EE4F`;
+     old "does NOT touch `EE00`" wrong);
+     thunk-write **WITNESSED 2026-09-19
+     (CONFIRMED, emulator):** COM writes `D7 00 BF 48`
+     into `EE00`-`EE03` (`0105/0108/010B/010E`) via
+     `--upload` (`0200:A5` marker) + `--watch-mem`;
+     `0100:21` early-return artifact corrected — see
+     Phase 3.
 
 ### Emulator-coverage / vtable-mapping plan —
     closing the low-priority retains (no
@@ -581,97 +613,118 @@ State: continuously updated as work progresses.
        `--watch-read D081:D08A` (double indirection
        at `ROM01:06EF`/`06F7`).
 
-     Phase 3 — `ram:EE00-EE4F` stub arena —
-    **DONE 2026-09-19 (CONFIRMED boot-copy +
-    correction; OPEN patch question;
-    thunk-write mechanically possible)**
+      Phase 3 — `ram:EE00-EE4F` stub arena —
+     **DONE 2026-09-19 (CONFIRMED boot-copy +
+     correction; RESOLVED/WITNESSED 2026-09-19 —
+     `D7` thunk-patch WITNESSED, CORRECTION of
+     marker artifact)**
 
-    * **Resolved + CORRECTION (CONFIRMED,
-      emulator + byte-verified).**
-      `--watch-mem EE00:EE4F` with a loaded
-      `hello.com` via `--upload` shows the arena
-      **is written by ROM at boot**: writer PCs
-      `D6D6` (×80) and
-      `D736`/`D73B`/`D73E`/`D740` (×20 each),
-      installing the `21 01 00 C9`
-      (`LD HL,1; RET`) no-op pattern into all 20
-      slots (CONFIRMED). **Mechanism is the boot
-      bulk copy at `Kernel_InitCopyData`
-      (`ram:D6C0`, entered `ROM00:7039` via
-      `CopyKernelDispatchBlock`):** at `D6C9` copies
-      the 4-byte template `21 01 00 C9` from `D6D7`
-      to `ED1C`; at `D6D4` an `LDIR` copies `0x460`
-      bytes `ED1C`→`ED20`, filling `ED20-F17F`
-      **including the `EE00-EE4F` stub arena**
-      (CONFIRMED, byte-verified; EOLs at `D6D1` /
-      `D6D4`; the old plate claim "does NOT touch
-      `EE00`/`F100`" was **wrong** and is corrected).
-      The earlier static scan missed it because the
-      ROM populates the arena by **bulk copy** (not
-      per-slot stores), so no per-address xref
-      exists; source table is `ROM00:7DFA` (20 words)
-      copied en bloc. Only one ROM instruction
-      references the arena (`ROM01:11A4` calls
-      `0xEE00`). No `D7` (`RST 10h` thunk) writes
-      observed even with COM loaded; runtime
-      patching by loaded software remains
-      **unobserved (OPEN)** — do not claim a patch
-      without a witnessed `--watch-mem` write of
-      `D7` bytes and a `--dump-mem` capture.
+     * **Resolved + CORRECTION (CONFIRMED,
+       emulator + byte-verified).**
+       `--watch-mem EE00:EE4F` with a loaded
+       `hello.com` via `--upload` shows the arena
+       **is written by ROM at boot**: writer PCs
+       `D6D6` (×80) and
+       `D736`/`D73B`/`D73E`/`D740` (×20 each),
+       installing the `21 01 00 C9`
+       (`LD HL,1; RET`) no-op pattern into all 20
+       slots (CONFIRMED). **Mechanism is the boot
+       bulk copy at `Kernel_InitCopyData`
+       (`ram:D6C0`, entered `ROM00:7039` via
+       `CopyKernelDispatchBlock`):** at `D6C9` copies
+       the 4-byte template `21 01 00 C9` from `D6D7`
+       to `ED1C`; at `D6D4` an `LDIR` copies `0x460`
+       bytes `ED1C`→`ED20`, filling `ED20-F17F`
+       **including the `EE00-EE4F` stub arena**
+       (CONFIRMED, byte-verified; EOLs at `D6D1` /
+       `D6D4`; the old plate claim "does NOT touch
+       `EE00`/`F100`" was **wrong** and is corrected).
+       The earlier static scan missed it because the
+       ROM populates the arena by **bulk copy** (not
+       per-slot stores), so no per-address xref
+       exists; source table is `ROM00:7DFA` (20 words)
+       copied en bloc. Only one ROM instruction
+       references the arena (`ROM01:11A4` calls
+       `0xEE00`). **WITNESSED `D7` (`RST 10h`
+       thunk) patch (CONFIRMED, emulator
+       `analysis/boot_hw.py` 2026-09-19):** crafted
+       COM writes thunk `D7 00 BF 48` into
+       `EE00`-`EE03` (`LD HL,EE00; LD (HL),D7;
+       INC HL; LD (HL),00; INC HL; LD (HL),BF;
+       INC HL; LD (HL),48; LD A,A5; LD (0200),A;
+       RET`) via `--upload` with
+       `--upload-marker 0200:A5` and
+       `--watch-mem EE00:EE4F` — `execution entered
+       bank 2 at 0100`, `marker 0200=A5 observed`,
+       `upload_status=succeeded`; arena totals
+       **164 writes** `D6D6×80 D736×20 D73B×20
+       D73E×20 D740×20` (boot) **plus `0105×1
+       0108×1 010B×1 010E×1`** (COM stores into
+       `EE00`-`EE03`) (CONFIRMED). **CORRECTS**
+       the "no `D7` observed / unobserved (OPEN)"
+       wording — now **WITNESSED**.
 
-    * **Thunk-write mechanism — both mechanically
-      possible (CONFIRMED mechanics;
-      unobserved in emulator runs so far).**
-      (i) **DIP type-0 block:** the loader takes
-      the destination address from the block
-      descriptor bytes [4:5] (`ROM01:0ED1` →
-      `D36A`) with **no range check**, so a DIP
-      file with `dest_addr = EE00` writes there.
-      (ii) **COM program:** loaded at `0x0100`
-      (`ROM01:0D3B`) and runs with full RAM
-      access, so `LD (EE00),A` / `LDIR`
-      overwrites the arena. Type-1 blocks can
-      also target `EE00` via `image_base +
-      bank_offset` but only produce
-      `{D7,bank,addr}` stubs. This matches the
-      owner's note (a DIP record/block target or
-      a COM overwrite). Runtime thunk-patching by
-      loaded software is therefore **mechanically
-      possible and unobserved** in the emulator
-      runs so far.
+     * **Thunk-write mechanism — CONFIRMED mechanics
+       and now WITNESSED for COM (CONFIRMED,
+       emulator).**
+       (i) **DIP type-0 block:** the loader takes
+       the destination address from the block
+       descriptor bytes [4:5] (`ROM01:0ED1` →
+       `D36A`) with **no range check**, so a DIP
+       file with `dest_addr = EE00` writes there
+       (CONFIRMED, mechanism). (ii) **COM program:**
+       loaded at `0x0100` (`ROM01:0D3B`) and runs
+       with full RAM access, so `LD (EE00),A` /
+       `LDIR` overwrites the arena — **WITNESSED**
+       above (`EE00`-`EE03` = `D7 00 BF 48` from
+       PCs `0105/0108/010B/010E`) (CONFIRMED).
+       Type-1 blocks can also target `EE00` via
+       `image_base + bank_offset` but only produce
+       `{D7,bank,addr}` stubs. This matches the
+       owner's note (a DIP record/block target or
+       a COM overwrite). Runtime thunk-patching by
+       loaded software is therefore **CONFIRMED
+       WITNESSED** (COM) — DIP type-0 remains
+       mechanically possible with the same
+       unchecked dest.
 
-    * Harness (for reference; Phase 3 boot-copy
-      witnessed via `--watch-mem ee00:ee4f
-      --dump-mem ee00:50` with `--upload
-      /tmp/hello.com --upload-marker 0200:A5`):
-      use the real loader via
-      `Program_LoadByName`/`Program_ConsumeInputChunk`/
-      `Program_FinalizeInput` as exercised by
-      `--upload` / `--synthetic-loadrun` — not a
-      synthetic poke — plus the two canonical
-      variants in `analysis/test_boot_upload.py`
-      (single-DIP via `--synthetic-loadrun
-      --trace-loadrun-source plinth
-      --synthetic-loadrun-finalize`; single-COM via
-      `--upload` with COM fallback if first chunk
-      `<14` or `!=C9 C8`). Add `--watch-mem-limit
-      200` if hot; optional `--fill-mem EE00:EE4F`
-      survival check and staging-protocol watches
-      (`ram:D36A`/`D36C`/`D368`/`D393` and targets
-      `ram:ECDC` / `ram:D39B` / `ram:D372`/
-      `0x0100+D399`) per TASKS `RESOLVED ram:D36A`
-       pointer protocol. Observables as above; no
-       `D7` patch seen to date — **mechanically
-       possible and unobserved** "load-time patch
-       farm" remains **OPEN as a harness-
-       instrumentation gap (CONFIRMED, emulator
-       `analysis/boot_hw.py`):** `--watch-mem`
-       (and by extension `--watch-read`) needs
-       to be armed/scoped for the loaded-program
-       `Run` (see 2026-09-19 harness-scope entry);
-       control `E000` shows watch misses
-       loaded-program stores; witness needs watch
-       armed for that phase + `--dump-mem` capture.
+     * Harness (for reference; Phase 3 boot-copy
+       **and `D7` patch both witnessed** via
+       `--watch-mem EE00:EE4F --watch-mem-limit 200
+       --dump-mem EE00:50` with `--upload
+       /tmp/hello.com --upload-marker 0200:A5`):
+       use the real loader via
+       `Program_LoadByName`/`Program_ConsumeInputChunk`/
+       `Program_FinalizeInput` as exercised by
+       `--upload` / `--synthetic-loadrun` — not a
+       synthetic poke — plus the two canonical
+       variants in `analysis/test_boot_upload.py`
+       (single-DIP via `--synthetic-loadrun
+       --trace-loadrun-source plinth
+       --synthetic-loadrun-finalize`; single-COM via
+       `--upload` with COM fallback if first chunk
+       `<14` or `!=C9 C8`). Add `--watch-mem-limit
+       200` if hot; optional `--fill-mem EE00:EE4F`
+       survival check and staging-protocol watches
+       (`ram:D36A`/`D36C`/`D368`/`D393` and targets
+       `ram:ECDC` / `ram:D39B` / `ram:D372`/
+       `0x0100+D399`) per TASKS `RESOLVED ram:D36A`
+        pointer protocol. Observables as above;
+       **164 writes: `D6D6×80 D736×20 D73B×20
+       D73E×20 D740×20` (boot) plus `0105×1 0108×1
+       010B×1 010E×1` (`D7 00 BF 48` into
+       `EE00`-`EE03`) (CONFIRMED, emulator)** —
+       **RESOLVED/WITNESSED 2026-09-19.** Earlier
+       `0100:21` marker (COM's own `21h` at `0100`)
+       caused `run_loaded_program` to return before
+       running the COM; `--watch-mem`/`--watch-read`
+       **were** active during the loaded-program run.
+       **CORRECTION:** previous "watch not active"
+       / "harness-instrumentation gap" conclusion
+       was wrong — it was an upload-marker artifact.
+       Practical lesson: pick a marker the program
+       writes *after* the patch (e.g. `0200:A5`),
+       not an opcode byte present at load (`0100:21`).
 
     Sequencing: Phase 1 (coverage) → Phase 2
    (vtable big-endian decode) → Phase 3 (boot
@@ -7498,8 +7551,81 @@ names renamed, 144 unplated functions plated)
    `E000`) as the blocker.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (residual OPEN updated + this entry). No Ghidra
-   edits; no new inference; evidence tags preserved;
-   ~70-col wrapping. `mkdocs build --strict`
-   (site_dir `site-mkdocs`) run — see below.
+    (residual OPEN updated + this entry). No Ghidra
+    edits; no new inference; evidence tags preserved;
+    ~70-col wrapping. `mkdocs build --strict`
+    (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-19 — D7 stub patch witnessed (loaded COM
+ writes `EE00`-`EE03`; marker artifact corrected)
+ (emulator `analysis/boot_hw.py`; docs only, no
+ Ghidra, no new inference; parent-verified)
+
+* **The `D7` stub patch is now WITNESSED
+    (CONFIRMED, emulator `analysis/boot_hw.py`).**
+    Crafted COM writes thunk `D7 00 BF 48` into
+    `EE00`-`EE03`
+    (`LD HL,0xEE00; LD (HL),0xD7; INC HL;
+    LD (HL),0x00; INC HL; LD (HL),0xBF; INC HL;
+    LD (HL),0x48; LD A,0xA5; LD (0x0200),A; RET`)
+    uploaded via `--upload` with
+    `--upload-marker 0200:A5` and
+    `--watch-mem EE00:EE4F`. Result:
+    `execution entered bank 2 at 0100`,
+    `marker 0200=A5 observed`,
+    `upload_status=succeeded`; arena totals **164
+    writes** with writing PCs `D6D6×80 D736×20
+    D73B×20 D73E×20 D740×20` (boot bulk copy)
+    **plus `0105×1 0108×1 010B×1 010E×1`** — the
+    loaded program's four stores into `EE00`-`EE03`
+    (CONFIRMED). So a loaded COM can and does
+    overwrite the stub arena at runtime (CONFIRMED).
+
+* **CORRECTION of the previous conclusion — the
+    earlier failure was a test-marker artifact, not
+    a harness gap (CONFIRMED).** The first attempt
+    used `--upload-marker 0100:21`, which is the
+    COM's **own first opcode** (`LD HL,…` = `0x21`
+    at `0100`), already present at load time — so
+    `run_loaded_program` saw the marker immediately
+    and returned **before executing the COM**. Choosing
+    a marker the program *writes after* the patch
+    (`0200:A5`) makes it run. Therefore `--watch-mem`
+    / `--watch-read` **were** active during the
+    loaded-program run; the previous "watch not active
+    during loaded-program Run" / "harness-
+    instrumentation gap" conclusion is **wrong** and
+    is corrected here. `0200:A5` vs `0100:21`
+    discriminates it.
+
+* **TASKS.md:** closed the residual `D7`-patch OPEN
+    item wherever it appeared — `Minor / deferred`
+    retain notes, Phase 3 arena section (both the
+    `RESOLVED + CORRECTION` bulk-copy block and the
+    thunk-write mechanism), and the Phase-3 harness
+    note — all marked **RESOLVED/WITNESSED
+    2026-09-19 (CONFIRMED, emulator)** with byte
+    values `D7 00 BF 48`, store PCs
+    `0105/0108/010B/010E`, totals `164` and the
+    marker correction (`0100:21` early-return →
+    `0200:A5`). Practical lesson noted: for future
+    `--upload` runs pick a marker the program writes
+    *after* the effect under test, not an opcode byte
+    present at load.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+    (residual OPENs closed + mark RESOLVED/WITNESSED
+    + marker-artifact CORRECTION + this entry),
+    `research/gap-analysis.md` (retained `FUN_*`
+    notes — residual `D7` now RESOLVED/WITNESSED),
+    `reference/commstar-api.md` (both "unobserved
+    (OPEN)" wordings → RESOLVED/WITNESSED with
+    `D7 00 BF 48` / `0105×1` etc. + CORRECTION),
+    `reference/memory-map.md` (§2.1 thunk-patching —
+    "mechanically possible, unobserved (OPEN)" →
+    RESOLVED/WITNESSED with same bytes/PCs +
+    CORRECTION). No Ghidra edits; no new inference;
+    evidence tags preserved (`CONFIRMED`/`CORRECTION`);
+    ~70-col wrapping. `mkdocs build --strict`
+    (site_dir `site-mkdocs`) run — see below.
 
