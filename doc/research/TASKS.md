@@ -370,70 +370,59 @@ State: continuously updated as work progresses.
      `--upload` (`0200:A5` marker) + `--watch-mem`;
      `0100:21` early-return artifact corrected — see
      Phase 3.
-        Extended coverage (emulator
-        `analysis/boot_hw.py`, exit 0, bounded) —
-        `--watch-pc 0904,1177,441b,d937` across
-        four run types: boot + `--drive-serial`
-        `1177=2, others 0`;
-        `--trace-session-transaction 4` `1177=2,
-        others 0`; `--upload hello.com
-        --upload-marker 0200:A5` (real COM load)
-        `1177=13, others 0`; `--upload hello.com
-        --commstar-peer` (commstar attach)
-        `0904=0 441B=0 D937=0` (peer saw no
-        requests — test COM does not hold a
-        commstar session). So `ROM01:1177`
-        reachable in every run (up to 13 hits);
-        `ROM01:0904`, `ROM00:441B`, `ram:D937`
-        unhit in all four. Combined with static
-        status — `ROM01:0904` `NOP; NOP; RET`
-        alignment padding (not a real routine),
-        `ROM00:441B`/`ram:D937` **zero xrefs** —
-        these three are **dead/unreachable in
-        every exercised path** (boot, session
-        transaction, COM load, commstar attach).
-        Retained (plates) rather than deleted:
-        could still be reached by other loaded
-        software or the one unexercised path
-        (barcode scan). Tag **SUSPECTED dead →
-        LIKELY dead** (zero xrefs + unhit in four
-        run types); only the barcode-scan capture
-        remains unexercised (CONFIRMED) — now
-        **attempted but not exercised
-        (CONFIRMED):** two bounded runs
-        `--barcode-scan A1 --barcode-probe
-        --watch-pc 0904,441b,d937` — (a) plain
-        boot+scan, (b) expect flow
-        `Enter the Workstation`/`Main Menu` then
-        scan — both ended `barcode_status=pending`
-        with `0904=0 441B=0 D937=0`, wand armed but
-        never triggered, flow did not reach a
-        barcode-entry field; **plus third whole-path
-        run** `--barcode-scan A1 --barcode-decode
-        --barcode-bdos --barcode-expect A1
-        --watch-pc 0904,441b,d937` also ended
-        `barcode_status=pending` with
-        `0904=0 441B=0 D937=0` (CONFIRMED).
-        **Why (CONFIRMED, `analysis/boot_hw.py`
-        ~3094):** harness drives the capture only
-        when `BARCODE_ENABLED and
-        barcode_status=="pending" and "Main Menu"
-        in fb_txt and not pending_keys and (no
-        expect steps or expect steps exhausted)`;
-        in these `--barcode-*` runs the string
-        `"Main Menu"` never appears in captured LCD
-        text (grep empty), so the trigger is never
-        met — plain boot *does* reach `"Main Menu"`,
-        but barcode-enabled runs do not.
-        `BARCODE_ENABLED = BARCODE_WIDTHS is not
-        None`, so the option does arm the wand; gap
-        is reaching/keeping Main Menu under the
-        barcode flags. Discriminator remains
-        **unexercised for this concrete trigger
-        reason**, not a firmware dead-end; retains
-        remain **LIKELY dead**; next step is to
-        make the harness reach `"Main Menu"` with
-        the barcode flags set (or owner real scan).
+         Extended coverage (emulator
+         `analysis/boot_hw.py`, exit 0, bounded) —
+         `--watch-pc 0904,1177,441b,d937` across
+         four run types: boot + `--drive-serial`
+         `1177=2, others 0`;
+         `--trace-session-transaction 4` `1177=2,
+         others 0`; `--upload hello.com
+         --upload-marker 0200:A5` (real COM load)
+         `1177=13, others 0`; `--upload hello.com
+         --commstar-peer` (commstar attach)
+         `0904=0 441B=0 D937=0` (peer saw no
+         requests — test COM does not hold a
+         commstar session). So `ROM01:1177`
+         reachable in every run (up to 13 hits);
+         `ROM01:0904`, `ROM00:441B`, `ram:D937`
+         unhit in all four. Combined with static
+         status — `ROM01:0904` `NOP; NOP; RET`
+         alignment padding (not a real routine),
+         `ROM00:441B`/`ram:D937` **zero xrefs** —
+         these three were **LIKELY dead** on four
+         paths (boot, session transaction, COM
+         load, commstar attach) — now superseded
+         by the exercised barcode run (see below).
+         **Barcode path exercised (CONFIRMED,
+         emulator `analysis/boot_hw.py`):**
+         `--drive-serial --barcode-scan A1
+         --barcode-probe --watch-pc
+         0904,441b,d937` reaches
+         `[40320] Main Menu reached; driving
+         barcode capture`, installs the probe hook,
+         and reports `barcode_status=succeeded` —
+         hook reached `PC=9000 AF=0042 BC=0000
+         DE=0000 HL=9000 IX=FA03 IY=FB65 SP=D611
+         bank=00`, stack
+         `1468 FBB9 F691 FFFF DFDB 7213`,
+         `FBB9..FBBC = b5f92700` (table `F9B5`,
+         count 39), returned count 0 (probe
+         rejects, capture re-armed). With
+         `--watch-pc 0904,441b,d937` that run
+         gives `0904=0 441B=0 D937=0`. Combined
+         with the earlier four run types, these
+         three are **dead (unreachable in every
+         exercised path; zero xrefs; not a real
+         routine for `0904`)** — retained with
+         plates (a firmware path not yet
+         discovered could still reach them), but
+         no ROM caller exists. The previous
+         `barcode_status=pending` was simply the
+         missing `--drive-serial` (Main Menu was
+         never reached); the earlier "Main Menu
+         not reached under --barcode flags"
+         explanation is **superseded** by this
+         exercised run (CONFIRMED).
 
 ### Emulator-coverage / vtable-mapping plan —
     closing the low-priority retains (no
@@ -552,72 +541,93 @@ State: continuously updated as work progresses.
         that retains stay dead even under the
         replacement-ROM TX-arm path.
 
-   **Phase 1 — extended result 2026-09-19**
-   (emulator `analysis/boot_hw.py`, exit 0,
-   bounded — `ROM01:1177` CONFIRMED
-   reachable in every run; others LIKELY dead
-   — four-run coverage):
+    **Phase 1 — extended result 2026-09-19**
+    (emulator `analysis/boot_hw.py`, exit 0,
+    bounded — `ROM01:1177` CONFIRMED
+    reachable in every run; others dead
+    across all five exercised paths):
 
-     * Run 1 — baseline:
-       `analysis/boot_hw.py --watch-pc
-       0904,1177,441b,d937 --drive-serial
-       --max-slices 400000` — totals
-       `0904=0 1177=2 441B=0 D937=0`.
-       `ROM01:1177` hit twice (`bank=01`,
-       `AF=7742 BC=06AB DE=D101 HL=1177
-       SP=D671`) (CONFIRMED reachable — it is
-       not dead; identity remains unknown; the
-       retain's open question was identity,
-       not reachability).
+      * Run 1 — baseline:
+        `analysis/boot_hw.py --watch-pc
+        0904,1177,441b,d937 --drive-serial
+        --max-slices 400000` — totals
+        `0904=0 1177=2 441B=0 D937=0`.
+        `ROM01:1177` hit twice (`bank=01`,
+        `AF=7742 BC=06AB DE=D101 HL=1177
+        SP=D671`) (CONFIRMED reachable — it is
+        not dead; identity remains unknown; the
+        retain's open question was identity,
+        not reachability).
 
-     * Run 2 — session-heavy:
-       `--trace-session-transaction 4
-       --max-slices 600000` — same totals
-       (`1177=2`, others 0) (CONFIRMED for
-       `ROM01:1177`).
+      * Run 2 — session-heavy:
+        `--trace-session-transaction 4
+        --max-slices 600000` — same totals
+        (`1177=2`, others 0) (CONFIRMED for
+        `ROM01:1177`).
 
-     * Run 3 — real COM load path:
-       `--upload hello.com --upload-marker
-       0200:A5` (real COM load) — totals
-       `0904=0 1177=13 441B=0 D937=0`.
-       `ROM01:1177` reachable (13 hits);
-       others unhit.
+      * Run 3 — real COM load path:
+        `--upload hello.com --upload-marker
+        0200:A5` (real COM load) — totals
+        `0904=0 1177=13 441B=0 D937=0`.
+        `ROM01:1177` reachable (13 hits);
+        others unhit.
 
-     * Run 4 — commstar session attach:
-       `--upload hello.com --commstar-peer`
-       (commstar attach; test COM does not hold
-       a commstar session, peer saw no requests)
-       — totals `0904=0 441B=0 D937=0`
-       (`1177` not re-measured here but
-       reachable in the three prior runs).
+      * Run 4 — commstar session attach:
+        `--upload hello.com --commstar-peer`
+        (commstar attach; test COM does not hold
+        a commstar session, peer saw no requests)
+        — totals `0904=0 441B=0 D937=0`
+        (`1177` not re-measured here but
+        reachable in the three prior runs).
 
-     * Conclusion (four-run): `ROM01:1177` is
-       **CONFIRMED reachable** in every run
-       (up to 13 hits) — not dead; identity
-       remains unknown. `ROM01:0904`,
-       `ROM00:441B`, `ram:D937` were **unhit
-       in all four** (boot, session
-       transaction, COM load, commstar attach)
-       and have **zero xrefs** (`ROM01:0904`
-       is `NOP; NOP; RET` alignment padding,
-       not a real routine) — **dead/
-       unreachable in every exercised path**.
-       Retained (plates) rather than deleted:
-       could still be reached by other loaded
-       software or the one unexercised path
-       (barcode scan). Tag upgraded
-       **SUSPECTED dead → LIKELY dead** (zero
-       xrefs + unhit in four run types); only
-       the barcode-scan capture remains
-       unexercised (CONFIRMED).
+      * Run 5 — barcode path exercised
+        (CONFIRMED, `--drive-serial` fix):
+        `--drive-serial --barcode-scan A1
+        --barcode-probe --watch-pc
+        0904,441b,d937` reaches
+        `[40320] Main Menu reached; driving
+        barcode capture`, reports
+        `barcode_status=succeeded` — hook at
+        `PC=9000 AF=0042 BC=0000 DE=0000
+        HL=9000 IX=FA03 IY=FB65 SP=D611
+        bank=00`, stack
+        `1468 FBB9 F691 FFFF DFDB 7213`,
+        `FBB9..FBBC = b5f92700` (table `F9B5`,
+        count 39), returned 0 (probe rejects,
+        re-armed). Gives
+        `0904=0 441B=0 D937=0` (CONFIRMED).
 
-     * Phases 2 (vtable dump `ROM01:7C80`/
-       `ram:D128`) and 3 (stub-patch trace
-       `--watch-mem EE00:EE4F` on a load path)
-       are **DONE 2026-09-19** — see Phase 2
-       (43 big-endian entries, reader LOCATED)
-       and Phase 3 (boot bulk-copy + witnessed
-       `D7` patch) below.
+      * Conclusion (five-run): `ROM01:1177` is
+        **CONFIRMED reachable** in every run
+        (up to 13 hits) — not dead; identity
+        remains unknown. `ROM01:0904`,
+        `ROM00:441B`, `ram:D937` were **unhit
+        in all five** (boot, session
+        transaction, COM load, commstar attach,
+        barcode probe) and have **zero xrefs**
+        (`ROM01:0904` is `NOP; NOP; RET`
+        padding, not a real routine) —
+        **dead (unreachable in every exercised
+        path; zero xrefs; not a real routine
+        for `0904`)**. Retained (plates) rather
+        than deleted: could still be reached by
+        other loaded software or a firmware path
+        not yet discovered, but no ROM caller
+        exists. Tag upgraded **LIKELY dead →
+        dead (unreachable in every exercised
+        path; zero xrefs; not a real routine
+        for `0904`)** — supersedes the earlier
+        "Main Menu not reached" explanation,
+        which was simply missing `--drive-serial`
+        (CONFIRMED).
+
+      * Phases 2 (vtable dump `ROM01:7C80`/
+        `ram:D128`) and 3 (stub-patch trace
+        `--watch-mem EE00:EE4F` on a load path)
+        are **DONE 2026-09-19** — see Phase 2
+        (43 big-endian entries, reader LOCATED)
+        and Phase 3 (boot bulk-copy + witnessed
+        `D7` patch) below.
 
       Phase 2 — session-object dispatch tables
      `ROM01:7C80` / `ram:D128` — **DONE 2026-09-19
@@ -7880,16 +7890,17 @@ names renamed, 144 unplated functions plated)
    (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (vtable/reader notes + retain block + this
-   entry), `research/gap-analysis.md` (both
-   retained-`FUN_*` sections — callback xrefs
-   linked with `D081`→callback mapping and barcode
-   armed but not triggered with two flows — **now
-   superseded by three-flow + trigger detail**). No
-   Ghidra edits; no new inference; evidence tags
-   preserved; ~70-col wrapping. `mkdocs build
-   --strict` (site_dir `site-mkdocs`) run — see
-   below.
+    (vtable/reader notes + retain block + this
+    entry), `research/gap-analysis.md` (both
+    retained-`FUN_*` sections — callback xrefs
+    linked with `D081`→callback mapping and barcode
+    armed but not triggered with two flows — **now
+    superseded by three-flow + trigger detail,
+    and by the exercised `--drive-serial` run
+    (see next entry)**). No Ghidra edits; no new
+    inference; evidence tags preserved; ~70-col
+    wrapping. `mkdocs build --strict` (site_dir
+    `site-mkdocs`) run — see below.
 
 ### 2026-09-19 — barcode whole-path also pending
  (Main Menu not reached under --barcode flags)
@@ -7928,7 +7939,71 @@ names renamed, 144 unplated functions plated)
    (`CONFIRMED`/`LIKELY`); ~70-col wrapping.
 
 * **Docs updated in this pass:** `research/TASKS.md`
-   (retain/barcode note + this entry). No Ghidra
-   edits; no new inference; evidence tags preserved;
+    (retain/barcode note + this entry). No Ghidra
+    edits; no new inference; evidence tags preserved;
+    ~70-col wrapping. `mkdocs build --strict`
+    (site_dir `site-mkdocs`) run — see below.
+    **Superseded 2026-09-19 (see next entry):**
+    the `barcode_status=pending` / "Main Menu not
+    reached" explanation was the missing
+    `--drive-serial`; barcode path is now
+    exercised (CONFIRMED).
+
+### 2026-09-19 — barcode path exercised
+ (--drive-serial); three retains dead across
+ all five paths (emulator `analysis/boot_hw.py`,
+ exit 0, bounded; docs only, no Ghidra, no new
+ inference; parent-verified)
+
+* **Barcode path is now exercised (CONFIRMED,
+   emulator `analysis/boot_hw.py`).** The missing
+   piece was `--drive-serial`:
+   `--drive-serial --barcode-scan A1
+   --barcode-probe --watch-pc 0904,441b,d937`
+   reaches `[40320] Main Menu reached; driving
+   barcode capture`, installs the probe hook,
+   and reports `barcode_status=succeeded` — hook
+   reached `PC=9000 AF=0042 BC=0000 DE=0000
+   HL=9000 IX=FA03 IY=FB65 SP=D611 bank=00`,
+   stack `1468 FBB9 F691 FFFF DFDB 7213`,
+   `FBB9..FBBC = b5f92700` (table `F9B5`, count
+   39), returned count 0 (probe rejects, capture
+   re-armed). So the earlier
+   `barcode_status=pending` was simply the missing
+   `--drive-serial` (Main Menu was never reached);
+   the previous "Main Menu not reached under
+   --barcode flags" explanation is **superseded**
+   by this exercised run (CONFIRMED).
+
+* **The three retains are dead (CONFIRMED-unhit
+   across every exercised path).** With
+   `--watch-pc 0904,441b,d937` the barcode run
+   again gives `0904=0 441B=0 D937=0`. Combined
+   with the earlier four run types (boot+serial,
+   session-transaction, COM load, commstar-peer),
+   `ROM01:0904` (`NOP; NOP; RET` padding),
+   `ROM00:441B` (zero xrefs) and `ram:D937` (zero
+   xrefs) are unhit in **all five** exercised
+   paths. Upgrade **LIKELY dead → dead
+   (unreachable in every exercised path; zero
+   xrefs; not a real routine for `0904`)**. They
+   remain retained with plates (a firmware path
+   not yet discovered could still reach them),
+   but no ROM caller exists (CONFIRMED).
+
+* **TASKS.md:** recorded the exercised barcode run
+   (the `--drive-serial` fix, the hook contract
+   facts), superseded the "Main Menu not reached"
+   explanation, and upgraded the three retains to
+   dead-across-all-paths (see minor/deferred and
+   Phase 1). Appended this session entry.
+
+* **Docs updated in this pass:** `research/TASKS.md`
+   (this entry + minor/deferred + Phase 1),
+   `research/gap-analysis.md` (both retained
+   `FUN_*` sections — "two flows" wording to
+   exercised result, three retains upgraded to
+   **dead**). No Ghidra edits; no new inference;
+   evidence tags preserved (`CONFIRMED`/`dead`);
    ~70-col wrapping. `mkdocs build --strict`
    (site_dir `site-mkdocs`) run — see below.

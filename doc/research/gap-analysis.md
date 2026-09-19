@@ -245,34 +245,36 @@ kept symbols.** All byte-verified; Ghidra saved.
   **withdrawn**; the validator role is **SUSPECTED** only.
 
 * **Retained (10) with documented open questions
-    (CONFIRMED retained, plates set, symbols kept;
-    updated 2026-09-19 — vtable reader LOCATED +
-    extended coverage; callback xrefs linked,
-    barcode path armed but not triggered):**
-    `ROM00:441B` (zero xrefs, **LIKELY dead** —
-    unhit in four bounded runs: boot,
-    session-transaction, COM load, commstar
-    attach; barcode path attempted in two
-    bounded runs `--barcode-scan A1 --barcode-probe
-    --watch-pc 0904,441b,d937` — plain boot+scan
-    and expect flow `Enter the Workstation`/
-    `Main Menu` then scan — both
-    `barcode_status=pending` with
-    `0904=0 441B=0 D937=0` (CONFIRMED), wand
-    armed but never triggered, flow did not
-    reach a barcode-entry field; discriminator
-    still unexercised, next step is a UI flow
-    that reaches a barcode-entry field before
-    scan or owner real scan);
-    `ROM01:0904` (alignment padding
-    `NOP; NOP; RET`, not a real routine,
-    zero xrefs, **LIKELY dead** — same four runs
-    + two barcode attempts unhit; only barcode
-    path unexercised);
-    `ROM01:1177` (trivial stub, **CONFIRMED
-    reachable** in every run via extended
-    `boot_hw.py --watch-pc` — up to 13 hits;
-    identity remains unknown) /
+     (CONFIRMED retained, plates set, symbols kept;
+     updated 2026-09-19 — vtable reader LOCATED +
+     barcode path exercised (--drive-serial);
+     three retains dead across all five paths):**
+     `ROM00:441B` (zero xrefs, **dead
+     (unreachable in every exercised path; zero
+     xrefs)** — unhit in all five bounded runs:
+     boot, session-transaction, COM load,
+     commstar attach, barcode probe
+     (`--drive-serial --barcode-scan A1
+     --barcode-probe --watch-pc 0904,441b,d937`
+     reaches `[40320] Main Menu reached; driving
+     barcode capture`, `barcode_status=succeeded`,
+     hook `PC=9000 AF=0042 BC=0000 DE=0000
+     HL=9000 IX=FA03 IY=FB65 SP=D611 bank=00`,
+     stack `1468 FBB9 F691 FFFF DFDB 7213`,
+     `FBB9..FBBC = b5f92700` (table `F9B5`, count
+     39), returned 0 (probe rejects); previous
+     `barcode_status=pending` was missing
+     `--drive-serial`, superseded; `0904=0
+     441B=0 D937=0` (CONFIRMED));
+     `ROM01:0904` (alignment padding
+     `NOP; NOP; RET`, not a real routine,
+     zero xrefs, **dead (unreachable in every
+     exercised path; zero xrefs; not a real
+     routine)** — same five runs unhit);
+     `ROM01:1177` (trivial stub, **CONFIRMED
+     reachable** in every run via extended
+     `boot_hw.py --watch-pc` — up to 13 hits;
+     identity remains unknown) /
     `156F`/`1664`/`168E`/`16B8` (**CONFIRMED
     session-object vtable entries (methods)** at
     `ROM01:7C80` / `ram:D128` — 43 big-endian entries,
@@ -320,7 +322,9 @@ kept symbols.** All byte-verified; Ghidra saved.
     artifact corrected));
     `ROM01:4D86`/`4E79` (text-buffer builders;
    compiler-frame args `SP+0x0E`–`0x16` undecoded);
-   `ram:D937` (zero xrefs, dead stub).
+   `ram:D937` (zero xrefs, **dead (unreachable in
+   every exercised path; zero xrefs)** — same five
+   runs unhit).
 
 ## Data-typing — `ROM01:7545`/`757F`/`758B`/
 `75EB`/`760D`/`79F4` + `ROM00:7C30`/`7D80`/`7D88`/
@@ -409,7 +413,9 @@ Deferred by design (wrong address space if created in
 
 **Item C — retained `FUN_*` resolved (CONFIRMED;
 updated 2026-09-19 — vtable reader LOCATED; callback
-xrefs linked, barcode armed but not triggered).**
+xrefs linked, barcode path exercised
+(--drive-serial); three retains dead across all
+five paths).**
 6 renamed: `ROM01:156f`→`Session_Obj_Method_6784`,
 `1664`→`Session_Obj_Method_6b6d`,
 `168e`→`Session_Obj_Method_6c84`,
@@ -458,19 +464,22 @@ plates: `ROM01:1177` (trivial stub, **CONFIRMED
 reachable** in every run via extended
 `boot_hw.py --watch-pc` — up to 13 hits; identity
 remains unknown), `ROM00:441b` (zero-xref dead,
-**LIKELY dead** — unhit in four runs + two
-barcode attempts `barcode_status=pending`,
-`0904=0 441B=0 D937=0` (CONFIRMED); wand armed
-but never triggered, flow did not reach a
-barcode-entry field; discriminator still
-unexercised; sibling `443c` used),
+**dead (unreachable in every exercised path; zero
+xrefs)** — unhit in all five runs: boot,
+session-transaction, COM load, commstar attach,
+barcode probe (`--drive-serial --barcode-scan A1
+--barcode-probe --watch-pc 0904,441b,d937` gives
+`0904=0 441B=0 D937=0`; barcode path exercised
+with `barcode_status=succeeded`, hook `PC=9000
+AF=0042` etc., superseded pending; CONFIRMED);
+sibling `443c` used),
 `ram:d937` (zero-xref bit-flag dispatcher over
-`ram:e104`, **LIKELY dead** — same four runs +
-two barcode attempts unhit; only barcode
-unexercised), `ROM01:0904` (alignment padding
-`NOP; NOP; RET`, not a real routine, zero xrefs,
-**LIKELY dead** — same; only barcode
-unexercised).
+`ram:e104`, **dead (unreachable in every exercised
+path; zero xrefs)** — same five runs unhit),
+`ROM01:0904` (alignment padding `NOP; NOP; RET`,
+not a real routine, zero xrefs, **dead
+(unreachable in every exercised path; zero xrefs;
+not a real routine)** — same five runs unhit).
 
 Coverage after Items A–C is the headline above: auto
 `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1); named 910
