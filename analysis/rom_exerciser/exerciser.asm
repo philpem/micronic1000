@@ -218,6 +218,13 @@ LO_ORG          equ 0x724C          ; second free block, 183 bytes
 MID_ORG         equ 0x7CE0          ; fourth, 48 bytes, past the end of the
                                     ; module-A copy range (73CE-7C2E)
 HI_ORG          equ 0x7E96          ; first free block, 356 bytes
+SCR_ORG         equ 0x0250          ; reclaimed stock code: the cold-boot and
+                                    ; banner flow at 0250-02FD is reached only
+                                    ; by fall-through from the warm-boot entry
+                                    ; at 024D, which this ROM never runs, and
+                                    ; nothing CALLs into it (Ghidra xrefs:
+                                    ; none).  Overwritten with the transmit arm
+                                    ; the earlier builds omitted.
 
 LCD_REG         equ 0x23            ; HD61830 register index
 LCD_DAT         equ 0x03            ; ... and its data port
@@ -412,6 +419,94 @@ cs_value:       ld a,(LCD_CONTRAST_SHADOW)
                 jr contrast_setup
 
 vec_end:
+
+                org SCR_ORG
+
+; ---------------------------------------------------------------------------
+; The transmit arm -- the step every earlier build omitted
+; ---------------------------------------------------------------------------
+; LinkBlockTx raises LINK_CTRL bit 5 then bit 4, holds the firmware's own
+; settle count (~0.11 ms), then drops bit 5 (ROM00:32CC-32EE).  Bit 4 is left
+; set, as the stock per-byte stream loop leaves it while bytes flow.  Without
+; this the controller accepted LINK_TXD writes but emitted nothing: the 2726
+; bench run showed EE04580302 and no light on either port.
+arm_tx:         ld a,0x20                   ; LINK_CTRL bit 5 up
+                call ctrl_or
+                ld a,0x10                   ; bit 4 up
+                call ctrl_or
+                ld d,0x20                   ; settle; D is free at both callers
+arm_settle:     dec d                       ;   (B and E hold the record's
+                jr nz,arm_settle            ;    OR/AND snapshot there)
+                ld a,0xDF                   ; bit 5 back down
+                jp ctrl_and
+arm_tx_end:
+;@WITNESS_BEGIN@
+; arm_tx then hand off to the witness loop.  The default build calls arm_tx
+; directly; the witness build's build.py points the preamble's call here
+; instead (same 3-byte call, so the main body does not grow).
+arm_witness:    call arm_tx
+                jp witness
+
+; ---------------------------------------------------------------------------
+; RX witness (the --witness build).  After the flag, the first data byte and
+; the arm, this STOPS transmitting and just watches LINK_STATUS and the link
+; interrupt.  Nothing here writes LINK_CMD/LINK_TXD/LINK_CTRL, so our own TX
+; cannot disturb the receive path being measured.  OR/AND are windowed (reset
+; after every LCD update) so a stimulus is visible live; ISRC and IRQN are
+; sticky for the whole run.  LCD row: W OR AND ISRC IRQN ARMD HB.
+; Reset only by power-cycling; the LCD is the only readout because the IR
+; channel is being listened to, not driven.
+witness:        ld a,0x05
+                call progress
+                xor a
+                ld (V_COUNT),a
+                in a,(LINK_STAT)            ; status immediately after the arm
+                ld (V_PSTAT),a
+                ; Enable the receive path.  The stock firmware raises LINK_CTRL
+                ; bits 6/7 (34BD) after a transaction; every earlier exerciser
+                ; build left them clear, so its RX interrupt could never fire
+                ; and nothing could be received.  Do what LinkTransferService
+                ; does at 2FAE: set both.
+                ld a,0x40
+                call ctrl_or
+                ld a,0x80
+                call ctrl_or
+                call accreset
+                ld a,IRQ_ENABLE
+                out (IRQ_MASK),a
+                ei
+w_window:       ld bc,0x2000                ; ~8192 samples, ~0.1 s window
+w_in:           call sample                 ; sample clobbers A, D, HL only
+                dec bc
+                ld a,b
+                or c
+                jr nz,w_in
+                call lcd_home
+                ld a,'W'
+                call lcd_putc
+                ld a,(V_OR)
+                call lcd_hex                ; OR,  this window
+                ld a,(V_AND)
+                call lcd_hex                ; AND, this window
+                ld a,(V_ISRC)
+                call lcd_hex                ; IRQ sources, sticky
+                ld a,(V_IRQN)
+                call lcd_hex                ; IRQ entries, sticky
+                ld a,(V_PSTAT)
+                call lcd_hex                ; LINK_STATUS right after the arm
+                ld a,(V_COUNT)
+                inc a
+                ld (V_COUNT),a
+                call lcd_hex                ; heartbeat
+                ld b,0x07
+                call blank_tail
+                call accreset               ; fresh OR/AND for the next window
+                ld a,IRQ_ENABLE
+                out (IRQ_MASK),a            ; re-arm the ISR
+                ei
+                jr w_window
+;@WITNESS_END@
+scr_end:
 
                 org LO_ORG
 
@@ -644,8 +739,6 @@ start:          di
 init_clear:     ld (hl),a
                 inc hl
                 djnz init_clear
-                ld a,LINK_ID
-                ld (V_ID),a
 
                 ; --- the cold-boot controller reset.  BEFORE the port
                 ; select, not after: LinkProbe ends with XOR A / OUT (2Ch)
@@ -677,11 +770,6 @@ init_clear:     ld (hl),a
                 ld b,0x80
 settle:         djnz settle
 
-                ; Whatever that left is the baseline every phase returns to,
-                ; and the state the watchdog restores.
-                ld a,(CTRL_SHADOW)
-                ld (V_BASE),a
-
                 ; --- open the frame.  If the controller never reports ready
                 ; there is nothing to report with, so silence on the wire is
                 ; itself the result: it would mean TXRDY never asserts.
@@ -704,6 +792,7 @@ opened:         call accreset
                 ; before any measurement is read.
                 ld a,0xA5
                 call putbyte
+                call arm_tx                 ; stock flag/byte/arm order
                 ld a,0x5A
                 call putbyte
                 ld a,VERSION
@@ -744,6 +833,9 @@ stream:         ld a,(V_COUNT)
 
                 ld a,(V_COUNT)
                 call emit                   ; [0] COUNT
+                ld a,(V_COUNT)              ; a frame opens on a COUNT that is
+                and FRAME_RECS              ;   a multiple of 64: re-arm there
+                call z,arm_tx
                 ld a,b
                 call emit                   ; [1] OR of LINK_STATUS
                 ld a,e
