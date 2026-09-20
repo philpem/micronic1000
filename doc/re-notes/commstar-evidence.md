@@ -1569,15 +1569,21 @@ stack-argument strings into `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
 `Session_Tx5Param` (`ROM00:56A4`).
 
 The four identity fields (+0, +8, +26, +34) and the workstation field (+18)
-are caller-supplied strings; the ROM never assigns them a literal. Their byte
-positions, sizes, encodings and provenance are CONFIRMED. The **semantic**
-identity of the four identity fields is **OPEN**: the caller
-`Session_HelperRouter11E5` (`ROM01:12E0`–`1304`) forms its arguments from the
-mode record at `0xD467`, a constant `0`, and one caller-stack word, so no
-cell → record-offset mapping has been witnessed. "Workstation ID" for +18 is
-carried by the existing form labels; the +0/+8/+26/+34 readings (`group`,
-`user`, `password`, …) remain unproven. Do not assign semantic names until a
-witness ties a specific source cell to an offset.
+are caller-supplied strings; the ROM never assigns them a literal. Their
+sources are the V24 Log-on form buffers, latched by `C-INIT-COMMS` (see
+[Commstar API](../reference/commstar-api.md#c-init-comms)):
+
+| Record field | Source cell | Reading |
+|---|---|---|
+| +0 | `ram:ECAB` | Group id |
+| +8 | `ram:D120` | vestigial — the link-method table's zero terminator; always blank |
+| +18 | `ram:EC8E` | Telephone / workstation id (the banner serial in Load/Run) |
+| +26 | `ram:EC99` | User id — **LIKELY** (layout inference) |
+| +34 | `ram:ECA2` | Password — **LIKELY** (layout inference) |
+
+The `+0`/`+8`/`+26`/`+34` slots are blank in Load/Run traces because the
+synthetic run never fills the Log-on form (the source buffers are empty), not
+because the ROM leaves them uninterpreted.
 
 Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte

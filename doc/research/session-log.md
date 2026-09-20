@@ -31,10 +31,13 @@
   and the operation-name table `ram:E247` (ROM `ROM00:731B`).
   `Session_InitCommsCmd` (`ROM00:4563`) latches five NUL-terminated caller
   arguments (capacities 8/6/8/8/8) into those cells; `Session_InitState`
-  (`ROM00:46E9`) clears them. The four identity fields' byte layout and source
-  cells are CONFIRMED; their semantic identity is OPEN — the caller
-  (`ROM01:12E0`–`1304`) forms arguments from `0xD467`, a constant `0`, and a
-  caller-stack word, and no cell→offset mapping is witnessed. Left unnamed.
+  (`ROM00:46E9`) clears them. The four identity fields' sources are the V24
+  Log-on form buffers (see the Commstar API page): `+0`=Group id (`ECAB`),
+  `+8`=vestigial blank (`D120`), `+26`=User id (`EC99`, LIKELY),
+  `+34`=Password (`ECA2`, LIKELY); `+18`=Telephone/workstation id (`EC8E`).
+  CORRECTION: an earlier draft of this entry called these fields opaque and
+  "not determinable"; the cross-provider reviewer flagged it and the existing
+  API page already carried the mapping. The false claim was retracted.
 * Recorded a Ghidra misdecode affecting any decompiler reading of
   `Session_CmdCommand`: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the
   bytes are `21 C4 E6` (`LD HL,0xE6C4`), the `+26` source copy. Docs updated;
