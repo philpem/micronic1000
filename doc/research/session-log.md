@@ -17,8 +17,14 @@
   only `OK` vs not-`OK`. A bounded `--upload` harness run could **not** settle
   the identity cells: that path bypasses the Commstar session builder
   (`ram:E492` is zero-filled at PC-after `D70F`, peer `records-received=0`), so
-  `C-INIT-COMMS` never runs; the cell→offset map is CONFIRMED statically via
-  `Lib_StrCopyN`, and a dynamic witness needs a full session run.
+  `C-INIT-COMMS` never runs.
+* Follow-up 2 (same day): the **full-session** run did settle it. With
+  `--trace-loadrun-source plinth --synthetic-loadrun hello.dip
+  --synthetic-loadrun-finalize`, the record at `ram:E492` ends with
+  `+14="ENDC"` and `+18="12345678"` (the banner serial), the identity fields
+  blank. The `E6C4-E6F0` watch shows the `Lib_StrCopyN` loop (`ram:DBA2`) and
+  the `Session_InitCommsCmd`/`Session_CmdCommand` sites writing the cells,
+  matching the static map — first dynamic witness of the record layout.
 * CONFIRMED the state-45 command-record assembly provenance:
   `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
   (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`

@@ -1583,6 +1583,23 @@ Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte
 field/encoding table remains on the protocol page.
 
+**Dynamic witness — CONFIRMED (2026-09-20).** A bounded synthetic Load/Run
+(`boot_hw.py --trace-loadrun-source plinth --synthetic-loadrun hello.dip
+--synthetic-loadrun-finalize`, LCD off) reaches `Logged on` / `Program received`
+and leaves the record populated:
+
+* `ram:E492 +14` = `45 4E 44 43` (`"ENDC"`) — the operation name.
+* `ram:E492 +18` = `31 32 33 34 35 36 37 38` (`"12345678"`) — the 8-char value
+  typed at the banner (the unit serial in this run), right-justified.
+* `+0`, `+8`, `+26`, `+34` and `+42` remain blank.
+
+The `E6C4-E6F0` watch confirms the assembly path: the field cells are written
+by the `Lib_StrCopyN` copy loop (`ram:DBA2`, 32 writes) and the
+`Session_InitCommsCmd`/`Session_CmdCommand` sites (`45EA`/`4607`/`4641`,
+`4B02`/`4B0F`), matching the static map. This is the first **dynamic** witness
+of the record layout; it settles the offset map and shows `+18` is filled from
+the unit's entered serial number rather than a config-form workstation field.
+
 ### Frame sequence numbers and duplicate suppression — disassembly {#frame-sequence-numbers-and-duplicate-suppression}
 
 Per-link table at `ram:FE43` initialised to `01` (`ROM00:317B`), accessor
