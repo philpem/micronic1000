@@ -218,6 +218,13 @@ LO_ORG          equ 0x724C          ; second free block, 183 bytes
 MID_ORG         equ 0x7CE0          ; fourth, 48 bytes, past the end of the
                                     ; module-A copy range (73CE-7C2E)
 HI_ORG          equ 0x7E96          ; first free block, 356 bytes
+SCR_ORG         equ 0x0250          ; reclaimed stock code: the cold-boot and
+                                    ; banner flow at 0250-02FD is reached only
+                                    ; by fall-through from the warm-boot entry
+                                    ; at 024D, which this ROM never runs, and
+                                    ; nothing CALLs into it (Ghidra xrefs:
+                                    ; none).  Overwritten with the transmit arm
+                                    ; the earlier builds omitted.
 
 LCD_REG         equ 0x23            ; HD61830 register index
 LCD_DAT         equ 0x03            ; ... and its data port
@@ -412,6 +419,28 @@ cs_value:       ld a,(LCD_CONTRAST_SHADOW)
                 jr contrast_setup
 
 vec_end:
+
+                org SCR_ORG
+
+; ---------------------------------------------------------------------------
+; The transmit arm -- the step every earlier build omitted
+; ---------------------------------------------------------------------------
+; LinkBlockTx raises LINK_CTRL bit 5 then bit 4, holds the firmware's own
+; settle count (~0.11 ms), then drops bit 5 (ROM00:32CC-32EE).  Bit 4 is left
+; set, as the stock per-byte stream loop leaves it while bytes flow.  Without
+; this the controller accepted LINK_TXD writes but emitted nothing: the 2726
+; bench run showed EE04580302 and no light on either port.
+arm_tx:         ld a,0x20                   ; LINK_CTRL bit 5 up
+                call ctrl_or
+                ld a,0x10                   ; bit 4 up
+                call ctrl_or
+                ld d,0x20                   ; settle; D is free at both callers
+arm_settle:     dec d                       ;   (B and E hold the record's
+                jr nz,arm_settle            ;    OR/AND snapshot there)
+                ld a,0xDF                   ; bit 5 back down
+                jp ctrl_and
+arm_tx_end:
+scr_end:
 
                 org LO_ORG
 
@@ -644,8 +673,6 @@ start:          di
 init_clear:     ld (hl),a
                 inc hl
                 djnz init_clear
-                ld a,LINK_ID
-                ld (V_ID),a
 
                 ; --- the cold-boot controller reset.  BEFORE the port
                 ; select, not after: LinkProbe ends with XOR A / OUT (2Ch)
@@ -677,11 +704,6 @@ init_clear:     ld (hl),a
                 ld b,0x80
 settle:         djnz settle
 
-                ; Whatever that left is the baseline every phase returns to,
-                ; and the state the watchdog restores.
-                ld a,(CTRL_SHADOW)
-                ld (V_BASE),a
-
                 ; --- open the frame.  If the controller never reports ready
                 ; there is nothing to report with, so silence on the wire is
                 ; itself the result: it would mean TXRDY never asserts.
@@ -704,6 +726,7 @@ opened:         call accreset
                 ; before any measurement is read.
                 ld a,0xA5
                 call putbyte
+                call arm_tx                 ; stock flag/byte/arm order
                 ld a,0x5A
                 call putbyte
                 ld a,VERSION
@@ -744,6 +767,9 @@ stream:         ld a,(V_COUNT)
 
                 ld a,(V_COUNT)
                 call emit                   ; [0] COUNT
+                ld a,(V_COUNT)              ; a frame opens on a COUNT that is
+                and FRAME_RECS              ;   a multiple of 64: re-arm there
+                call z,arm_tx
                 ld a,b
                 call emit                   ; [1] OR of LINK_STATUS
                 ld a,e

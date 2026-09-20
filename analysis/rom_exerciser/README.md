@@ -10,7 +10,7 @@
 > displays readable `CONTRASTC0`, but keys still have no observable effect.
 > Do not reburn unchanged `27E8` to investigate the keypad.
 
-## Current startup diagnostic: `2726` (2026-09-10)
+## Current startup diagnostic: `2609` (2026-09-13)
 
 **Burn this candidate for the frozen-after-ENTER investigation.** The validated
 LCD startup and full keypad status screen are retained, with default contrast
@@ -57,12 +57,28 @@ Z explicitly for this fixed top-V24 baseline, after progress rendering. Tests
 verify port `2Ch=20h` and `LINK_CTRL=03h` after initialization. This defect
 does not establish the cause of the older hardware freeze.
 
-Build: 32768 bytes, sum16 `2726`, SHA-256
-`813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
-698 bytes differ from stock; all edits remain inside the six guarded filler
-regions plus the boot-entry jump. ROM01 is untouched. The helper usage is now
-10 bytes in the NMI block, 176 in the low block and 355 in the high block;
-the other block sizes are unchanged. Twenty-five filler bytes remain.
+Build: 32768 bytes, sum16 `2609`, SHA-256
+`ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`.
+716 bytes differ from stock; all edits remain inside the seven guarded regions
+(six zero-filler plus one reclaimed) plus the boot-entry jump. ROM01 is
+untouched. The helper usage is now 10 bytes in the NMI block, 176 in the low
+block and 355 in the high block; the other block sizes are unchanged.
+Twenty-five filler bytes remain across the six zero-filler regions (179 free
+including the reclaimed region's 154 spare bytes).
+
+The transmit arm `arm_tx` at `0x0250` replicates the stock handshake arm
+`ROM00:32CC-32EE` (CONFIRMED): raise `LINK_CTRL` bit 5, then bit 4, hold the
+firmware's settle count (32 iterations, ~0.11 ms at 3.6864 MHz), then drop
+bit 5. Bit 4 is left SET — the stock per-byte stream loop leaves it set — so
+after the arm `CTRL_SHADOW` is `13h` (was `03h` before the arm). The arm
+preserves `B` and `E` (the record loop's `OR`/`AND` snapshot) using `D` for
+its delay. Without it the controller accepted `LINK_TXD` writes but emitted
+nothing (hardware run `EE04580302`, no light on either port); the arm mirrors
+the stock order `flag→byte→arm` after the first preamble byte `A5` and at
+each record-frame start (a `COUNT` that is a multiple of 64), just after the
+`COUNT` byte. Wire version stays `0Eh`; the record layout is unchanged (the
+arm is ROM-side only). Two dead writes (`V_ID` and `V_BASE`) were removed to
+make room.
 
 ### Previous setup validation and historical sweep design
 
@@ -140,9 +156,11 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(f'{sum(d)&0xFFFF:04
 |-------------------------|--------|
 | `micron1.bin` (DIP1)    | `ACF8` |
 | `micron2.bin` (DIP2)    | `2E12` |
-| `micron1_exerciser.bin` | `2726` |
+| `micron1_exerciser.bin` | `2609` |
 
 The replacement exerciser SHA-256 is
+`ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`.
+The retired `2726` image SHA-256 was
 `813006c23f350142c83abe1deb495286a62e7eece4e9e0b49c97bdb225b60827`.
 The retired `1E3E` image SHA-256 was
 `5b6ce0b67ebfadad3e5d746dbd1dd4370cd337e99c0d77724e213d941160386b`.
@@ -151,13 +169,14 @@ The retired `2692` image SHA-256 was
 The retired `1225` image SHA-256 was
 `9162097f6ca6bf56674d6cdcd2d3bcb25050902efc813d4eba3dcee3b019ffeb`.
 The dedicated regression test reconstructs the image and locks its
-fingerprint and 698-byte diff count.
+fingerprint and 716-byte diff count.
 
 Read the fitted chips out before burning and compare. A sum match plus a
 `cmp` against `micronic/` is conclusive; the sum alone is a strong check that
-needs no reference to this repo. The `1225`, `2692` and `1E3E` parts should be
-retained only for read-back diagnosis and must not be installed again. Label
-the replacement `2726` and verify its full SHA-256 before installation.
+needs no reference to this repo. The `1225`, `2692`, `1E3E`, and `2726` parts
+should be retained only for read-back diagnosis and must not be installed
+again. Label the replacement `2609` and verify its full SHA-256 before
+installation.
 
 ## Build
 
@@ -165,21 +184,24 @@ the replacement `2726` and verify its full SHA-256 before installation.
 analysis/venv/bin/python analysis/rom_exerciser/build.py
 ```
 
-Writes `micron1_exerciser.bin`. The original is never modified. Six filler
-regions and the boot entry are guarded — the script refuses rather than
-clobbering anything if the image is not the one it was written against:
+Writes `micron1_exerciser.bin`. The original is never modified. Seven regions
+(six zero-filler plus one reclaimed) and the boot entry are guarded — the
+script refuses rather than clobbering anything if the image is not the one it
+was written against:
 
 | Edit | |
 |---|---|
 | `0047`-`0061` | the interrupt handler, in a 31-byte run of `00` filler (4 left) |
 | `0069`-`0072` | failure jump and NMI guard, in a 23-byte run (13 left) |
 | `00A2`-`00FF` | keypad scan, pre-init delay and diagnostic screen, in a 94-byte run (0 left) |
+| `0250`-`02FD` | `arm_tx` transmit arm — reclaimed stock cold-boot/banner code, digest-guarded (SHA-256 `826a1915…4364`, 154 free) — not zero-filler |
 | `724C`-`72FB` | link, LCD and keypad-arm helpers, in a 183-byte run (7 left) |
 | `7CE0`-`7D0F` | stock-reset/LCD and contrast helpers, in a 48-byte run (0 left) |
 | `7E96`-`7FF8` | main body, startup/error reporting and raw sense display, in a 356-byte run (1 left) |
 | `014B` | `JP 7E96`, replacing the cold-boot prologue (checked byte-for-byte first) |
 
-All six filler runs must be empty beforehand. Two other runs of zeros are
+All six zero-filler runs must be empty beforehand; the `0250`-`02FD` reclaimed
+region is checked by SHA-256 digest rather than zero-fill (`826a1915a2f2ec88fe5e8d25cc1c8d5d89d9327a1b544d45d2680f7346694364`). Two other runs of zeros are
 deliberately **not** used, because they are data rather than filler:
 `325B`-`3266` is the drive table's own `E:`-`P:` entries, and `7D1E`-`7D2F`
 is the zero tail of the table at `7D10`, with another table starting at
@@ -191,11 +213,11 @@ and any real one would already be jumping the firmware into 94 bytes of `NOP`. `
 because `0000` → `0103` → `014B`, and the emulator harness starts directly at
 `014B`, so the same patch is exercised on hardware and in the emulator.
 
-The six code regions are a single assembly — `ORG` pads forward and only the
-six real regions are copied out of the blob — so they call each other by name
+The seven code regions are a single assembly — `ORG` pads forward and only the
+seven real regions are copied out of the blob — so they call each other by name
 and there is one symbol table.
 
-**698 bytes differ from the original.** One chip: `ROM01` is untouched.
+**716 bytes differ from the original.** One chip: `ROM01` is untouched.
 
 ## The LCD, first
 
@@ -535,7 +557,8 @@ Silence now reads off the screen:
 display with it. A frozen count beside a running one is unmistakable, which is
 why the watchdog no longer needs a side-port blink of its own.
 
-25 bytes of filler remain across the six blocks.
+25 bytes of zero-filler remain across the six filler blocks (179 free including
+the reclaimed `0250`-`02FD` region's 154 spare bytes).
 
 ## Restoring
 
