@@ -46,6 +46,7 @@ addresses, trace bytes, and confidence tags:
 
 * [Method and evidence rules](re-notes/method.md)
 * [Commstar evidence and traces](re-notes/commstar-evidence.md)
+* [Commstar API evidence](re-notes/commstar-api-evidence.md)
 * [Kernel_TableDispatch tables](re-notes/inline-dispatch.md)
 * [Listing-repair script](re-notes/ghidra-repair-script.md)
 * [OS internals](re-notes/os-diposb.md)
@@ -53,6 +54,8 @@ addresses, trace bytes, and confidence tags:
 * [CP/M comparison](re-notes/cp-m-comparison.md)
 * [Interrupts](re-notes/interrupts.md)
 * [Unbanked RAM map](re-notes/unbanked-ram-map.md)
+* [Memory and I/O evidence](re-notes/memory-and-io-evidence.md) — byte-level
+  derivation for ports, interrupt trace, latch bits, worked example
 * [Barcode capture](re-notes/barcode-capture.md)
 * [RTC](re-notes/rtc.md)
 * [IR wire protocol](re-notes/ir-wire-protocol.md)
@@ -75,12 +78,13 @@ Reference pages use **stability** terms (`Stable` / `Provisional` /
 
 ## Research records
 
-The worklist, coverage tracker, and historical reviews live under
-`research/` in the source tree. They preserve the reasoning trail but are
-not reader-facing API specifications.
+The worklist, coverage tracker, session log, and historical reviews live
+under `research/`. They preserve the reasoning trail; they are not API
+specifications, but they are published alongside the reverse-engineering
+notes.
 
 ## Building the HTML site
 
 See `BUILD.md` in the source repository. The builder publishes this landing
-page plus the `manual/`, `protocol/`, `reference/`, and `re-notes/` trees;
-it intentionally excludes the research archive from site navigation.
+page plus the `manual/`, `protocol/`, `reference/`, `re-notes/`, and
+`research/` trees.
