@@ -29,8 +29,13 @@
   env-gated poke (`MICRONIC_LOGON_POKE=1`) that seeds `ram:ECAB`/`EC99`/`ECA2`
   at the logon step; the record then carried `+0="GRP1"`, `+26="USER1"`,
   `+34="PASS1"` — proving the cell → offset map (`ECAB`→+0, `D120`→+8 blank,
-  `EC8E`→+18, `EC99`→+26, `ECA2`→+34). The `Group/User/Password` labels stay
-  LIKELY. Noted a **pre-existing** failure on master:
+  `EC8E`→+18, `EC99`→+26, `ECA2`→+34). The names are the ROM's own labels
+  (`g_acLogonGroupId`/`g_acLogonUserId`/`g_acLogonPassword`), so Group/User/
+  Password are **CONFIRMED**, not LIKELY. `+18`/`EC8E` is the **workstation
+  id** (the cold-boot serial); Telephone is a separate buffer
+  (`g_acLogonTelephoneNumber`, `ECB4`) used by the connect command. `+8`/`D120`
+  is a lone zero byte before the callback table at `D121` with **no writer**, so
+  it is always blank. Noted a **pre-existing** failure on master:
   `CommstarShadowPeerTest::test_agrees_on_the_plinth_route` asserts
   `agreed>=13` but measures 12 (fails identically on the unmodified harness).
 * CONFIRMED the state-45 command-record assembly provenance:

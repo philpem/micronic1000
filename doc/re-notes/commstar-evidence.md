@@ -1575,11 +1575,11 @@ sources are the V24 Log-on form buffers, latched by `C-INIT-COMMS` (see
 
 | Record field | Source cell | Reading |
 |---|---|---|
-| +0 | `ram:ECAB` | Group id |
-| +8 | `ram:D120` | vestigial — the link-method table's zero terminator; always blank |
-| +18 | `ram:EC8E` | Telephone / workstation id (the banner serial in Load/Run) |
-| +26 | `ram:EC99` | User id — **LIKELY** (layout inference) |
-| +34 | `ram:ECA2` | Password — **LIKELY** (layout inference) |
+| +0 | `ram:ECAB` | Group id — CONFIRMED (`g_acLogonGroupId`) |
+| +8 | `ram:D120` | vestigial — a zero byte before the callback table at `D121`; no writer, so always blank |
+| +18 | `ram:EC8E` | Workstation id (the banner serial in Load/Run) |
+| +26 | `ram:EC99` | User id — CONFIRMED (`g_acLogonUserId`) |
+| +34 | `ram:ECA2` | Password — CONFIRMED (`g_acLogonPassword`) |
 
 The `+0`/`+8`/`+26`/`+34` slots are blank in Load/Run traces because the
 synthetic run never fills the Log-on form (the source buffers are empty), not
@@ -1590,7 +1590,8 @@ the logon step (`MICRONIC_LOGON_POKE=1` in `boot_hw.py`) and running the
 synthetic Load/Run puts `"GRP1"`/`"USER1"`/`"PASS1"` at record `+0`/`+26`/`+34`
 respectively, with `+18="12345678"` and `+8` blank — the cell → offset map is
 proven by execution, not just by the `Lib_StrCopyN` reading. The
-`Group id`/`User id`/`Password` names remain LIKELY form-layout inference.
+`Group id`/`User id`/`Password` names are the ROM's own labels
+(`g_acLogonGroupId`/`g_acLogonUserId`/`g_acLogonPassword`) — **CONFIRMED**.
 
 Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte

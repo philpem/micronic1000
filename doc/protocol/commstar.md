@@ -424,8 +424,8 @@ The four identity fields are latched by `C-INIT-COMMS` from the V24 Log-on
 form buffers and are empty in Load/Run traces (the form is not filled).
 Sources and readings are on the
 [Commstar API page](../reference/commstar-api.md#c-init-comms): `+0` = Group id
-(`ram:ECAB`), `+8` = vestigial blank (`ram:D120`), `+26` = User id (`ram:EC99`,
-LIKELY), `+34` = Password (`ram:ECA2`, LIKELY).
+(`ram:ECAB`), `+8` = vestigial blank (`ram:D120`), `+26` = User id (`ram:EC99`),
+`+34` = Password (`ram:ECA2`) — the ROM's own `g_acLogon*` labels, CONFIRMED.
 
 > Variation experiments and assembly provenance: see
 > [`re-notes/commstar-evidence.md#state-45-object-layout`](../re-notes/commstar-evidence.md#state-45-object-layout).
