@@ -97,11 +97,15 @@ State: continuously updated as work progresses.
 
 ## In progress
 
-- **Pre-existing test failure on master (2026-09-20):**
+- **Bisected test regression on master (2026-09-20):**
   `analysis/test_boot_upload.py::CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
-  asserts `agreed >= 13` but measures `agreed=12`. Verified to fail identically
-  on the unmodified harness, so it predates the ir/9–ir/10 work. Either the
-  assertion or the plinth-route agreement count needs re-deriving.
+  asserts `agreed >= 13`, measures 12. Bisected to `e5baacf` ("replace the
+  receive-arm oracle with timed policy", 2026-09-07): the plinth route went
+  from `agreed=13 unsolicited=1` to `agreed=12 unsolicited=2`, so one scripted
+  reply now finds no expected reply from `CommstarPeer`. The test exists to
+  catch exactly that divergence, so this is a **real peer-modelling gap**, not a
+  stale count: teach `CommstarPeer` the new exchange (or explain the extra
+  reply) rather than lowering the assertion.
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only

@@ -35,9 +35,12 @@
   id** (the cold-boot serial); Telephone is a separate buffer
   (`g_acLogonTelephoneNumber`, `ECB4`) used by the connect command. `+8`/`D120`
   is a lone zero byte before the callback table at `D121` with **no writer**, so
-  it is always blank. Noted a **pre-existing** failure on master:
-  `CommstarShadowPeerTest::test_agrees_on_the_plinth_route` asserts
-  `agreed>=13` but measures 12 (fails identically on the unmodified harness).
+  it is always blank. Bisected a red test on master:
+  `CommstarShadowPeerTest::test_agrees_on_the_plinth_route` (asserts
+  `agreed>=13`, measures 12) to `e5baacf` — the plinth route went
+  `agreed=13 unsolicited=1` → `12/2`, so the script now emits one reply
+  `CommstarPeer` does not predict. That is the divergence the test exists to
+  catch: a real peer-modelling gap, not a stale assertion.
 * CONFIRMED the state-45 command-record assembly provenance:
   `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
   (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
