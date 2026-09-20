@@ -110,6 +110,7 @@ reads `00h..09h` → `g_abRtcRegisterSnapshot`), `Bdos_SetRtcTime`
 Register A (0x0A) rate-select bits drive the periodic interrupt:
 
   | RegA value | DV(6:4) | RS(3:0) | periodic freq |
+  |---|---|---|---|
   | 0x26 (clock self-test) | 010 (32.768k) | 0110 | **1024 Hz** |
   | 0x2A (normal run after set-time) | 010 | 1010 | **64 Hz** |
   | 0x7A (write-time freeze) | 111 (reset) | - | none |

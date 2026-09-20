@@ -55,16 +55,19 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
   EXT STORAGE ADAPTER must attach via one of the two IR ports; defaults are
   `C:=0x73`, `D:=0x72` (wire-ID bit 5 = 1 in both, hence the likely
   back-port state).
-  **Contradicted in part by the ROM**, which is worth recording rather than
-  reconciling away: every one of the fourteen call sites of the drive-id
-  lookup at `ROM00:0824` refuses a non-zero id, so *this* firmware's BDOS
-  implements local drives only. See
-  [open questions](open-questions.md#link-identity-and-port-selection).
+  The earlier claim that BDOS rejects every nonzero drive ID was
+  withdrawn after tracing the session helpers. A BDOS `2Eh` path reaches
+  the transport; successful peer-dependent file operations still need
+  per-operation verification. See
+  [storage evidence and remaining questions](open-questions.md#link-identity-and-port-selection).
 
 When ROM evidence and an owner statement seem to conflict, report the
 contradiction — do not invent a reconciliation.
 
 ## The ROM images are the ones in the machine
+
+The heading records the owner's image provenance. The checksum comparison
+below supports that provenance but does not independently prove identity.
 
 **CONFIRMED.**  The two firmware DIPs carry handwritten labels
 `DIP1 ACF8` and `DIP2 2E12`.  Both are the low 16 bits of the unsigned sum
@@ -79,23 +82,16 @@ programmer of the era prints after a read:
 Nothing was fitted to make this work: a plain byte sum was the first
 algorithm tried, and it matched both chips.  Twenty-one CRC-16 variants and
 a dozen other sum and XOR forms were also computed; none matched either
-label.  Two independent 16-bit agreements is a coincidence of about one in
-4 billion, so the images in `micronic/` **are** the contents of the labelled
-chips, to a 16-bit sum.
+label. The observed result is that both image byte sums match the
+handwritten chip labels. No random-error model was established, so a
+one-in-four-billion probability is not justified.
 
-Two consequences:
-
-* every offset in this record is an offset into the firmware that is
-  physically in the unit, not into a similar dump from elsewhere;
-* the label is a live check.  Reading the chips back and summing gives a
-  number comparable against the label without any reference to this repo,
-  which is the check to run before burning anything (see
-  `analysis/rom_exerciser/README.md`).
-
-A byte sum detects any single-byte error but is permutation-invariant, so it
-proves the images are the right *contents*, not that no compensating pair of
-errors exists.  For that, compare a read-back against `micronic/` byte for
-byte.
+A byte sum detects a single-byte change but is permutation-invariant and
+can miss compensating changes. Treat ROM addresses here as addresses in
+the supplied dumps. To establish that a chip still matches its dump, read
+it back and compare byte for byte; a matching 16-bit sum alone is not
+sufficient. The label remains a useful quick read-back check before
+programming (see `analysis/rom_exerciser/README.md`).
 
 **LIKELY**, from the labels alone: the parts are field-programmed rather than
 masked.  A mask ROM carries a printed vendor part code, not a handwritten
@@ -138,9 +134,11 @@ concatenated names are grandfathered. Labels for ports use `UPPER_SNAKE`.
 
 A reference page states a **contract and its stability** (`Stable` /
 `Provisional` / `Not implementable`). An RE-notes page states **evidence
-and its confidence** (`CONFIRMED`/`SUSPECTED`/`OPEN`). A reference page
-carries no ROM address, no evidence tag, and no trace bytes — it links to
-the RE-notes anchor that does.
+and its confidence** (`CONFIRMED`/`SUSPECTED`/`OPEN`). A reference page leads with the contract and links to the relevant
+RE-notes anchor. Include addresses needed to call the interface and
+explicit limits; keep discovery history and long byte listings in the
+evidence layer. See the [reference status terms](../reference/README.md#stability-terms)
+for the distinction between evidence, validation, support policy, and ROM scope.
 
 For the navigation split and the rule that makes it hold, see the review
 that proposed it (`research/reviews/` archive, Part 3).

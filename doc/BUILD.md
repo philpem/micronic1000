@@ -6,8 +6,8 @@ repository-root `mkdocs.yml` nav: `manual/` (programmer-facing guides),
 (Commstar), and `re-notes/` (reverse-engineering evidence). The legacy
 `internals/` and `manual/` URLs are preserved by `mkdocs-redirects`
 (`redirect_maps` in `mkdocs.yml`); their source files have moved. Research
-records live in `research/` and are excluded from the published
-navigation.
+records live in `research/` and are published under the reverse-engineering
+navigation. `doc/review.md` is a maintainer review excluded from the site.
 
 Mermaid and WaveDrom diagrams are rendered client-side from jsDelivr.
 

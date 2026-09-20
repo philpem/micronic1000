@@ -1,5 +1,49 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-20 — documentation review fixes
+
+* Reconciled supported-profile/Commstar status, reference status vocabulary,
+  navigation/build descriptions, duplicate program-format specifications,
+  pointer rules, resident-memory ownership, and checksum-provenance wording.
+* CONFIRMED: fresh reads and independent investigation/review overturned
+  the all-nonzero-drive-rejected/local-only conclusion. BDOS `2Eh` reaches
+  session transport with a resolved drive-table entry. Discarded the
+  loaded-software/different-ROM reconciliation derived from that error and
+  the unsupported 32/224 KiB A:/B: capacity split. No working remote drive
+  or physical attachment is inferred. The reviewer's initial Open pointer
+  claim was also rejected: its clear helper leaves HL at `F94Eh`.
+* Recorded the remaining request/pointer question in Ghidra and current
+  docs. Scoped pointer advice to plain pointers; BDOS FCB/DMA bounce and
+  bank/address barcode thunks are verified exceptions. Ghidra comments
+  saved without renaming or creating functions.
+
+## 2026-09-20 — documentation accuracy, structure, and rendering review
+
+* Added a dated review to `doc/review.md`, retaining the earlier assessment
+  as history. Recorded outstanding consistency, API, navigation, style,
+  evidence-strength, and publication-check recommendations.
+* CONFIRMED by fresh Ghidra reads: COM capacity remains `CF81h` (53,121
+  bytes), spanning selected bank RAM and fixed RAM; `D081h` is the
+  exclusive ceiling at resident module B. Added the missing explanation
+  and byte-level derivation.
+* With independent same-provider review (no cross-provider tool available),
+  withdrew the built-in monitor, service-key monitor boot, and DE:BC
+  saved-context claims. `ROM00:3513` is `XOR A; RET`; M/Z and cold-boot
+  callers continue. External monitor/ICE interception stays SUSPECTED,
+  with a Ghidra bookmark specifying the missing evidence.
+* Corrected shifted page-zero entries and the claim that RST 20h/28h/30h/
+  38h all share the IRQ handler. Fresh initial-image bytes distinguish
+  the diagnostic and returning-stub paths; later RAM vector patches are
+  a separate question. Updated Ghidra comments and saved the program.
+* Fixed six malformed rendered table blocks and the missing archive review
+  link. The initial strict MkDocs build had accepted all these defects;
+  rendered HTML inspection identified them. No functions renamed/created
+  and no ROM/emulator execution or listing repair performed.
+* Validation: strict MkDocs build and whitespace check passed; rendered
+  HTML scan covered 52 pages with zero malformed table paragraphs or
+  broken relative article links/fragments. Ghidra function-list snapshots
+  were identical before/after (914 internal entries; guarded count 915).
+
 > **Reverse-chronological historical log.** This file records every
 > session of analysis from **2026-08-24** to the present. It is a
 > complete dated audit trail of what was analysed, concluded, overturned,

@@ -41,6 +41,24 @@ zero as the current selection. WORKSTATION MEMORY, WORKSTATION RAMDISK,
 PLINTH, V24 ADAPTOR, and EXT STORAGE ADAPTOR are user-interface/configuration
 names, not a static, universal mapping from drive letters to hardware.
 
+The default table is configuration, not a list of proven storage capacities:
+
+| Selector | Default ID | Established behavior | Remaining limit |
+|---|---|---|---|
+| A: | `00h` | Local filesystem branch | Available capacity depends on runtime allocation |
+| B: | `7Fh` | Nonzero-ID branch into session helpers | A working 224 KiB local RAMDISK is not established by this ID |
+| C: | `73h` | Nonzero-ID branch into session helpers | Peer operation and physical attachment unverified |
+| D: | `72h` | Nonzero-ID branch into session helpers | Peer operation and physical attachment unverified |
+| E:–P: | `00h` | Default ID is zero | Distinct independent volumes are not established |
+
+**CONFIRMED:** fresh `ROM00:3257` bytes give the defaults above. BDOS
+`2Eh` supplies a concrete path from a selected entry to link-session
+setup; the previous “local drives only” interpretation is withdrawn.
+Neither accepting a drive selector nor entering a transport proves a
+successful file operation. Do not relabel B: as a local RAMDISK from menu
+strings or split the total SRAM capacity into assumed drive capacities.
+See [the operation-level evidence](../re-notes/open-questions.md#link-identity-and-port-selection).
+
 The owner confirms a backup cell retains RAM while main batteries are changed.
 The retention and allocation policy of every banked-RAM configuration has not
 been established, so applications must not assume that a named RAMDISK is

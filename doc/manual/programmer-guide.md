@@ -34,8 +34,8 @@ DIPOS-B contract is authoritative.
 DIPOS-B exposes a CP/M-2.2-shaped BDOS interface with a verified compatible
 subset and proprietary extensions. It is entirely in ROM (there is **no CP/M
 disk bootstrap** or CP/M
-disk). The whole OS runs from the Micronic 1000's ROM,
-with the kernel copied to battery-backed RAM at boot. The "disks" are
+disk). The firmware is stored in ROM; the kernel and resident modules are copied
+to battery-backed RAM at boot. The "disks" are
 **RAM**.
 
 The machine is a battery-powered handheld with an LCD, a keyboard,
@@ -102,25 +102,19 @@ BDOS function **12 (return version number)** returns **HL = 0023h**
 
 ### No physical media
 
-There is no floppy, hard, or ROM disk. Files live in **RAM** on two
-logical storage devices:
+The local filesystem uses RAM. The drive table also has nonzero IDs that
+enter session helpers; actual peer-dependent file operations and external
+attachment need verification. A selectable letter is not proof of a
+mounted device or an independent volume.
 
-| Drive letter | Device | Type | Persistence |
-|--------------|--------|------|-------------|
-| **A:** | **WORKSTATION MEMORY** | fixed RAM area | configuration-dependent |
-| **B:** | **WORKSTATION RAMDISK** | banked RAM area | configuration-dependent |
-
-The firmware accepts sixteen drive selectors, but their runtime mapping is
-configuration-dependent. The default FE93 table includes external-link
-entries; do not assume that every unit maps C: through P: identically, or
-that a banked RAM area is not retained by the backup battery. The drive
-letter is a **user-visible selector**, not a hardware-unit number. See
-[devices and storage](devices-and-storage.md).
+The canonical [drive table and operational limits](devices-and-storage.md#drives)
+distinguish default IDs from demonstrated behavior. Do not infer a 32 KiB
+A: volume and a 224 KiB B: volume from total SRAM capacity or menu names.
 
 ### Drive selection
 
 - **Function 0Eh (select disk)**: register E = 0-15. Up to **16
-  drives** are accepted (stock CP/M 2.2 allows 8, A-H). Values >= 16
+  drives** are accepted (drive selection alone does not establish device availability). Values >= 16
   return 0xFF (error).
 - **Function 19h (get current disk)**: returns the currently selected
   drive number in `A` (not `HL`) as the BDOS result; flags are not meaningful
@@ -294,7 +288,7 @@ jumps through garbage — do not probe for extensions by calling them.**
 | fn | action |
 |----|--------|
 | 2Dh | **`Bdos_SelectRst28Mode`** (`ram:F55A`) — mutable RST28 mode selector (`E=FFh` installs `F57B` no-op target, `FEh` default diagnostic `F57E`, `FDh` deferred `F59F` + `HL->FDBA`, `FCh` fatal `F5C0`); global unsafe state |
-| 2Eh | **`Bdos_UpdateDriveDirectoryMetadata`** (`ROM00:0D79`) — drive metadata compute/stage/commit; `A=00h` local, entering `A=2Ch` error path for routed entries (not guaranteed returned `A`) |
+| 2Eh | **`Bdos_UpdateDriveDirectoryMetadata`** (`ROM00:0D79`) — drive metadata compute/stage/commit; `A=00h` local, nonzero entries load `A=2Ch` and enter session helpers; peer-dependent result remains unverified |
 | 30h | shared diagnostic dispatch via `RST 28h` — behaviour conditional on current `2Dh` target |
 | 62h | filesystem/directory integrity check |
 | 68h/69h | no-op stubs |
@@ -347,7 +341,7 @@ takes the warm-restart path.
 
 ---
 
-## 6. Banked calls (RST 2)
+## 6. Banked calls (RST 10h) {#6-banked-calls-rst-2}
 
 DIPOS-B programs and the system itself run from a bank-switched
 window. The OS provides a **banked-call** mechanism so a program can
@@ -361,7 +355,7 @@ machine's programming model:
    DW target    ; 2-byte target address in that bank
 ```
 
-The RST2 dispatcher re-selects the bank via port 47h and vectors to
+The RST 10h dispatcher re-selects the bank via port 47h and vectors to
 the target. **A program only needs this if it is written to live in a
 non-bank-0 page** and must call the kernel; ordinary CP/M-style
 `CALL 5` entry from any bank is already handled by the page-zero
@@ -373,15 +367,15 @@ gate.
 
 | Area | CP/M 2.2 | DIPOS-B |
 |------|----------|---------|
-| Storage | floppy/disk BIOS | RAM "disks": A: MEMORY (32K), B: RAMDISK (224K) |
-| Drives | A-H (8) | A-P selectors; default FE93 uses internal A/B and external C/D, but mapping is configurable |
+| Storage | floppy/disk BIOS | RAM filesystem plus session-backed paths; capacities/remote operation require verification |
+| Drives | Drive selectors | A-P selectors; FE93 configuration and demonstrated operations are separate |
 | Version (fn 0C) | 22h | **23h** |
-| Allocation/DPB (1B/1D) | real | **stubs (`HL=0000h`)**; `1Ah` is implemented set-DMA (stores `DE`) |
+| Allocation/read-only vectors (1B/1D) | implemented | **stubs (`HL=0000h`)**; `1Ah` is implemented set-DMA (stores `DE`) |
 | Diagnostics (0Dh/1Ch/1Eh/1Fh/30h/F4h) | real | **unsafe shared `RST 28h` path; behaviour conditional on `Bdos_SelectRst28Mode` (`ram:F55A`)** |
 | Console device | IOBYTE | **device abstraction** (select via fn 0xF7) |
 | Clock/alarm | n/a | **fns 0xFC-0xFF** (HD146818) |
 | Link/IR config | n/a | **fns 0xF8-0xFB** |
-| Banked calls | n/a | **RST 2h** |
+| Banked calls | n/a | **RST 10h** |
 
 ### Things to avoid
 
@@ -391,9 +385,8 @@ gate.
   diagnostic paths whose behaviour is conditional on the global
   `Bdos_SelectRst28Mode` (`ram:F55A`) — do not call).
 - Do **not** try to select more than 16 drives, or assume drive `C:`+
-  is always a file store — by default `A:`/`B:` are the RAM file
-  stores and `C:`/`D`+ are IR/link devices via `FE93`, but this
-  mapping is **configurable** through `FE93`/`FE83` (see
+  is always a file store — default `A:` has ID `00h`, while `B:`/`C:`/`D:` have nonzero
+  IDs and enter session helpers. The mapping is configurable through `FE93` (see
   [devices and storage](devices-and-storage.md)).
 - Do **not** assume console is always the LCD — it may be redirected
   to the IR link.
@@ -409,7 +402,7 @@ gate.
 
 ---
 
-## 7b. Program image formats: .COM and DIP
+## Program image formats: COM and DIP {#7b-program-image-formats-com-and-dip}
 
 Apart from standard CP/M `.COM` files, DIPOS-B has its own
 block-structured **DIP** program format ("DIP files"), plus a
@@ -418,66 +411,19 @@ block-structured **DIP** program format ("DIP files"), plus a
 `ram:D081 -> ram:D0F0`); it is distinct from the ROM boot-load chain
 (`ram:D6DB` / `ram:D6F4` `fn=0/1/2/FFFF`), which is boot-only.
 
-### DIP file grammar (stable)
+### Packaging a program
 
-A DIP file begins with a **14-byte header** (little-endian):
+Use a COM for a single flat image loaded at `0100h`; use DIP when the
+loader must place blocks in different banks or install banked-call stubs.
+The canonical [program-format reference](../reference/program-formats.md)
+defines headers, block fields, byte order, limits, and exact error messages.
+The COM ceiling includes shared fixed RAM; it is not the size of one bank.
 
-| +0 | `u16` magic `0xC8C9` (bytes `C9 C8`) | +2 `u16` system ID (`0` wildcard or `0x00E5`) |
-| +4 | `u16` entry-bank offset | +6 `u16` image size (clamped to `0x8000`) |
-| +8 | `u16` run-bank offset | +10 `u16` entry address |
-| +12 | `u16` block count (max `5`) | |
-
-Then `blockCount` blocks: each an **8-byte header**
-`{u16 type, u16 dest bank offset, u16 dest address, u16 payload count}`
-followed by payload. **Type 0** copies payload directly to the
-destination; **type 1** payload is 4-byte `{bank offset, target address}`
-items expanded into `{0xD7, resolved bank, target LE}` RST 10h trampolines.
-Only types `0`/`1` have defined handlers; other values take the dispatch
-table's default next-block path without an explicit error. At load time
-each header expands to a **10-byte
-`DIP_LoadedBlockDescriptor`** — `Program_GenerateBlockChecksums`
-(`ROM01:0957`) writes an additive checksum at `+8`; before run
-`Program_VerifyBlockChecksums` (`ROM01:09C2`) recomputes it and mismatch
-reports `0x2332` (9010), **"Program corrupt."** (loaded memory changed, not a file
-checksum).
-
-Loader entry points (stable):
-`Program_PrepareLoadGeometry` (`0A67`), `Program_LoadByName` (`0B82`),
-`Program_ConsumeInputChunk` (`0BAC-0C9A`), `Program_LoadDipOrCom`
-(`0CE7`), `Program_RunByName` (`106F`),
-`Program_NormalizeLoadRange` (`0AE3`),
-`Program_ReportLoadError` (`0CCB`), final transfer
-`ROM01:10C6 -> ram:D7F0` (`Program_LoadedProgram`).
-The loader is coroutine-driven (CONFIRMED); the staging-cell protocol,
-the five staging targets, and the residual sub-question about how the
-session peer learns the staging addresses are all documented in
-[RE notes: OS internals](../re-notes/os-diposb.md#runtime-program-loading-loadrun-loader-confirmed).
-BDOS `open`/`read`/`search` are generic FCB services, there is no BDOS
-execute function.
-
-Fallback to COM (stable): if the first chunk is **<14 bytes** or its
-first word **`!= 0xC8C9`**, the loader treats input as **raw COM**, copies
-to `0x0100`, run-bank `0`, entry `0x0100`. The exclusive load ceiling is
-`0xD081`, the start of resident module B, so the maximum COM length is
-`0xD081 - 0x0100 = 0xCF81` bytes (**53,121 bytes**); the last loaded byte is
-at `0xD080`.
-
-For DIP, the entry-bank offset (`+4`) establishes the load range relative
-to the selected program-bank base. The run-bank offset (`+8`) is resolved
-separately immediately before execution, and the entry address (`+10`) is
-the Z80 address jumped to in that bank. Block count (`+12`) controls how
-many following block header/payload pairs are loaded and later checksum-
-verified; the fixed runtime descriptor array permits at most five.
-
-> Full byte-level spec, error catalogue and boot-chain distinction: see
-> [Program formats: COM and DIP](../reference/program-formats.md). The DIP header,
-> block grammar and 8→10-byte expansion are stable there; `ram:ECDA`
-> as the maximum available entry-bank offset is **provisional** only.
-
-A stored `.COM`, in contrast, is the ordinary CP/M single-image file
-loaded at 0100h; the loader validates it (`COM file too big`,
-`Program corrupt` — the latter is the same post-load checksum mismatch)
-but has no multi-block structure.
+For producer helpers and executable validation examples, see
+[building and validating images](../reference/program-formats.md#building-and-validating-images).
+Validation checks image structure, not availability of a bank or physical
+transfer compatibility. The loader's checksum detects changes to loaded
+memory before execution; it is not a checksum stored in the file.
 
 ### Advantages of DIP over .COM
 
@@ -504,7 +450,7 @@ but has no multi-block structure.
 
 ---
 
-## 8. Where this comes from
+## Evidence and scope {#8-where-this-comes-from}
 
 This guide is based on static analysis of the `micron1.bin` ROM
 (banks 0/1) in Ghidra:
@@ -527,8 +473,8 @@ and that avoids the unsafe dispatch range `25h-F2h` and the `F3h-FFh`
 extensions (especially the unsafe global state in `F6h-FBh` and the
 `Bdos_SelectRst28Mode` / `Bdos_UpdateDriveDirectoryMetadata` specials),
 will run on DIPOS-B with the **caveats** that `19h` returns `A` not
-`HL`, drive `C:`+ is by default a link device but the `FE93` mapping
-is configurable, and `FCh`/`FDh` use the
+`HL`, drive selection does not guarantee a usable device (see the
+[drive table](devices-and-storage.md#drives)), and `FCh`/`FDh` use the
 [8-byte RTC record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)
 (`+0` metadata provisional century `19`, exact value open). The remaining
 differences (`FCh`/`FDh` clock, `FEh` `Bdos_InternalTimedWait`, `FFh`

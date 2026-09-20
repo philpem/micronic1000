@@ -6,15 +6,6 @@ shadow stack, the memory region table, stacks and heap, I/O port map,
 latch-bit usage, and the rules for writing resident code. Intended for
 anyone developing or patching code that must live in unpaged RAM.
 
-* [Stability](#stability)
-* [1. The banked memory model](#1-the-banked-memory-model)
-* [2. The inter-bank call: RST 10h](#2-the-inter-bank-call-rst-10h)
-* [3. Memory map](#3-memory-map)
-* [4. Stacks and heap](#4-stacks-and-heap)
-* [5. I/O port map](#5-io-port-map)
-* [6. Writing code that lives in unpaged RAM](#6-writing-code-that-lives-in-unpaged-ram)
-* [7. ROM-version fragility](#7-rom-version-fragility)
-
 This page is the programmer's reference for how a Micronic 1000 addresses
 memory: what the bank window holds, what the fixed upper 32K holds, how
 code in one bank calls code in another, where the stacks live, whether
@@ -29,9 +20,10 @@ It is written for three jobs in particular:
 * passing buffers across the Commstar and BDOS entry points without
   silently handing the callee an address that is not mapped.
 
-All three depend on the same fact, which is the single most important
-thing on this page: **a pointer handed across a bank boundary must
-address unbanked RAM, at or above `0x8000`.**
+All three require explicit pointer-mapping rules. A plain pointer into the
+lower window changes meaning when the bank changes. Use fixed RAM for a
+pointer dereferenced under another bank unless the API explicitly copies
+the data, restores the caller's bank, or carries a bank/address descriptor.
 
 !!! danger "Every address here is specific to *this* ROM image"
     The bank hardware, the `RST 10h` convention and the split at `8000`
@@ -75,7 +67,7 @@ For evidence tags and the full derivation record, see
 The Z80's 64K address space is split in half.
 
 | Range | Size | Behaviour |
-|---|---|---:|---|
+|---|---:|---|
 | `0000`-`7FFF` | 32K | **Bank window.** Contents selected by port `47h`. |
 | `8000`-`FFFF` | 32K | **Fixed battery-backed SRAM.** Always mapped, in every bank. |
 
@@ -313,14 +305,15 @@ whatever depth the firmware was already at when it called you.
 Cursor reset bytes and arithmetic derivation: see
 [RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
-### 2.5 The rule, and two independent corroborations
+### Pointer mapping and bank-aware exceptions {#25-the-rule-and-two-independent-corroborations}
 
 **The caller's bank is restored when the callee returns, but it is not
 mapped while the callee runs.** Between `ram:D75F` and `ram:D762` the
 lower 32K belongs to the callee. Therefore:
 
-> Any pointer passed across a bank boundary — argument, buffer, return
-> area, callback address — must be `>= 0x8000`.
+> A plain pointer dereferenced after remapping the lower window must
+> address fixed RAM (`>= 8000h`) unless the callee explicitly handles
+> the pointer's bank. Follow the individual API contract.
 
 Two places in the firmware confirm this from opposite directions.
 
@@ -344,10 +337,16 @@ ram:f521  E1 C9         POP HL; RET
 ```
 
 CONFIRMED, byte-verified at `ROM00:3A2D`. The firmware pays for a 128-byte
-copy rather than let a banked pointer cross the boundary. So should you.
+copy so that this BDOS interface can accept a banked DMA pointer.
+The FCB helper at `ram:F4EB` similarly copies a lower-window FCB through
+fixed RAM using `ram:F498`; its caller at `ROM00:0877` precedes drive
+resolution. These are **CONFIRMED bank-aware exceptions**, rechecked
+2026-09-20, not a requirement that all BDOS callers supply fixed buffers.
 
-**The barcode decode hook makes the same test explicitly** — see
-[§6.2](#62-barcode-decoder-module).
+**The barcode decode hook carries a bank and address.** Its thunk can
+select the decoder's bank; it is not a plain unqualified callback pointer.
+See [the hook socket](barcode.md#the-socket). Do not generalize these
+exceptions to Commstar or other APIs whose buffer contract requires fixed RAM.
 
 ---
 
@@ -408,11 +407,11 @@ It is the authority; this is the programmer-facing summary.
     appears as a literal. Do not use either.
 
     `F68D`-`F77F` and `FFA9`-`FFFF` remain **LIKELY unclaimed / OPEN**.
-    `F68D` is simply the first byte after the resident kernel image —
-    and `F180 + 0x600 = F780`, so the 243 bytes are the unused remainder
-    of a round 1536-byte kernel arena. The RE notes carry the current
-    state and the discriminating tests; consult them rather than inferring
-    from this page.
+    `F68D` is the first byte after the resident kernel image. The earlier
+    round-1536-byte-arena explanation is withdrawn: the
+    [unbanked-RAM investigation](../re-notes/unbanked-ram-map.md) rejects it.
+    Lack of observed writes in the tested workloads does not allocate
+    these spans to applications or establish safety on untested paths.
 
 !!! danger "`E48C`-`E6FF` is live Commstar session state"
     Staging data there has already caused a real bug in this project
@@ -680,28 +679,30 @@ of `F791`, will mis-route the next cross-bank call.
 
 Two kinds of resident code are in scope: a **barcode decoder module**
 that the ROM calls after each scan, and a **patch to an OS function**.
-Both must live at or above `8000`, for the reason in
-[§2.5](#25-the-rule-and-two-independent-corroborations): the ROM will
-call you with a bank other than yours selected.
+The fixed-RAM placement described here avoids bank-mapping dependencies.
+The barcode hook also supports a bank/address thunk; its decoder and result
+buffer must follow the [hook contract](barcode.md#the-decode-hook).
+A direct OS-vector patch must remain mapped when called.
 
 ### 6.1 Where to put it
 
 Ranked, from
 [RE notes: Unbanked RAM map](../re-notes/unbanked-ram-map.md#safe-for-scratch):
 
-1. **`C000`-`D080` (4225 bytes)** — first choice. The top of the unbanked
-   TPA, immediately below the loader's ceiling. No instruction anywhere
-   in the firmware references any address in `8006`-`D080`, and `D081` is
-   a hard firmware constant, not an inference.
+1. **`C000`-`D080` (4225 bytes)** — a candidate only if your image and
+   runtime allocations leave it unused. A COM larger than `BF00h` bytes
+   reaches `C000h`; a DIP can place a block there explicitly. Reserve the
+   space in your application layout and check existing resident hooks.
 2. **`8006`-`BFFF` (16378 bytes)** — same argument, four times the room,
    but it is the part of the TPA a growing program image reaches first.
-   Use it only when you know your image size.
+   Use it only when you know the image, buffers, stacks, and resident
+   allocations leave the chosen subrange free. No allocator reserves it.
 
 Everything else that *looks* free is not:
 
-* `F68E`-`F77F` is unreferenced but sits 128 bytes below the system
-  stack top, behind the port shadows. Anything you put there is a
-  stack-depth canary, not scratch.
+* `F68D`-`F77F` remained unwritten in the recorded workloads, but is below
+  the system stack and port shadows. The measured low-water mark is not
+  a worst-case guarantee. Do not use it as general application scratch.
 * `FFA9`-`FFFF` (87 bytes) is big enough for a signature word, and is
   immediately adjacent to a densely packed BIOS variable block.
 * `FD64`-`FD83` and `FE45`-`FE82` **look** unreferenced and are not:
@@ -733,7 +734,7 @@ unbanked RAM**, which makes it a real hook point rather than a
 theoretical one. There is one table base and two windows onto it:
 
 | Table | Address | Index | Covers |
-|---|---|---|---|---|
+|---|---|---|---|
 | CP/M range | `ram:F1EB`+ | `F1EB + 2×fn` | BDOS functions from `00h` |
 | Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh` |
 

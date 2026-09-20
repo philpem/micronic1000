@@ -18,7 +18,11 @@ State: continuously updated as work progresses.
    (queue ED1C-F17F doubles as task list AND UI vtable targets)
 6. Template builder / object system decoded (ROM01:0271)
 7. Warm restart path decoded
-8. Monitor located (Monitor_Enter ROM00:3513)
+8. Diagnostic monitor entry verified as a returning stub (`ROM00:3513`,
+   `XOR A; RET`, rechecked 2026-09-20). Prior built-in-monitor and
+   service-key monitor-boot claims withdrawn. External monitor/ICE use
+   remains SUSPECTED; resolve with alternate-ROM/debugger evidence or an
+   interception trace. See [debug facilities](../re-notes/os-diposb.md#debug-facilities).
 9. Keyboard matrix fully decoded (H+L+P = HELP service key;
    drive(02)=col bit, sense(00)=row bit, index=row*6+col)
 10. Interrupt architecture fully decoded (IM1 -> 0038 -> F5F3 -> F64D ->
@@ -30,11 +34,9 @@ State: continuously updated as work progresses.
     regs 00,02,04,06,07,08,09 = time file; 0A/0B = status/ctrl;
     0C = interrupt flags. See internals/rtc.md. The 4x
     latch cluster (4A/4B/4D/4F) is NOT the RTC (owner-confirmed).
-14. **ROM documentation-coverage baseline** (doc/research/gap-analysis.md):
-    of 480 functions, only 88 (18 %) carry meaningful names; 392 are
-    still auto `FUN_*` (ROM00 237, ROM01 91, RAM modules ~40). The
-    named set is the boot/RTC/link/LCD/clock/diagnostic subsystems.
-    In-progress tracked there.
+14. **Documentation coverage:** current counts and their scope are maintained
+    only in [gap-analysis.md](gap-analysis.md). See the historical pass log
+    for earlier baselines; they are not the current state.
 15. **CP/M implementation comparison** (doc/internals/cp-m-comparison.md):
     BDOS dispatch table ROM00:3708→ram:F1EB; fns 00-24h = CP/M 2.2
     semantics, with DIPOS extensions & stubs. Annotated ~30 `Bdos*`
@@ -95,6 +97,11 @@ State: continuously updated as work progresses.
 
 ## In progress
 
+- **Documentation consistency corrections (2026-09-20):** current summaries
+  reconciled; see `doc/review.md` for implementation status. The local-only
+  storage conclusion was overturned by fresh BDOS `2Eh` tracing and review.
+  Still open: routed per-operation pointer/request contracts and successful
+  peer replies; capture these before claiming operational B:/C:/D: storage.
 
 - **Session modules loaded into Ghidra** (MCP inline script; also in
   FillBatteryRam.java). Module A (D893-E0F3), Module B (D081-D2CA),

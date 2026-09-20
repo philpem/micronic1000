@@ -1,10 +1,10 @@
 # Micronic 1000 — CP/M implementation comparison
 
-Status: 2026-08-29. Source: Ghidra analysis of `micron1.bin` (ROM00
+Status: 2026-09-20 (storage claims corrected; other findings retain their cited evidence). Source: Ghidra analysis of `micron1.bin` (ROM00
 kernel + ROM01 UI), plus the drive/device and operating-system analysis
 in this directory.
 
-## Bottom line
+## Compatibility scope
 
 The Micronic 1000 runs a **CP/M-2.2-shaped BDOS with a verified compatible
 subset**, implemented
@@ -13,8 +13,9 @@ in ROM00 (bank 0) and shadowed into battery RAM at `ram:F180`+
 **ROM00:3708 → ram:F1EB** (byte-identical copy). Function numbers
 0-36 (00-24h) include both compatible calls and verified deviations; above
 that are proprietary extensions. **There is no conventional BIOS on disk** —
-the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
-= 32K battery RAM, Workstation RAMDISK = 224K banked RAM).
+the firmware is supplied in ROM and the local filesystem uses RAM.
+Do not infer drive capacities from the 256 KiB SRAM total; see
+[drive configuration and limits](../manual/devices-and-storage.md#drives).
 
 ## BDOS entry and dispatch
 
@@ -101,9 +102,9 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
 ## Deviations from stock CP/M 2.2
 
 1. **No disk BIOS** — everything is ROM; file storage is RAM.
-   The default FE93 table uses WORKSTATION MEMORY / WORKSTATION RAMDISK for
-   A/B and external-link entries for C/D. The table is configurable; this is
-   not a universal C:+ mapping.
+   FE93 distinguishes a zero local ID from nonzero IDs that enter session
+   helpers. Menu names do not prove capacities or operational remote drives;
+   see [drive configuration](../manual/devices-and-storage.md#drives).
 2. **Version number returns 0x23** (CP/M 2.3 style), not stock 0x22.
 3. **Several CP/M functions are stubs or unsafe diagnostics:**
     `1Bh`/`1Dh` get allocation/read-only vector return `HL=0000h` stubs;
@@ -119,7 +120,8 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
    `Link_SelectActiveDevice` (fbc5/f97c) — output can be re-targeted
    to the IR link (Commstar), not just the LCD. fn06 (direct console
    I/O) is the session layer's poll/read primitive.
-5. **Up to 16 drives** (select < 0x10) vs stock 8 (A-P vs A-H).
+5. **Sixteen drive selectors** are accepted (select < 0x10); this does
+   not establish sixteen independent or present storage devices.
 6. **DIPOS extensions**: fn 2D/2E/30/62/68/69 and the wrapped
    F3+ table (see next section) — these are how the Commstar session
    layer calls into BDOS. The session uses fns 06, 0D, 10, 12, 13,
@@ -132,7 +134,7 @@ the whole OS is in ROM, and the "disks" are RAM (Workstation MEMORY
 | fn | handler | purpose |
 |----|---------|---------|
 | 2D | `ram:F55A` (`Bdos_SelectRst28Mode`) | **mutable RST28 mode selector** — `E=FFh` installs no-op target `F57B`, `FEh` default diagnostic `F57E`, `FDh` deferred `F59F` (`HL->FDBA`), `FCh` fatal `F5C0`; other `E` leaves target unchanged; `A` preserved; global unsafe state |
-| 2E | `ROM00:0D79` (`Bdos_UpdateDriveDirectoryMetadata`) | drive metadata compute/stage/commit; `E=00h` current drive else `FE93` entry; local `00h` → `A=00h`, nonzero loads selector `A=2Ch` and enters shared error path |
+| 2E | `ROM00:0D79` (`Bdos_UpdateDriveDirectoryMetadata`) | drive metadata compute/stage/commit; `E=00h` current drive else `FE93` entry; local `00h` → `A=00h`, nonzero loads `A=2Ch` and enters session setup/transfer helpers; successful remote operation is not established |
 | 30 | `ROM00:1893` (`Bdos_SharedErrorStub` via `RST 28h`) | shared diagnostic — behaviour conditional on `2Dh` target |
 | 62 | `ROM00:0742` (`Bdos_ExtFn62`) | directory/filesystem integrity check (scans 16-byte dir entries @`f8b8` via `0746`) |
 | 68/69 | `ROM00:115E` (`Bdos_ExtFn68`) | no-op stubs |

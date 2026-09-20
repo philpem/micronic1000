@@ -9,9 +9,16 @@ carry the underlying evidence.
 * **Stable** — documented signature and return; safe to use where noted.
 * **Provisional** — exists but has global side effects or incomplete ABI;
   use with caution.
-* **Not implementable / Advanced, unsafe** — global-state mutation or
+* **Advanced, unsafe** — use restriction for global-state mutation or
   diagnostic path; an ordinary application must not call it without the
   full contract.
+
+Scope: supplied ROM images. Unless specified, returned registers and flags
+are unspecified under the [BDOS envelope](bdos.md#calling-convention).
+Pointer arguments must follow the [buffer-mapping rules](bdos.md#shared-card-rules).
+Missing blocking bounds or error sets are unknown, not guarantees of success.
+Validation provenance is linked from each service; advanced use restrictions
+are separate from contract maturity.
 
 ## Overview
 
@@ -36,7 +43,7 @@ Calling a function in `25h-F2h` that is not listed here is
 For dispatch evidence, see [RE notes: OS internals](../re-notes/os-diposb.md) and
 [RE notes: CP/M comparison](../re-notes/cp-m-comparison.md).
 
-## Safe extensions
+## Extension contracts
 
 ### F3h — no-op
 

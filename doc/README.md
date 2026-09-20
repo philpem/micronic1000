@@ -7,6 +7,15 @@ reverse-engineering questions.
 
 ## Start here
 
+Choose a path for your task:
+
+* **Use the handheld:** user guide → menus and error recovery.
+* **Write an application:** supported profile → programmer guide → API cards
+  and program formats.
+* **Investigate firmware:** method and evidence rules → subsystem evidence →
+  current worklist. Historical session entries describe what was believed
+  at the time; consult the current evidence before relying on them.
+
 * [User guide](manual/user-guide.md) — keyboard, menus, and error screens.
 * [Supported application profile](manual/supported-profile.md) — conservative
   boundary for portable COM applications.
@@ -26,11 +35,11 @@ reverse-engineering questions.
 
 **Where Commstar stands.** Both directions now run end to end against real
 firmware in the emulator: a program download to the handheld, and a record
-upload from it. What blocks an interoperable *physical* host is the IR wire
-layer — modulation, byte framing and timing are uncaptured — plus a
-wire-visible equivalent of the receive arm the emulator peer reads out of
-RAM. The protocol document says which parts of the synthetic peer a physical
-server could reproduce and which it could not.
+upload from it. Outbound IR framing and timing have been captured. A
+physical host is still blocked on the return-side handshake and validation
+of the timed receive-arm policy. See the
+[current protocol status](protocol/commstar.md#scope-and-implementation-status)
+for the distinction between captured wire behavior and emulator results.
 
 ## Reference
 
@@ -62,8 +71,9 @@ addresses, trace bytes, and confidence tags:
 * [ROM exerciser test plan](re-notes/exerciser-test-plan.md)
 * [Open questions](re-notes/open-questions.md) — single address for every `OPEN`
 
-Legacy paths under `internals/` and `manual/bdos-reference.md` etc. remain
-on disk and redirect to the new locations.
+MkDocs generates redirects for legacy URLs under `internals/` and for
+moved manual pages such as `manual/bdos-reference.md`; the old Markdown
+source files have moved.
 
 ## Evidence labels
 
