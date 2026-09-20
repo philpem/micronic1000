@@ -1,5 +1,20 @@
 # Memory and I/O map
 
+**On this page:** The programmer's reference for the Micronic 1000
+memory model — banked vs fixed RAM, the `RST 10h` inter-bank call, the
+shadow stack, the memory region table, stacks and heap, I/O port map,
+latch-bit usage, and the rules for writing resident code. Intended for
+anyone developing or patching code that must live in unpaged RAM.
+
+* [Stability](#stability)
+* [1. The banked memory model](#1-the-banked-memory-model)
+* [2. The inter-bank call: RST 10h](#2-the-inter-bank-call-rst-10h)
+* [3. Memory map](#3-memory-map)
+* [4. Stacks and heap](#4-stacks-and-heap)
+* [5. I/O port map](#5-io-port-map)
+* [6. Writing code that lives in unpaged RAM](#6-writing-code-that-lives-in-unpaged-ram)
+* [7. ROM-version fragility](#7-rom-version-fragility)
+
 This page is the programmer's reference for how a Micronic 1000 addresses
 memory: what the bank window holds, what the fixed upper 32K holds, how
 code in one bank calls code in another, where the stacks live, whether
@@ -31,9 +46,7 @@ address unbanked RAM, at or above `0x8000`.**
     example, and treat every four-digit RAM address below as
     "true of this dump", not "true of the Micronic 1000".
 
-For the short stability-classified summary of the same hardware, see
-[Memory and I/O map](memory-map.md). For the evidence trail behind the
-unbanked region table, see
+For the evidence trail behind the unbanked region table, see
 [RE notes: Unbanked RAM map](../re-notes/unbanked-ram-map.md).
 
 ## Stability
@@ -52,11 +65,8 @@ Battery RAM retains program and filesystem state across power-off. The
 allocation policy of any banked configuration beyond the fixed
 `8000-FFFF` window is not a stable contract.
 
-## Evidence tags
-
-Claims here carry the project's tags: **CONFIRMED** (read from the
-bytes), **LIKELY** (firmware evidence plus a documented hardware fact),
-**SUSPECTED** (plausible, unverified), **OPEN** (not established).
+For evidence tags and the full derivation record, see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ---
 
@@ -65,50 +75,38 @@ bytes), **LIKELY** (firmware evidence plus a documented hardware fact),
 The Z80's 64K address space is split in half.
 
 | Range | Size | Behaviour |
-|---|---:|---|
+|---|---|---:|---|
 | `0000`-`7FFF` | 32K | **Bank window.** Contents selected by port `47h`. |
 | `8000`-`FFFF` | 32K | **Fixed battery-backed SRAM.** Always mapped, in every bank. |
 
-CONFIRMED: the split is visible in every bank-aware routine in the
-firmware; the clearest single witness is the BDOS DMA test at
-`ROM00:3A2D` (`2A A3 FF 7C FE 80 D0`), which branches on
-`address >= 0x8000` — see [§2.5](#25-the-rule-and-two-independent-corroborations).
+The split is CONFIRMED and visible in every bank-aware routine — the clearest
+single witness is the BDOS DMA test branching on `address >= 0x8000`
+(see [§2.5](#25-the-rule-and-two-independent-corroborations)).
 
 ### 1.1 What selects a bank
 
 A bank is selected by writing its number to **port `47h`**, and the
 firmware always mirrors that write into the shadow byte
-**`ram:F791`**. The canonical setter is four instructions:
-
-```
-ram:f41b  F3            DI
-ram:f41c  32 91 F7      LD   (F791),A     ; shadow first
-ram:f41f  D3 47         OUT  (47h),A      ; then the hardware
-ram:f421  CD 4E F5      CALL F54E         ; conditional EI (tests FFA8)
-ram:f424  C9            RET
-```
-
-CONFIRMED, byte-verified at `ram:F41B`-`F424`. The same
-`LD (F791),A / OUT (47h),A` pair appears at `ram:F4B0`, `ram:F4BA`,
-`ram:F443`, `ram:F463`, `ROM00:39D0`, `ROM00:39DA` and elsewhere —
-**37 `OUT (47h),A` sites in `ROM00` alone**.
+**`ram:F791`**. The canonical setter is four instructions and carries a
+`DI`/conditional `EI` wrapper. CONFIRMED, byte-verified.
 
 Three consequences for a programmer:
 
 * **`ram:F791` is authoritative, not advisory.** Every dispatcher in the
   firmware reads `F791` to learn the current bank rather than reading the
-  port back; `ROM00:0012` (`3A 91 F7`) is the first instruction of the
-  inter-bank call path. If you switch banks yourself and do not update
-  `F791`, the next `RST 10h` will compare against a stale value and take
-  the wrong branch. CONFIRMED.
+  port back. If you switch banks yourself and do not update `F791`, the
+  next `RST 10h` will compare against a stale value and take the wrong
+  branch. CONFIRMED.
 * **Bank switches run with interrupts disabled.** The setter does `DI`
   before the `OUT` and re-enables only if the interrupt-enable shadow
-  `ram:FFA8` is non-zero (`ram:F54E`: `LD A,(FFA8); OR A; JP Z,…; EI`).
-  CONFIRMED.
+  `ram:FFA8` is non-zero. CONFIRMED.
 * **The switch is instantaneous and total.** There is no partial or
   windowed mapping: the whole of `0000`-`7FFF` changes at once, including
   the code you are executing if you are executing below `8000`. This is
   why the bank helpers themselves live at `F180`+ in fixed RAM.
+
+Derivation and site catalogue: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ### 1.2 What the banks contain
 
@@ -128,11 +126,10 @@ the page-zero installer stamps into every RAM bank. CONFIRMED
 (consistency), LIKELY (the identity of banks 2+ as specific SRAM pages).
 
 **The bank number space runs `00`-`40`.** The page-zero installer and the
-bank sweeper both count `C = 0x41` downward (`ram:F425`, `ram:F438`,
-`ram:F46E`: `0E 41 / 0D` = `LD C,41h; DEC C`), and the RAM presence scan
-counts `B` up from `1` and stops at `0x41` (`ROM00:267A` `06 01`,
-`ROM00:26C8` `FE 41`). CONFIRMED. That is 65 possible banks; how many are
-populated on a given machine is discovered at boot, not assumed.
+bank sweeper both count `C = 0x41` downward, and the RAM presence scan
+counts `B` up from `1` and stops at `0x41`. CONFIRMED. That is 65 possible
+banks; how many are populated on a given machine is discovered at boot, not
+assumed.
 
 ### 1.3 What every bank has in common
 
@@ -140,20 +137,8 @@ Three things are guaranteed present no matter which bank is selected,
 because the firmware puts them there:
 
 **Page zero.** `ram:F438` (`Boot_BankWalkInit`) walks banks `40h` down to
-`01`, selecting each in turn and writing the fixed vectors into it:
-
-```
-ram:f449  3E C3         LD   A,C3h        ; JP opcode
-ram:f44b  32 00 00      LD   (0000),A
-ram:f44e  21 38 F2      LD   HL,F238
-ram:f451  22 01 00      LD   (0001),HL    ; 0000: JP F238
-…
-ram:f456  32 05 00      LD   (0005),A
-ram:f459  21 80 F1      LD   HL,F180
-ram:f45c  22 06 00      LD   (0006),HL    ; 0005: JP F180  (BDOS gate)
-```
-
-CONFIRMED, byte-verified at `ram:F449`-`F45E`. `ROM01:0000` and
+`01`, selecting each in turn and writing the fixed vectors (`0000: JP F238`,
+`0005: JP F180`, etc.) into it. CONFIRMED, byte-verified. `ROM01:0000` and
 `ROM01:0005` already contain exactly those two `JP`s, so bank 1 needs no
 patching and the write is harmless.
 
@@ -174,10 +159,9 @@ fixed RAM:
 | `0066` | `JP F5F6` | NMI |
 
 CONFIRMED, byte-verified in both ROM images, which are **identical from
-`0005` onward** — only `0000` differs (`C3 03 01` in `ROM00`,
-`C3 38 F2` in `ROM01`). Because every target is `>= F180`, i.e. in the
-fixed upper 32K, an interrupt or a `CALL 0005h` lands in mapped code from
-any bank. `IM 1` is set at `ROM00:22EC` (`ED 56`).
+`0005` onward** — only `0000` differs. Because every target is `>= F180`,
+i.e. in the fixed upper 32K, an interrupt or a `CALL 0005h` lands in
+mapped code from any bank. `IM 1` is set at `ROM00:22EC` (`ED 56`).
 
 Note the `0018` row: the `RST 10h` dispatcher is 15 bytes and runs
 straight through the `RST 18h` slot, which holds `D7` (`RST 10h`) at
@@ -185,22 +169,25 @@ straight through the `RST 18h` slot, which holds `D7` (`RST 10h`) at
 
 **The chain pointer at `7FFC`.** The last word of each bank's window
 points at that bank's boot-load record chain; the boot code reads it with
-`2A FC 7F` (`LD HL,(7FFC)`) twice, once per ROM bank. CONFIRMED at
-`ROM00:703C` and `ROM00:7047`. See
-[RE notes: OS internals](../re-notes/os-diposb.md).
+`LD HL,(7FFC)` twice, once per ROM bank. CONFIRMED at `ROM00:703C` and
+`ROM00:7047`. See [RE notes: OS internals](../re-notes/os-diposb.md).
+
+Boot installer listing and byte comparisons: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ### 1.4 Which banks hold RAM
 
 At cold boot the firmware pattern-tests every bank and records the result
 as a **per-bank presence bitmap at `ram:FEB0`-`FEEF`**, one byte per bank
-for banks `01`-`40`, each byte a 4-bit mask of the bank's four 8K pages
-(`ROM00:267A`-`26D6`; `LD HL,FEB0` at `267F`, `LD B,1` at `267A`,
-`CP 41h` at `26C8`, `LD DE,2000` 8K stride, `55AA`/`AA55` patterns).
-A second pass at `ROM00:26E3` rescans 63 entries comparing each against
-`0Fh` (all four pages good). CONFIRMED.
+for banks `01`-`40`, each byte a 4-bit mask of the bank's four 8K pages.
+A second pass rescans 63 entries comparing each against `0Fh` (all four
+pages good). CONFIRMED.
 
 Summary cells: `ram:FEA7`/`FEA8` bank range, `FEA9`/`FEAA` page counts,
 `FEAB` the RAM-size word, `FEAF` `g_bRamBankBitmap`.
+
+Pattern-test trace and addresses: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ---
 
@@ -226,70 +213,17 @@ instructions — they are data.
 
 The firmware keeps a whole arena of these: **281 four-byte slots at
 `ram:ED1C`-`F17F`**, filled by the boot chains and used as UI vtable
-targets and deferred-call records.
+targets and deferred-call records. The arena is initialised by
+`Kernel_InitCopyData` replicating one 4-byte template across all 281
+slots. **Template is `21 01 00 C9` — `LD HL,0001; RET`**, so an
+*uninstalled* slot returns `HL = 1` and does nothing. A slot only becomes
+`{D7, bank, lo, hi}` when a boot-chain `fn=2` record installs it.
 
-The arena is initialised by
-`Kernel_InitCopyData` (`ram:D6C0`, entered `ROM00:7039`
-via `CopyKernelDispatchBlock`) replicating one 4-byte
-template across all 281 slots:
-
-```
-ram:d6c0  21 D7 D6      LD   HL,D6D7      ; template source
-ram:d6c3  11 1C ED      LD   DE,ED1C      ; arena base
-ram:d6c6  01 04 00      LD   BC,4
-ram:d6c9  ED B0         LDIR              ; D6C9: 4-byte copy D6D7→ED1C
-ram:d6cb  21 1C ED      LD   HL,ED1C
-ram:d6ce  11 20 ED      LD   DE,ED20
-ram:d6d1  01 60 04      LD   BC,460h
-ram:d6d4  ED B0         LDIR              ; D6D4: 0x460-byte copy ED1C→ED20
-```
-
-CONFIRMED, byte-verified (EOLs at `D6D1`/`D6D4`).
-`4 + 0x460 = 0x464 = 1124`, exactly the arena size
-`ED1C-F17F` **including the `EE00-EE4F` stub arena**
-(the old plate claim "does NOT touch `EE00`/`F100`"
-was **wrong** and is corrected; `D6D4` fills
-`ED20-F17F`). **Template is `21 01 00 C9` —
-`LD HL,0001; RET`** (`ROM00:7086`, i.e. `ram:D6D7`),
-so an *uninstalled* slot is not a banked stub: it
-returns `HL = 1` and does nothing. A slot only
-becomes `{D7, bank, lo, hi}` when a boot-chain
-`fn=2` record installs it.
-
-The cursor `ram:D684` is seeded to `ED1C` by the two
-literal bytes `1C ED` at `ROM00:7033` inside the
-dispatch block image copied to `ram:D681`. CONFIRMED.
-
-**Runtime thunk-patching — RESOLVED/WITNESSED
-2026-09-19 (CONFIRMED, emulator
-`analysis/boot_hw.py`).** The `EE00-EE4F` 20-slot
-arena is a sub-range of the above (`ED1C-F17F`). (i)
-**DIP type-0 block:** loader takes destination from
-descriptor bytes [4:5] (`ROM01:0ED1` → `D36A`) with
-**no range check**, so `dest = EE00` writes there
-(CONFIRMED, mechanism). (ii) **COM program:** loaded
-at `0x0100` (`ROM01:0D3B`) with full RAM access, so
-`LD (EE00),A` / `LDIR` overwrites the arena —
-**WITNESSED:** crafted COM writes thunk `D7 00 BF 48`
-into `EE00`-`EE03` (`LD HL,EE00; LD (HL),D7; INC HL;
-LD (HL),00; INC HL; LD (HL),BF; INC HL;
-LD (HL),48; LD A,A5; LD (0200),A; RET`) via
-`--upload` with `--upload-marker 0200:A5` and
-`--watch-mem EE00:EE4F` — `execution entered bank 2
-at 0100`, `marker 0200=A5 observed`,
-`upload_status=succeeded`; arena totals **164 writes**
-with `D6D6×80 D736×20 D73B×20 D73E×20 D740×20` (boot
-bulk copy) **plus `0105×1 0108×1 010B×1 010E×1`**
-(COM's four stores into `EE00`-`EE03`) (CONFIRMED).
-Earlier `0100:21` marker (COM's own `21h` opcode)
-caused early return before COM execution — corrected
-to `0200:A5`; `--watch-mem` **was** active during the
-loaded-program run (CORRECTION of the previous "no
-`D7` observed / watch not active" wording). Type-1
-blocks can also target `EE00` via `image_base +
-bank_offset` but only write `{D7,bank,addr}` stubs.
-Matches owner note (DIP record/block or COM
-overwrite).
+**Runtime thunk-patching — RESOLVED/WITNESSED 2026-09-19 (CONFIRMED).**
+The `EE00-EE4F` 20-slot arena is a sub-range of the above (`ED1C-F17F`).
+Both DIP type-0 blocks and COM programs can write `{D7,bank,addr}` stubs
+into it. See [RE notes: OS internals](../re-notes/os-diposb.md) for the
+full account including the emulator witness.
 
 ### 2.2 The same-bank path
 
@@ -309,9 +243,7 @@ ROM00:001E  E9            JP   (HL)         ; same bank: just jump
 
 CONFIRMED, byte-verified `ROM00:0010`-`001E`. Note that the `POP HL`
 consumed the stub's own return address, so the same-bank case is a **tail
-jump**: the callee's `RET` returns to whoever `CALL`ed the stub. That is
-what makes the stub behave like a plain `CALL` from the caller's point of
-view.
+jump**: the callee's `RET` returns to whoever `CALL`ed the stub.
 
 ### 2.3 The cross-bank path and the shadow stack
 
@@ -346,9 +278,8 @@ CONFIRMED, byte-verified `ram:D74B`-`D773`.
 Two details worth calling out because they are unusual:
 
 * **`ram:D770` is a self-modifying trampoline.** `D771` is a `JP` whose
-  operand at `D772`-`D773` is written at runtime
-  (`ram:D77E`/`D78D`: `22 72 D7`, from `(0001) + 3Ch` — the kernel's
-  jump-vector slot, `ram:F274` = `JP F41B`, the bank setter of
+  operand at `D772`-`D773` is written at runtime from the kernel's
+  jump-vector slot (`ram:F274` = `JP F41B`, the bank setter of
   [§1.1](#11-what-selects-a-bank)). CONFIRMED. `PUSH DE` before the jump
   is the "call by pushing a return address" idiom: the setter's `RET`
   transfers control to the callee.
@@ -364,10 +295,8 @@ Two details worth calling out because they are unusual:
 | `ram:E371`-`E3B0` | 64 | shadow-stack body, grows **down** from `E3B1` |
 | `ram:E3B1`-`E3C0` | 16 | 32-bit register file (`E3BD` = program load ceiling) |
 
-The cursor is reset to `E3B1` by `ram:D6B5`
-(`E5 / 21 B1 E3 / 22 6F E3 / E1 / C3 71 D7` — and note that the same
-routine also performs a bank switch, so it is a combined
-"reset-and-select"). CONFIRMED, byte-verified.
+The cursor is reset to `E3B1` by a combined reset-and-select routine.
+CONFIRMED, byte-verified.
 
 **Maximum nesting depth is 21 cross-bank calls.** Frame *n* leaves the
 cursor at `E3B1 - 3n`; frame 21 leaves it at `E372`. Frame 22 would write
@@ -381,6 +310,9 @@ Twenty-one is generous for ordinary firmware paths, but a decode hook or
 a patched OS function that itself makes cross-bank calls is *adding* to
 whatever depth the firmware was already at when it called you.
 
+Cursor reset bytes and arithmetic derivation: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
+
 ### 2.5 The rule, and two independent corroborations
 
 **The caller's bank is restored when the callee returns, but it is not
@@ -393,14 +325,11 @@ lower 32K belongs to the callee. Therefore:
 Two places in the firmware confirm this from opposite directions.
 
 **The Commstar entry points.** Every buffer the firmware itself hands to
-a session entry point is unbanked: `ram:D39D` (`C-RX-BLK`, from
-`ROM01:141A`), `ram:D422` (`C-COMMAND`, from `ROM01:1343`), and
-`ram:ECAB`, `EC99`, `ECA2`, `EC8E`, `D120` (the `C-INIT-COMMS` identity
-strings, from `ROM01:12AD`-`12BD`). Not one of them is below `8000`.
-CONFIRMED — see [Commstar application API](commstar-api.md).
+a session entry point is unbanked — not one is below `8000`. CONFIRMED —
+see [Commstar application API](commstar-api.md).
 
-**The BDOS.** `ram:F510` (`ROM00:3A2D`) tests the caller's DMA address
-and bounces the sector through fixed RAM *exactly when* it is banked:
+**The BDOS.** The firmware tests the caller's DMA address and bounces the
+sector through fixed RAM *exactly when* it is banked:
 
 ```
 ram:f510  2A A3 FF      LD   HL,(FFA3)    ; caller's DMA address
@@ -414,12 +343,11 @@ ram:f51e  CD 98 F4      CALL F498         ; Kernel_MemCopy (bank-aware)
 ram:f521  E1 C9         POP HL; RET
 ```
 
-CONFIRMED, byte-verified at `ROM00:3A2D` (`2A A3 FF 7C FE 80 D0 11 FF
-FE`). The firmware pays for a 128-byte copy rather than let a banked
-pointer cross the boundary. So should you.
+CONFIRMED, byte-verified at `ROM00:3A2D`. The firmware pays for a 128-byte
+copy rather than let a banked pointer cross the boundary. So should you.
 
 **The barcode decode hook makes the same test explicitly** — see
-[§6.2](#62-writing-a-barcode-decoder-module).
+[§6.2](#62-barcode-decoder-module).
 
 ---
 
@@ -437,8 +365,7 @@ Layout is per-bank, but three regions are common to all of them:
 
 A loaded COM program occupies `0100` upward, spanning out of the window
 into fixed RAM and stopping at the loader's ceiling `D080` — a maximum
-image of `0xCF81` bytes. See
-[Program file formats](program-formats.md).
+image of `0xCF81` bytes. See [Program file formats](program-formats.md).
 
 ### 3.2 Fixed RAM, `8000`-`FFFF`
 
@@ -482,12 +409,10 @@ It is the authority; this is the programmer-facing summary.
 
     `F68D`-`F77F` and `FFA9`-`FFFF` remain **LIKELY unclaimed / OPEN**.
     `F68D` is simply the first byte after the resident kernel image —
-    `ROM00:02FE` copies `369D` → `F180` with `BC = F68D` as the **end**
-    address (`01 8D F6`, then a byte-copy loop) — and `F180 + 0x600 =
-    F780`, so the 243 bytes are the unused remainder of a round 1536-byte
-    kernel arena. The RE notes carry the current state and the
-    discriminating tests; consult them rather than inferring from this
-    page.
+    and `F180 + 0x600 = F780`, so the 243 bytes are the unused remainder
+    of a round 1536-byte kernel arena. The RE notes carry the current
+    state and the discriminating tests; consult them rather than inferring
+    from this page.
 
 !!! danger "`E48C`-`E6FF` is live Commstar session state"
     Staging data there has already caused a real bug in this project
@@ -521,27 +446,26 @@ There are three stacks, and no heap.
 `SP = F81A`, growing **down** into `F79A`-`F819` (128 bytes) before it
 reaches the I/O port shadows at `F780`.
 
-CONFIRMED: `31 1A F8` (`LD SP,F81A`) at `ROM00:0175`, `01A6`, `01D4` and
-`024D` — and those are the only genuine `LD SP,nn` sites in `ROM00`
-besides the barcode capture trick at `13BF` and the loaded-program stack
-at `71A9`. `ROM00:024D` is the BDOS function 0 (system reset) handler, so
-a warm boot re-establishes it.
+CONFIRMED: `LD SP,F81A` at `ROM00:0175`, `01A6`, `01D4` and `024D` — and
+those are the only genuine `LD SP,nn` sites in `ROM00` besides the barcode
+capture trick at `13BF` and the loaded-program stack at `71A9`.
+`ROM00:024D` is the BDOS function 0 (system reset) handler, so a warm boot
+re-establishes it.
 
 **Usable extent: 128 bytes**, `F819` down to `F79A`. Below that are the
-port shadows (`F780`-`F799`), and below *those* the currently
-unidentified `F68D`-`F77F`. A stack excursion past `F79A` therefore
-corrupts the bank shadow `F791` and the link control shadow `F794`
-before it reaches anything harmless — which is a fast way to a machine
-that has forgotten which bank it is in.
+port shadows (`F780`-`F799`), and below *those* the currently unidentified
+`F68D`-`F77F`. A stack excursion past `F79A` therefore corrupts the bank
+shadow `F791` and the link control shadow `F794` before it reaches anything
+harmless — which is a fast way to a machine that has forgotten which bank it
+is in.
 
 ### 4.2 The loaded program's stack
 
 `SP = D681`, growing **down** into `D481`-`D680` (512 bytes) before it
 reaches module B's workspace.
 
-CONFIRMED: `31 81 D6` (`LD SP,D681`) at `ROM00:71A9`, which is
-`ram:D7FA` at runtime (the dispatch block is `LDIR`'d `ROM00:7030` →
-`ram:D681`, so `71A9 - 7030 + D681 = D7FA`). The full entry sequence is:
+CONFIRMED: `LD SP,D681` at `ROM00:71A9`, which is `ram:D7FA` at runtime.
+The full entry sequence:
 
 ```
 ram:d7f6  CD B5 D6      CALL D6B5     ; reset the cross-bank shadow stack,
@@ -551,9 +475,8 @@ ram:d7fa  31 81 D6      LD   SP,D681
 ram:d7fd  E9            JP   (HL)
 ```
 
-CONFIRMED, byte-verified at `ROM00:71A5`-`71AC`
-(`CD B5 D6 E1 31 81 D6 E9`). A program therefore starts with a clean
-512-byte stack **and** a freshly reset cross-bank shadow stack.
+CONFIRMED, byte-verified at `ROM00:71A5`-`71AC`. A program therefore starts
+with a clean 512-byte stack **and** a freshly reset cross-bank shadow stack.
 
 **512 bytes is all you get**, and it is shared with everything the OS
 does on your behalf while you are running — every BDOS call, every
@@ -582,29 +505,13 @@ negative can be:
   bitmap, not a memory heap, and DIPOS-B's equivalents are stubs — see
   [RE notes: CP/M comparison](../re-notes/cp-m-comparison.md).)
 * **The one pointer that looks like a break pointer is a constant.**
-  `ram:E3BD` (`g_pProgramLoadCeiling`) has exactly **one writer** —
-  `ROM00:7052` `21 81 D0 / 22 BD E3` (`LD HL,D081; LD (E3BD),HL`), which
-  runs at `ram:D6A3` in the kernel main loop — and **two readers**, both
-  in the ROM01 loader (`ROM01:0DA3` and `ROM01:0E9E`), both of which use
-  it in a subtraction to compute how much room a program image has:
-
-  ```
-  ROM01:0d9e  11 00 01     LD   DE,0100h     ; TPA base
-  ROM01:0da1  19           ADD  HL,DE
-  ROM01:0da2  E5           PUSH HL
-  ROM01:0da3  2A BD E3     LD   HL,(E3BD)    ; = D081, always
-  ROM01:0da6  D1           POP  DE
-  ROM01:0da7  EB           EX   DE,HL
-  ROM01:0da8  CD A9 E0     CALL E0A9         ; 16-bit subtract
-  ```
-
-  It is never advanced, never decremented, and never consulted at
-  runtime by anything but the loader. It is a fence, not a break.
+  `ram:E3BD` (`g_pProgramLoadCeiling`) has exactly **one writer** and
+  **two readers**, both in the ROM01 loader, both used in a subtraction to
+  compute how much room a program image has. It is a fence, not a break.
 * **Every buffer in the map is at a fixed address.** The bounce buffers,
   the LCD framebuffer, the capture buffer, the session objects, the stub
   arena — all are placed by boot-chain records with literal destinations.
-  Nothing in the map is described by a length-plus-base pair that
-  changes.
+  Nothing in the map is described by a length-plus-base pair that changes.
 
 So the answer for a module author is: **decide your addresses at build
 time.** There is no `alloc` to call, no free-list to walk, and no OS
@@ -620,7 +527,7 @@ mean that.** There are two writers:
 
 * `ram:F456` (page-zero installer) writes `F180` — the BDOS gate.
 * `ram:D7BE` writes `D681` — the dispatch block base.
-  CONFIRMED at `ROM00:716D` (`21 81 D6 / 22 06 00 / C9`).
+  CONFIRMED at `ROM00:716D`.
 
 Neither is the loader's ceiling. The real limit is `D081`, held in
 `ram:E3BD`, and `D081`-`D680` is occupied by module B, its workspace and
@@ -634,144 +541,70 @@ believe it owns 1536 bytes that it does not.
 
 ## 5. I/O port map
 
-### 5.1 How this list was built
-
-Two independent passes, because neither alone is sufficient:
-
-1. **Ghidra instruction search** over all 21,113 disassembled
-   instructions in `ROM00`, `ROM01` and the RAM-resident modules —
-   169 `OUT` and 40 `IN`. Aligned and therefore trustworthy, but bounded
-   by disassembly coverage (`ROM00` 61 %, `ROM01` 37 %).
-2. **Raw opcode scan** of both full ROM images for `DB nn` / `D3 nn` and
-   the `ED`-prefixed register-indirect forms
-   (`ED 40/48/50/58/60/68/70/78` in, `ED 41/49/51/59/61/69/71/79` out),
-   with every hit inspected in context.
-
-The raw scan produces a large majority of false positives, and it is
-worth saying why, because the same trap catches Ghidra: **`DB` and `D3`
-turn up constantly as one byte of an address operand.** `CD DB 22` is
-`CALL 22DB` — `DB` is the low byte — not `IN A,(22h)`; `2A 6E D3` is
-`LD HL,(D36E)`, with `D3` as the high byte, not an `OUT`.
-Module A lives at `ram:D893`-`E0F3` and module B's
-workspace at `ram:D2CB`-`D480`, so calls and variable references inside
-them generate `DB xx` and `D3 xx` pairs by the hundred.
-
-Two of Ghidra's own hits are exactly this: `ROM01:0D07` "`OUT (21h),A`"
-and `ROM01:0F00` "`OUT (D1h),A`" are misaligned readings of
-`22 6A D3` (`LD (D36A),HL`) and `2A 6E D3` (`LD HL,(D36E)`). Likewise
-`ROM00:6FFD` "`IN A,(0Dh)`" and `ROM00:7021` "`IN A,(0Bh)`" fall inside
-byte tables. **None of the four is real I/O.**
-
-Net result: **`ROM01` performs essentially no port I/O at all.** Its one
-genuine access is `ROM01:0042` `3E 00 / D3 47` (`LD A,0; OUT (47h),A`),
-inside the page-zero image. Everything the Workstation and Commstar do to
-hardware, they do by calling into bank 0 or the resident kernel.
-
-### 5.2 The ports
+For the byte-level methodology, false-positive analysis, site catalogues and
+register-indirect table, see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 Direction is as the firmware uses it, not necessarily as the hardware
 decodes it.
 
-| Port | Name | Dir | What is established |
-|---:|---|:--:|---|
-| `00h` | `KBD_SENSE` | R | Keyboard matrix sense. Only the low 6 bits are used: `AND 3Fh` at `ROM00:0181` and `ROM00:1A4F`. CONFIRMED |
-| `02h` | `KBD_DRIVE` | W | Keyboard drive / configuration latch. `LD A,3Fh` drives all lines (`ROM00:1A42`), `00h` clears them (`ROM00:1A83`); reset writes `FDh` at `ROM00:017B` to select one column. Shadows at `F780` and `F782`. Also written by the NMI and power-down paths. CONFIRMED as the keyboard drive; the non-keyboard uses are **Provisional** |
-| `03h` | `LCD_DATA` | W | HD61830 data byte. CONFIRMED (`ROM00:1F7F`, `1F96`, `1F9E`, `1ED2`) |
-| `04h` | `IRQ_MASK` / `OUT_LATCH` | W | **Interrupt-enable mask, active low.** `ROM00:22E9` does `LD A,1Fh; DI; IM 1; CPL; LD (F784),A; OUT (04h),A` — the mask is complemented before output, so a *set* bit in the argument enables a source. A second entry at `ROM00:2306` passes `A = 2`. Also carries power-latch bits (`Power_LatchSetBit0`/`ClrBit0`, `ROM00:1B36`/`1B41`). Shadow `F784`. CONFIRMED |
-| `05h` | `IRQ_STATUS` / `STATUS_IN` | R | **Interrupt / status byte, active low.** `ROM00:230A` (`Kernel_WorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` — snapshot to `F785`, complement, test bit 3. Also read at reset (`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it is polled and complemented; source assignments are byte-verified below |
-| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. Written at power-down (`ROM00:28F2`), by the link watcher (`ROM00:24AD`, `24B8`) and at `ROM00:17A0`, `17B6`, `23CC`. **Only bits 0 and 1 are ever manipulated** ([bit usage](#latch-bit-usage)) — a two-bit output, not an eight-bit one. Function otherwise **unknown** |
-| `08h` | `RTC_ADDR` | W | HD146818 register-address latch. Also reached as `LD C,08h; OUT (C),B` at `ROM00:1801`, `22DD`, `22E4`. CONFIRMED |
-| `23h` | `LCD_REG` | W | HD61830 register/command select. Also `LD C,23h; OUT (C),B` at `ROM00:1F7D`. CONFIRMED |
-| `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. Register-indirect reads at `ROM00:2104` (`LD C,28h; IN B,(C)`) and `ROM00:246E`/`2477` (`LD C,28h`, after selecting RTC registers 07h and 08h). CONFIRMED. Register map: [RE notes: RTC](../re-notes/rtc.md) |
-| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Used by the barcode front end (`ROM00:123B`, `124A`, `14F2`, `1541`, `1550`) and by `Link_PortSelect` (`ROM00:345D`, which clears bit 1 on both paths). Bits 1, 4 and 5 are individually managed; see [bit usage](#latch-bit-usage). CONFIRMED as a shared latch; individual bit meanings **Provisional** |
-| `2Bh` | `SOUND` | W | Beeper. `Sound_2bWrite` (`ROM00:35C6`) / `Sound_Off` (`ROM00:35CB`). CONFIRMED |
-| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. CONFIRMED as a shared latch; per-bit assignments in [the table below](#port-2ch-bits) |
-| `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end (`ROM00:1299`-`13ED`). CONFIRMED |
-| `33h` | *unknown* | R | **One access in the whole firmware**: `ROM00:1ED9` `DB 33` (`IN A,(33h); RET`), the tail of a four-instruction stub at `ROM00:1ED0` that first does `LD A,0Dh; OUT (03h),A`. Alignment is sound (the stub follows a `RET` at `1ECF`), but nothing references `1ED0` directly. **Purpose unknown.** Candidates worth discriminating on hardware: an LCD status/busy read (it sits inside the LCD driver block and follows an `LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Do not assume it is either |
-| `46h` | `LCD_CONTRAST` | W | Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`, called from `Lcd_Init` (`ROM00:1F2B`) and from `Power_LatchIncr`/`Power_LatchDecr` (`ROM00:1D73`/`1D57`). **LIKELY**, and stronger than it was. Observed: the adjusters step `FC05` by **±2, not ±1** (`1D4A` does `DEC A` twice with a floor at `00h`, `1D60` `INC A` twice with a ceiling at `FFh`), and although `FC05` lives in battery RAM, cold boot overwrites it with `70h` at `ROM00:0257`. Owner-supplied: the stock `70h` is almost black on this unit, a Sun-modified key lightens it, and a cold boot puts it back — which matches that overwrite exactly. Corroborating but **not** primary: MAME maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and seeing the screen legibility change. The Ghidra name `Power_PowerLatchPort46` is a grandfathered misnomer |
+| Port | Name | Dir | Function | Evidence |
+|---:|---|:--:|---|---|
+| `00h` | `KBD_SENSE` | R | Keyboard matrix sense, low 6 bits | CONFIRMED |
+| `02h` | `KBD_DRIVE` | W | Keyboard drive / configuration latch. Reset writes `FDh`; scan drives `3Fh`, cleared by `00h`. | CONFIRMED as keyboard; non-keyboard uses **Provisional** |
+| `03h` | `LCD_DATA` | W | HD61830 data byte | CONFIRMED |
+| `04h` | `IRQ_MASK` / `OUT_LATCH` | W | Interrupt-enable mask, **active low** (a set bit in the argument enables a source). Also carries power-latch bits. Shadow `F784`. | CONFIRMED |
+| `05h` | `STATUS_IN` | R | Interrupt / status byte, active low. Polled by `Kernel_WorkerPollPort5`; also read at reset as boot-condition byte. | CONFIRMED |
+| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. **Only bits 0 and 1 are ever manipulated.** | CONFIRMED; function **unknown** |
+| `08h` | `RTC_ADDR` | W | HD146818 register-address latch | CONFIRMED |
+| `23h` | `LCD_REG` | W | HD61830 register/command select | CONFIRMED |
+| `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. See [RTC](../re-notes/rtc.md) | CONFIRMED |
+| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Bits 1, 4 and 5 individually managed. Barcode front end and `Link_PortSelect`. | CONFIRMED as shared latch; bit meanings **Provisional** |
+| `2Bh` | `SOUND` | W | **Beeper.** `Sound_2bWrite` / `Sound_Off`. This is a physical port, **not** the `2Bh` *wire ID* in the `FE83` device table. | CONFIRMED |
+| `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Per-bit assignments in [separate table](#port-2ch-bits) below | CONFIRMED |
+| `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end. | CONFIRMED |
+| `33h` | *unknown* | R | **Single access**: `ROM00:1ED9` `IN A,(33h); RET` inside the LCD driver block. Candidates: LCD status/busy or incomplete alias. | **OPEN** |
+| `46h` | `LCD_CONTRAST` | W | LCD contrast DAC. Written via `LD C,46h` from `Lcd_Init` and power adjusters. Cold boot overwrites to `70h`. | **LIKELY** (owner-confirmed: stock `70h` is near-black; Sun contrast key adjusts it) |
+| `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791` | CONFIRMED |
+| `48h` | `IR_STROBE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by diagnostic and link selftest routines. Paired with `49h`. | CONFIRMED |
+| `49h` | `IR_SENSE` / `BOOTKEYS` | R | Low 2 bits read back after each `48h` write (loopback/presence test); also read at reset to select boot path. | CONFIRMED |
+| `4Ah` | `LINK_CTRL` | W | External-link control latch, shadow `F794`. Bits 0/1/4/5/6/7 are driven; **bits 2 and 3 never written**. Bit 1: port select (CONFIRMED). | CONFIRMED; electrical meanings **Provisional** |
+| `4Bh` | `LINK_STATUS` | R | Link status, polled in block Tx/Rx/Probe/WaitReady. Bit 4 = "receive pending". | CONFIRMED; bit assignments **Provisional** |
+| `4Ch` | `LINK_CMD` | W | Link command latch; only write is `81h` in `Link_Present`. | CONFIRMED |
+| `4Dh` | `LINK_TXD` | W | Link TX data byte, sole site `ROM00:32B6`. | CONFIRMED |
+| `4Eh` | `LINK_RXD` | R | Link RX data byte, sole site `ROM00:338C`. | CONFIRMED |
+| `4Fh` | `LINK_PROBE` | W | Device probe/reset; sole write is `1Fh` in `Link_Probe`. | CONFIRMED |
+
+**No other port is accessed anywhere in either ROM image or in any
+RAM-resident module.** The untouched ranges are `01h`, `06h`, `09h`-`22h`,
+`24h`-`27h`, `29h`, `2Eh`-`32h`, `34h`-`45h`, and everything above `4Fh`.
+That is a statement about the firmware, not about the hardware: a port this
+firmware never uses may still be decoded, and the address decoding may well
+be partial — the `03h`/`23h`, `08h`/`28h` and `2Ah`/`2Ch` pairings suggest
+only some address lines are compared. **SUSPECTED** for the partial-decode
+inference; a hardware read of an unused port would settle it.
 
 ### Interrupt sources {#interrupt-sources}
 
-**CONFIRMED.** `04h` is the enable mask and `05h` the pending register, both
-**active low**, and both are only six bits wide in practice — because the
-dispatcher has six slots and one of them is blank.
+**CONFIRMED.** `04h` is the enable mask and `05h` the pending register,
+both **active low**, and both are only six bits wide in practice.
 
-`Kernel_WorkerPollPort5` (`ROM00:230A`) reads `05h`, ORs it with the mask from
-`F784`, complements the result to get *pending and enabled*, and walks a table
-of `{bitmask, handler}` triples at `ram:FD84`, copied from `ROM00:2352` at
-boot and terminated by `80h`:
+`Kernel_WorkerPollPort5` reads `05h`, ORs it with the mask from `F784`,
+complements the result to get *pending and enabled*, and walks a table
+of `{bitmask, handler}` triples at `ram:FD84`, terminated by `80h`:
 
 | bit | mask | handler | source |
 |---|---|---|---|
-| 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
-| 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
-| 2 | `04h` | `ROM00:31B6` | **the link controller** — see below |
-| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery |
+| 0 | `01h` | `Kbd_ScanMain` | **keyboard** |
+| 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` |
+| 2 | `04h` | `ROM00:31B6` | **the link controller** — see [link interrupt](../re-notes/interrupts.md#link-interrupt) |
+| 3 | `08h` | `ROM00:2365` | **LIKELY** power/battery; shared with bit 4 |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
-| 5 | `00h` | none | **blank in ROM**, filled in at run time by `ROM00:2349` (`LD A,20h; LD (FD93),A; LD (FD94),HL`), whose sole caller is `ROM00:138F` in the barcode block |
+| 5 | `00h` | none in ROM | filled at runtime by barcode front end |
 | 6, 7 | — | — | no slot exists |
 
-That is the answer to "why are so few mask bits enabled". `ROM00:22E9` writes
-`CPL 1Fh` = `E0h`, enabling exactly bits 0-4, because those are the five
-populated slots. Bit 5 is enabled only while the barcode front end has
-installed its handler (`ROM00:139C` clears the mask bit, `149E` sets it back),
-and bits 6 and 7 are masked permanently because nothing dispatches them.
-
-Reading `05h` appears to acknowledge: three sites (`ROM00:01B1`, `0238`,
-`288A`) read it and discard the value, and at `288A` the very next action is
-the HD146818's own acknowledge (`LD A,0Ch; OUT (08h); IN A,(28h)`).
-
-#### Sleep confirms bit 0 is the keypad {#sleep-wake}
-
-**CONFIRMED, and it is the cleanest evidence in this table.** Entering sleep
-(`ROM00:1775`-`177F`) selects one of three masks and writes it to `04h`:
-
-| | value | enabled (active low) |
-|---|---|---|
-| `1775` | `F8h` | 0, 1, 2 |
-| `1779` | `FAh` | 0, 2 |
-| `177D` | `D8h` | 0, 1, 2, 5 |
-
-**Bit 0 is enabled in all three**, because it is what wakes the machine. The
-same sequence prepares the matrix for it: `ROM00:1766` writes `48h` to the
-keyboard drive rather than the usual `3Fh` — one column held down plus the
-bit 6 mode flag — so a key in that column pulls a sense line while everything
-else is quiet, and the wake path at `17D5` restores `3Fh` (`AND 3Fh`) on the
-way back out. Sleep itself is a spin loop at `1793`, not a `HALT`.
-
-So the keypad is a genuine interrupt source, not something the firmware
-discovers by polling; `Kbd_ScanMain` at `18F0` is its *handler*. Note the
-`FAh` case is exactly bits 0 and 2 — keypad and link — which is the mask
-`analysis/rom_exerciser` uses, arrived at independently and then found to be
-one the firmware itself uses.
-
-#### The link interrupt {#link-interrupt}
-
-Worth stating separately, because it changes the picture of how the link is
-meant to be driven. `ROM00:31B6` is:
-
-```
-31B6  CALL 34D2      ; LINK_CTRL bits 6 and 7 low
-31B9  CALL 34E7      ; IN A,(4Bh); AND 10h  -- LINK_STATUS bit 4
-31BC  JR Z,31C2
-31BE  CALL 2FBD      ; -> Link_BlockRx (ROM00:3378)
-31C1  RET
-31C2  CALL 34BD      ; LINK_CTRL bits 6 and 7 high
-```
-
-So **`LINK_STATUS` bit 4 is "receive pending"**: it is the bit that decides
-whether the interrupt enters `Link_BlockRx` at all. That is a different job
-from bit 0, which gates the `INI` loop *inside* a block read (`ROM00:33CF`),
-and it means the receive path is normally **interrupt-driven**, not polled —
-the polling in `Link_BlockRx` only runs once the interrupt has decided a frame
-is there. `LINK_CTRL` bits 6 and 7 are raised when there is nothing to receive
-and lowered while receiving, which is consistent with an interrupt
-enable/acknowledge pair on the controller.
-
-`analysis/rom_exerciser` installs its own IM-1 handler, enables sources 0 and
-2, and records both `LINK_STATUS` and the complemented port-`05h` source mask
-at interrupt time. It does not call the firmware receive handler; the point is
-to observe whether the controller raises source 2 without consuming a frame.
+Sleep-wake evidence confirming bit 0 is the keypad: see
+[RE notes: Interrupts – sleep wake](../re-notes/interrupts.md#sleep-wake).
 
 ### Which latch bits the firmware ever touches {#latch-bit-usage}
 
@@ -791,66 +624,33 @@ bit. This table is the exhaustive result of matching that idiom
 | `2Ch` `CTL_LATCH_2C` | `F78D` | . | . | - | x | . | . | x | x | `1786` `3487` `34B5` |
 | `4Ah` `LINK_CTRL` | `F794` | x | x | x | x | . | . | x | x | — |
 
-Two negatives are worth stating outright, because they bound searches:
+Two negatives bound searches:
 
 * **`LINK_CTRL` bits 2 and 3 are the only ones no ROM instruction ever
-  writes.** Bits 0, 1, 4, 5 are driven by the transmit and receive arms, and
-  6 and 7 by the pair at `ROM00:34BD` (sets both) and `34D2` (clears both,
-  called from `Link_Probe` and from `Link_BlockTx`'s entry). So the untried
-  space on that latch is exactly two bits, which is what
-  `analysis/rom_exerciser`'s sweep phase exists to cover.
-* **`CTRL_07` uses only bits 0 and 1.** Its purpose is still unknown, but it
-  is a two-bit output, not an eight-bit one.
+  writes.** So the untried space on that latch is exactly two bits.
+* **`CTRL_07` uses only bits 0 and 1.** It is a two-bit output, not an
+  eight-bit one.
 
-Caveats. A `.` means no *individual* manipulation; the whole-byte writers in
-the last column can still set such a bit, and `04h`'s `2428` takes its mask
-from a register rather than an immediate, so its bits are not enumerable this
-way. `02h`'s bits 0-5 are the six keyboard columns, driven as whole-byte
-masks by the scan loop (`ROM00:190D`-`191F`) rather than individually, which
-is why they read `.` here — and bit 6 is a **mode flag**: `ROM00:175E` tests
-it and drives `48h` instead of `3Fh` when set, a reduced column pattern for
-the power-down wake scan.
+Pattern-matching method and caveats: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ### Port `2Ch` bits {#port-2ch-bits}
 
 Every write is a read-modify-write through the shadow at `F78D`, so a bit is
 only ever touched by the routine that owns it. **No ROM instruction ever sets
-bits 2, 3, 6 or 7** — every write masks them off or leaves them at the zero
-`Link_Probe` establishes at `ROM00:34B5` (`XOR A`).
+bits 2, 3, 6 or 7.**
 
-| bit | evidence in the ROM | reading |
+| bit | reading | confidence |
 |---|---|---|
-| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **an output strobe on the external port.** Width and placement are CONFIRMED; what it strobes is **OPEN** |
-| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **an enable asserted around reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is a drive enable, a wand power line or a direction control is **OPEN** |
-| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
-| 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **LIKELY the LCD backlight.** A user-toggleable output that is switched off on power-down fits nothing else here, and MAME's `port_2c_w` keeps exactly `BIT(data, 4)` as `m_lcd_backlight` — corroborating, but itself an inference from this same ROM, not independent measurement. *Confirmed by:* pressing the toggling key and watching the panel |
-| 5 | `Link_PortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](../re-notes/commstar-evidence.md#device-table-ports) |
-| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+| 0 | An output strobe on the external port — short fixed-width pulse in the barcode block | CONFIRMED (width); **OPEN** (what it strobes) |
+| 1 | An enable asserted around reads of `2Dh` | CONFIRMED (set-then-read ordering); **OPEN** (drive/wand-power/direction) |
+| 2, 3 | unused, or not brought out | **OPEN** |
+| 4 | **LIKELY the LCD backlight** — toggles in the keyboard handler, switched off on power-down | **LIKELY**; corroborated by MAME inference |
+| 5 | **IR port select** — moves with `LINK_CTRL` bit 1 | CONFIRMED |
+| 6, 7 | unused, or not brought out | **OPEN** |
 
-Bits 0 and 1 are the only candidates for the 5-pin side connector's outputs:
-bit 4 flashes the panel and bit 5 switches the IR port, so neither leaves the
-case. `analysis/rom_exerciser`'s pin walk drives all four with a countable
-pulse code to settle which physical pin is which.
-
-| `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791`. 37 write sites in `ROM00`, 24 in the resident kernel. CONFIRMED |
-| `48h` | `IR_STROBE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by `Kernel_SenseDiagEcho` (`ROM00:24F7`-`252D`) and by `Link_SelftestRun` (`ROM00:28AE`-`28E4`), also `Session_SystemInit` (`ROM00:0359`, value `03h`) and power-down (`ROM00:178D`). CONFIRMED as a strobe/select output paired with `49h`; the project's older `LCD_STROBE` label is **not supported by the call sites**, which are all IR/link diagnostics |
-| `49h` | `IR_SENSE` / `BOOTKEYS` | R | Low 2 bits read back after each `48h` write and compared against the value written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3; CP …`) — a loopback/presence test. Also read twice at reset: `IN A,(49h); AND 1; JR Z` selects the cold path, `AND 2; JP NZ` selects a second boot mode (`ROM00:0168`-`0172`). CONFIRMED |
-| `4Ah` | `LINK_CTRL` | W | External-link control latch, shadow `F794`. 26 write sites. Bits 0, 1, 4, 5, 6 and 7 are all driven; **bits 2 and 3 are never written by any ROM instruction** ([bit usage](#latch-bit-usage)). Roles: bit 1 port select (CONFIRMED), bits 0/4/5 the transmit and receive arm sequences, bits 6/7 the `34BD`/`34D2` pair. Electrical meanings **Provisional** |
-| `4Bh` | `LINK_STATUS` | R | Link status, polled in `Link_BlockTx`/`Link_BlockRx`/`Link_Probe`/`Link_WaitReady`. Bit assignments **Provisional** |
-| `4Ch` | `LINK_CMD` | W | Link command latch; the only write is `81h` in `Link_Present` (`ROM00:34F5`). CONFIRMED |
-| `4Dh` | `LINK_TXD` | W | Link TX data byte (`ROM00:32B6`, sole site). CONFIRMED |
-| `4Eh` | `LINK_RXD` | R | Link RX data byte (`ROM00:338C`, sole site). CONFIRMED |
-| `4Fh` | `LINK_PROBE` | W | Device probe/reset; the only write is `1Fh` in `Link_Probe` (`ROM00:3491`). CONFIRMED |
-
-**No other port is accessed anywhere in either ROM image or in any
-RAM-resident module.** The untouched ranges are `01h`, `06h`,
-`09h`-`22h`, `24h`-`27h`, `29h`, `2Eh`-`32h`, `34h`-`45h`, and everything
-above `4Fh`. That is a statement about the firmware, not about the
-hardware: a port this firmware never uses may still be decoded, and the
-address decoding may well be partial — the `03h`/`23h`, `08h`/`28h` and
-`2Ah`/`2Ch` pairings suggest only some address lines are compared.
-**SUSPECTED** for the partial-decode inference; a hardware read of an
-unused port would settle it.
+Per-site evidence and exerciser plans: see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).
 
 ### 5.3 Port shadows
 
@@ -873,27 +673,6 @@ read-modify-write on a latch is possible. All live in `ram:F780`-`F799`:
 CONFIRMED. **Update the shadow whenever you write the latch**, or the
 next firmware read-modify-write will undo your change — and in the case
 of `F791`, will mis-route the next cross-bank call.
-
-### 5.4 Register-indirect accesses
-
-Seven sites use `OUT (C),r` / `IN r,(C)`, where the port number is in
-`C`. All are resolved:
-
-| Site | `C` set at | Port | Note |
-|---|---|---|---|
-| `ROM00:1801` | `0E 08` | `08h` | RTC address latch, followed by `IN A,(28h)` |
-| `ROM00:1A7E` | `0E 02` | `02h` | `Kbd_DriveSetAll`, `A = 3Fh`, shadow `F782` |
-| `ROM00:1A88` | `0E 02` | `02h` | `Kbd_DriveClearAll`, `A = 00h` |
-| `ROM00:1F76` | `0E 03` | `03h` | LCD data |
-| `ROM00:1F7D` | `0E 23` | `23h` | LCD register select, `B = 0Ch` |
-| `ROM00:1FD9` | `0E 46` | `46h` | LCD contrast, `A = (FC05)` |
-| `ROM00:2104` | `0E 28` | `28h` | `RTC_ReadRegisterFile`, `IN B,(C)` |
-| `ROM00:22DD`, `22E4` | `0E 08` | `08h` | `RTC_RegWrite` / `RTC_RegRead` |
-| `ROM00:246E`, `2477` | `0E 28` | `28h` | `Link_StatusWatcher` reads RTC registers `07h`/`08h` |
-
-CONFIRMED — the `LD C,nn` immediately precedes each in every case. The
-remaining raw `ED 50` (`ROM00:7E1C`) and `ED 58` (`ROM01:59A0`) hits fall
-inside data tables and are not instructions.
 
 ---
 
@@ -922,210 +701,59 @@ Everything else that *looks* free is not:
 
 * `F68E`-`F77F` is unreferenced but sits 128 bytes below the system
   stack top, behind the port shadows. Anything you put there is a
-  stack-depth canary, not scratch — and it is still `OPEN`.
+  stack-depth canary, not scratch.
 * `FFA9`-`FFFF` (87 bytes) is big enough for a signature word, and is
-  immediately adjacent to a densely packed BIOS variable block. Also
-  still `OPEN`.
+  immediately adjacent to a densely packed BIOS variable block.
 * `FD64`-`FD83` and `FE45`-`FE82` **look** unreferenced and are not:
   they are the tails of the countdown-timer table at `FD5C` and the
-  per-link frame-sequence table at `FE43`. This is the general trap on
-  this firmware — a base-address literal plus a walked pointer is the
-  normal idiom, so unreferenced bytes are the rule *inside* buffers, not
-  evidence of free space.
+  per-link frame-sequence table at `FE43`.
 
 And the constraint that catches everyone: **`ROM00:2530` pattern-tests
 the whole of `8000`-`FFFF` on every cold boot.** Nothing you place in
 fixed RAM survives a reset unless something re-materialises it.
 
-### 6.2 Writing a barcode decoder module
+### 6.2 Barcode decoder module
 
-The hook socket is a four-byte `RST 10h` stub at `ram:FBC0`:
-opcode `D7` at `FBC0`, bank byte at `FBC1`, target address at
-`FBC2`-`FBC3`. It is the far-call stub form of
-[§2.1](#21-the-stub-form), sitting in fixed RAM.
+The hook socket is a four-byte `RST 10h` stub at `ram:FBC0`.
+The ROM ships a **discard** hook; the simplest correct arrangement is to
+put your decoder at `C000`+ so it is valid in every bank. On entry the
+hook receives a pointer to the width-table cells at `FBB9`/`FBBB`
+(pointer and count) and returns to `ROM00:1468`.
 
-The ROM ships a **discard** hook, so an unmodified machine throws every
-capture away:
-
-```
-ROM00:1567  21 00 00      LD   HL,0
-ROM00:156a  22 BB FB      LD   (FBBB),HL   ; element count = 0 -> reject
-ROM00:156d  C9            RET
-
-ROM00:156e  21 67 15      LD   HL,1567     ; reset the socket to the above
-ROM00:1571  22 C2 FB      LD   (FBC2),HL
-…
-ROM00:157b  3E D7         LD   A,D7h
-ROM00:157d  32 C0 FB      LD   (FBC0),A
-ROM00:1580  3A A7 FE      LD   A,(FEA7)
-ROM00:1583  32 C1 FB      LD   (FBC1),A    ; bank byte
-```
-
-CONFIRMED, byte-verified. Note that the ROM's own default hook is at
-`1567` — **below `8000`** — so the default configuration exercises the
-banked path, which is why `FBC1` has to be filled in.
-
-The capture tail calls it like this — and note the second instruction of
-the dispatch, which is [§2.5](#25-the-rule-and-two-independent-corroborations)
-written into the ROM:
-
-```
-ROM00:1450  21 B9 FB      LD   HL,FBB9     ; width-table ptr / count cells
-ROM00:1453  E5            PUSH HL          ; argument
-ROM00:1454  21 68 14      LD   HL,1468
-ROM00:1457  E5            PUSH HL          ; hook returns into the envelope
-ROM00:1458  2A C2 FB      LD   HL,(FBC2)   ; hook target
-ROM00:145b  CB 7C         BIT  7,H         ; is it in unbanked RAM (>=8000)?
-ROM00:145d  28 05         JR   Z,1464      ;   no  -> go through the stub
-ROM00:145f  7E            LD   A,(HL)
-ROM00:1460  FE D7         CP   D7h         ; is the target itself an RST10 stub?
-ROM00:1462  28 03         JR   Z,1467      ;   yes -> jump straight to it
-ROM00:1464  21 C0 FB      LD   HL,FBC0     ; otherwise enter via the stub
-ROM00:1467  E9            JP   (HL)
-```
-
-CONFIRMED, byte-verified `ROM00:1450`-`1467`.
-
-Read that as a specification:
-
-* **A hook below `8000` is always entered through the banked stub** — the
-  `BIT 7,H` test guarantees it, and `FBC1` must therefore hold your
-  bank.
-* **A hook at or above `8000` whose first byte is `D7`** is jumped to
-  directly; it is expected to *be* a `RST 10h` stub of its own.
-* **A hook at or above `8000` whose first byte is not `D7`** is still
-  entered through `FBC0`, so `FBC1` still has to be right.
-
-**The firmware's own installer fills the bank byte for you.** `ROM00:1587`
-— reached through the resident kernel's jump-vector slot `ram:F27D`
-(`JP F36B`, i.e. `ROM00:3888`) — does exactly this:
-
-```
-ROM00:1587  ED 53 C2 FB   LD   (FBC2),DE   ; DE = new hook address
-ROM00:158b  3A FE FE      LD   A,(FEFE)    ; caller's bank, saved by the
-ROM00:158e  32 C1 FB      LD   (FBC1),A    ;   envelope at ram:F38B
-ROM00:1591  3E D7         LD   A,D7h
-ROM00:1593  32 C0 FB      LD   (FBC0),A
-```
-
-CONFIRMED, byte-verified. `ram:FEFE` is written by the banked-call
-envelope (`ram:F388`: `LD A,(F791); LD (FEFE),A`), so the bank recorded
-is the bank the *installing program* was running in — which is the right
-answer for a decoder that lives in a RAM bank.
-
-The simplest correct arrangement, though, is to sidestep banking
-entirely: **put your decoder at `C000`+ and it is valid in every bank**,
-whatever `FBC1` ends up holding. On entry the hook receives a pointer to
-the width-table cells at `FBB9`/`FBBB` (pointer and count) and returns to
-`ROM00:1468`. It may rewrite the pointer and count to present decoded
-bytes, or zero the count to reject the read and re-arm — which is
-literally all the default hook at `1567` does. The register-level
-contract is in [Barcode reader](barcode.md) and
-[RE notes: OS internals](../re-notes/os-diposb.md).
-
-The 512-byte capture buffer at `ram:F9B5`-`FBB4` is yours to read during
-the hook, and is filled by `PUSH` from `SP = FBB5` downward and then
-reversed in place (`ROM00:13BB`-`1419`), which is why an address-literal
-search finds nothing inside it.
+The register-level contract, capture buffer layout, and full dispatch
+mechanics are in:
+* [Barcode reader](barcode.md) — the programmer-facing contract
+* [RE notes: Barcode capture](../re-notes/barcode-capture.md) — listings,
+  timing derivation, and the uncapped-count bug
 
 ### 6.3 Patching an OS function
 
 The resident kernel dispatches BDOS calls through a **word table in
 unbanked RAM**, which makes it a real hook point rather than a
-theoretical one:
-
-```
-ram:f18f  06 00         LD   B,0          ; BC = C = function number
-ram:f191  79 FE 25      LD A,C; CP 25h
-ram:f194  38 2F         JR   C,F1C5       ; fn < 25h  -> CP/M table
-ram:f196  FE F3         CP   F3h
-ram:f198  30 2A         JR   NC,F1C4      ; fn >= F3h -> extension table
-…                                         ; 25h..F2h: special-case chain
-ram:f1c4  05            DEC  B            ; B=FFh: biases the index by -200h
-ram:f1c5  21 EB F1      LD   HL,F1EB      ; table base
-ram:f1c8  09 09         ADD HL,BC; ADD HL,BC
-ram:f1ca  7E 23 66 6F   LD A,(HL); INC HL; LD H,(HL); LD L,A
-ram:f1ce  C3 82 F3      JP   F382         ; common banked-call envelope
-```
-
-CONFIRMED, byte-verified `ram:F18F`-`F1D0`. Cross-checked against the
-table's own contents: entry 0 is `024D` (`ROM00:024D` = the system-reset
-handler, which is one of the four `LD SP,F81A` sites), and entry 3 is
-`1080` — `Bdos_ReaderInChar`, exactly as documented in the
-[programmer's guide](../manual/programmer-guide.md).
-
-There is one table base and two windows onto it, which is why the two
-tables sit `0x200` apart:
+theoretical one. There is one table base and two windows onto it:
 
 | Table | Address | Index | Covers |
-|---|---|---|---|
-| Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh`, 13 words |
+|---|---|---|---|---|
 | CP/M range | `ram:F1EB`+ | `F1EB + 2×fn` | BDOS functions from `00h` |
+| Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh` |
 
-CONFIRMED: for `fn = F3h`, `F1EB + 0x1E6 − 0x200 = F1D1` exactly.
-
-Both are inside the resident kernel image, so:
+Key facts for a patch author:
 
 * **A patch is a 16-bit store**: write your handler's address into
-  `F1EB + 2 × fn` for a CP/M-range function, or into
-  `F1D1 + 2 × (fn − F3h)` for an extension function. The dispatcher will
-  route the call through the same `F382` envelope it uses for a ROM
-  handler.
-* **Your handler is entered with bank 0 selected.** The envelope saves
-  the caller's bank and then switches unconditionally:
-
-  ```
-  ram:f382  22 F6 FE      LD   (FEF6),HL   ; handler address
-  ram:f385  2A FA FE      LD   HL,(FEFA)   ; restore the caller's argument
-  ram:f388  3A 91 F7      LD   A,(F791)
-  ram:f38b  32 FE FE      LD   (FEFE),A    ; caller's bank -> FEFE
-  ram:f38e  F3            DI
-  ram:f38f  F5 3E 00      PUSH AF; LD A,0
-  ram:f392  32 91 F7      LD   (F791),A
-  ram:f395  D3 47         OUT  (47h),A     ; bank 0, always
-  ```
-
-  CONFIRMED, byte-verified `ram:F382`-`F396`. So a handler in the banked
-  window must be in **bank 0**, and a handler at `C000`+ works
-  unconditionally, which is the reason to put it there.
-* **The patch survives a warm boot, and dies on a cold one.**
-  `ROM00:02FE` copies the kernel image `ROM00:369D` → `ram:F180` up to end
-  address `F68D`, and `F1D1`/`F1EB` are inside that range — but it runs
-  **only on a cold start**. `CALL 02FE` has exactly one call site in the
-  whole ROM, `ROM00:023E`, which sits inside `ColdStartSelfTestBanner`
-  *after* the warm-boot entry point:
-
-  ```text
-  ROM00:019E  LD   A,(0F81Ch)
-  ROM00:01A1  CP   55h
-  ROM00:01A3  JP   Z,024Dh      ; warm -> skips 01A6..024C entirely
-  ROM00:0232  LD   A,55h / LD (0F81Ch),A   ; cold start stamps the flag
-  ```
-
-  So a `F1EB`/`F1D1` patch persists across a warm boot and a power cycle,
-  and is undone only by a cold start — which also RAM-tests all of
-  `8000`-`FFFF` and would have destroyed your patch anyway. **Correction:**
-  an earlier revision of this page said the recopy happens on every boot
-  and the patch never survives.
+  `F1EB + 2 × fn` (CP/M range) or `F1D1 + 2 × (fn − F3h)` (extension).
+  The dispatcher will route the call through the same `F382` envelope it
+  uses for a ROM handler.
+* **Your handler is entered with bank 0 selected.** A handler at `C000`+
+  works unconditionally.
+* **The patch survives a warm boot, and dies on a cold one.** The kernel
+  recopy (`ROM00:02FE` → `ram:F180`) runs **only on a cold start**.
 * **Special-cased functions bypass the table.** Functions `2Dh`, `2Eh`,
   `30h`, `62h`, `68h` and `69h` are dispatched by an explicit compare
-  chain at `ram:F19A`-`F1C2` *before* the table lookup is reached
-  (`CP 30h / LD HL,1893 / JR Z`, and so on), so patching their table
-  slots has no effect. CONFIRMED.
-* **Do not call an unassigned function in `25h`-`F2h`.** Anything in that
-  range that is not one of the six special cases falls through to the
-  `DEC B` at `ram:F1C4` and is indexed with the `−200h` bias, so
-  `fn = 25h` fetches its handler from `ram:F035` — inside the far-call
-  stub arena. There is no range check. CONFIRMED (arithmetic over the
-  byte-verified dispatch above).
+  chain *before* the table lookup is reached.
 
-Beyond this table and the barcode socket, **no general hooking API has
-been shown to exist.** The far-call stub arena at `ram:ED1C`-`F17F` is
-281 repointable four-byte stubs and UI vtables target it directly, so it
-is mechanically patchable — but which stub serves which purpose is
-established for only a fraction of them, and there is no published index.
-Treat repointing an arena stub as reverse engineering, not as an
-interface.
+For the full envelope listing, persistence proof, and the "do not call
+unassigned functions" warning, see
+[RE notes: OS internals](../re-notes/os-diposb.md).
 
 ### 6.4 Checklist
 
@@ -1156,44 +784,13 @@ things. The chains are data records inside `micron1.bin` and
 size by one byte in a later build and every destination after it moves.
 There is no version word to check and no indirection table to ask.
 
-### The worked example: `ram:E5C2`
-
-`ram:E5C2` is the body of the 134-byte service-33 receive object whose
-header sits at `ram:E5BC`. The emulator harness writes to it on one
-deliberate path — the path where the harness is *impersonating* a
-service-33 receive, so writing into the receive payload is the correct
-thing to do. That is a legitimate use of a precisely known address.
-
-It is also exactly the kind of assumption that does not survive a ROM
-change. `E5C2` is inside the block the bank-0 boot chain places with a
-`memset E3C1..E704`; its position is determined by the cumulative size of
-everything the chains copied before it. A different ROM build with a
-different module A, or a different session-config block, puts the receive
-object somewhere else — and the harness would then be writing 126 bytes
-into whatever now occupies `E5C2`, with no error and no diagnostic.
-The failure mode is silent and length-dependent: this project has already
-had one such bug, in which an uncapped write from `E5C2` reached `E6C1`
-and buried live session state, and it only reproduced at certain image
-lengths.
-
-The general rule that follows:
-
-> An address in fixed RAM is only as stable as the module placement that
-> produced it. Depend on the *structure* (a receive object with a header
-> word and a payload) and derive the address; do not hard-code the
-> address and assume the structure.
-
-Where the firmware gives you a pointer to read — `ram:E3BD` for the load
-ceiling, `ram:F791` for the current bank, `ram:FFA3` for the DMA address,
-`ram:FBC2` for the decode hook — read it. Those indirections are the
-version-independent part.
+For the worked example (`ram:E5C2`), see
+[RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md#worked-example-rame5c2).
 
 ---
 
 ## Related
 
-* [Memory and I/O map](memory-map.md) — the short stability-classified
-  summary of the same hardware contract
 * [RE notes: Unbanked RAM map](../re-notes/unbanked-ram-map.md) — the
   evidence trail for every region above, plus the empirical procedure for
   validating a scratch region
@@ -1201,6 +798,8 @@ version-independent part.
   kernel installation, the stub arena
 * [RE notes: Interrupts](../re-notes/interrupts.md) — IRQ/NMI and the
   banked-call envelope
+* [RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md) —
+  byte-level derivation for every port and cell
 * [BDOS calls](bdos.md) — the `CALL 0005h` service set the `F1EB` table
   dispatches
 * [DIPOS-B extensions](extensions.md) — the `F3h`-`FFh` functions the

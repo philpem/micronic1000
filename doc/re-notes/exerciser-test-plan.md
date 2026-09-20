@@ -1,5 +1,33 @@
 # ROM exerciser — test plan
 
+> **Scope: hardware test plan (patched-ROM run).**
+> This page documents the patched-ROM exerciser that reads `LINK_STATUS`
+> directly — what it measures, how to burn and run it, how to decode
+> the results, and the happy/sad paths. The physical/wire layer is in
+> [IR wire protocol](ir-wire-protocol.md). The firmware evidence for
+> the link controller transactions is in
+> [Commstar evidence](commstar-evidence.md). Together these three cover
+> every layer from the analog IR waveform through the latch boundary
+> to the session protocol.
+
+**On this page:** The complete plan for the patched-ROM hardware run:
+the `2609` burn, what each phase measures (Q1–Q6), the step-by-step
+procedure, how to read the error row and the per-record fields
+(COUNT, OR, AND, IRQN, ISRC…), the happy and sad paths, and the
+follow-up steerable burn design. Intended for the owner running
+the experiment; read together with the companion pages above.
+
+* [Current burn](#current-burn-startup-diagnostic-2609) — build identity
+  and LCD row format
+* [Why this run exists](#why-this-run-exists)
+* [What the run measures](#what-the-run-measures) — Q1–Q6
+* [Procedure](#procedure) — burn, contrast, Arduino setup, capture
+* [Reading the result](#reading-the-result) — error rows, happy paths,
+  sad paths, inconclusive signs
+* [IR handshake investigation plan](#ir-handshake-investigation-plan-phases-03)
+  — Phases 0–3
+* [After this run](#after-this-run) — the steerable follow-up
+
 ## Current burn: startup diagnostic `2609`
 
 SHA-256: `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72`
@@ -78,7 +106,7 @@ the arm itself makes `LINK_STATUS` bit 6 set is one of the measurements.
 **Q3 is the one no external experiment could have asked.** The firmware's
 receive path is interrupt-driven — IRQ source 2 is the link controller, and
 its handler at `ROM00:31B6` tests `LINK_STATUS` bit 4 and enters
-`Link_BlockRx` ([interrupt map](../reference/memory-map.md#link-interrupt)).
+`Link_BlockRx` ([interrupt map](../re-notes/interrupts.md#link-interrupt)).
 A controller that signals without holding a bit long enough for a poll to
 catch would be invisible to every previous run and to the polled fields here.
 
@@ -92,7 +120,7 @@ a key can be pressed or released between that sample and an interrupt.
 
 The keypad is a real interrupt source, which is why this works: it is what
 wakes the machine from sleep, and all three of the firmware's sleep masks
-enable it ([sleep and wake](../reference/memory-map.md#sleep-wake)). `KEY`
+enable it ([sleep and wake](../re-notes/interrupts.md#sleep-wake)). `KEY`
 itself is polled rather than interrupt-driven, so it reports presses whether
 or not interrupts function — which is the whole reason it cannot serve as the
 control on its own.

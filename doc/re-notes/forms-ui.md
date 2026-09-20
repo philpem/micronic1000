@@ -272,4 +272,4 @@ begins where it ends: `ROM00:731B` is `tbl_sess_operations`, seven records of
 `{char name[5]; u8 target_state;}`, copied to `ram:E247` at boot. It is the
 table `C-COMMAND` indexes to choose an operation *and* the session state that
 operation enters — nothing reads it as display text. See
-[the protocol page](../protocol/commstar.md#how-states-4-5-and-6-are-entered).
+[the protocol page](../protocol/commstar.md#how-ready-rx-prog-ready-tx-data-and-ready-tx-prog-are-entered).

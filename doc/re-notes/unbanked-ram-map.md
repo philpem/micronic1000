@@ -1,5 +1,20 @@
 # Unbanked RAM map (`8000`-`FFFF`) — what is occupied, what is safe
 
+**On this page:** Every byte of the fixed 32K battery-backed SRAM from
+`8000` to `FFFF`, annotated with what occupies it and how we know.
+Intended for anyone placing code or data in unbanked RAM — adapter
+builders, decoder authors, patch writers, and harness developers. The
+programmer-facing summary is in [Memory and I/O map](../reference/memory-map.md).
+
+* [How this map was built](#how-this-map-was-built) — methodology
+* [Region table](#region-table) — every range `8000`–`FFFF` with
+  evidence
+* [Safe for scratch](#safe-for-scratch) — ranked candidates
+* [Do not touch](#do-not-touch) — the live session state trap
+* [Verifying a candidate region empirically](#verifying-a-candidate-region-empirically)
+* [Errors found in existing material](#errors-found-in-existing-material)
+* [Open](#open)
+
 The lower 32K of the address space is banked (`ROM00`, `ROM01`, RAM
 pages); the upper 32K, `8000`-`FFFF`, is **fixed battery-backed SRAM**
 that every bank sees. Because `RST 10h` switches the lower bank before

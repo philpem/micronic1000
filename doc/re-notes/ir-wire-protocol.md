@@ -1,5 +1,39 @@
 # IR wire protocol — first hardware capture
 
+> **Scope: physical/wire layer (below the 4Ah–4Fh latch boundary).**
+> This page documents the first scope capture of the IR line: analog
+> timing, bit modulation, the two-phase clock, burst inventory, HDLC-style
+> framing, candidate controller architectures, and what the firmware
+> does and does not see of the wire. The session/protocol layer (above
+> the latches — ROM addresses, transaction sequences, frame envelopes,
+> error maps) is in [Commstar evidence](commstar-evidence.md). The
+> patched-ROM hardware test plan is in
+> [ROM exerciser test plan](exerciser-test-plan.md); the test-plan
+> sections below (T1–T6) are the wire-oriented planning that preceded it.
+
+**On this page:** The first hardware capture of the Micronic 1000's IR
+output, from the 3.6864 MHz clock derivation and the 8192 bit/s cell,
+through the HDLC-style framing and the burst inventory, to the
+receive-path analysis at the latch boundary. The test plan (T1–T6) and
+the conn3–conn13 adapter experiments are also recorded here. Intended for
+adapter builders and anyone working on the physical/protocol interface.
+
+* [Provenance](#provenance) — scope setup, capture files, stimulus
+* [Physical layer](#physical-layer-confirmed) — bit cell, two-phase
+  clock, slew, the 8192 bit/s derivation
+* [Burst inventory](#burst-inventory-confirmed) — the three cell
+  families and what they decode to
+* [Candidate controller architectures](#candidate-controller-architectures-suspected)
+* [Frame layer: HDLC](#frame-layer-hdlc-with-the-line-sense-inverted-likely)
+* [Why the session fails and where](#why-the-session-fails-and-where-likely)
+* [The receive path and the awaited status bit](#the-receive-path-and-the-awaited-status-bit)
+* [Link_Probe analysis](#link_probe-does-not-select-a-port-confirmed)
+* [Owner observations](#owner-observations-2026-09-03)
+* [Open questions](#what-is-still-open)
+* [Test plan](#test-plan) — T1–T6 hardware experiments
+* [Adapter experiments (conn3–conn13)](#adapter-experiments-conn3-conn13-confirmed)
+* [Building an adapter](#building-an-adapter-what-the-m1000-must-see)
+
 Everything below the `4Ah`-`4Fh` latch boundary. Until now this layer was
 listed as *Not implementable — requires a hardware capture*
 ([protocol/commstar.md](../protocol/commstar.md)); this page is that capture
@@ -453,6 +487,12 @@ firmware never varies it, so the opening byte is always `81h`.
 
 ## Why the session fails, and where — LIKELY
 
+> **Layer note:** this section is the **wire-level** view of the
+> transaction failure — what the scope shows on the IR line. The
+> **firmware-level** analysis of which `Link_BlockTx` step returns which
+> error code is in
+> [Commstar evidence — What the firmware actually waits for](commstar-evidence.md#what-the-firmware-actually-waits-for).
+
 `Error 8000 / 8001 "Plinth not connected"` is **not** a detection result. It
 is printed by `Session_StateBuild` (`ROM00:4351`) via the helper at
 `ROM00:4463`, reached from `C-INIT-COMMS`'s result switch (`ROM00:46D6`) on
@@ -849,6 +889,12 @@ most important planning fact on this page, and it is why T6 exists.
 
 ## Test plan
 
+> **Note:** the detailed build, burn, decode and interpretation guide
+> for the patched-ROM exerciser that superseded T5 is in
+> [ROM exerciser test plan](exerciser-test-plan.md). What follows is the
+> wire-oriented planning (T1–T6) that preceded it, preserved here for
+> its physical-layer reasoning and adapter-design context.
+
 Revised after the owner observations above. T1-T3 and the Arduino sweep T5
 have been exhausted without a post-handshake payload. The next physical step
 is the prepared patched ROM (T6), which exposes the internal status without
@@ -1162,7 +1208,7 @@ decoded-contents strings vs sketch mode structures is therefore
 capture filenames — filename digit is run index, not mode. Discriminating
 observation that would confirm or refute: the single `Serial` banner line
 emitted by `setup()` captured with each CSV, or a versioned `.ino` copy
-per run. See `research/TASKS.md` 2026-09-12 entry.
+per run. See `research/session-log.md` 2026-09-12 entry.
 
 `analysis/scope_ir_experiments.py` performs this audit as a streaming parser.
 It measures adjacent trigger cadence, decodes Arduino response bits and

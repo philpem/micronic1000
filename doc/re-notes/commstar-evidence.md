@@ -1,10 +1,35 @@
 # Commstar evidence and traces
 
-This is the **firmware evidence record** for the Commstar link. It
-carries ROM addresses, evidence tags, trace bytes, and the full emulator
-peer description. The programmer-facing contract is in
-[Protocol: Commstar](../protocol/commstar.md); this page is the proof
-behind it.
+> **Scope: session/protocol layer (above the 4Ah–4Fh latch boundary).**
+> This page carries the **firmware evidence** behind the Commstar link:
+> ROM addresses, controller transaction sequences (Link_BlockTx/Rx),
+> validated frame envelopes, session error maps, addressing tables, and
+> the emulator peer contract. The programmer-facing contract is in
+> [Protocol: Commstar](../protocol/commstar.md); the physical/wire layer
+> (analog timing, modulation, IR line capture, HDLC framing) is in
+> [IR wire protocol](ir-wire-protocol.md); the hardware test plan is in
+> [ROM exerciser test plan](exerciser-test-plan.md).
+
+**On this page:** This is the primary firmware evidence record for the
+Commstar link. It documents every CONFIRMED transaction at the latch
+boundary, the session error decades, addressing and connector selection,
+the emulator peer traces, and the blocking evidence needed for an
+interoperable implementation. Intended for analysis and adapter building;
+together with [IR wire protocol](ir-wire-protocol.md) it covers both
+sides of the 4Ah–4Fh latch interface.
+
+* [Controller transaction](#controller-transaction) — Link_BlockTx/Rx,
+  probe, and the mechanical latch handshake
+* [Validated frame envelope](#validated-frame-envelope) — buffer format,
+  length, link-id filter, sequence numbers
+* [Full session error map](#the-full-session-error-map-confirmed)
+* [Session-operation error decades](#session-operation-error-decades)
+* [Types, replies and session state](#types-replies-and-session-state)
+* [Addressing and connector selection](#addressing-and-connector-selection)
+* [Bounded synthetic traces](#bounded-synthetic-session-builder-traces-confirmed-mechanics-only)
+* [Blocking evidence](#blocking-evidence)
+* [Interface shape](#interface-shape)
+* [Evidence moved from protocol/commstar.md](#protocol-split-evidence)
 
 The content below is the pre-split RE record preserved here so that every
 ROM address remains byte-verifiable and every trace remains citable.
@@ -291,23 +316,18 @@ corresponds to one observed 64 Hz RTC Register C PF event.
 
 ### Timing boundary
 
-The following are firmware loop counts. At the owner-supplied **3.6864 MHz**
-Z80 clock (corrected 2026-09-03; this page previously said 3.579545 MHz), one
-T-state is 0.271 us. The loop paths have now been cycle-accounted, so the
-deadlines below are real, but they bound **the firmware's patience at the latch
-boundary** — they say nothing about how much of that budget the controller
-itself consumes before an answer reaches the wire.
+The wire-level timing table (loop counts, T-state budgets, wall-clock
+deadlines) lives in [IR wire protocol — Why the session fails and where](ir-wire-protocol.md#why-the-session-fails-and-where-likely),
+which has the cycle-accounted deadlines at the corrected 3.6864 MHz. The
+firmware timeout constants are summarised there. This page carries only the
+firmware-loop-provenance note:
 
-[The RTC analysis](rtc.md#periodic-interrupt-rates-from-register-a-call-order-and-live-emulation)
-performs this accounting for the clock self-test loop (24 T-states per
-iteration = 6.703 us) and is the method to apply here.
-
-| Use | Loop count | Decimal | Loop | Wall-clock deadline |
-|---|---:|---:|---:|---|
-| `Link_Present` / `Link_WaitReady` bit-7 poll | `0x02DA` | 730 | 49 T | **9.70 ms** |
-| TX bit-4 / bit-6 poll | `0x026C` | 620 | 59 T | **9.92 ms** |
-| TX/RX per-byte poll | `0x06F9` | 1785 | 51 T | **24.69 ms** |
-| Retry scheduler initial / later | `fdd6=0x32` / `0x14`; `fdd8=6` / `3` | 50 / 20; 6 / 3 | — | Initial retries normally span six 64 Hz periods = **93.75 ms** end-to-end |
+At the owner-supplied **3.6864 MHz** Z80 clock (corrected 2026-09-03; this
+page previously said 3.579545 MHz), one T-state is 0.271 us. The loop counts
+are byte-verified from `Link_BlockTx` and `Link_WaitReady`. See
+[IR wire protocol](ir-wire-protocol.md#why-the-session-fails-and-where-likely)
+for the full table and [RTC](rtc.md#periodic-interrupt-rates-from-register-a-call-order-and-live-emulation)
+for the accounting method.
 
 The retry cadence is no longer open: a scope capture of a failing connect shows
 exactly 50 bursts spaced 93.75 ms end-to-end, matching `fdd6=0x32`. See
@@ -685,7 +705,7 @@ displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 
 * **Transfer-vector exposure of the stream primitives (CONFIRMED).** `ROM00:3E14` via `ROM00:7DD2` / `ram:edb0`; `ROM00:3E6A` via `ROM00:7DBA` / `ram:ed80`; `ROM00:3D9B` via `ROM00:7DD4` / `ram:edb4`; `ROM00:3D11` via `ROM00:7DB6` / `ram:ed78`; `ROM00:3CF7` via `ROM00:7DC4` / `ram:ed94`.
 
-* **CORRECTION — `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; supersedes "Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN").** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders remain reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`), plus `TxBlock4` fills `ram:e650`-`ram:e656` (first stack word `==1` selects device `63h` else `43h` → `ram:e52e`; `ram:e658=8`) and `TxBlock5` fills `ram:e65c`-`ram:e668` as before. Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong. See `research/TASKS.md` 2026-09-17 entry.
+* **CORRECTION — `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; supersedes "Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN").** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders remain reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`), plus `TxBlock4` fills `ram:e650`-`ram:e656` (first stack word `==1` selects device `63h` else `43h` → `ram:e52e`; `ram:e658=8`) and `TxBlock5` fills `ram:e65c`-`ram:e668` as before. Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong. See `research/session-log.md` 2026-09-17 entry.
 
 * **RCV1/RCV2 snapshots (CONFIRMED).** `ram:e701` (`g_wSessRcv1`) and
   `ram:e6ff` (`g_wSessRcv2`) are display snapshots of the last-consumed
@@ -704,7 +724,7 @@ displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
   `baseline + threshold_seconds ≤ current_seconds` → result `9`. The
   `0x37` value's meaning as 55 seconds is LIKELY.
 
-Cross-link: `research/TASKS.md` 2026-09-12 entry covers the same
+Cross-link: `research/session-log.md` 2026-09-12 entry covers the same
 findings with full writer/reader addresses.
 
 ## Bounded synthetic session-builder traces (CONFIRMED mechanics only)
@@ -1271,9 +1291,8 @@ The implementation evidence is in `Link_BlockTx` (ROM00:3277),
 `Link_BlockRx` (ROM00:3378), `Link_ValidateFrameHeader` (ROM00:30DC),
 `Link_ProcessCommandFrame` (ROM00:3084), `Link_FramePrefixWrite`
 (ROM00:316B), `Link_Probe` (ROM00:348A), and the descriptor helper
-(ROM00:3508). The research worklist records the capture tasks in
-`research/TASKS.md` in the source tree; research files are excluded from
-the published site.
+(ROM00:3508). The [research worklist](../research/TASKS.md) records the
+capture tasks.
 
 The next work should prioritize server blockers and the easiest physical
 discriminator:
@@ -1346,3 +1365,328 @@ offset +5 is never read by the examined ROM link
 code and may be writable by loaded code — the examined ROM
 transport/header path has no checksum; integrity inside unresolved
 loaded-session payloads remains **OPEN**.
+
+## Evidence moved from protocol/commstar.md — Stage 1 split {#protocol-split-evidence}
+
+The sections below were moved from `protocol/commstar.md` during the
+contract/evidence split. They are preserved verbatim with evidence tags.
+
+### Scope and implementation status — emulator provenance {#scope-and-implementation-status}
+
+Both directions now run end to end against real firmware in the emulator — a
+program download to the handheld, and a record upload from it. The outbound IR
+clock/data waveform and one-byte prelude are captured from stock hardware. The
+synthetic peer's diagnostic default uses RAM and program-counter observations
+unavailable to a physical peer; an alternate tested mode waits 500 ms from
+supplying the preceding type-4 completion and uses no hidden arm state.
+Nothing here is proven against a historical adapter or plinth. The historical
+adapter disclaimer and the synthetic-peer's oracle/timing provenance are
+investigation narrative, not a latch contract.
+
+### Server implementer summary — regression provenance {#server-implementer-summary}
+
+The matrix on the protocol page is normative guidance; the named regressions
+(`CommstarRecordUploadTest`, `CommstarCleanTeardownTest`,
+`ProgramDownloadPolicy`) and the diagnostic oracle's RAM/PC observations are
+evidence and remain here, not on the contract page.
+
+### Roles and byte-level terminology — provenance {#roles-and-byte-level-terminology}
+
+The V24 ADAPTOR (top) / PLINTH (back) identities and the wire-ID bit 5 mapping
+are owner-confirmed (2026-08-24). The byte-level distinctions (wire bytes vs
+controller-queue bytes vs logical-frame bytes) are definitions; the source of
+the port identities is provenance and belongs here.
+
+### How the IR hardware works — capture provenance {#how-the-ir-hardware-works}
+
+The handheld talks to its link controller through six latches (`4Ah`-`4Fh`);
+that controller serialises onto two IR emitters. The stock-hardware capture
+establishing the outbound clock/data waveform and prelude is in
+[IR wire protocol](ir-wire-protocol.md). How a far end completes the return
+handshake remains open; the latch transaction definition is contract, the
+discovery narrative is evidence.
+
+### The transmit transaction, decoded — full listing {#the-transmit-transaction-decoded}
+
+`Link_BlockTx` (`ROM00:3277`, 257 bytes) — every step byte-read from the ROM.
+See the listing on the former protocol page (ROM00:3277-3377, `RST`-bank
+comparisons, `F794` shadow, `OUT (4Ah)`/`OUT (4Dh)` sequences, `DJNZ` settles,
+`34EC`/`34F8` ready checks, `link id & 1Fh` prelude at `32B3`, handshake waits
+on status bits 4/6, per-byte `TXRDY` gated `OUTI` loop, and completion checks
+at `332E`–`336C`). Result convention: carry clear `A=0` success; `EBh`/`ECh`/`EEh`
+on error. The listing is preserved in the prior `protocol/commstar.md` revision
+and in `Controller transaction` above.
+
+### What this settles — investigative argument {#what-this-settles}
+
+**The prelude byte comes from `ROM00:32B3`, and it is `link id & 1Fh`.**
+A peer cannot recover the full eight-bit id from the wire — firmware masks it
+to five bits. The peer library's `link_id_from_prelude` is guessing at the
+other three bits.
+
+**There is no checksum, anywhere.** Neither `Link_BlockTx` nor `Link_BlockRx`
+contains an accumulating `XOR`/`ADD` — every opcode in both was checked.
+Integrity is not this layer's job.
+
+Whether the controller forwards the prelude (`4Dh` before the strobe) onto
+the IR line or consumes it as addressing is **not determinable from firmware**
+— it depends on the controller and requires a logic capture of the line during
+a transfer.
+
+### Timing budget — derivation {#timing-budget}
+
+Three timeout constants counted in `DEC DE / LD A,D / OR E` loops on a
+3.6864 MHz Z80 (corrected 2026-09-03; earlier revision said 3.579545 MHz and
+was 3% too long). Loop cycle counts (49 T, 59 T, 51 T) give deadlines 9.70 ms,
+9.92 ms, 24.69 ms, plus `DJNZ` settles. The corrected clock is corroborated by
+the wire: 3.6864 MHz / 450 = 8192 bit/s, where 3.579545 MHz has no integer
+divider. See [IR wire protocol](ir-wire-protocol.md).
+
+### The receive transaction, decoded — full listing {#the-receive-transaction-decoded}
+
+`Link_BlockRx` (`ROM00:3378`, 221 bytes) — status bits 0..3 framing via single
+`IN A,(4Bh)` shifted with `RRCA` at `33CF`, `INI` gated by bit 0, end-of-frame
+bit 1, extra-byte bit 2 (`33F3` single `INI`), error bit 3. The two trailing
+excluded bytes are signalled out of band via status bit 2, not by counting.
+Per-byte timeout `06F9h` = 1785, failure `EEh`. Full listing was on the former
+protocol page and is preserved here by reference.
+
+### The command and probe latches — derivation {#the-command-and-probe-latches}
+
+`LINK_CMD` (`4Ch`) has exactly one writer/value: `81h` via `Link_Present`
+(`ROM00:34EC` → `34F8` → shadow `F796`). No second value exists in ROM00,
+ROM01 or battery RAM. `LINK_PROBE` (`4Fh`) is computed `7Fh AND 1Fh → 1Fh`
+(`ROM00:348A`–`3491`), the same masking as a prelude — so `7Fh` is used as an
+id. Whether it means broadcast or unassigned is OPEN.
+
+### The receive-armed handshake — measurements and correction history {#the-receive-armed-handshake}
+
+`RXARM` (`LINK_CTRL` bits 6+7) via `ROM00:31B6` poll (`34D2` clear, `34E7`
+`AND 10h` `RXBUSY` test, `2FBD` dispatch or `34BD` set). Interrupt disassembly,
+polling-rate measurements, synthetic-peer timing experiments and the correction
+history that established the CONFIRMED roles (each bit's role read from the
+branch it drives) belong here. The normative ordering and `RXARM`-set-means-
+listening rule remain on the protocol page.
+
+### Captured M1000 session requests (controller-boundary TX) — raw captures {#captured-m1000-session-requests-controller-boundary-tx}
+
+V24 Mode 1 captures of pre-stream requests. First byte is the controller
+prelude; remaining bytes are the logical frame. Stable as observed traces for
+this harness; field semantics beyond the envelope are provisional.
+
+| Request | Prelude | Logical frame |
+|---|---|---|
+| Initial | `03` | `0C 00 01 00 7F 00 00 00 00 00 00 00` |
+| State 61 | `03` | `0C 00 01 01 7F 00 61 00 00 00 00 00` |
+| State 64 | `03` | `0C 00 01 01 7F 00 64 00 00 00 00 00` |
+| State 45 | `03` | `42 00 01 01 7F 00 45 00 01 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4C 4F 41 44 31 32 33 34 35 36 37 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00` |
+| State 44 | `03` | `0C 00 01 01 7F 00 44 00 00 00 FF 00` |
+
+At most one worked packet example should be shown beside the canonical grammar
+on the protocol page; the table above is the citable evidence.
+
+### The wire states — call-site enumeration and transcripts {#the-wire-states}
+
+`state` via `Session_SetParams` (`ROM00:5973`) — twelve call sites as fixed
+tuples, enumerated from the ROM. Routine descriptions, the state-`0000`
+preflight proof, `0062` direct-connection identity, `E520` link-type latch, and
+the measured 200-byte `arg` last-block transcript belong here. The normative
+state-value table, `0045` marker rule and reassembly rule remain on the
+protocol page. [The protocol page](../protocol/commstar.md#the-wire-states) now
+carries a **Label** column of documentation-assigned convenience names for these
+numeric states.
+
+### State-45 object layout — variation experiments {#state-45-object-layout}
+
+Measured by varying one input at a time and comparing captures
+(`--serial`/`--trace-loadrun-name`); each field confirmed by observing that it
+and nothing else changed. Frame length stayed 66; RAM/ROM assembly provenance
+at `ram:E492` / `ROM00:4C11`–`4C19` and capture corroboration belong here. The
+canonical 54-byte field/encoding table and unresolved-field qualifications
+remain on the protocol page.
+
+### Frame sequence numbers and duplicate suppression — disassembly {#frame-sequence-numbers-and-duplicate-suppression}
+
+Per-link table at `ram:FE43` initialised to `01` (`ROM00:317B`), accessor
+`31A1`/`31A6`/`31AB`, index `fdd4 & 3Fh`, and branch listing at `ROM00:3084`
+(`FDE7` vs expected, duplicate `expected-1` when link state 2, error `01EF`)
+belong here. The normative per-peer counter rule and accepted/duplicate/error
+table remain on the protocol page.
+
+### `C-COMMAND` is a generator, not a parser — proof {#c-command-is-a-generator-not-a-parser}
+
+`ROM00:4AE0` assembles the 54-byte record and transmits it (`4C19`), then
+examines the reply; no inbound decode exists in the routine. Routine-address
+and call proof belong here; the protocol direction remains on the contract page.
+
+### The receive path is always armed, but dead-ends — control-flow proof {#the-receive-path-is-always-armed-but-dead-ends}
+
+Five-record interrupt table `{u8 mask, u16 handler}` at `ROM00:2352` copied to
+`ram:FD84`; `Kernel_WorkerPollPort5` (`ROM00:230A`) reading port `05h`, mask
+`04` → `ROM00:31B6`; no session-state test; no xref to `31B6` (reachable only
+via `ram:FD84`); dispatcher `ROM00:2FBD` branching only on link-layer state
+`ram:FDD5` and sole exit `ROM00:30D7` `JP (HL)` through `ram:FDD2` with its one
+writer `ROM00:2F36` in `ROM00:2F24`. The concise "unsolicited traffic cannot
+enter a session" rule remains on the protocol page.
+
+### Do not send unsolicited frames — jump-path argument {#do-not-send-unsolicited-frames}
+
+With the link idle, `ROM00:2FBD` will accept any frame whose length matches
+and whose byte +4 equals `ram:FDD4`; a type other than 2/3 falls through
+`3060` → `3078` → `30AD` → `30D7` (`JP (HL)` through `FDD2` which is `0000`
+cold) landing on the reset vector; type 2 draws a three-byte reply and moves
+the link to state 3. The cold-RAM speculative control-flow proof belongs here;
+the LIKELY safety warning remains on the protocol page.
+
+### There is no Plinth detection — device-table archaeology {#there-is-no-plinth-detection}
+
+Listings (`ROM00:3277` `AND 20h` → `3454` `Link_PortSelect` driving `LINK_CTRL`
+bit 1 and port `2Ch` bit 5; `ROM00:31FF` flat 16-entry `FE83` → `80 AB 63 43…`;
+`ROM00:5BF7` `5C04` device 3/4 selection), device-table archaeology (`FE83`
+four repeats, `D108`/`D10E` mode records), emulator comparisons (`--trace-loadrun-
+source plinth|v24` both `fdd4=43h`), owner observation chronology (2026-09-02
+back/base vs top flashes), correction history (false `63h` correlation) belong
+here. The short "menu selection, not autodetection" rule and qualified port-
+selection mapping remain on the protocol page.
+
+### `ram:E520`, the link type {#rame520-the-link-type}
+
+Two writers, both in `C-INIT-COMMS`'s callees (`ROM00:5676`, `ROM00:56B1`); it
+is a caller-supplied parameter, never probed from hardware. Only comparison is
+against 6. From the link-method table: 4 = `LOCAL LINK` (IR path), 6 = any of
+the three modem methods. So `E520 == 6` does not mean "MODEM A/ANS"
+specifically. The direct-vs-modem behavioural consequence (`0062` vs
+`0060`/`0061`) remains in the wire-state table on the protocol page.
+
+### `ram:E48D`, the session mode {#rame48d-the-session-mode}
+
+Three-valued mode byte — four readers comparing against different values
+(byte-verified, helper `E04B` zero-flag inverted): `Session_StartDataMode`
+`452D:4533` vs 2 (skip table), `C-COMMAND` `4B40` vs 1 (no record), `C-SHUT-DOWN`
+`4D92` vs 1, `C-END-TX` `530D` vs 1. Mode 0 everything on, mode 1 local/quiet,
+mode 2 validation off. Two writers via runtime stubs `ram:EE20` (index 65,
+`4563`, from argument) and `ram:EE24` (index 66, `46E9`, `E48D=2`,
+`E6FC=0x37`). Nothing calls slot 66; `E48D` measures 0 throughout. Full
+reachability analysis belongs here; the caller-visible mode contract is on the
+API page.
+
+### The firmware's own state names — provenance {#the-firmwares-own-state-names}
+
+`ROM00:6A4A` 16-pointer display-string table, byte-read from ROM — the
+firmware's own vocabulary, not necessarily what travels on the wire. The
+`2×2` operation shape and the need to distinguish state names from wire-state
+values are architectural inference; the table itself is stable.
+
+### The firmware's own command names — provenance {#the-firmwares-own-command-names}
+
+`ROM00:6B67` 17-pointer command-name table, byte-read, every pointer resolves
+inside the following string block. Neither table's index is a proven wire value
+(wire values are `00`, `06`, `44`, `45`, `61`, `64`, `65`); no static xref,
+indices supplied by RAM-resident session module; Load/Run traces cannot
+correlate them. The shape (which operations exist, RECORD vs BLOCK, file
+framing as wrapper) is the evidence.
+
+### The four operations — provenance {#the-four-operations}
+
+Load/Run is the Commstar session screen (owner-confirmed); `ROM00:6C8E` four
+strings form the `2×2` matrix; `C-COMMAND` first argument selects the row
+(`ROM01:135F`/`1365` `LOAD`/`PROG` in firmware, `RCV1`/`RCV2`/`SEND` via
+application). Call-site provenance and trace coverage belong here; the
+matrix itself remains on the protocol page.
+
+### The protocol state machine — extraction mechanics {#the-protocol-state-machine}
+
+`ROM00:692A` matrix `table[state*17+command]`, bit 7 illegal, `& 0x7F` next
+state — `*17` multiply and `692A`-`6A17` extent byte-verified at `ROM00:3C06`,
+decoded machine internally consistent, generated by
+`analysis/decode_state_machine.py --mermaid`. Internal staging (`ram:E48C`
+vs `ram:E491`, `Session_SetState` 46 callers) beyond the legal-transition
+diagram belongs here; the diagram and exceptions remain on the protocol page.
+
+### RECORD carries data, BLOCK carries programs — derivation {#record-carries-data-block-carries-programs}
+
+Previous guess is now stable: each of four transfer operations calls
+`Session_StartDataMode` (`ROM00:452D`) with its index and loads its display
+string (`C-RX-REC` 9 `Receiving data` at `4EA3`, `C-RX-BLK` 10 `Receiving prog`
+at `4F90`, `C-BEGIN-FILE` 11 `Sending data` at `506A`, `C-TX-BLK` 14 `Sending
+prog` at `5222`). Only indices 6 (`C-RX-CMD`) and 7 (`C-TX-REPLY`) have no
+call site. Prior-guess history belongs here.
+
+### What selects the operation — writer census {#what-selects-the-operation}
+
+Three off-table states have no incoming legal transition; the matrix's
+`CONNECTED`→`C-COMMAND` cell yields `READY-RX-DATA`. `C-COMMAND` overwrites it
+from its operation table — validated, then staged state discarded. The
+`Session_SetState` writer census (46 callers, 26 literal `0`/`2`/`13`, 17
+`E48C`, 2 `E491`) and the no-literal-`4`/`5`/`6` observation belong here; the
+concise override rule remains on the protocol page.
+
+### What the table permits, and how `C-COMMAND` gets past it — methodology {#what-the-table-permits-and-how-c-command-gets-past-it}
+
+BFS from `NOT-STARTED` over legal transitions only via
+`analysis/decode_state_machine.py` — reachable set vs off-table set. The
+decoder-script methodology and the argument about table incompleteness belong
+here; the legal-sequence summary remains on the protocol page.
+
+### How READY-RX-PROG, READY-TX-DATA and READY-TX-PROG are entered — listings and emulator proof {#how-states-4-5-and-6-are-entered}
+
+`ROM00:731B` seven 6-byte `{char name[5]; u8 target_state;}` records copied to
+`ram:E247` by `ROM00:7D68`; `C-COMMAND` multiplies index by six at
+`4B15`–`4B26` (`E48F`) and `4B29`–`4B3D` (`E491`) with no bounds check;
+validation at `4AEA` (`Session_StartDataMode(5)`) then `4C62` `Session_SetState`
+with `E491` discarding `E48C`. Copy-descriptor/call-site listings, the firmware
+`LOAD`/`PROG` at `ROM01:135F`/`1365`/`1369`, and the `SEND` emulator proof
+(`1 2 5 9 9 10 2`, `Data transmitted`) belong here; the seven-operation table
+and override semantics remain on the protocol page.
+
+### End-to-end confirmation of the state machine — live experiment {#end-to-end-confirmation-of-the-state-machine}
+
+Calling `C_ABORT` (`ram:EE00`) from a loaded COM in boot state displays:
+
+```text
+      C_ABORT
+    called from
+    NOT-STARTED
+Press >> to continue
+```
+
+This is `Session_CoroJumpTable`'s illegal-transition path, confirming at once:
+indexing `NOT-STARTED` row `C_ABORT` column, cell `0x80` bit 7 illegal, both
+name tables rendering, `g_bSessionState` as row index booting to 0. The call
+never returns (waiting in `Session_WaitContinue`). This live experiment is
+evidence, not part of the transition contract.
+
+### Which entry points the firmware itself uses — reachability {#which-entry-points-the-firmware-itself-uses}
+
+Searching ROM00, ROM01, upper live RAM and banked RAM for `CALL`/`JP` to each
+of twenty slots finds six direct callers:
+
+| Slot | Command | Invoked from |
+|---:|---|---|
+| 57 `EE00` | `C_ABORT` | `ROM01:11A4` |
+| 60 `EE0C` | `C-COMMAND` | `ROM01:1369` |
+| 62 `EE14` | `C-DROP-LINE` | `ROM01:11A7`, `ROM01:152B` |
+| 65 `EE20` | `C-INIT-COMMS` | `ROM01:1304` |
+| 68 `EE2C` | `C-RX-BLK` | `ROM01:141E` |
+| 72 `EE3C` | `C-SHUT-DOWN` | `ROM01:151C` |
+
+Three more (`EE04` `C-ANSWER`, `EE10` `C-DIAL`, `EE28` `C-MANUAL`) via
+link-method table callback (`ROM01:1330 CALL 0D828h`). Eleven slots have no
+caller, including every transmit primitive (`EE08` `EE44` `EE18` `EE40`
+`EE1C`) and `EE24`. The shipped firmware only completes Program Reception.
+The missing caller is LIKELY the application (transfer-vector `ED1C`-`F17F`),
+CONFIRMED by a 16-byte COM at `EE24` leaving mode gate 2 and by later COM
+download/upload drives. Image-search reachability and application hypothesis
+belong here; the catalogue itself is owned by the API page.
+
+### The 4x byte transport is not loadable storage — CONFIRMED {#the-4x-byte-transport-is-not-loadable-storage}
+
+All drive-C:+ storage I/O runs over the 4x byte transport (never the 2D edge
+input). This is CONFIRMED, not an analogy to a wire-id or port. The EXT
+STORAGE ADAPTER's attachment point is not yet adjudicated — do not bind it to
+a wire-id or port until the owner confirms. Default FE93 storage wires are
+`C:=0x73`, `D:=0x72` (wire-ID bit5=1 in both, same port state, adjacent unit
+addresses).
+
+See also: [Commstar API reference](../reference/commstar-api.md),
+[Commstar peer library](../reference/commstar-peer.md).

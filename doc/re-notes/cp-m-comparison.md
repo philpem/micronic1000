@@ -182,3 +182,7 @@ handlers (`ROM00:0742`, `ROM00:115E`, and the wrapped-table set
 `Bdos_GetRtcTime`, `Bdos_InternalTimedWait`, `Bdos_FfAlarmControl`). The
 dispatch table `ROM00:3708`
 (RAM F1EB) and the wrapped table ROM00:36EE (RAM F1D1) are commented.
+
+See also: [BDOS reference](../reference/bdos.md),
+[Extensions reference](../reference/extensions.md),
+[Supported profile](../manual/supported-profile.md).

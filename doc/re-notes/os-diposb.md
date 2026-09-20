@@ -1,5 +1,29 @@
 # Operating system: DIPOSB
 
+**On this page:** The DIPOS-B operating system internals — kernel
+installation, BDOS dispatch, boot chains, module copying, the Load/Run
+loader, interrupt architecture, the debug monitor, and the patching
+interface. Intended for kernel analysts, patch authors, and anyone
+tracing the boot chain. Companion: the programmer-facing
+[BDOS reference](../reference/bdos.md) and
+[Memory and I/O map](../reference/memory-map.md).
+
+* [Identification](#identification)
+* [CP/M compatibility layer](#cpm-compatibility-layer)
+* [ABI layers](#abi-layers-complete-picture)
+* [BDOS function set](#bdos-function-set-confirmed-from-the-rom-resident-kernel-image)
+* [Local terminal escape protocol](#local-terminal-escape-protocol)
+* [Workstation object system](#workstation-object-system-decoded)
+* [Kernel call mechanisms](#kernel-call-mechanisms-two-paths-decoded)
+* [Kernel installation](#kernel-installation-confirmed)
+* [Boot load scripts](#boot-load-scripts-module-copying-how-to-find-srcdstlen)
+* [Runtime program loading](#runtime-program-loading-loadrun-loader-confirmed)
+* [Debug facilities](#debug-facilities)
+* [Power on/off](#power-onoff-partially-decoded)
+* [Interrupt architecture](#interrupt-architecture-fully-mapped)
+* [Clock self-test](#clock-self-test-decoded)
+* [Patching an OS function](#patching-an-os-function-full-evidence)
+
 ## Identification
 
 * String `DIPOSB Ver 228` @ ROM00:041E — the OS is **DIPOS** ("DIPOSB"),
@@ -503,6 +527,74 @@ TWO roles:
 * Menu: `Load/Run Program`. Reception messages: `Receiving prog`,
   `Program received`, `Invalid data stream`.
 
+### Unbanked RAM placement (CONFIRMED)
+
+**This is how a program leaves resident code behind**, and it is the single
+most useful thing about the DIP format for anyone writing a decode hook or a
+patch that has to outlive the program that installed it.
+
+The loader's block-acceptance test compares the block's **end address**
+against the program load ceiling:
+
+```text
+ROM01:0E9C  ADD  HL,DE          ; dest + payload count
+ROM01:0E9E  LD   HL,(0E3BDh)    ; g_pProgramLoadCeiling = D081h
+ROM01:0EA1  CALL 0E0E8h         ; Z iff ceiling >= end
+ROM01:0EA4  JP   Z,0EB0h        ; accept
+ROM01:0EA7  LD   HL,232Ah       ; else error 9002, "DIP file too big."
+```
+
+so the rule is **`destAddr + count <= 0xD081`**. Because `D081` is far above
+`8000`, **a type-0 block may name a destination anywhere in `8000`-`D080`,
+which is fixed battery-backed RAM outside the bank window.**
+
+**CONFIRMED by experiment**, not just by reading the check. A two-block DIP
+whose second block targets `C000` places its payload exactly there:
+
+```text
+--fill-mem c000:c03f --dump-mem c000:64
+
+[mem] final C000:64  44 49 50 44 45 53 54 2D 4C 41 4E 44 45 44 2D 41 54 2D 43 30 30 30 ...
+                     D  I  P  D  E  S  T  -  L  A  N  D  E  D  -  A  T  -  C  0  0  0
+```
+
+The marker pattern seeded across `C000`-`C03F` beforehand is overwritten for
+exactly the 32 payload bytes and survives untouched from `C020` on, so the
+copy is precisely placed and does not overrun.
+
+#### A COM can do the same thing
+
+A DIP is not the only route, and often not the simplest. A COM is a flat
+image loaded at `0100h` in a bank, but **unbanked RAM is mapped the whole
+time**, so a COM can simply copy its payload up when it runs:
+
+```text
+        LD   HL,payload      ; in the COM's own image
+        LD   DE,0C000h       ; unbanked, bank-independent
+        LD   BC,payload_len
+        LDIR
+        ; ... then install the hook
+```
+
+The trade-off is only in tooling and timing:
+
+| | DIP | COM |
+|---|---|---|
+| Placement | done by the loader, before entry | done by your own copy loop |
+| Toolchain | needs a DIP header and block table | a flat binary |
+| Size limit | `destAddr + count <= D081` per block, 5 blocks | image `<= 0xCF81`, which is exactly `D081 - 0100` |
+| Payload cost | payload only | payload is carried inside the image as well |
+
+Either way the code ends up in the same place and behaves identically once
+there. Use a DIP when you want the loader to do the placement or need several
+scattered destinations; use a COM when a copy loop is easier than building a
+header.
+
+**What neither can do:** write the decode-hook socket at `ram:FBC0`-`FBC3`
+directly from a DIP block, because `FBC0` is above the `D081` ceiling and the
+loader would reject it. The socket must be written by running code — see
+[Barcode reader](../reference/barcode.md).
+
 ### Code-loading paths (from strings; static evidence) — legacy strings
 
 ## Debug facilities
@@ -594,3 +686,103 @@ clock-test write/read paths. The 4x latch cluster (4A-4F) is NOT the
 RTC. The PLINTH/V24 IR and side-port data paths are the remaining
 open question — whether they share the 08/28 bus at higher indices
 or live on separate ports.
+
+## Patching an OS function — full evidence
+
+The resident kernel dispatches BDOS calls through a **word table in
+unbanked RAM**, which makes it a real hook point rather than a
+theoretical one:
+
+```
+ram:f18f  06 00         LD   B,0          ; BC = C = function number
+ram:f191  79 FE 25      LD A,C; CP 25h
+ram:f194  38 2F         JR   C,F1C5       ; fn < 25h  -> CP/M table
+ram:f196  FE F3         CP   F3h
+ram:f198  30 2A         JR   NC,F1C4      ; fn >= F3h -> extension table
+…                                         ; 25h..F2h: special-case chain
+ram:f1c4  05            DEC  B            ; B=FFh: biases the index by -200h
+ram:f1c5  21 EB F1      LD   HL,F1EB      ; table base
+ram:f1c8  09 09         ADD HL,BC; ADD HL,BC
+ram:f1ca  7E 23 66 6F   LD A,(HL); INC HL; LD H,(HL); LD L,A
+ram:f1ce  C3 82 F3      JP   F382         ; common banked-call envelope
+```
+
+CONFIRMED, byte-verified `ram:F18F`-`F1D0`. Cross-checked against the
+table's own contents: entry 0 is `024D` (`ROM00:024D` = the system-reset
+handler, which is one of the four `LD SP,F81A` sites), and entry 3 is
+`1080` — `Bdos_ReaderInChar`, exactly as documented.
+
+There is one table base and two windows onto it, which is why the two
+tables sit `0x200` apart:
+
+| Table | Address | Index | Covers |
+|---|---|---|---|---|
+| Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh`, 13 words |
+| CP/M range | `ram:F1EB`+ | `F1EB + 2×fn` | BDOS functions from `00h` |
+
+CONFIRMED: for `fn = F3h`, `F1EB + 0x1E6 − 0x200 = F1D1` exactly.
+
+Both are inside the resident kernel image, so:
+
+* **A patch is a 16-bit store**: write your handler's address into
+  `F1EB + 2 × fn` for a CP/M-range function, or into
+  `F1D1 + 2 × (fn − F3h)` for an extension function. The dispatcher will
+  route the call through the same `F382` envelope it uses for a ROM
+  handler.
+* **Your handler is entered with bank 0 selected.** The envelope saves
+  the caller's bank and then switches unconditionally:
+
+  ```
+  ram:f382  22 F6 FE      LD   (FEF6),HL   ; handler address
+  ram:f385  2A FA FE      LD   HL,(FEFA)   ; restore the caller's argument
+  ram:f388  3A 91 F7      LD   A,(F791)
+  ram:f38b  32 FE FE      LD   (FEFE),A    ; caller's bank -> FEFE
+  ram:f38e  F3            DI
+  ram:f38f  F5 3E 00      PUSH AF; LD A,0
+  ram:f392  32 91 F7      LD   (F791),A
+  ram:f395  D3 47         OUT  (47h),A     ; bank 0, always
+  ```
+
+  CONFIRMED, byte-verified `ram:F382`-`F396`. So a handler in the banked
+  window must be in **bank 0**, and a handler at `C000`+ works
+  unconditionally, which is the reason to put it there.
+* **The patch survives a warm boot, and dies on a cold one.**
+  `ROM00:02FE` copies the kernel image `ROM00:369D` → `ram:F180` up to end
+  address `F68D`, and `F1D1`/`F1EB` are inside that range — but it runs
+  **only on a cold start**. `CALL 02FE` has exactly one call site in the
+  whole ROM, `ROM00:023E`, which sits inside `ColdStartSelfTestBanner`
+  *after* the warm-boot entry point:
+
+  ```text
+  ROM00:019E  LD   A,(0F81Ch)
+  ROM00:01A1  CP   55h
+  ROM00:01A3  JP   Z,024Dh      ; warm -> skips 01A6..024C entirely
+  ROM00:0232  LD   A,55h / LD (0F81Ch),A   ; cold start stamps the flag
+  ```
+
+  So a `F1EB`/`F1D1` patch persists across a warm boot and a power cycle,
+  and is undone only by a cold start — which also RAM-tests all of
+  `8000`-`FFFF` and would have destroyed your patch anyway.
+* **Special-cased functions bypass the table.** Functions `2Dh`, `2Eh`,
+  `30h`, `62h`, `68h` and `69h` are dispatched by an explicit compare
+  chain at `ram:F19A`-`F1C2` *before* the table lookup is reached
+  (`CP 30h / LD HL,1893 / JR Z`, and so on), so patching their table
+  slots has no effect. CONFIRMED.
+* **Do not call an unassigned function in `25h`-`F2h`.** Anything in that
+  range that is not one of the six special cases falls through to the
+  `DEC B` at `ram:F1C4` and is indexed with the `−200h` bias, so
+  `fn = 25h` fetches its handler from `ram:F035` — inside the far-call
+  stub arena. There is no range check. CONFIRMED (arithmetic over the
+  byte-verified dispatch above).
+
+Beyond this table and the barcode socket, **no general hooking API has
+been shown to exist.** The far-call stub arena at `ram:ED1C`-`F17F` is
+281 repointable four-byte stubs and UI vtables target it directly, so it
+is mechanically patchable — but which stub serves which purpose is
+established for only a fraction of them, and there is no published index.
+Treat repointing an arena stub as reverse engineering, not as an
+interface.
+
+See also: [BDOS reference](../reference/bdos.md),
+[Extensions reference](../reference/extensions.md),
+[Programmer guide](../manual/programmer-guide.md).
