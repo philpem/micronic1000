@@ -1,5 +1,22 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-20 — stock-take follow-ups
+
+* Finished the post-merge stock-take. Analytic (Ghidra) work remains
+  complete — §12 FINAL PASS closed 2026-09-19; 4 retained `FUN_*`
+  (ROM00 1, ROM01 2, ram 1) documented as dead or reachable-unknown.
+  Every remaining item is owner/hardware-dependent: the Phase 0
+  `LINK_STATUS` bit-6 gate, the Phase 2 receive-convention sweep, the
+  Phase 3 bidirectional payload, and the `4Bh`/`4Ah` electrical,
+  complementary-port/EXT STORAGE ADAPTER, banked-RAM-dump and Z80-bus
+  fallback items (see `TASKS.md`).
+* Corrected two stale worklist lines the documentation review left
+  behind: the process note still described PR #15/#14 as pending (both
+  now handled, #14 rebased code-only and awaiting merge), and the
+  *Open questions* retained-`FUN_*` count still read 10 (current figure
+  is 4, matching `gap-analysis.md`). Strict site build and rendered-doc
+  checks pass.
+
 ## 2026-09-20 — documentation regression checks and first program
 
 * Added a first-COM walkthrough with source, exact assembled bytes,
