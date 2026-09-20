@@ -2332,6 +2332,7 @@ loadrun_source_state44_complete = False
 loadrun_source_data_offset = 0
 loadrun_source_phase14_start = None
 loadrun_source_arm_epoch_ticks = None
+loadrun_tx_dbg = 0
 cpu_ticks_total = 0
 
 # expect / queue state
@@ -2904,6 +2905,14 @@ while i < MAX_SLICES and stall < 8000:
                 mach.set_breakpoint(loadrun_source_breakpoint)
                 print(f"[loadrun-source] state44 phase2 RX={phase2.hex()}")
         elif loadrun_source_link_phase == 13:
+            if os.environ.get("MICRONIC_SHADOW_DEBUG"):
+                _tx = session_link_peer.peek_tx()
+                if len(_tx) > loadrun_tx_dbg:
+                    print(
+                        f"[loadrun-source] handheld TX "
+                        f"+{_tx[loadrun_tx_dbg:].hex()}"
+                    )
+                    loadrun_tx_dbg = len(_tx)
             if (
                 session_link_peer.pending_rx == 0
                 and loadrun_source_arm_epoch_ticks is None

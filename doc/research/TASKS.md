@@ -131,7 +131,13 @@ State: continuously updated as work progresses.
       protocol-faithful shape;
   **or** (c) the test is scoped to the control exchange, recording the
   program-download injection as deliberate adapter policy.
-  Reverted; instrumentation kept (`MICRONIC_SHADOW_DEBUG=1`).
+  **Measurement (2026-09-20) — (b) is viable:** with an 800 ms arm delay, the
+  firmware repeatedly transmits the block request
+  `03 0c 00 01 01 7f 00 44 00 00 00 80 00` (state `0044`, size `0x0080`) while
+  waiting, so it *does* drive the download by request; the route's oracle/timer
+  push merely pre-empts it. The fix is to answer those requests instead of
+  pushing. Reverted; instrumentation kept (`MICRONIC_SHADOW_DEBUG=1`, which now
+  also logs the handheld TX during phase 13).
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only
