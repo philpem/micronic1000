@@ -462,6 +462,15 @@ witness:        ld a,0x05
                 ld (V_COUNT),a
                 in a,(LINK_STAT)            ; status immediately after the arm
                 ld (V_PSTAT),a
+                ; Enable the receive path.  The stock firmware raises LINK_CTRL
+                ; bits 6/7 (34BD) after a transaction; every earlier exerciser
+                ; build left them clear, so its RX interrupt could never fire
+                ; and nothing could be received.  Do what LinkTransferService
+                ; does at 2FAE: set both.
+                ld a,0x40
+                call ctrl_or
+                ld a,0x80
+                call ctrl_or
                 call accreset
                 ld a,IRQ_ENABLE
                 out (IRQ_MASK),a
