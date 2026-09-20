@@ -117,10 +117,21 @@ State: continuously updated as work progresses.
   *Fix attempt (2026-09-20):* wiring `ProgramDownloadPolicy` into the shadow
   policy made it **worse** (`differed=1`): the policy's command reply
   `REPLY_OK` is 2 bytes (`4f4b`) while the route sends the 6-byte
-  `4f4ba55a3cc3`, so the first state-`0044` reply diverges. The fix must
-  reconcile that reply length (and the command-record/chunk handling) before
-  the policy can stand in for the script. Reverted; instrumentation kept
-  (`MICRONIC_SHADOW_DEBUG=1`).
+  `4f4ba55a3cc3`, so the first state-`0044` reply diverges. Deeper: the route's
+  receive-first object is **peer-initiated** — `boot_hw.py` sends it when its
+  own internal-state oracle (`oracle_ready`) or a timer (`delay_ready`) fires
+  (`feed_rx_checked(peer_initiated)`), **not** in response to a handheld
+  request. `CommstarPeer` is request→reply, so it structurally cannot predict
+  it. Reconciling therefore needs one of:
+  (a) `CommstarPeer` gains a peer-initiated serve mode (queue the program blocks
+      after the OK reply rather than waiting for block requests), plus the
+      `REPLY_OK` length aligned to `4f4ba55a3cc3`; **or**
+  (b) the synthetic route is made request-driven (wait for the handheld's block
+      requests, as `ProgramDownloadPolicy` models), which is the more
+      protocol-faithful shape;
+  **or** (c) the test is scoped to the control exchange, recording the
+  program-download injection as deliberate adapter policy.
+  Reverted; instrumentation kept (`MICRONIC_SHADOW_DEBUG=1`).
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only
