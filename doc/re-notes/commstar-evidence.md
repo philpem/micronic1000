@@ -636,6 +636,25 @@ literal bytes to an ordinal and attaches no semantics of its own, so the
 peer-level meanings are **OPEN** and not recoverable from this image alone —
 the same status as the numeric reply words above.
 
+**But the distinction is not load-bearing in this ROM — CONFIRMED
+(2026-09-20, byte-verified).** Both callers dispatch the class through
+`Kernel_TableDispatch` (`ram:E0B2`) with an inline case table, and in both
+tables classes 1 (`NO`) and 2 (`DM`) point at the **same handler**, while
+class 0 (`OK`) and class 3 (invalid) take distinct paths:
+
+| Class | `Session_CmdCommand` (`ROM00:4CC5`) | `Session_CmdEndTx` (`ROM00:53C4`) |
+|---:|---|---|
+| 0 (`OK`) | `4C41` | `534D` |
+| 1 (`NO`) | `4C70` | `536F` |
+| 2 (`DM`) | `4C70` (same) | `536F` (same) |
+| 3 (invalid) | `4C81` → `0x1F75 (8053)` | `5380` → `0x1FE3 (8163)` |
+
+Both class-1 and class-2 handlers set the same result and issue the same
+follow-on call (`LD HL,0x5 / LD (E488),HL`, `LD HL,0x2 / CALL 0x3BF5`). So a
+peer's choice of `NO` versus `DM` makes **no difference to the firmware's
+state transitions**; only `OK` versus not-`OK` (and the invalid class) does.
+A peer that can send `NO` need not also model `DM` separately.
+
 No historical Commstar state diagram or host/peer session sequence is
 normative yet. A capture must establish each transition as:
 

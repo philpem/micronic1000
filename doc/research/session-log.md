@@ -10,6 +10,15 @@
   (`Session_CmdEndTx`), both via `Session_MsgInvalidReply`. The peer-level
   meanings of `NO`/`DM` remain OPEN — a server-side convention; the ROM stores
   only ordinals.
+* Follow-up (same day): the `NO`/`DM` distinction is **not load-bearing** —
+  both callers dispatch the class through `ram:E0B2`, and classes 1 and 2 map
+  to the *same* handler (`4C70` in `Session_CmdCommand`, `536F` in
+  `Session_CmdEndTx`), while `OK` and the invalid class differ. A peer needs
+  only `OK` vs not-`OK`. A bounded `--upload` harness run could **not** settle
+  the identity cells: that path bypasses the Commstar session builder
+  (`ram:E492` is zero-filled at PC-after `D70F`, peer `records-received=0`), so
+  `C-INIT-COMMS` never runs; the cell→offset map is CONFIRMED statically via
+  `Lib_StrCopyN`, and a dynamic witness needs a full session run.
 * CONFIRMED the state-45 command-record assembly provenance:
   `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
   (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
