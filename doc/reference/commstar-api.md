@@ -397,6 +397,15 @@ connect command runs is table-driven from `ram:D108` by the Mode field:
 
 An IR link is type 4 and uses `C-DIAL` with `ECB4` as its number buffer.
 
+**CONFIRMED dynamically (2026-09-20).** With `MICRONIC_LOGON_POKE=1` the
+harness seeds `ECAB`/`EC99`/`ECA2` just before the V24 Log-on screen is
+accepted (`boot_hw.py`, logon step), then runs the synthetic Load/Run. The
+resulting `ram:E492` record carried `+0="GRP1"`, `+26="USER1"`, `+34="PASS1"`,
+`+18="12345678"` (the banner serial) and `+8` blank — so the cell → offset
+mapping is now **proven**, not only inferred. The `Group id`/`User id`/
+`Password` *labels* remain LIKELY form-layout inference; the mapping does not
+depend on them.
+
 > Form-layout derivation, proposed experiment and correction history: see
 > [`re-notes/commstar-api-evidence.md#where-the-identity-strings-come-from`](../re-notes/commstar-api-evidence.md#where-the-identity-strings-come-from).
 

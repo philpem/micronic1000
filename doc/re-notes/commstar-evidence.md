@@ -1585,6 +1585,13 @@ The `+0`/`+8`/`+26`/`+34` slots are blank in Load/Run traces because the
 synthetic run never fills the Log-on form (the source buffers are empty), not
 because the ROM leaves them uninterpreted.
 
+**CONFIRMED dynamically (2026-09-20).** Seeding `ram:ECAB`/`EC99`/`ECA2` at
+the logon step (`MICRONIC_LOGON_POKE=1` in `boot_hw.py`) and running the
+synthetic Load/Run puts `"GRP1"`/`"USER1"`/`"PASS1"` at record `+0`/`+26`/`+34`
+respectively, with `+18="12345678"` and `+8` blank — the cell → offset map is
+proven by execution, not just by the `Lib_StrCopyN` reading. The
+`Group id`/`User id`/`Password` names remain LIKELY form-layout inference.
+
 Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte
 field/encoding table remains on the protocol page.

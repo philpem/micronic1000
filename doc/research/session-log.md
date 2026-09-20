@@ -25,6 +25,14 @@
   blank. The `E6C4-E6F0` watch shows the `Lib_StrCopyN` loop (`ram:DBA2`) and
   the `Session_InitCommsCmd`/`Session_CmdCommand` sites writing the cells,
   matching the static map — first dynamic witness of the record layout.
+* Follow-up 3 (same day): **identity fields confirmed by execution.** Added an
+  env-gated poke (`MICRONIC_LOGON_POKE=1`) that seeds `ram:ECAB`/`EC99`/`ECA2`
+  at the logon step; the record then carried `+0="GRP1"`, `+26="USER1"`,
+  `+34="PASS1"` — proving the cell → offset map (`ECAB`→+0, `D120`→+8 blank,
+  `EC8E`→+18, `EC99`→+26, `ECA2`→+34). The `Group/User/Password` labels stay
+  LIKELY. Noted a **pre-existing** failure on master:
+  `CommstarShadowPeerTest::test_agrees_on_the_plinth_route` asserts
+  `agreed>=13` but measures 12 (fails identically on the unmodified harness).
 * CONFIRMED the state-45 command-record assembly provenance:
   `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
   (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`

@@ -1077,9 +1077,22 @@ if TRACE_LOADRUN_SOURCE:
                 "keys": TRACE_LOADRUN_NAME.encode() + source_keys,
                 "raw": "loadrun source",
             },
-            {"need": ["Log-on information"], "keys": logon_keys, "raw": "loadrun logon"},
+            {
+                "need": ["Log-on information"],
+                "keys": logon_keys,
+                "raw": "loadrun logon",
+            },
         ]
     )
+    # Analysis aid: with MICRONIC_LOGON_POKE=1, seed the V24 Log-on form buffers
+    # just before the logon screen is accepted, so C-INIT-COMMS latches known
+    # values. Confirms the identity-field cell->offset mapping (see docs).
+    if os.environ.get("MICRONIC_LOGON_POKE"):
+        EXPECT_STEPS[-1]["poke"] = [
+            (0xECAB, b"GRP1"),
+            (0xEC99, b"USER1"),
+            (0xECA2, b"PASS1"),
+        ]
 
 # legacy serial drive vs expect: if expect steps supplied, prefer them; otherwise legacy queue
 use_legacy_queue = (
@@ -2485,6 +2498,11 @@ while i < MAX_SLICES and stall < 8000:
         # also consider fb as flat text without newlines; check substrs present
         matched = all(s in txt_now for s in step["need"]) if step["need"] else True
         if matched:
+            for paddr, pdata in step.get("poke", ()):
+                host_write(paddr, pdata)
+                print(
+                    f"[{i}] expect step {expect_idx} poke {paddr:04X} <- {pdata!r} (pc={pc:04X})"
+                )
             if step["keys"]:
                 pending_keys.extend(step["keys"])
                 print(
