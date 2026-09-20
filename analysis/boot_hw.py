@@ -1422,8 +1422,18 @@ def feed_rx_checked(queue):
     except Exception as exc:                      # never break a trace over this
         shadow_differ.append(f"shadow error: {exc}")
         expected = []
+    if os.environ.get("MICRONIC_SHADOW_DEBUG"):
+        print(
+            f"[shadow-peer] feed scripted={bytes(queue).hex()} "
+            f"expected={[e.hex() for e in expected]}"
+        )
     if not expected:
         shadow_unsolicited += 1
+        if os.environ.get("MICRONIC_SHADOW_DEBUG"):
+            print(
+                f"[shadow-peer] UNSOLICITED scripted={bytes(queue).hex()} "
+                f"(tx_seen={shadow_tx_seen})"
+            )
     elif bytes(queue) == expected[0]:
         shadow_agree += 1
     else:

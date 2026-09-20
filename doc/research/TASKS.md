@@ -97,15 +97,30 @@ State: continuously updated as work progresses.
 
 ## In progress
 
-- **Bisected test regression on master (2026-09-20):**
+- **Plinth shadow-peer divergence (bisected 2026-09-20):**
   `analysis/test_boot_upload.py::CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
-  asserts `agreed >= 13`, measures 12. Bisected to `e5baacf` ("replace the
-  receive-arm oracle with timed policy", 2026-09-07): the plinth route went
-  from `agreed=13 unsolicited=1` to `agreed=12 unsolicited=2`, so one scripted
-  reply now finds no expected reply from `CommstarPeer`. The test exists to
-  catch exactly that divergence, so this is a **real peer-modelling gap**, not a
-  stale count: teach `CommstarPeer` the new exchange (or explain the extra
-  reply) rather than lowering the assertion.
+  asserts `agreed >= 13`, measures 12 (`unsolicited=2`). Bisected to `e5baacf`
+  (receive-arm timed policy). Instrumented (`MICRONIC_SHADOW_DEBUG=1` in
+  `boot_hw.py`): the two replies the peer cannot predict are the
+  **program-download object** (`0042…`, the 52-byte COM) and its type-4
+  completion (`0006 0004 01 43 0004 01`). `CommstarPeer`'s `_shadow_policy`
+  models only the control exchange (state `0044` → the OK object
+  `0014…4f4ba55a3cc3`; otherwise a control ack) and has **no program-serving
+  policy**. With `--synthetic-loadrun-arm-delay-us` the peer does see the
+  request but answers the OK object instead, giving `agreed=13 differed=1`.
+  This is a genuine peer-modelling gap — the exact divergence the test exists to
+  catch. Fix: add a program-serving branch to `_shadow_policy` (reuse the
+  synthetic program bytes, as `--commstar-serve-program` does), discriminated by
+  the request that triggers the download; or scope the test to the control
+  exchange and document the program path as adapter policy. Do **not** lower the
+  assertion.
+  *Fix attempt (2026-09-20):* wiring `ProgramDownloadPolicy` into the shadow
+  policy made it **worse** (`differed=1`): the policy's command reply
+  `REPLY_OK` is 2 bytes (`4f4b`) while the route sends the 6-byte
+  `4f4ba55a3cc3`, so the first state-`0044` reply diverges. The fix must
+  reconcile that reply length (and the command-record/chunk handling) before
+  the policy can stand in for the script. Reverted; instrumentation kept
+  (`MICRONIC_SHADOW_DEBUG=1`).
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only
