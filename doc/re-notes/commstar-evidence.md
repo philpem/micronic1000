@@ -611,6 +611,30 @@ The complete reply envelope, payload, and any session meaning remain
 **OPEN**. The examined ROM transport/header path has no checksum.
 Integrity inside unresolved loaded-session payloads remains **OPEN**.
 
+### The `OK`/`NO`/`DM` reply-token classifier — CONFIRMED
+
+The "control object" classifier is a three-entry lookup table, not inline
+comparisons. **CONFIRMED by fresh disassembly and a byte read (2026-09-20):**
+
+* The table lives at `ram:E22F` (resident copy) and `ROM00:7303` (ROM
+  original), as `{token[2], 0x00, class:u8}` stride 4:
+  `4F 4B 00 00 | 4E 4F 00 01 | 44 4D 00 02` — `OK`→0, `NO`→1, `DM`→2.
+  The class byte is at entry offset 3.
+* `Session_CoroJumpTx` (`ROM00:3F65`–`3FC8`) walks it: it forms
+  `base + i*4` (`ROM00:3F9B` `LD DE,0xE22F`; `ROM00:3FBB` `LD DE,0xE232`),
+  compares the packed object's bytes from `ptr+1` (past the `{u8 count}`
+  prefix) against `token[2]` via `ROM00:DB40`, and on a match stores the
+  class byte into `ram:E452`. No match after three entries leaves
+  `ram:E452 = 3` (set at the arm, `ROM00:3F5F`/`3F69`), which the callers
+  (`Session_CmdCommand` `ROM00:4C81`, `Session_CmdEndTx` `ROM00:5380`) turn
+  into `0x1F75 (8053), "Invalid reply"`.
+
+The class values and the fall-through are **CONFIRMED mechanics**. What a
+peer means by `NO` or `DM` is a *server-side* convention: the ROM maps the
+literal bytes to an ordinal and attaches no semantics of its own, so the
+peer-level meanings are **OPEN** and not recoverable from this image alone —
+the same status as the numeric reply words above.
+
 No historical Commstar state diagram or host/peer session sequence is
 normative yet. A capture must establish each transition as:
 
@@ -1500,10 +1524,41 @@ numeric states.
 
 Measured by varying one input at a time and comparing captures
 (`--serial`/`--trace-loadrun-name`); each field confirmed by observing that it
-and nothing else changed. Frame length stayed 66; RAM/ROM assembly provenance
-at `ram:E492` / `ROM00:4C11`–`4C19` and capture corroboration belong here. The
-canonical 54-byte field/encoding table and unresolved-field qualifications
-remain on the protocol page.
+and nothing else changed. Frame length stayed 66.
+
+**Assembly provenance — CONFIRMED, byte-verified (2026-09-20).** The
+54-byte command record is assembled at `ram:E492` and sent whole from
+`ROM00:4C11` (`LD HL,0x36 / LD HL,0xE492 / CALL 0x5880`). `Session_CmdCommand`
+(`ROM00:4AE0`) builds it field by field with `memcpy` (`ROM00:DB89`):
+
+| Record offset | Size | Source | Written from |
+|---:|---:|---|---|
+| +0 | 8 | `ram:E6D0` | `Session_InitCommsCmd` arg 1 |
+| +8 | 6 | `ram:E6E8` | `Session_InitCommsCmd` arg 2 |
+| +14 | 4 | op-name table `ROM00:E247`, stride 6 | computed `ROM00:4B1C`–`4B3A` |
+| +18 | 8 | `ram:E6EF` | `Session_InitCommsCmd` arg 3 |
+| +26 | 8 | `ram:E6C4` | `Session_InitCommsCmd` arg 4 |
+| +34 | 8 | `ram:E6D9` | `Session_InitCommsCmd` arg 5 |
+| +42 | 12 | caller stack argument | `ROM00:4BF0`–`4C04` |
+
+`Session_InitCommsCmd` (`ROM00:4563`) copies five NUL-terminated
+stack-argument strings into `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
+(capacities 8/6/8/8/8, each terminated immediately after) and sends via
+`Session_Tx4Param` (`ROM00:5669`). `Session_InitState` (`ROM00:46E9`;
+`ROM00:4744`–`4760`) **clears the same five cells** to empty and sends via
+`Session_Tx5Param` (`ROM00:56A4`).
+
+The four identity fields (+0, +8, +26, +34) and the workstation field (+18)
+are caller-supplied strings — the ROM never assigns them a literal. The caller
+(`Session_HelperRouter11E5`, `ROM01:1304`) sources them from a mode record at
+`0xD467` and its own incoming argument. Their byte positions, sizes, encodings
+and provenance are CONFIRMED; their *semantic* identity (`link name`, `node
+id`, `user id`, …) is **not determinable from this image** — the ROM treats
+them opaquely. **Do not invent names.**
+
+Ghidra note: `ROM00:4BBE` decodes as `AND 0xe5`, but the bytes are
+`21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte
+field/encoding table remains on the protocol page.
 
 ### Frame sequence numbers and duplicate suppression — disassembly {#frame-sequence-numbers-and-duplicate-suppression}
 

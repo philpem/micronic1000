@@ -1,5 +1,31 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-20 — Commstar reply-token classifier and command-record provenance
+
+* CONFIRMED the reply-token classifier mechanism (fresh disassembly + byte
+  reads): a three-entry table at `ram:E22F` / `ROM00:7303`,
+  `{token[2], 0x00, class}` stride 4, `OK`→0 `NO`→1 `DM`→2, walked by
+  `Session_CoroJumpTx` (`ROM00:3F65`–`3FC8`). A miss leaves class 3: the
+  callers map it to `0x1F75 (8053)` (`Session_CmdCommand`) or `0x1FE3 (8163)`
+  (`Session_CmdEndTx`), both via `Session_MsgInvalidReply`. The peer-level
+  meanings of `NO`/`DM` remain OPEN — a server-side convention; the ROM stores
+  only ordinals.
+* CONFIRMED the state-45 command-record assembly provenance:
+  `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
+  (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
+  and the operation-name table `ram:E247` (ROM `ROM00:731B`).
+  `Session_InitCommsCmd` (`ROM00:4563`) latches five NUL-terminated caller
+  arguments (capacities 8/6/8/8/8) into those cells; `Session_InitState`
+  (`ROM00:46E9`) clears them. The four identity fields' byte layout and source
+  cells are CONFIRMED; their semantic identity is OPEN — the caller
+  (`ROM01:12E0`–`1304`) forms arguments from `0xD467`, a constant `0`, and a
+  caller-stack word, and no cell→offset mapping is witnessed. Left unnamed.
+* Recorded a Ghidra misdecode affecting any decompiler reading of
+  `Session_CmdCommand`: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the
+  bytes are `21 C4 E6` (`LD HL,0xE6C4`), the `+26` source copy. Docs updated;
+  no Ghidra renames. Cross-provider review (OpenAI) returned REVISE on four
+  points; all were re-checked against the bytes and corrected above.
+
 ## 2026-09-20 — stock-take follow-ups
 
 * Finished the post-merge stock-take. Analytic (Ghidra) work remains

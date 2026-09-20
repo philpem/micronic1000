@@ -408,20 +408,23 @@ and field-for-field confirmed against the ROM:
 
 | Object | Frame | Size | Field | Encoding |
 |---:|---:|---:|---|---|
-| +0 | +12 | 8 | identity | — |
-| +8 | +20 | 6 | identity (always blank) | — |
+| +0 | +12 | 8 | identity (opaque) | `ram:E6D0`; caller-supplied, NUL-terminated |
+| +8 | +20 | 6 | identity (opaque) | `ram:E6E8`; caller-supplied, NUL-terminated |
 | +14 | +26 | 4 | **operation name** | `LOAD`, `SEND`, etc. |
 | +18 | +30 | 8 | **workstation number** | **right-justified, space-padded** |
-| +26 | +38 | 8 | identity | — |
-| +34 | +46 | 8 | identity | — |
+| +26 | +38 | 8 | identity (opaque) | `ram:E6C4`; caller-supplied, NUL-terminated |
+| +34 | +46 | 8 | identity (opaque) | `ram:E6D9`; caller-supplied, NUL-terminated |
 | +42 | +54 | 12 | **command parameter** | **left-justified, NUL-padded**; program name |
 
 Workstation `ABC` serialises as `20 20 20 20 20 41 42 43`, program name `XY`
 as `58 59 00 00 00 00 00 00`. The operation-name field varies by
 `C-COMMAND`'s first argument (`RCV1`, `RCV2`, `SEND`, `LOAD`, `PROG`, `TIME`,
 `ENDC` — see [How READY-RX-PROG, READY-TX-DATA and READY-TX-PROG are entered](#how-ready-rx-prog-ready-tx-data-and-ready-tx-prog-are-entered)).
-The four blank identity fields are latched by `C-INIT-COMMS` and are empty in
-Load/Run traces.
+The four identity fields are latched by `C-INIT-COMMS` and are empty in
+Load/Run traces. Their byte positions and sizes are CONFIRMED, but the ROM
+treats them opaquely — it never assigns a literal or interprets the contents —
+so their semantic identity is **not determinable from this image**; do not
+invent names.
 
 > Variation experiments and assembly provenance: see
 > [`re-notes/commstar-evidence.md#state-45-object-layout`](../re-notes/commstar-evidence.md#state-45-object-layout).
