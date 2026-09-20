@@ -97,56 +97,14 @@ State: continuously updated as work progresses.
 
 ## In progress
 
-- **Plinth shadow-peer divergence (bisected 2026-09-20):**
-  `analysis/test_boot_upload.py::CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
-  asserts `agreed >= 13`, measures 12 (`unsolicited=2`). Bisected to `e5baacf`
-  (receive-arm timed policy). Instrumented (`MICRONIC_SHADOW_DEBUG=1` in
-  `boot_hw.py`): the two replies the peer cannot predict are the
-  **program-download object** (`0042…`, the 52-byte COM) and its type-4
-  completion (`0006 0004 01 43 0004 01`). `CommstarPeer`'s `_shadow_policy`
-  models only the control exchange (state `0044` → the OK object
-  `0014…4f4ba55a3cc3`; otherwise a control ack) and has **no program-serving
-  policy**. With `--synthetic-loadrun-arm-delay-us` the peer does see the
-  request but answers the OK object instead, giving `agreed=13 differed=1`.
-  This is a genuine peer-modelling gap — the exact divergence the test exists to
-  catch. Fix: add a program-serving branch to `_shadow_policy` (reuse the
-  synthetic program bytes, as `--commstar-serve-program` does), discriminated by
-  the request that triggers the download; or scope the test to the control
-  exchange and document the program path as adapter policy. Do **not** lower the
-  assertion.
-  *Fix attempt (2026-09-20):* wiring `ProgramDownloadPolicy` into the shadow
-  policy made it **worse** (`differed=1`): the policy's command reply
-  `REPLY_OK` is 2 bytes (`4f4b`) while the route sends the 6-byte
-  `4f4ba55a3cc3`, so the first state-`0044` reply diverges. Deeper: the route's
-  receive-first object is **peer-initiated** — `boot_hw.py` sends it when its
-  own internal-state oracle (`oracle_ready`) or a timer (`delay_ready`) fires
-  (`feed_rx_checked(peer_initiated)`), **not** in response to a handheld
-  request. `CommstarPeer` is request→reply, so it structurally cannot predict
-  it. Reconciling therefore needs one of:
-  (a) `CommstarPeer` gains a peer-initiated serve mode (queue the program blocks
-      after the OK reply rather than waiting for block requests), plus the
-      `REPLY_OK` length aligned to `4f4ba55a3cc3`; **or**
-  (b) the synthetic route is made request-driven (wait for the handheld's block
-      requests, as `ProgramDownloadPolicy` models), which is the more
-      protocol-faithful shape;
-  **or** (c) the test is scoped to the control exchange, recording the
-  program-download injection as deliberate adapter policy.
-  **Measurement (2026-09-20) — (b) is viable:** with an 800 ms arm delay, the
-  firmware repeatedly transmits the block request
-  `03 0c 00 01 01 7f 00 44 00 00 00 80 00` (state `0044`, size `0x0080`) while
-  waiting, so it *does* drive the download by request; the route's oracle/timer
-  push merely pre-empts it. The fix is to answer those requests instead of
-  pushing. Reverted; instrumentation kept (`MICRONIC_SHADOW_DEBUG=1`, which now
-  also logs the handheld TX during phase 13).
-  *Characterisation (2026-09-20):* with the push suppressed
-  (`MICRONIC_NO_PUSH=1`) the handset still emits the block request repeatedly,
-  so it will ask **without** a preceding object — (b) is viable. However the
-  route's trigger also requires `oracle_ready` (PC `2F78` plus the
-  `FDC5`/`FDC7`/`FDD2`/`FDDC`/`FDD5` predicates), an internal-state oracle that
-  does **not** hold once the route waits, so keying on the request alone stalls
-  the route. (b) therefore requires replacing the oracle predicate with the
-  request condition (and preserving the `--synthetic-loadrun-arm-delay-us`
-  timing print used by `BootSessionTransactionTest`).
+- **Plinth shadow-peer divergence — RESOLVED (2026-09-20):** bisected to
+  `e5baacf`; root cause was that the synthetic route pushed the program object
+  peer-initiated (on its internal-state oracle/timer), so the request→reply
+  peer could not predict it. The route is now **request-driven** (it answers
+  the handset's repeated state-`0044` block request) and the shadow peer serves
+  the program via `ProgramDownloadPolicy`, giving
+  `agreed=14 differed=0 unsolicited=0`. `CommstarShadowPeerTest` passes on both
+  routes. See the session log for the full bisection and fix.
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only

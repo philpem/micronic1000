@@ -1,5 +1,27 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-20 — plinth shadow-peer gap resolved (request-driven download)
+
+* Bisected the red `CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
+  (asserts `agreed >= 13`, measured 12) to `e5baacf`. Root cause: the synthetic
+  Load/Run route pushed the program object **peer-initiated** (on its
+  internal-state oracle or a timer), so the request→reply `CommstarPeer` could
+  not predict it (`unsolicited=2`).
+* Characterised with new gated hooks (`MICRONIC_SHADOW_DEBUG=1` logs the
+  handset TX during phase 13; `MICRONIC_NO_PUSH=1` suppresses the push): with
+  the push suppressed the handset still **repeatedly emits** the block request
+  `03 0c 00 01 01 7f 00 44 00 00 00 80 00` (state `0044`, size `0x0080`). So the
+  firmware drives the download by request — (b) is viable.
+* Fix (CONFIRMED): made the route **request-driven** — phase 13 now keys on the
+  handset's block request rather than the `oracle_ready` predicate — and gave
+  the shadow peer a `ProgramDownloadPolicy` over the synthetic bytes
+  (`reply_ok = 4f4ba55a3cc3`, `chunk = 0x7E`). Result:
+  `agreed=14 differed=0 unsolicited=0`; both `CommstarShadowPeerTest` routes
+  pass. `ProgramDownloadPolicy` gained a `reply_ok` parameter (default `b"OK"`,
+  so `test_peer.py` is unchanged).
+* Tests: 161 passed / 33 skipped (fast) + the 7 Load/Run emulator tests and
+  both shadow-peer tests pass; strict docs build and rendered-doc checks pass.
+
 ## 2026-09-20 — Commstar reply-token classifier and command-record provenance
 
 * CONFIRMED the reply-token classifier mechanism (fresh disassembly + byte

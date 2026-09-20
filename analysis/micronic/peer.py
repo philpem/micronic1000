@@ -341,15 +341,17 @@ class ProgramDownloadPolicy:
     """
 
     def __init__(self, images: dict[str, bytes] | bytes,
-                 chunk: int = MAX_OBJECT_DATA):
+                 chunk: int = MAX_OBJECT_DATA,
+                 reply_ok: bytes = REPLY_OK):
         if isinstance(images, (bytes, bytearray)):
             images = {"": bytes(images)}
         self.images = {name: bytes(data) for name, data in images.items()}
         self.chunk = min(chunk, MAX_OBJECT_DATA)
+        self.reply_ok = bytes(reply_ok)
         self.commands: list[CommandRecord] = []
         self.served: list[bytes] = []       # every block payload, in order
         self._reply_due = False             # next 0044 is a command reply
-        self._reply = REPLY_OK
+        self._reply = self.reply_ok
         self._stream: bytes | None = None
         self._offset = 0
         self.finished = False
@@ -375,10 +377,10 @@ class ProgramDownloadPolicy:
             if image is None:
                 self._reply, self._stream = REPLY_NO, None
             else:
-                self._reply, self._stream, self._offset = REPLY_OK, image, 0
+                self._reply, self._stream, self._offset = self.reply_ok, image, 0
                 self.finished = False
         else:
-            self._reply = REPLY_OK
+            self._reply = self.reply_ok
         return None      # the command record itself gets a control ack
 
     def _next_block(self, requested: int):

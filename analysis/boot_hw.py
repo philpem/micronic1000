@@ -1354,6 +1354,15 @@ if COMMSTAR_SERVE_PROGRAM:
         f"[commstar-peer] serving {len(_image)} bytes as "
         f"{COMMSTAR_PROGRAM_NAME or '<any name>'} in {COMMSTAR_CHUNK}-byte blocks"
     )
+elif SYNTHETIC_LOADRUN_DATA is not None:
+    # Mirror the synthetic route's program download: the handset requests each
+    # block with a state-0044 request, so serve the same bytes in 0x7E blocks.
+    # reply_ok matches the route's six-byte OK scaffold (4f4b a55a3cc3).
+    program_policy = ProgramDownloadPolicy(
+        bytes(SYNTHETIC_LOADRUN_DATA),
+        chunk=0x7E,
+        reply_ok=bytes.fromhex("4f4ba55a3cc3"),
+    )
 
 
 def _shadow_policy(request):
@@ -2941,8 +2950,22 @@ while i < MAX_SLICES and stall < 8000:
                 and loadrun_source_arm_epoch_ticks is not None
                 and cpu_ticks_total - loadrun_source_arm_epoch_ticks >= delay_ticks
             )
-            if (oracle_ready or delay_ready) and not os.environ.get(
-                "MICRONIC_NO_PUSH"
+            # The handset drives the download: it retries a state-0044 block
+            # request (size 0x0080) until answered. Key the reply on that
+            # request rather than the internal-state oracle, so the
+            # request->reply peer can predict the object.
+            block_request_seen = (
+                bytes.fromhex("440000008000") in session_link_peer.peek_tx()
+            )
+            timing_ok = (
+                delay_ready
+                if SYNTHETIC_LOADRUN_ARM_DELAY_US is not None
+                else True
+            )
+            if (
+                block_request_seen
+                and timing_ok
+                and not os.environ.get("MICRONIC_NO_PUSH")
             ):
                 if delay_ready:
                     actual_us = (
