@@ -2,20 +2,27 @@
 
 Single address for every `OPEN` item in the tree. Each entry states the
 question, the current evidence, and the observation that would resolve it.
-For prioritised work and the session log, see `research/TASKS.md` in the
-source tree (not published here).
+For prioritised work, see the [research worklist](../research/TASKS.md);
+for the historical session log, see the
+[session log](../research/session-log.md).
 
 ## Wire and electrical layer
 
-* **IR modulation, bitrate, byte framing, timing, polarity** — No
-  connector-facing capture exists. The M1000-facing latch order is known;
-  the electrical serialisation downstream of `LINK_TXD`/`LINK_RXD` is not.
+* **IR modulation, bitrate, byte framing, timing, polarity** — The
+  M1000-facing latch order is known; the electrical serialisation
+  downstream of `LINK_TXD`/`LINK_RXD` is not. Earlier versions of this
+  entry stated "No connector-facing capture exists" — that claim is
+  **superseded**; see [IR wire protocol](ir-wire-protocol.md) for latched
+  controller-queue evidence and the remaining electrical unknowns.
   *Resolve:* one synchronised bus capture on `4Dh/4Eh` versus the IR
   photodiode/LED pair, with both directions and the `4Ah/4Bh` latch states.
 
 * **Does the controller-queue sync/trailer exist on the wire?** — The
   synthetic peer adds an uncounted `00` sync and two excluded trailing
-  copies of type/sequence; their wire presence is open.
+  copies of type/sequence; wire presence was previously stated as "no
+  capture exists" and is now **superseded** — controller-queue framing is
+  documented in [IR wire protocol](ir-wire-protocol.md); wire-level
+  electrical presence remains the open point.
   *Resolve:* same physical capture — compare wire bytes to controller-queue
   bytes.
 
@@ -39,15 +46,15 @@ source tree (not published here).
 ## Link identity and port selection
 
 * **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH
-  (back)? — CLOSED for top, OPEN for direct back-port observation.** A fresh
-  emulator run through the real V24 Load/Run UI uses `fdd4=43h` and the
-  wire-ID-bit-5-clear latch state: `LINK_CTRL` bit 1 and port `2Ch` bit 5 are
-  both **set**. The owner captured that operation at the top V24 window, so
-  wire-ID bit 5 clear is the top state. Wire-ID bit 5 set clears both output
-  bits and is **LIKELY** the back state by elimination. Confirm it directly
-  with the replacement-ROM exerciser, which alternates both states while
-  reporting `LINK_CTRL` bit 1. See
-  [commstar-evidence](commstar-evidence.md#device-table-ports).
+  (back)? — CLOSED for top (wire-ID bit 5 clear); back-port state by
+  elimination.** A fresh emulator run through the real V24 Load/Run UI uses
+  `fdd4=43h` and the wire-ID-bit-5-clear latch state: `LINK_CTRL` bit 1 and
+  port `2Ch` bit 5 are both **set**. The owner captured that operation at the
+  top V24 window, so wire-ID bit 5 clear is the top state. Wire-ID bit 5 set
+  clears both output bits and is **LIKELY** the back state by elimination
+  (no direct back-port capture). Not tracked as an OPEN item here; see
+  [commstar-evidence](commstar-evidence.md#device-table-ports). For the
+  previous OPEN wording see the Resolved section below.
 
 * **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
   Two separate answers, and the second is the surprise.
@@ -55,7 +62,7 @@ source tree (not published here).
   **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
   `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
   `ROM00:2F44` (`BIT 6,A; JR Z`) tests to decide a device is on the link, and
-  wire-ID bit 5 **set**, so *if* those ids ever reach `LinkBlockTx`, they
+  wire-ID bit 5 **set**, so *if* those ids ever reach `Link_BlockTx`, they
   select the same likely back-port state. The EXT STORAGE ADAPTER's physical
   attachment remains unadjudicated.
 
@@ -96,7 +103,7 @@ source tree (not published here).
   rule.
   *Resolve:* capture with `fdd4` recorded beside each frame.
 
-* **Meaning of TX `0x7F` at frame offset +4** — `LinkFramePrefixWrite`
+* **Meaning of TX `0x7F` at frame offset +4** — `Link_FramePrefixWrite`
   writes `0x7F`; RX requires offset +4 to equal the active link id.
   Server-side meaning of the M1000’s `0x7F` is **SUSPECTED**, not
   confirmed.
@@ -107,7 +114,7 @@ source tree (not published here).
   code; do not assume unused.
   *Resolve:* inspect loaded-session usage of `+5`.
 
-* **Identity of the two bytes excluded from `LinkBlockRx` `DE`** — On
+* **Identity of the two bytes excluded from `Link_BlockRx` `DE`** — On
   success `DE = bytes_read - 2`; bounded traces show they are copies of
   type (`+2`) and sequence (`+3`), but the controller-level reason is
   open.
@@ -124,7 +131,7 @@ source tree (not published here).
 
 * **Historical fidelity of the recovered session grammar** — Narrowed, not
   closed. What *is* established from the ROM and from firmware-driving
-  traces: the ten wire states `SessionSetParams` can send, the type-1
+  traces: the ten wire states `Session_SetParams` can send, the type-1
   request header, the type-2 response object, the `C-COMMAND` record layout,
   the RECORD stream format `[u8 namelen][name] (1Eh [record])* 1Ch`, and the
   BLOCK stream's marker-0/1 delimiting. What is **not** established is that
@@ -175,43 +182,9 @@ source tree (not published here).
   *Resolve:* vary the solicited object size and see whether either value
   tracks it.
 
-* **CLOSED — what selects the Commstar operation.** It is `C-COMMAND`'s first
-  argument. `ROM00:4B22`–`4B3D` indexes `tbl_sess_operations` (`ROM00:731B`,
-  copied to `ram:E247`) by six, stages the operation-name pointer in
-  `ram:E48F` and the record's target state in `ram:E491`; on a successful
-  logon `ROM00:4C62` writes `E491` into `Session_SetState` with **no gate of
-  any kind**. `SEND` -> `READY-TX-DATA`, `LOAD` -> `READY-RX-PROG`,
-  `PROG` -> `READY-TX-PROG` — the three states the transition table cannot
-  reach. All three are demonstrated: the firmware itself passes index 3 or 4
-  at `ROM01:135F`/`1365`, and a loaded COM passing index 2 reads back the
-  state sequence `1 2 5 9 9 10 2`.
-  **Two earlier readings here were wrong and are retracted:** that these
-  states were unreachable, and that reaching them required the mode gate
-  `ram:E48D = 2`. Mode 2 *disables* the transition table; it is not needed,
-  nothing in either ROM sets it, and every demonstrated session runs at mode
-  0 with the table live. See
-  [the protocol page](../protocol/commstar.md#how-states-4-5-and-6-are-entered).
-
-* **Answered — why a bare COM does not resume.** Not a calling-convention
-  problem. `ram:D837` is an ordinary stack-frame prologue (saves `IX`/`IY`,
-  invokes the body via `D836` = `JP (HL)`, returns the result in `HL`); no
-  scheduler is involved. The firmware simply **stops to talk to the user**:
-  `C_ABORT` from the boot state is an illegal transition, so it raises a
-  message box and waits in `SessionWaitContinue` for a keypress that a
-  headless caller never sends. `Session_InitState` likewise displays
-  `Comms in progress` and does not return.
-  *Resolved.* A call does not return because the operation is a **link
-  transaction**: it transmits and waits for the host. Attach a responding
-  peer and it returns. `micronic.peer.CommstarPeer` is that peer, and
-  application-driven sessions now run to completion in both directions.
-  **Retracted:** an earlier version of this entry said suppressing validation
-  (`ram:E48D = 2`) was necessary to reach `RECORD-TX`. It is not —
-  `C-COMMAND` index 2 `SEND` reaches `READY-TX-DATA` through the ordinary
-  path, and `C-BEGIN-FILE` then reaches `RECORD-TX` as a legal transition.
-
 * **Watch: anything that writes `ram:E48D`** — The session mode is three
   valued and is read by four sites that do **not** all test it the same way
-  (byte-verified): `SessionStartDataMode` (`ROM00:4533`) compares against
+  (byte-verified): `Session_StartDataMode` (`ROM00:4533`) compares against
   **2** and skips the transition table when it matches; `C-COMMAND`
   (`4B40`), `C-SHUT-DOWN` (`4D92`) and `C-END-TX` (`530D`) each compare
   against **1** and short-circuit without transmitting. So mode 0 is the
@@ -225,19 +198,6 @@ source tree (not published here).
   application, or a banked page not yet dumped; and any path that leaves it
   at 2 across a session boundary, which would silently disable validation for
   everything that follows.
-
-* **CLOSED — state-44 payload maximum is 126 bytes.** Measured: 126 completes
-  a download and displays `Program received`; **127 is silently dropped** —
-  no acknowledgement, the handheld re-requests, and the session ends
-  `Session aborted` with `C-RX-BLK` returning 4. 128 reaches `0x1FAE (8110),
-  "Line failure"`. `micronic.peer.MAX_OBJECT_DATA` enforces the limit.
-  **Still open: why 126 and not 128.** `ROM00:620B` sets the `0044` frame
-  length to `86h` = 134, and 134 − 8 = 126 fits an eight-byte preamble ahead
-  of the object body at `ram:E5C4`; but the RX frame struct at `ram:E5BA` is
-  138 bytes with its data area at `+0Ah`, which implies a different budget.
-  The two readings are unreconciled — treat 126 as measured, not derived.
-  *Resolve:* account for the eight bytes between the frame length and the
-  object body on the state-44 receive path.
 
 * **Fresh program-receive arm visibility** — The synthetic peer waits for
   RAM/PC state (`FDDC=FE0E`, `FDD5=01`, `FDC5=E530`, `FDC7=E5BA`,
@@ -293,22 +253,36 @@ source tree (not published here).
   *Resolve:* hardware dump of the resident farms.
 
 
-## Naming and annotation
+## Resolved (previously OPEN — retained for history)
 
-* **Should `ram:D837` keep the name `CoroutineTaskSwitch`?** — The bytes at
-  `D836`-`D857` are the C compiler's frame-setup helper: it pops its own
-  return address, adds `DE` (the local frame size) to SP, saves IX/IY, and
-  re-enters the popped address via `CALL D836` = `JP (HL)`. That is
-  CONFIRMED and it is what makes `LD DE,nnnn / CALL D837` the entry sequence
-  of all 348 compiled routines — see the
-  [listing-repair script](ghidra-repair-script.md) pass 1. The "coroutine
-  task switch" reading is not supported by those bytes. The symbol has not
-  been renamed, because a rename is the symbol plus its plate plus every doc
-  mention plus a `TASKS.md` entry, in one pass, and this one is the owner's
-  call. The plate at `D837` records both readings and flags the identity as
-  under review.
-  *Resolve:* owner decides the replacement name (`Lib_FrameEnter` and
-  `Compiler_FrameSetup` are the obvious candidates), then one rename pass.
+* **CLOSED — what selects the Commstar operation (resolved, moved from OPEN).** It is `C-COMMAND`'s first argument. `ROM00:4B22`–`4B3D` indexes `tbl_sess_operations` (`ROM00:731B`, copied to `ram:E247`) by six, stages the operation-name pointer in `ram:E48F` and the record's target state in `ram:E491`; on a successful logon `ROM00:4C62` writes `E491` into `Session_SetState` with **no gate of any kind**. `SEND` -> `READY-TX-DATA`, `LOAD` -> `READY-RX-PROG`, `PROG` -> `READY-TX-PROG` — the three states the transition table cannot reach. See [the protocol page](../protocol/commstar.md#how-ready-rx-prog-ready-tx-data-and-ready-tx-prog-are-entered).
+
+* **Answered — why a bare COM does not resume (resolved, moved from OPEN).** `ram:D837` is an ordinary stack-frame prologue (saves `IX`/`IY`, invokes the body via `D836` = `JP (HL)`); the firmware stops to talk to the user (`C_ABORT` illegal transition → message box in `Session_WaitContinue`). A call does not return because the operation is a link transaction; attach a responding peer and it returns (`micronic.peer.CommstarPeer`).
+
+* **CLOSED — state-44 payload maximum is 126 bytes (resolved, moved from OPEN).** Measured: 126 completes a download and displays `Program received`; 127 is silently dropped; 128 → `0x1FAE (8110) "Line failure"`. `ROM00:620B` sets the `0044` frame length to `86h` = 134 (134 − 8 = 126 at `ram:E5C4`); `ram:E5BA` struct implies a different budget — that 8-byte derivation gap remains noted but the limit itself is closed.
+
+* **Which wire-id bit-5 value selects V24 ADAPTOR (top) vs PLINTH (back)? — resolved for top.** Wire-ID bit 5 clear is the top V24 state (emulator `fdd4=43h`, `LINK_CTRL` bit 1 and port `2Ch` bit 5 both set, owner-captured at top window). Wire-ID bit 5 set is LIKELY the back state by elimination; removed from the live OPEN list per review.
+
+* **RESOLVED 2026-09-19 (CONFIRMED, byte-verified) —
+  `ram:D837` renamed `Coroutine_Enter`.** It is a
+  coroutine frame-entry / context-switch helper, not a
+  scheduler task switch: pops the continuation (body
+  address) from the stack; switches `SP` to the
+  coroutine frame by the `DE` frame offset; saves
+  `BC`/`IX`/`IY`; calls the body via `ram:D836`
+  (`JP (HL)`); restores; returns the body's `HL`
+  with `Z` iff `HL==0`. Entered by the ubiquitous
+  `LD DE,0; CALL ram:D837` prologue (`DE` = frame
+  size). Plate: In `DE` = frame size, return address
+  = body; Out `HL` = body result, `Z` iff `0`;
+  Clobbers `AF`/`BC`/`DE`/`HL`, `IX`/`IY` preserved;
+  `CONFIRMED ram:D837-D857`. The sibling
+  `Coroutine_SwapContinuation` (`ram:D9F9`) is
+  unchanged. The earlier duplicate `ROM00:3BB8`
+  `Coroutine_TaskSwitch` → `Coroutine_IndexedLookup_6A4A`
+  (and `ROM00:3BD0` → `Coroutine_IndexedLookup_6B67`)
+  remains corrected; the `ram:D837` naming question
+  is now closed.
 
 ## How to add a new OPEN item
 

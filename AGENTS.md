@@ -646,17 +646,18 @@ The `doc/` files are the notes system — do not create parallel files:
 
 - `doc/internals/io-map.md` — port table with evidence labels (the IO_PORTS log)
 - `doc/internals/memory-map.md` — ROM/RAM/banking + system variables
-- `doc/research/TASKS.md` — worklist, open questions (each with the observation
-  that would resolve it), session log, "do not regress" list, and the
+- `doc/research/TASKS.md` — worklist, open questions, "do not regress" list, and the
   **current-identity list for contested subsystems**
+  (Historical session log is in `doc/research/session-log.md`.)
 - `doc/research/gap-analysis.md` — the **single canonical coverage tracker**.
   Refresh it after any pass that creates or renames functions; do not
   keep competing "%-named" claims in other files.
+  (Historical per-pass detail lives in `doc/research/gap-analysis-history.md`.)
 
 At the end of every session: update the docs touched, append a short
-session entry to TASKS.md (what was analysed, concluded, overturned),
-rebuild the site with `mkdocs build` (or `cd doc && make build`), and
-save the Ghidra program.
+session entry to `doc/research/session-log.md` (what was analysed, concluded,
+overturned), rebuild the site with `mkdocs build` (or `cd doc && make build`),
+and save the Ghidra program.
 
 ---
 

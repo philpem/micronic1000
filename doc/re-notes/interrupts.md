@@ -11,14 +11,14 @@ always executes `RST 38h` for a maskable interrupt — so the RST7 slot
 doubles as the IRQ entry.
 
 All handler bodies live in the resident kernel, whose image is copied
-from ROM00:369D → F180 by `InstallKernelToRam`; the ROM-side images
+from ROM00:369D → F180 by `Kernel_KernelToRam`; the ROM-side images
 (RAM address minus 0xBAE3) are fully analysable. Handlers are created
-as functions in Ghidra: `NmiHandlerImage` (ROM00:3B13), 
-`IrqCommonHandlerImage` (ROM00:3B6A), `IrqWorkerPollPort5` (ROM00:230A).
+as functions in Ghidra: `Kernel_HandlerImage` (ROM00:3B13), 
+`Kernel_CommonHandlerImage` (ROM00:3B6A), `Kernel_WorkerPollPort5` (ROM00:230A).
 
 ## Maskable IRQ — fully decoded
 
-Path: `INT → 0038 → stub F5F3` (`JP F64D`) → `IrqCommonHandlerImage`.
+Path: `INT → 0038 → stub F5F3` (`JP F64D`) → `Kernel_CommonHandlerImage`.
 `0008 → F180` is the BDOS gate and is separate; only `RST 20h`/`28h`/`30h`/
 `38h` (`F5EA`/`F5ED`/`F5F0`/`F5F3` are `JP F64D`) share the common handler with
 the hardware IRQ, so **those software RSTs and the IRQ share one entry point**
@@ -36,7 +36,7 @@ Common handler logic:
     loading the comms config table.
   * else → clear `g_bIrqServiceArmed` (in-service marker), DI, save current bank,
     switch to bank 0, call worker.
-* Worker = `IrqWorkerPollPort5` (ROM00:230A):
+* Worker = `Kernel_WorkerPollPort5` (ROM00:230A):
   * Read port 05h; keep a copy in f785.
   * Bit 3 of inverted status: if clear, zero fda2/fda3 — tracks a
     carrier/link signal disappearing.
@@ -62,7 +62,7 @@ loaded under port-04h mode bits E0h/FDh.
 
 ## NMI — fully decoded
 
-Path: NMI → 0066 → F5F6 (`NmiHandlerImage`, ROM00:3B13).
+Path: NMI → 0066 → F5F6 (`Kernel_HandlerImage`, ROM00:3B13).
 
 Behaviour keyed on fbd5:
 
@@ -105,3 +105,57 @@ RST 10h
 DB  <target bank>
 DW  <target address>
 ```
+
+## Sleep confirms bit 0 is the keypad {#sleep-wake}
+
+**CONFIRMED, and it is the cleanest evidence in this table.** Entering sleep
+(`ROM00:1775`-`177F`) selects one of three masks and writes it to `04h`:
+
+| | value | enabled (active low) |
+|---|---|---|
+| `1775` | `F8h` | 0, 1, 2 |
+| `1779` | `FAh` | 0, 2 |
+| `177D` | `D8h` | 0, 1, 2, 5 |
+
+**Bit 0 is enabled in all three**, because it is what wakes the machine. The
+same sequence prepares the matrix for it: `ROM00:1766` writes `48h` to the
+keyboard drive rather than the usual `3Fh` — one column held down plus the
+bit 6 mode flag — so a key in that column pulls a sense line while everything
+else is quiet, and the wake path at `17D5` restores `3Fh` (`AND 3Fh`) on the
+way back out. Sleep itself is a spin loop at `1793`, not a `HALT`.
+
+So the keypad is a genuine interrupt source, not something the firmware
+discovers by polling; `Kbd_ScanMain` at `18F0` is its *handler*. Note the
+`FAh` case is exactly bits 0 and 2 — keypad and link — which is the mask
+`analysis/rom_exerciser` uses, arrived at independently and then found to be
+one the firmware itself uses.
+
+## The link interrupt {#link-interrupt}
+
+Worth stating separately, because it changes the picture of how the link is
+meant to be driven. `ROM00:31B6` is:
+
+```
+31B6  CALL 34D2      ; LINK_CTRL bits 6 and 7 low
+31B9  CALL 34E7      ; IN A,(4Bh); AND 10h  -- LINK_STATUS bit 4
+31BC  JR Z,31C2
+31BE  CALL 2FBD      ; -> Link_BlockRx (ROM00:3378)
+31C1  RET
+31C2  CALL 34BD      ; LINK_CTRL bits 6 and 7 high
+```
+
+So **`LINK_STATUS` bit 4 is "receive pending"**: it is the bit that decides
+whether the interrupt enters `Link_BlockRx` at all. That is a different job
+from bit 0, which gates the `INI` loop *inside* a block read (`ROM00:33CF`),
+and it means the receive path is normally **interrupt-driven**, not polled —
+the polling in `Link_BlockRx` only runs once the interrupt has decided a frame
+is there. `LINK_CTRL` bits 6 and 7 are raised when there is nothing to receive
+and lowered while receiving, which is consistent with an interrupt
+enable/acknowledge pair on the controller.
+
+`analysis/rom_exerciser` installs its own IM-1 handler, enables sources 0 and
+2, and records both `LINK_STATUS` and the complemented port-`05h` source mask
+at interrupt time. It does not call the firmware receive handler; the point is
+to observe whether the controller raises source 2 without consuming a frame.
+
+See also: [Memory and I/O map — interrupt sources](../reference/memory-map.md#interrupt-sources).

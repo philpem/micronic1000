@@ -137,6 +137,13 @@ OPTIONS
                            address touched. Example:
                              --watch-mem f68d:f77f,ffa9:ffff
   --watch-mem-limit N      Per-range print cap for --watch-mem (default 24).
+  --watch-read LO:HI[,...] Report every memory READ landing in an inclusive
+                           hex range (same LO:HI syntax as --watch-mem). The
+                           PC reported is the instruction doing the read.
+                           Use to locate the reader of a data table that has
+                           no static xref. Example:
+                             --watch-read d128:d1d7,7c80:7cd8
+  --watch-read-limit N     Per-range print cap for --watch-read (default 24).
   --fill-mem LO:HI[,...]   Fill an inclusive hex range of fixed RAM with a
                            marker pattern once, at the point the destructive
                            power-on RAM test would have finished, so the
@@ -536,6 +543,20 @@ watch_mem_count = {r: 0 for r in WATCH_MEM_RANGES}
 watch_mem_printed = {r: 0 for r in WATCH_MEM_RANGES}
 watch_mem_pcs = {r: {} for r in WATCH_MEM_RANGES}
 watch_mem_addrs = {r: {} for r in WATCH_MEM_RANGES}
+
+# --watch-read LO:HI[,...]  Report every memory READ landing in a range.
+# Mirrors --watch-mem; used to locate a reader of a data table that has no
+# static xref (e.g. the ROM01:7C80 / ram:D128 session-object vtable).
+WATCH_READ_RANGES = (
+    parse_watch_ranges(get_arg("--watch-read", ""), "--watch-read")
+    if has_flag("--watch-read")
+    else []
+)
+WATCH_READ_REPORT_LIMIT = int(get_arg("--watch-read-limit", "24"), 0)
+watch_read_count = {r: 0 for r in WATCH_READ_RANGES}
+watch_read_printed = {r: 0 for r in WATCH_READ_RANGES}
+watch_read_pcs = {r: {} for r in WATCH_READ_RANGES}
+watch_read_addrs = {r: {} for r in WATCH_READ_RANGES}
 
 # --fill-mem LO:HI[,...] / --fill-mem-value NN
 FILL_MEM_RANGES = (
@@ -1116,13 +1137,39 @@ FF_PAGE = bytearray([0xFF] * 0x8000)
 VEC_SIZE = 0x100
 
 
+def note_mem_read(a, v):
+    """Record one watched read. rd() serves every instruction/operand read,
+    so mach.pc here is the address of the instruction doing the read (not
+    pc-after)."""
+    for r in WATCH_READ_RANGES:
+        if r[0] <= a <= r[1]:
+            pc = mach.pc & 0xFFFF
+            sp = mach.sp & 0xFFFF
+            watch_read_count[r] += 1
+            watch_read_pcs[r][pc] = watch_read_pcs[r].get(pc, 0) + 1
+            watch_read_addrs[r][a] = watch_read_addrs[r].get(a, 0) + 1
+            if watch_read_printed[r] < WATCH_READ_REPORT_LIMIT:
+                watch_read_printed[r] += 1
+                print(
+                    f"[watch-read] {r[0]:04X}-{r[1]:04X} #{watch_read_count[r]} "
+                    f"{a:04X}={v:02X} pc={pc:04X} SP={sp:04X} bank={cb:02X}"
+                )
+                if watch_read_printed[r] == WATCH_READ_REPORT_LIMIT:
+                    print(
+                        f"[watch-read] {r[0]:04X}-{r[1]:04X} print cap "
+                        f"{WATCH_READ_REPORT_LIMIT} reached; still counting"
+                    )
+
+
 def rd(a):
     a &= 0xFFFF
     if a < 0x8000 and cb > BANK_MAX:
-        if a < VEC_SIZE:
-            return mem[a]  # vector area: keep valid so RST/IRQ work
-        return 0xFF
-    return mem[a]
+        v = mem[a] if a < VEC_SIZE else 0xFF  # vector area stays valid
+    else:
+        v = mem[a]
+    if WATCH_READ_RANGES:
+        note_mem_read(a, v & 0xFF)
+    return v
 
 
 def note_mem_write(a, v):
@@ -1245,6 +1292,30 @@ def report_watch_mem():
             f"{len(pcs)} distinct PCs"
         )
         print(f"[watch-mem] {lo:04X}-{hi:04X} writing PCs (pc-after): {pc_s}")
+
+
+def report_watch_read():
+    """Per-range totals: how many reads, from which PCs, over which cells."""
+    for r in WATCH_READ_RANGES:
+        lo, hi = r
+        n = watch_read_count[r]
+        if not n:
+            print(
+                f"[watch-read] {lo:04X}-{hi:04X} totals: 0 reads "
+                f"(never read in this run)"
+            )
+            continue
+        addrs = sorted(watch_read_addrs[r])
+        pcs = sorted(watch_read_pcs[r].items(), key=lambda kv: -kv[1])
+        pc_s = " ".join(f"{p:04X}x{c}" for p, c in pcs[:12])
+        if len(pcs) > 12:
+            pc_s += f" (+{len(pcs) - 12} more PCs)"
+        print(
+            f"[watch-read] {lo:04X}-{hi:04X} totals: {n} reads, "
+            f"{len(addrs)} distinct addresses {addrs[0]:04X}..{addrs[-1]:04X}, "
+            f"{len(pcs)} distinct PCs"
+        )
+        print(f"[watch-read] {lo:04X}-{hi:04X} reading PCs: {pc_s}")
 
 
 rtc = RTC146818()
@@ -2281,6 +2352,10 @@ if WATCH_MEM_RANGES:
     print("[watch-mem] armed " + " ".join(
         f"{lo:04X}-{hi:04X}" for lo, hi in WATCH_MEM_RANGES)
         + f" (print cap {WATCH_MEM_REPORT_LIMIT}/range)")
+if WATCH_READ_RANGES:
+    print("[watch-read] armed " + " ".join(
+        f"{lo:04X}-{hi:04X}" for lo, hi in WATCH_READ_RANGES)
+        + f" (print cap {WATCH_READ_REPORT_LIMIT}/range)")
 if FILL_MEM_RANGES:
     print("[fill-mem] queued " + " ".join(
         f"{lo:04X}-{hi:04X}" for lo, hi in FILL_MEM_RANGES)
@@ -3100,6 +3175,8 @@ if WATCH_PC:
         f"{a:04X}={watch_hits[a]}" for a in WATCH_PC))
 if WATCH_MEM_RANGES:
     report_watch_mem()
+if WATCH_READ_RANGES:
+    report_watch_read()
 if FILL_MEM_RANGES:
     if not fill_mem_done:
         print("[fill-mem] WARNING: never seeded (the RAM-test skip was not "

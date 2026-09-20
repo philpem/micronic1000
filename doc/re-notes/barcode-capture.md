@@ -134,7 +134,7 @@ overruns into the device-table pointer at `F978`.
 
 `ROM00:110C` computes `((FBC5 >> 2) + 5) & 1Fh`, and `ROM00:320B` indexes
 `FE83 + index − 1`. Measured `FBC5 = 04` gives `FE83+5` = wire `2Bh`, which
-`LinkCommandLookup` routes to `ExtBusArm`.
+`Link_CommandLookup` routes to `ExtBus_BusArm`.
 
 ### `BDOS 03h` framing
 
@@ -148,7 +148,7 @@ execution**: a driven `A1` scan returns `1B 02 41 31`.
   The wand model gates on those PCs so the presence probe at `12A3` and the
   idle polls at `1302`/`1317`/`132E`/`1370` cannot consume samples.
 * A synthetic direct capture must stop at `ROM00:30BD`: `CALL 30BD` never
-  returns, because `LinkResetSession` sets `ram:FBC9` bit 0 and tail-jumps
+  returns, because `Link_ResetSession` sets `ram:FBC9` bit 0 and tail-jumps
   through `(ram:FDD2)`, the device-completion callback. By then the whole
   record is written.
 * Acceptance evidence for the wand: `--barcode-scan A1` feeds 39 elements
@@ -166,3 +166,52 @@ Its restart-vector list says "`0008` → `JP F180` (BDOS dispatch), `0010` →
 0008: C3 E1 F5    JP F5E1
 0010: E1 5E 3A    not a jump -- the dispatcher is coded inline here
 ```
+
+## Default (discard) hook
+
+The ROM ships a **discard** hook, so an unmodified machine throws every
+capture away:
+
+```
+ROM00:1567  21 00 00      LD   HL,0
+ROM00:156a  22 BB FB      LD   (FBBB),HL   ; element count = 0 -> reject
+ROM00:156d  C9            RET
+
+ROM00:156e  21 67 15      LD   HL,1567     ; reset the socket to the above
+ROM00:1571  22 C2 FB      LD   (FBC2),HL
+…
+ROM00:157b  3E D7         LD   A,D7h
+ROM00:157d  32 C0 FB      LD   (FBC0),A
+ROM00:1580  3A A7 FE      LD   A,(FEA7)
+ROM00:1583  32 C1 FB      LD   (FBC1),A    ; bank byte
+```
+
+CONFIRMED, byte-verified. Note that the ROM's own default hook is at
+`1567` — **below `8000`** — so the default configuration exercises the
+banked path, which is why `FBC1` has to be filled in.
+
+## Hook installer utility
+
+The firmware's own installer fills the bank byte for you. `ROM00:1587`
+— reached through the resident kernel's jump-vector slot `ram:F27D`
+(`JP F36B`, i.e. `ROM00:3888`) — does exactly this:
+
+```
+ROM00:1587  ED 53 C2 FB   LD   (FBC2),DE   ; DE = new hook address
+ROM00:158b  3A FE FE      LD   A,(FEFE)    ; caller's bank, saved by the
+ROM00:158e  32 C1 FB      LD   (FBC1),A    ;   envelope at ram:F38B
+ROM00:1591  3E D7         LD   A,D7h
+ROM00:1593  32 C0 FB      LD   (FBC0),A
+```
+
+CONFIRMED, byte-verified. `ram:FEFE` is written by the banked-call
+envelope (`ram:F388`: `LD A,(F791); LD (FEFE),A`), so the bank recorded
+is the bank the *installing program* was running in — which is the right
+answer for a decoder that lives in a RAM bank.
+
+## Capture buffer
+
+The 512-byte capture buffer at `ram:F9B5`-`FBB4` is available to read
+during the hook, and is filled by `PUSH` from `SP = FBB5` downward and
+then reversed in place (`ROM00:13BB`-`1419`), which is why an
+address-literal search finds nothing inside it.

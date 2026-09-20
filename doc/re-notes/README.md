@@ -23,7 +23,9 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
   pass that keeps the database honest, and what auto-analysis gets wrong
 * [Commstar evidence and traces](commstar-evidence.md) — full transport, emulator
   peer, and captured requests with ROM addresses and trace bytes
-* [InlineTableDispatch tables](inline-dispatch.md) — the inline switch idiom
+* [Commstar API evidence](commstar-api-evidence.md) — entry-point table, calling
+  convention, buffer placement, and transfer contracts with byte-level proof
+* [Kernel_TableDispatch tables](inline-dispatch.md) — the inline switch idiom
   and every decoded table
 * [OS internals](os-diposb.md) — kernel, BDOS dispatch, and boot chains
 * [Forms and UI](forms-ui.md) — form model, templates, and menus
@@ -34,6 +36,9 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
   element-count firmware bug.
 * [Unbanked RAM map](unbanked-ram-map.md) — what occupies `8000`-`FFFF`,
   what is genuinely safe for host/test scratch, and the traps
+* [Memory and I/O evidence](memory-and-io-evidence.md) — byte-level
+  derivation for every I/O port, register-indirect access, interrupt
+  source trace, latch-bit usage, and the `ram:E5C2` worked example
 * [RTC](rtc.md) — HD146818 programming evidence
 * [IR wire protocol](ir-wire-protocol.md) — the first scope capture of
   the IR line: bit timing, the bit-stuffed frame layer, where the connect
@@ -44,5 +49,5 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 * [Open questions](open-questions.md) — single address for every `OPEN` item
 
 Legacy internals paths redirect to these locations. The worklist that
-prioritises the open questions lives in `research/TASKS.md` in the source
-tree and is not published here.
+prioritises the open questions lives in the
+[research worklist](../research/TASKS.md).

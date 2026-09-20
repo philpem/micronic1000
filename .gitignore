@@ -12,6 +12,7 @@ analysis/battery_ram.bin
 # local scratch / backups
 opencode.json.old
 session-*.md
+!doc/research/session-log.md
 
 # built ROM image -- reproducible byte-for-byte from build.py + micronic/micron1.bin
 analysis/rom_exerciser/*.bin

@@ -1,5 +1,29 @@
 # Operating system: DIPOSB
 
+**On this page:** The DIPOS-B operating system internals — kernel
+installation, BDOS dispatch, boot chains, module copying, the Load/Run
+loader, interrupt architecture, the debug monitor, and the patching
+interface. Intended for kernel analysts, patch authors, and anyone
+tracing the boot chain. Companion: the programmer-facing
+[BDOS reference](../reference/bdos.md) and
+[Memory and I/O map](../reference/memory-map.md).
+
+* [Identification](#identification)
+* [CP/M compatibility layer](#cpm-compatibility-layer)
+* [ABI layers](#abi-layers-complete-picture)
+* [BDOS function set](#bdos-function-set-confirmed-from-the-rom-resident-kernel-image)
+* [Local terminal escape protocol](#local-terminal-escape-protocol)
+* [Workstation object system](#workstation-object-system-decoded)
+* [Kernel call mechanisms](#kernel-call-mechanisms-two-paths-decoded)
+* [Kernel installation](#kernel-installation-confirmed)
+* [Boot load scripts](#boot-load-scripts-module-copying-how-to-find-srcdstlen)
+* [Runtime program loading](#runtime-program-loading-loadrun-loader-confirmed)
+* [Debug facilities](#debug-facilities)
+* [Power on/off](#power-onoff-partially-decoded)
+* [Interrupt architecture](#interrupt-architecture-fully-mapped)
+* [Clock self-test](#clock-self-test-decoded)
+* [Patching an OS function](#patching-an-os-function-full-evidence)
+
 ## Identification
 
 * String `DIPOSB Ver 228` @ ROM00:041E — the OS is **DIPOS** ("DIPOSB"),
@@ -55,18 +79,24 @@ references:
    MODEM A/DIAL, MODEM MAN/D (ROM01 descriptor table ~7500-76A0).
 5. **Custom file formats beside .COM**: DIP files (block-structured,
    `DIP file has too many blocks`) and Fastcode (`Fastcode:` string).
-6. **Coroutine/thread machinery in the dispatcher**: SP/IX/IY context
-   switch blocks at ram:D837/D850/D858 — no CP/M analogue.
+6. **Coroutine frame-entry helper**: `Coroutine_Enter`
+   (`ram:D837`, `CONFIRMED ram:D837-D857`) pops the
+   continuation, switches `SP` by `DE`, saves
+   `BC`/`IX`/`IY`, calls via `ram:D836` (`JP (HL)`);
+   returns `HL` with `Z` iff `HL==0` — no CP/M
+   analogue. Companion `Coroutine_SwapContinuation`
+   at `ram:D9F9` and context blocks at `ram:D850`/`D858`
+   remain.
 7. **Syscall dispatch is table-driven in RAM**: the caller passes HL
    pointing at a parameter block whose first WORD is the function
    number; handler = word[d6f4 + fn×2], tail-jumped via
    `EX (SP),HL / RET`. The copied block's table holds exactly three
    loader primitives:
-    * 0 = D6FA `SyscallMemset` — zero-fill a block (fn=0x0000,
+    * 0 = D6FA `Syscall_Memset` — zero-fill a block (fn=0x0000,
       `{fn, addr, count}`); was mis-named SyscallLoadBlockToMem
-    * 1 = D713 `SyscallMoveBlockAlt` — block move, swapped operands
+    * 1 = D713 `Syscall_MoveBlockAlt` — block move, swapped operands
       (fn=0x0001, `{fn, src, dst, count}`)
-    * 2 = D727 `SyscallQueueBankedBlock` — append deferred-call records
+    * 2 = D727 `Syscall_QueueBankedBlock` — append deferred-call records
       `{D7h, bank, addrL, addrH}` to a queue at (d684); each record is
       itself an RST10 banked-call stub ("call address X in bank Y later")
       (fn=0x0002, `{fn, N, addr[N]}`); `fn=FFFF` terminates the stream.
@@ -88,10 +118,10 @@ Hardware IRQ (IM 1)       : 0038 -> F5F3        NMI: 0066 -> F5F6
 
 ## BDOS function set (CONFIRMED — from the ROM-resident kernel image)
 
-`InstallKernelToRam` copies the kernel from **ROM00:369D → F180**
+`Kernel_KernelToRam` copies the kernel from **ROM00:369D → F180**
 (0x50D bytes), so the entire kernel is statically analysable in ROM00.
 The image begins with 3 NOPs; the dispatcher proper is at F183
-(ROM00:36A0, function `KernelImage_BdosMain`).
+(ROM00:36A0, function `Kernel_Image_BdosMain`).
 
 Dispatch: function number in `C`.
 * `00h-24h`: handler = `word[F1EB + fn*2]` — table source at `ROM00:3708`
@@ -134,7 +164,7 @@ fn 1B=1D share (static vector returns), and the disk-oriented stubs
 
 ## Local terminal escape protocol
 
-`tty_out_char` (`ROM00:1BEB`) interprets `ESC` followed by a byte from the
+`Tty_out_char` (`ROM00:1BEB`) interprets `ESC` followed by a byte from the
 computed table at `ROM00:2050`. Its parallel handler-word table starts at
 `ROM00:2062`: the dispatcher pre-increments its handler pointer twice, so
 the apparent `2060` base is two bytes early.
@@ -162,7 +192,7 @@ records mechanics only; it does not imply an ANSI or VT-family protocol.
 
 Note on addressing: handlers below 8000 live in the banked window
 and require ROM bank 0 mapped during service — which is exactly what
-`BankedCallBankZeroWrapper` (ROM00:3ADD) arranges before work happens.
+`Kernel_CallBankZeroWrapper` (ROM00:3ADD) arranges before work happens.
 
 ## Workstation object system (decoded)
 
@@ -175,9 +205,11 @@ tables section in [Memory and I/O map](../reference/memory-map.md)):
 * config/type bytes (`01 08 20 01` vs `…00`), prev/next links
 * arrays of item-name pointers (menu/submenu titles)
 
-`TemplateBuilder` (ROM01:0271) processes a block:
+`Form_Builder` (ROM01:0271) processes a block:
 
-1. `CoroutineTaskSwitch(0)` — yield to the scheduler first
+1. `Coroutine_Enter(0)` — frame-entry helper
+   (`ram:D837`; `DE`=0 frame size; `CONFIRMED
+   ram:D837-D857`)
 2. `dbee` (=ROM00:759D, inside chain-loaded module A) — text-format
    interpreter: decimal accumulation (×10+digit), space/tab/slash
    dispatch — parses the runtime text associated with the block,
@@ -223,7 +255,7 @@ alternate entry. The dispatcher saves the function to `fefc`, sets
 
 ### 2. Fast kernel jump table (fn 1-18)
 
-`SessionBdosCall`/`Kernel_DeferStagedCall` (module helpers): for functions
+`Session_BdosCall`/`Kernel_DeferStagedCall` (module helpers): for functions
 1-18 the payload jumps to **`(word@0002) + (fn-1)*3`** — a 3-byte
 `JP handler` table in the kernel at the reset-vector page (JP F238
 target: table at ram:F238, source ROM00:3755). Decoded entries:
@@ -255,7 +287,7 @@ dispatcher; `0066 -> F5F6` is NMI.
 
 **The whole kernel is installed from ROM on every cold boot.**
 A factory-fresh unit reaches the menu on new batteries because
-`InstallKernelToRam` (ROM00:02FE) copies the resident kernel into
+`Kernel_KernelToRam` (ROM00:02FE) copies the resident kernel into
 battery RAM before anything calls it:
 
 * Source ROM00:369D → destination ram:F180, length 0x50D bytes
@@ -358,9 +390,10 @@ Combined coverage: bank-0 writes **D893-E704**, bank-1 writes
 The fn=2 records build a 1124-byte table at ED1C-F17F of executable
 {RST10h, bank, target} far-call stubs — and this table serves
 TWO roles:
-  1. **Task list**: `CoroutineTaskSwitch` (ram:D837) runs entries
-     cooperatively (emulation-confirmed; tasks observed at the
-     enqueued targets)
+  1. **Deferred-call queue** (cooperative; tasks observed
+     at the enqueued targets) — **not** driven by
+     `Coroutine_Enter` (`ram:D837`), which is a frame-entry
+     helper (`CONFIRMED ram:D837-D857`), not a scheduler
   2. **Transfer vector table**: Workstation UI object vtables
      (e.g. EFEC/F0F8/EF98/EFD8 in `ui_object_descriptor_1`) point
      DIRECTLY into this arena — calling a vtable slot executes the
@@ -383,7 +416,7 @@ TWO roles:
   vectors reach the resident kernel from any bank.
 * The warm-restart tail ends with `CALL F54E` — resuming whatever sits
   in top RAM, which only works because of the battery backup.
-* ROM00:3ADD `BankedCallBankZeroWrapper`: reached from both banks'
+* ROM00:3ADD `Kernel_CallBankZeroWrapper`: reached from both banks'
   RST2 tails; saves current bank, switches to bank 0, calls kernel
   (F54E) then bank-0 worker (2C00), restores bank, re-notifies kernel.
 
@@ -391,7 +424,7 @@ TWO roles:
 
 * Loader: **ROM01:0A67-10CE** via `ram:D081` (`g_apScreenHandlerTables`) →
   `ram:D0F0` (`g_apLoadRunHandlers`), entered through
-  `Ui_FormExitDispatchNext` (ROM01:06D3). Key routines:
+  `UI_FormExitDispatchNext` (ROM01:06D3). Key routines:
   `Program_PrepareLoadGeometry` (`0A67`), `Program_NormalizeLoadRange`
   (`0AE3`), `Program_GenerateBlockChecksums` (`0957`),
   `Program_VerifyBlockChecksums` (`09C2`), `Program_LoadByName` (`0B82`),
@@ -400,7 +433,7 @@ TWO roles:
   (`ROM01:1002`) — zero completion finalizes state, generates DIP block
   checksums when needed, and sets loader state `3` (nonzero status follows
   `0x2330` error path), `Program_RunByName` (`106F`),
-  final transfer `10C6 → ram:D7F0` (`RunLoadedProgram`).
+  final transfer `10C6 → ram:D7F0` (`Program_LoadedProgram`).
 * **DIP vs COM**: magic `0xC8C9` (`C9 C8`) at `+0`, system ID `0`/`0x00E5`,
   14-byte header, max 5 blocks, type `0`=direct copy / `1`=RST 10h
   trampoline expansion, 8-byte serialized prefix in a 10-byte descriptor
@@ -409,12 +442,62 @@ TWO roles:
   first chunk `<14` bytes or first word `!=0xC8C9` → load at `0x0100`,
   run-bank `0`, entry `0x0100`. See [Program file formats](../reference/program-formats.md).
 * **No BDOS execute function** — BDOS `open`/`read`/`search` are generic FCB
-  services. `ram:D370` is `g_pProgramLoaderContinuation`, a coroutine
-  continuation exchanged by `Coroutine_SwapContinuation` (`ram:D9F9`), not
-  an input-provider pointer; the upstream physical/session provider remains
-  **OPEN** (not identified).
+   services. **Loader coroutine rendezvous (CONFIRMED):** the runtime
+   Load/Run loader (`ROM01:0A67`-`ROM01:10CE`) is coroutine-driven — its
+   routines enter via `LD DE,0; CALL ROM01:D837` (`Coroutine_Enter`,
+   `ram:D837`, `CONFIRMED ram:D837-D857`: `DE`=frame
+   size, `HL`=body result with `Z` iff `0`) and yield
+   to a peer with `LD HL,D370; CALL ROM01:D9F9`
+   (`Coroutine_SwapContinuation`, `ram:D9F9`) (CONFIRMED). `Coroutine_SwapContinuation`
+   (`ram:D9F9`-`ram:DA0A`) swaps the current continuation with the 16-bit
+   word at the address in `HL`, then returns: `Z` when the peer slot was
+   empty (the caller continues), `NZ` when it yielded to the peer
+   (`EX SP,HL; LD HL,1; RET`) (CONFIRMED). `ram:D370` is the loader's
+   peer/rendezvous slot — a byte search for the address (`70 D3`) finds it
+   ONLY inside the loader region at `ROM01:0BA3`, `ROM01:0CEE`,
+   `ROM01:0D15`, `ROM01:0DB5`, `ROM01:0E69`, `ROM01:0EE9`, `ROM01:0F6C`;
+   no code outside the loader writes or reads `D370`, so the peer is
+   resumed by the coroutine scheduler rather than registered by a distinct
+   ROM routine (CONFIRMED). **Loader staging cell RESOLVED 2026-09-19
+   (CONFIRMED, byte-verified): the `ram:D36A` pointer protocol;
+   five targets.** The "staging cell" is the `ram:D36A`
+   pointer protocol: the loader sets `D36A` (pointer),
+   `D36C` (count), `D368` (dest offset) and `D393`
+   (limit), yields via `ram:D370`, and
+   `Program_ConsumeInputChunk` (`ROM01:0BAC-0C9A`)
+   copies `min(D36C,D393)` bytes FROM `D36A` TO
+   `ECD8+D368` and advances `D36A`/`D36E` (e.g.
+   `ROM01:0C2B`-`ROM01:0C9A`) (CONFIRMED,
+   byte-verified). Five staging targets:
+   `ram:ECDC` (14 B, initial DIP/COM header —
+   primary; set at `ROM01:0D05`, yield `0xD18`,
+   read `0xD2F`); `ram:D39B` (8 B, DIP block
+   descriptor prefix — `0xE59`, yield `0xE6C`);
+   descriptor[+4] (variable, Type-0 DIP payload —
+   yield `0xEEC`); `ram:D372` (4 B, Type-1 DIP
+   `RST 10h` expansion — yield `0xF6F`, read
+   `0xF94`); `0x0100+D399` (variable, COM body in
+   TPA — yield `0xDB8`) (CONFIRMED). Labels
+   `g_abLoadStagingHeader` (`ram:ECDC`),
+   `g_abDipBlockDescriptor` (`ram:D39B`),
+   `g_abType1ExpandBuf` (`ram:D372`),
+   `g_pLoadStaging` (`ram:D36A`),
+   `g_wLoadStagingCount` (`ram:D36C`),
+   `g_wLoadDestOffset` (`ram:D368`), each with a
+   one-line repeatable comment; function list
+   unchanged, saved. Feeder is the session
+   program-data receive (state-44 →
+   `Session_ReadStreamChunk` `ROM00:3E6A` →
+   `Program_ConsumeInputChunk`) (CONFIRMED);
+   **residual sub-question (OPEN, does not affect
+   the WHAT):** no ROM00 code reads
+   `D36A`/`D36C`/`ECDC`/`D372`/`D39B`; how the
+   session peer learns these addresses (presumably
+   via the RAM coroutine scheduler `ram:D820`-
+   `D85F` feeding the `ROM00:7E00` dispatch table)
+   remains untraced.
 * **Service-33 identities (CONFIRMED):** actual service-33 entry is
-  `ROM00:2E02` (`DeviceSelectOpen`, retained name); `ROM00:2E72` is
+  `ROM00:2E02` (`Device_SelectOpen`, retained name); `ROM00:2E72` is
   `Device_Service33Timeout`, not the entry; `ROM00:2E85` is
   `Device_Service33Complete`, the completion callback registered through
   `ram:FDD2` (`g_pSvc33Callback`). Successful type-4 processing falls
@@ -444,12 +527,80 @@ TWO roles:
 * Menu: `Load/Run Program`. Reception messages: `Receiving prog`,
   `Program received`, `Invalid data stream`.
 
+### Unbanked RAM placement (CONFIRMED)
+
+**This is how a program leaves resident code behind**, and it is the single
+most useful thing about the DIP format for anyone writing a decode hook or a
+patch that has to outlive the program that installed it.
+
+The loader's block-acceptance test compares the block's **end address**
+against the program load ceiling:
+
+```text
+ROM01:0E9C  ADD  HL,DE          ; dest + payload count
+ROM01:0E9E  LD   HL,(0E3BDh)    ; g_pProgramLoadCeiling = D081h
+ROM01:0EA1  CALL 0E0E8h         ; Z iff ceiling >= end
+ROM01:0EA4  JP   Z,0EB0h        ; accept
+ROM01:0EA7  LD   HL,232Ah       ; else error 9002, "DIP file too big."
+```
+
+so the rule is **`destAddr + count <= 0xD081`**. Because `D081` is far above
+`8000`, **a type-0 block may name a destination anywhere in `8000`-`D080`,
+which is fixed battery-backed RAM outside the bank window.**
+
+**CONFIRMED by experiment**, not just by reading the check. A two-block DIP
+whose second block targets `C000` places its payload exactly there:
+
+```text
+--fill-mem c000:c03f --dump-mem c000:64
+
+[mem] final C000:64  44 49 50 44 45 53 54 2D 4C 41 4E 44 45 44 2D 41 54 2D 43 30 30 30 ...
+                     D  I  P  D  E  S  T  -  L  A  N  D  E  D  -  A  T  -  C  0  0  0
+```
+
+The marker pattern seeded across `C000`-`C03F` beforehand is overwritten for
+exactly the 32 payload bytes and survives untouched from `C020` on, so the
+copy is precisely placed and does not overrun.
+
+#### A COM can do the same thing
+
+A DIP is not the only route, and often not the simplest. A COM is a flat
+image loaded at `0100h` in a bank, but **unbanked RAM is mapped the whole
+time**, so a COM can simply copy its payload up when it runs:
+
+```text
+        LD   HL,payload      ; in the COM's own image
+        LD   DE,0C000h       ; unbanked, bank-independent
+        LD   BC,payload_len
+        LDIR
+        ; ... then install the hook
+```
+
+The trade-off is only in tooling and timing:
+
+| | DIP | COM |
+|---|---|---|
+| Placement | done by the loader, before entry | done by your own copy loop |
+| Toolchain | needs a DIP header and block table | a flat binary |
+| Size limit | `destAddr + count <= D081` per block, 5 blocks | image `<= 0xCF81`, which is exactly `D081 - 0100` |
+| Payload cost | payload only | payload is carried inside the image as well |
+
+Either way the code ends up in the same place and behaves identically once
+there. Use a DIP when you want the loader to do the placement or need several
+scattered destinations; use a COM when a copy loop is easier than building a
+header.
+
+**What neither can do:** write the decode-hook socket at `ram:FBC0`-`FBC3`
+directly from a DIP block, because `FBC0` is above the `D081` ceiling and the
+loader would reject it. The socket must be written by running code — see
+[Barcode reader](../reference/barcode.md).
+
 ### Code-loading paths (from strings; static evidence) — legacy strings
 
 ## Debug facilities
 
-* **Monitor located**: `MonitorEnter` (ROM00:3513). Reached two ways:
-  * fatal-error handler `FatalErrorHandler` (ROM00:2C00, entered from
+* **Monitor located**: `Monitor_Enter` (ROM00:3513). Reached two ways:
+  * fatal-error handler `Diag_ErrorHandler` (ROM00:2C00, entered from
     the banked-call wrapper after a kernel-notified fault): prompts
     "R key for retry / M key for monitor / Any key for return";
     M (4Dh) or Z (5Ah) saves HL → FEFA and DE:BC → FEF8 then enters
@@ -469,7 +620,7 @@ TWO roles:
   Additional gate: port 49h must read bit0=1 / bit1=0 at reset
   (checked twice before the matrix probes).
   **Effect:** f81d=FF -> at the banner's key-read point (ROM00:0291)
-  the firmware CALLs MonitorEnter (3513) instead of waiting for
+  the firmware CALLs Monitor_Enter (3513) instead of waiting for
   ENTER/keys, i.e. the service combo bypasses normal boot into the
   monitor.
 * `Set Debug Mode` menu option in ROM01 (string @ ROM01:7B52).
@@ -478,7 +629,7 @@ TWO roles:
 
 ## Power on/off (partially decoded)
 
-* **PowerDownSuspend** (ROM00:1721) is the suspend routine, reached
+* **Power_DownSuspend** (ROM00:1721) is the suspend routine, reached
   from the NMI handler — strong evidence the power button is wired
   to NMI:
   * saves SP and 8 bytes of state (fbf3 → fbfb)
@@ -507,17 +658,17 @@ HD146818 interface, and the RAM kernel is copied from ROM at cold boot.
 - Battery-RAM vector block: `F5F0 JP 3513` (break/monitor entry),
   `F5F3 JP F64D` (tick/IRQ handler), `F5F6+` inline prologue gating
   on restart flag fbd5.
-- ram:F64D = `IrqCommonHandlerImage` ≡ ROM00:3B6A: ffa8 semaphore
+- ram:F64D = `Kernel_CommonHandlerImage` ≡ ROM00:3B6A: ffa8 semaphore
   (0 = drop IRQ silently; re-armed to 1 after service), bank switch
   to 0, CALL 230A, restore.
-- ram:230A `IrqWorkerPollPort5`: IN(05) snapshot -> f785; walks
+- ram:230A `Kernel_WorkerPollPort5`: IN(05) snapshot -> f785; walks
   event table fd84 {mask,handler} records (template ROM00:2352:
   01→18F0, 02→2206, 04→31B6, 08→2365, 10→2365, term ≥80h). Status
   lines are POLLED per IRQ, not vectored.
 
 ## Clock self-test decoded
 
-ROM00:2828 `ClockSelftestTickWindow` -> result fdb5 ("Clock test"
+ROM00:2828 `Clock_SelftestTickWindow` -> result fdb5 ("Clock test"
 banner line). Hijacks F5F3 with handler 2877, countdown fda8=130
 ticks; each tick pokes peripheral reg C (IN(05)/OUT(08)=0C/IN(28));
 on expiry POP-IX-unwinds into evaluation: elapsed busy-loop count
@@ -535,3 +686,103 @@ clock-test write/read paths. The 4x latch cluster (4A-4F) is NOT the
 RTC. The PLINTH/V24 IR and side-port data paths are the remaining
 open question — whether they share the 08/28 bus at higher indices
 or live on separate ports.
+
+## Patching an OS function — full evidence
+
+The resident kernel dispatches BDOS calls through a **word table in
+unbanked RAM**, which makes it a real hook point rather than a
+theoretical one:
+
+```
+ram:f18f  06 00         LD   B,0          ; BC = C = function number
+ram:f191  79 FE 25      LD A,C; CP 25h
+ram:f194  38 2F         JR   C,F1C5       ; fn < 25h  -> CP/M table
+ram:f196  FE F3         CP   F3h
+ram:f198  30 2A         JR   NC,F1C4      ; fn >= F3h -> extension table
+…                                         ; 25h..F2h: special-case chain
+ram:f1c4  05            DEC  B            ; B=FFh: biases the index by -200h
+ram:f1c5  21 EB F1      LD   HL,F1EB      ; table base
+ram:f1c8  09 09         ADD HL,BC; ADD HL,BC
+ram:f1ca  7E 23 66 6F   LD A,(HL); INC HL; LD H,(HL); LD L,A
+ram:f1ce  C3 82 F3      JP   F382         ; common banked-call envelope
+```
+
+CONFIRMED, byte-verified `ram:F18F`-`F1D0`. Cross-checked against the
+table's own contents: entry 0 is `024D` (`ROM00:024D` = the system-reset
+handler, which is one of the four `LD SP,F81A` sites), and entry 3 is
+`1080` — `Bdos_ReaderInChar`, exactly as documented.
+
+There is one table base and two windows onto it, which is why the two
+tables sit `0x200` apart:
+
+| Table | Address | Index | Covers |
+|---|---|---|---|---|
+| Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh`, 13 words |
+| CP/M range | `ram:F1EB`+ | `F1EB + 2×fn` | BDOS functions from `00h` |
+
+CONFIRMED: for `fn = F3h`, `F1EB + 0x1E6 − 0x200 = F1D1` exactly.
+
+Both are inside the resident kernel image, so:
+
+* **A patch is a 16-bit store**: write your handler's address into
+  `F1EB + 2 × fn` for a CP/M-range function, or into
+  `F1D1 + 2 × (fn − F3h)` for an extension function. The dispatcher will
+  route the call through the same `F382` envelope it uses for a ROM
+  handler.
+* **Your handler is entered with bank 0 selected.** The envelope saves
+  the caller's bank and then switches unconditionally:
+
+  ```
+  ram:f382  22 F6 FE      LD   (FEF6),HL   ; handler address
+  ram:f385  2A FA FE      LD   HL,(FEFA)   ; restore the caller's argument
+  ram:f388  3A 91 F7      LD   A,(F791)
+  ram:f38b  32 FE FE      LD   (FEFE),A    ; caller's bank -> FEFE
+  ram:f38e  F3            DI
+  ram:f38f  F5 3E 00      PUSH AF; LD A,0
+  ram:f392  32 91 F7      LD   (F791),A
+  ram:f395  D3 47         OUT  (47h),A     ; bank 0, always
+  ```
+
+  CONFIRMED, byte-verified `ram:F382`-`F396`. So a handler in the banked
+  window must be in **bank 0**, and a handler at `C000`+ works
+  unconditionally, which is the reason to put it there.
+* **The patch survives a warm boot, and dies on a cold one.**
+  `ROM00:02FE` copies the kernel image `ROM00:369D` → `ram:F180` up to end
+  address `F68D`, and `F1D1`/`F1EB` are inside that range — but it runs
+  **only on a cold start**. `CALL 02FE` has exactly one call site in the
+  whole ROM, `ROM00:023E`, which sits inside `ColdStartSelfTestBanner`
+  *after* the warm-boot entry point:
+
+  ```text
+  ROM00:019E  LD   A,(0F81Ch)
+  ROM00:01A1  CP   55h
+  ROM00:01A3  JP   Z,024Dh      ; warm -> skips 01A6..024C entirely
+  ROM00:0232  LD   A,55h / LD (0F81Ch),A   ; cold start stamps the flag
+  ```
+
+  So a `F1EB`/`F1D1` patch persists across a warm boot and a power cycle,
+  and is undone only by a cold start — which also RAM-tests all of
+  `8000`-`FFFF` and would have destroyed your patch anyway.
+* **Special-cased functions bypass the table.** Functions `2Dh`, `2Eh`,
+  `30h`, `62h`, `68h` and `69h` are dispatched by an explicit compare
+  chain at `ram:F19A`-`F1C2` *before* the table lookup is reached
+  (`CP 30h / LD HL,1893 / JR Z`, and so on), so patching their table
+  slots has no effect. CONFIRMED.
+* **Do not call an unassigned function in `25h`-`F2h`.** Anything in that
+  range that is not one of the six special cases falls through to the
+  `DEC B` at `ram:F1C4` and is indexed with the `−200h` bias, so
+  `fn = 25h` fetches its handler from `ram:F035` — inside the far-call
+  stub arena. There is no range check. CONFIRMED (arithmetic over the
+  byte-verified dispatch above).
+
+Beyond this table and the barcode socket, **no general hooking API has
+been shown to exist.** The far-call stub arena at `ram:ED1C`-`F17F` is
+281 repointable four-byte stubs and UI vtables target it directly, so it
+is mechanically patchable — but which stub serves which purpose is
+established for only a fraction of them, and there is no published index.
+Treat repointing an arena stub as reverse engineering, not as an
+interface.
+
+See also: [BDOS reference](../reference/bdos.md),
+[Extensions reference](../reference/extensions.md),
+[Programmer guide](../manual/programmer-guide.md).

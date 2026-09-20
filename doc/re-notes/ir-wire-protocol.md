@@ -1,5 +1,39 @@
 # IR wire protocol — first hardware capture
 
+> **Scope: physical/wire layer (below the 4Ah–4Fh latch boundary).**
+> This page documents the first scope capture of the IR line: analog
+> timing, bit modulation, the two-phase clock, burst inventory, HDLC-style
+> framing, candidate controller architectures, and what the firmware
+> does and does not see of the wire. The session/protocol layer (above
+> the latches — ROM addresses, transaction sequences, frame envelopes,
+> error maps) is in [Commstar evidence](commstar-evidence.md). The
+> patched-ROM hardware test plan is in
+> [ROM exerciser test plan](exerciser-test-plan.md); the test-plan
+> sections below (T1–T6) are the wire-oriented planning that preceded it.
+
+**On this page:** The first hardware capture of the Micronic 1000's IR
+output, from the 3.6864 MHz clock derivation and the 8192 bit/s cell,
+through the HDLC-style framing and the burst inventory, to the
+receive-path analysis at the latch boundary. The test plan (T1–T6) and
+the conn3–conn13 adapter experiments are also recorded here. Intended for
+adapter builders and anyone working on the physical/protocol interface.
+
+* [Provenance](#provenance) — scope setup, capture files, stimulus
+* [Physical layer](#physical-layer-confirmed) — bit cell, two-phase
+  clock, slew, the 8192 bit/s derivation
+* [Burst inventory](#burst-inventory-confirmed) — the three cell
+  families and what they decode to
+* [Candidate controller architectures](#candidate-controller-architectures-suspected)
+* [Frame layer: HDLC](#frame-layer-hdlc-with-the-line-sense-inverted-likely)
+* [Why the session fails and where](#why-the-session-fails-and-where-likely)
+* [The receive path and the awaited status bit](#the-receive-path-and-the-awaited-status-bit)
+* [Link_Probe analysis](#link_probe-does-not-select-a-port-confirmed)
+* [Owner observations](#owner-observations-2026-09-03)
+* [Open questions](#what-is-still-open)
+* [Test plan](#test-plan) — T1–T6 hardware experiments
+* [Adapter experiments (conn3–conn13)](#adapter-experiments-conn3-conn13-confirmed)
+* [Building an adapter](#building-an-adapter-what-the-m1000-must-see)
+
 Everything below the `4Ah`-`4Fh` latch boundary. Until now this layer was
 listed as *Not implementable — requires a hardware capture*
 ([protocol/commstar.md](../protocol/commstar.md)); this page is that capture
@@ -430,7 +464,7 @@ all, and the three `ED 79` (`OUT (C),r`) sites load `C` with `02h`, `02h` and
 `46h`, so there is no indirect write either.
 
 ```text
-34EC  CD F8 34   CALL 34F8h      ; LinkWaitReady - poll TXRDY, DE=02DAh
+34EC  CD F8 34   CALL 34F8h      ; Link_WaitReady - poll TXRDY, DE=02DAh
 34EF  C8         RET Z           ; not ready -> caller fails with EBh
 34F0  3E 81      LD A,81h
 34F2  32 96 F7   LD (F796),A     ; shadow
@@ -453,8 +487,14 @@ firmware never varies it, so the opening byte is always `81h`.
 
 ## Why the session fails, and where — LIKELY
 
+> **Layer note:** this section is the **wire-level** view of the
+> transaction failure — what the scope shows on the IR line. The
+> **firmware-level** analysis of which `Link_BlockTx` step returns which
+> error code is in
+> [Commstar evidence — What the firmware actually waits for](commstar-evidence.md#what-the-firmware-actually-waits-for).
+
 `Error 8000 / 8001 "Plinth not connected"` is **not** a detection result. It
-is printed by `SessionStateBuild` (`ROM00:4351`) via the helper at
+is printed by `Session_StateBuild` (`ROM00:4351`) via the helper at
 `ROM00:4463`, reached from `C-INIT-COMMS`'s result switch (`ROM00:46D6`) on
 result 9 or default — i.e. **the peer never answered the link-configure
 request**, whatever is physically attached.
@@ -465,12 +505,12 @@ default arm of `C-DROP-LINE`'s result switch, so the second batch is the line
 teardown failing the same way. See
 [session-operation error decades](commstar-evidence.md#session-operation-error-decades).
 
-The wire narrows where the transaction dies. `LinkBlockTx`
+The wire narrows where the transaction dies. `Link_BlockTx`
 (`ROM00:3277`) gets as far as:
 
 | Step | ROM | On the wire |
 |---|---|---|
-| `LinkPresent` → `81h` to `LINK_CMD` | `34F5` | flag `10000001` ✓ |
+| `Link_Present` → `81h` to `LINK_CMD` | `34F5` | flag `10000001` ✓ |
 | prelude `id & 1Fh` → `LINK_TXD` | `32B3` | stuffed `000001011` = `03h` ✓ |
 | wait `LINK_STATUS` bit 4 (`RXBUSY`) clear, `DE=026Ch` | `32B8` | — |
 | strobe `LINK_CTRL` bits 5/4 | `32CC`-`32E6` | — |
@@ -490,7 +530,7 @@ corrected figure, now also used by the emulator and protocol reference):
 
 | Loop | ROM | Count | Iteration | Deadline |
 |---|---|---:|---:|---:|
-| `LinkWaitReady` (`LINK_STATUS` bit 7, `TXRDY`) | `34F8` | `02DAh` = 730 | 49 T | **9.70 ms** |
+| `Link_WaitReady` (`LINK_STATUS` bit 7, `TXRDY`) | `34F8` | `02DAh` = 730 | 49 T | **9.70 ms** |
 | `LINK_STATUS` bit-4 / bit-6 handshake waits | `32B8`, `32F0` | `026Ch` = 620 | 59 T | **9.92 ms** |
 | per payload byte (`LINK_STATUS` bit 7, `TXRDY`) | `3318`/`334E` | `06F9h` = 1785 | 51 T | **24.69 ms** |
 
@@ -509,6 +549,205 @@ attempt, first request to give-up, and not a window into a longer one.
 Confirming test: re-arm for ≥64 segments and check the count is exactly 50
 again, and that the 50th burst coincides with the banner.
 
+## The receive path and the awaited status bit
+
+Byte-verified in `ROM00` (link transaction and receive code). This section
+records what the firmware *does* with `LINK_STATUS` (`4Bh`) bit 6 and
+`LINK_CTRL` (`4Ah`) bits 6/7, what it does *not* do, and what remains to be
+measured on hardware. Finding 4 and the re-framing below are analysis of these
+CONFIRMED facts.
+
+### Finding 1 — `LINK_STATUS` bit 6 is a transmit-path-only wait — CONFIRMED
+
+`LINK_STATUS` bit 6 is tested CLEAR in **exactly two places**, both inside
+`Link_BlockTx` (`ROM00:3277`):
+
+* `ROM00:32F3` (`BIT 6,(HL)` → `JR Z` to the handshake arm) — the first
+  `LINK_STATUS` bit-6-clear wait after the `LINK_CTRL` bit-5/bit-4 arm.
+* `ROM00:3336` (`BIT 6,(HL)` with the same poll) — the second bit-6-clear wait
+  on the retry/error path.
+
+Both time out to `ROM00:3356` which returns `A=0xEE` (carry set). The `EE`
+value therefore does **not** distinguish the two waits.
+
+There is **no `LINK_STATUS` bit-6 test anywhere in the receive path**. The other
+`LINK_STATUS` (`4Bh`) readers are:
+
+| Bit | ROM00 | Behaviour |
+|---|---|---|
+| 4 | `ROM00:32BB` (`CPL` / `AND 10h`, waits clear before the arm) | pre-arm `RXBUSY` gate |
+| 4 | `ROM00:34E7` (`AND 10h`, the IRQ decision at `ROM00:31B6`) | `Link_IrqPollArmOrService` dispatch |
+| 7 | `ROM00:3318` (`RLCA`, per-byte wait) | first `TXRDY` wait for the payload stream |
+| 7 | `ROM00:34FB` (`AND 80h`, `Link_WaitReady`) | `TXRDY` poll (`DE=02DAh`, 9.70 ms) |
+| 0 | `ROM00:33CF` (`RRCA`, gates the `INI` loop) | `RX byte ready` in `Link_BlockRx` |
+| — | `ROM00:34BA` (`IN A,(4Bh)`) | `Link_Probe` returns the raw `LINK_STATUS` byte |
+
+Byte-verified across the image; no indirect `IN` on `4Bh` was found elsewhere.
+
+### Finding 2 — `LINK_CTRL` bits 6/7 are an RX-arm pair — CONFIRMED
+
+`LINK_CTRL` (`4Ah`) bits 6 and 7 are driven as a pair:
+
+* `ROM00:34BD` (`Link_PortLatchSetHi`) **sets both**.
+* `ROM00:34D2` (`Link_PortLatchClr`) **clears both**.
+
+`Link_BlockTx` clears both at entry (`ROM00:327D`: `RES 6` / `RES 7` on the
+`F794` shadow then `OUT (4Ah)`) and **never raises them again** during the
+transaction.
+
+They are set by:
+
+* the IRQ handler when `LINK_STATUS` bit 4 is clear (`ROM00:31C2`: the
+  `Link_IrqPollArmOrService` idle path);
+* `LinkRxDispatcher` (`ROM00:3010` / `ROM00:3028` / `ROM00:3056`); and
+* `Link_TransferService` (`ROM00:2FAE`).
+
+### Finding 3 — `Link_BlockRx` mirrors the transmit arm — CONFIRMED
+
+`Link_BlockRx` (`ROM00:3378`) opens with the **same** `LINK_CTRL` bit-5/bit-4
+arm as `Link_BlockTx` (`ROM00:32CC`-`ROM00:32EE`) but inserts a dummy read:
+
+* `ROM00:338C` (`IN A,(4Eh)`) — reads `LINK_RXD` **before** setting `LINK_CTRL`
+  bit 4.
+
+The byte path thereafter uses `LINK_STATUS` bit 4 for the IRQ decision and
+`LINK_STATUS` bit 0 to gate the `INI` loop, reading data from `LINK_RXD`
+(`4Eh`). No `LINK_STATUS` bit-6 test occurs.
+
+### Finding 4 — the link is firmware-managed half-duplex at the interrupt level — LIKELY
+
+**What is byte-verified (CONFIRMED):** the firmware holds the `LINK_CTRL`
+6/7 pair clear during a transmit transaction and raises it again afterwards.
+`Link_BlockTx` clears both at `ROM00:327D` and has no 6/7 writer inside it;
+`Link_TransferService` (`ROM00:2F58`) calls `Link_BlockTx` at `ROM00:2F9A` and
+then `ROM00:34BD` at `ROM00:2FAE` before returning at `ROM00:2FB1`; the IRQ
+poll clears 6/7 on entry (`ROM00:31B6`) and raises them on the idle path
+(`ROM00:31C2`); `Link_Probe` clears them (`ROM00:34B7`). So the firmware treats
+6/7 as something to hold clear while transmitting and to restore when idle.
+
+**What is NOT established — the electrical meaning is Provisional.** No
+measurement shows the *controller* stops receiving while 6/7 are clear. The
+project's own port table marks every `4Ah` bit role "Provisional"
+([memory map](../reference/memory-map.md)). Candidate readings the ROM cannot
+separate: an **RX-path enable**, an **RX interrupt enable** (data path still
+live, only the IRQ suppressed), a link-online/mode bit, or an
+acknowledge/strobe pair. "RX is disabled" therefore means only "the firmware
+holds the 6/7 pair clear", not "the controller cannot receive" — LIKELY at
+best, and then only if 6/7 gates the receive path and not merely its
+interrupt. Also note bits 5/4 are the *arm* (shared with TX); 6/7 is a
+separate pair, not the arm.
+
+**Emulator demonstration — CONFIRMED (firmware side only):** with a synthetic
+controller whose `LINK_STATUS` bit 6 never clears, the stock
+`Link_TransferService` inner path (`ROM00:2F86`) runs `Link_BlockTx`
+(`ROM00:3277`) to completion — one `LINK_CMD`=`81h` write, one `LINK_TXD`=`03h`
+write, `LINK_CTRL` 6/7 clear throughout — and returns with `A=0EEh`/carry set
+(the `ROM00:3356` error). It then calls `ROM00:34BD` at `ROM00:2FAE` and
+raises `LINK_CTRL` 6/7 (observed writes `42h`, `0C2h`). So the "stock firmware
+never reaches the `2FAE` RX-enable" hypothesis is **FALSE** (the carry is
+ignored and the pair is restored). This is a *firmware latch-write* result:
+the emulator's controller is synthetic, so it says nothing about whether the
+controller's receiver was actually inhibited. *Harness detail, not a firmware
+finding:* the demo needed a stub `RET` at the resident-kernel helper `0F54Eh`
+(absent from flat emulated memory).
+
+**Temporal pattern — CONFIRMED for the firmware, controller effect SUSPECTED:**
+6/7 are cleared for the whole `Link_BlockTx` transaction and restored after it,
+on success or the `0EEh` timeout. The firmware therefore holds the pair clear
+for the transaction itself — the bit-6 wait is 620 iterations of a 59 T loop
+≈ 9.92 ms at 3.6864 MHz (`ROM00:32F0`), within a ~93.75 ms retry interval, so
+roughly the first ~10–12 ms of each attempt. Whether the controller's receiver
+is actually inhibited for that window is unmeasured (see above).
+
+The name `HSBUSY` for `LINK_STATUS` bit 6 is the **project's coinage**, not
+ROM-derived. The firmware only waits for the bit to be clear after the arm;
+whether it reports handshake, TX-complete, or another controller condition
+remains OPEN — see questions A/B below.
+
+### Re-framing the `conn3`-`conn13` negatives — analysis (corrected, SUSPECTED)
+
+The Arduino replies in `conn3`-`conn13` were sent ~1–9 ms after the
+handheld's burst, i.e. inside the window in which the firmware holds
+`LINK_CTRL` 6/7 clear. **If** clearing 6/7 inhibits the controller's receiver
+(see above — the electrical meaning is Provisional), the framed data could
+not be received, and the optical reaction those runs measured was a
+front-end/cadence effect rather than a framed receive. **If instead** 6/7
+gates only the RX interrupt, the data path may still have received and the
+failure would lie in framing/convention (question C) instead. Both readings
+are consistent with the bytes, and the emulator cannot separate them.
+
+What *is* settled: the pair is restored after every attempt (at `ROM00:2FAE`
+via `ROM00:34BD`, CONFIRMED), so any earlier wording implying "the RX was
+never enabled" is discarded. What remains SUSPECTED is the narrower claim
+that the replies were missed *because the receiver was disabled* — it rests on
+the Provisional 6/7 reading. Resolve with Phase 2: send a framed reply while
+6/7 are clear and while they are set (the witness now drives them) and watch
+`LINK_STATUS` bit 4 / bit 0 and `ISRC` bit 2.
+
+### Open questions for hardware
+
+| # | Question | Discriminating observation |
+|---|---|---|
+| **A** | Is `LINK_STATUS` bit 6 a **transmit-complete** condition (clears a few hundred µs after the arm with no peer) or a **handshake/peer** condition (stays set until the far end supplies something)? | The exerciser's per-record `OR`/`AND` of `LINK_STATUS` with the arm held and **no peer**. If it sets then clears with no peer, it is transmit-side; if it stays set, the peer-handshake reading survives. |
+| **B** | When is the **receive window** opened relative to the transmit transaction, and does the far end's reply have to arrive inside it? | `LINK_CTRL` 6/7 sequencing (Finding 2) plus `LINK_STATUS` bit-4 / IRQ-source-2 timing around the arm. |
+| **C** | Does the controller's **receive path** use the same HDLC sense, data polarity, and clock phase as its transmit path? | **Not ROM-derivable**; needs a hardware sweep of return-path stimuli (see Phase 2). |
+| **D** | With the Arduino **silent** and the arm held, does the controller's **own transmission** raise `LINK_STATUS` bit 4 / the link IRQ (self-reception/crosstalk in the shared optical window)? | `LINK_STATUS` bit-4 poll and `ISRC` bit 2 with no peer stimulus. |
+
+### Receive-chain state map — CONFIRMED (static, `ROM00`; Phase-1)
+
+Byte-verified in `ROM00`. Static Phase-1 map of the ROM's receive chain as coded; it does not claim how the controller ASIC drives `LINK_STATUS`/`LINK_CTRL` electrically. All code addresses `ROM00:`; data cells are `ram:` unless noted.
+
+**1. Entry — the link IRQ (source 2), `Link_IrqPollArmOrService` (`ROM00:31B6`) — CONFIRMED:**
+
+* `ROM00:31B6` `CALL 34D2` — clear `LINK_CTRL` bits 6/7;
+* `ROM00:31B9` `CALL 34E7` — `IN A,(4Bh); AND 10h` = `LINK_STATUS` bit 4;
+* bit 4 clear → `ROM00:31C2` `CALL 34BD` (set 6/7) and return — nothing to receive; re-arm the receiver;
+* bit 4 set → `ROM00:31BE` `CALL 2FBD` (`LinkRxDispatcher`) and return.
+
+**2. `LinkRxDispatcher` (`ROM00:2FBD`–`3065`) — CONFIRMED:**
+
+* `ROM00:2FBD` `LD HL,(FDDC)`; `PUSH HL`; `CALL 3378` (`Link_BlockRx`) — read the frame; `POP HL`.
+* carry → `ROM00:2FC5` → `ROM00:3010` (`CALL 34BD`; `RET`): re-enable RX and discard.
+* `ROM00:2FC7` `INC HL` ×2; `LD A,(HL)`; `INC HL`; `LD L,(HL)`; `LD H,A`; `CALL 30DC` (`Link_ValidateFrameHeader`). Carry or `NZ` → `ROM00:3010`.
+* valid (`Z`, no carry) → `ROM00:2FD4` `LD HL,FDCE`; `CALL 21BA` (cancel a queued work item); then dispatch on the transport state `ram:FDD5` and on `ram:FDE6` (see 5).
+
+**3. `Link_BlockRx` (`ROM00:3378`) — CONFIRMED:**
+
+* RX arm, `ROM00:3378`–`33A6`: clear `LINK_CTRL` bit 0; set bit 5; dummy `IN A,(4Eh)` (`LINK_RXD`) at `ROM00:338C`; set bit 4; settle `LD B,20h`/`DJNZ`; clear bit 5. Same bit-5/bit-4 shape as the TX arm `ROM00:32CC`–`32EE`, plus the dummy `LINK_RXD` read.
+* byte loop `ROM00:33CF`: `IN A,(4Bh); RRCA; JR NC,33E0` waits for `LINK_STATUS` bit 0, `INI` reads `LINK_RXD` (`4Eh`) into `(HL)`. Timeouts return carry with `A=0xEE` (`ROM00:33EB`), `0xED` (`ROM00:3414`) or `0xEC` (`ROM00:341C`).
+
+**4. `Link_ValidateFrameHeader` (`ROM00:30DC`) — CONFIRMED:**
+
+* reject (carry) if frame length `DE` < 6 (`ROM00:30E2`–`30E6`);
+* reject (carry) if embedded length at `HL+?` does not match the byte count (`ROM00:30E7`–`30EF`, `ROM00:30FA`);
+* reject (`NZ`) if byte +4 does not equal the active link id `ram:FDD4` (`ROM00:30F3`–`30F9`);
+* accept otherwise (`Z`, no carry). This matches the existing note about frames under six bytes / mismatched embedded length / wrong link id.
+
+**5. Dispatcher branches after a valid frame (`ROM00:3002`–`3078`, `ROM00:3084`–`30DB`) — CONFIRMED:**
+
+* `ROM00:3002` reads `ram:FDE6`: 4 → `ROM00:3084`; 2 → `ROM00:302C`; else → `ROM00:306C` (error).
+* `ROM00:3010` `CALL 34BD`; `RET` (RX re-enable).
+* `ROM00:3014` tests `ram:FDD7` → `ROM00:3023` (`LD A,2; LD (FDD5),A; CALL 34BD`) or `ROM00:2EF3`.
+* `ROM00:302C` sets `ram:FDEA=0`, `ram:FDD5=3`, `ram:FDD6=0x14`, `ram:FDD8=3`, `ram:FDDC=FE32`, `CALL 2F86`, `CALL 34BD`.
+* `ROM00:305A`/`3060`/`3066`/`306C`/`3072` load error codes and `JP 3078`, which stores the code word at `ram:FE14` and returns `HL=FFFF`.
+* `ROM00:3084`–`30DB` (command-frame path): `ROM00:31A1` reads the per-link slot byte; `ram:FDE7`/`ram:FDCB` compares; `ROM00:31AB` increments the slot; `ROM00:30AD` sets `ram:FDD5=4`; `ROM00:30B3` `CALL 34D2` (clear 6/7); `ROM00:30BD` sets `ram:FBC9` bit 0 (the reader-completion event); `ROM00:30C5` clears `ram:FDD7`/`ram:FBCB`/`ram:FDCA`; `ROM00:30CF` `HL=(FE14)`; push `ROM00:30DB`; `JP (FDD2)` (coroutine dispatch).
+
+**6. Per-link slot helper — CONFIRMED:**
+
+* `ROM00:3192` computes `HL = FE43 + (FDD4 AND 3F)`; `ROM00:31A1` returns `(HL)`, `ROM00:31A6` stores `A` there, `ROM00:31AB` increments it. `Link_InitSlots` (`ROM00:317B`) initialises the `0x40`-byte table at `ram:FE43`.
+
+> **NOTE — CONFIRMED:** The exerciser replaces the cold boot and never calls `Link_InitSlots` or any of these routines; its own IM-1 ISR (`analysis/rom_exerciser`) is separate.
+
+**7. `LINK_CTRL` bits 6/7 set/clear points (complete) — CONFIRMED:**
+
+* SET (`ROM00:34BD`): IRQ idle path `ROM00:31C2`; `LinkRxDispatcher` `ROM00:3010`/`3028`/`3056`; `Link_TransferService` `ROM00:2FAE` (immediately after the TX transaction returns — CONFIRMED by emulator to fire even after the `0EEh` timeout, raising `42h`/`0C2h`).
+* CLEAR (`ROM00:34D2`): IRQ entry `ROM00:31B6`; `Link_BlockTx` entry `ROM00:327D`; `Link_ProcessCommandFrame` `ROM00:30B3`; `Link_TransportOpen` `ROM00:2EC2`; `Link_HandleIdle` `ROM00:2ED4`; `Link_Probe` `ROM00:34B7`.
+* Reading: bits 5/4 are the *arm* (shared with the TX arm `ROM00:32CC`); the 6/7 pair is separate, cleared for the whole TX transaction and restored after it (firmware write pattern CONFIRMED; cleared ~10–12 ms covering the `ROM00:32F0` 9.92 ms bit-6 wait, raised for the remainder of the ~93.75 ms retry interval), and toggled around each received frame. Its electrical meaning — RX enable, RX interrupt enable, mode, or ack — is **Provisional** ([memory map](../reference/memory-map.md)); "disabled" here denotes the firmware's latch state only.
+
+**8. State cells referenced — CONFIRMED (label only what the code shows):**
+
+`ram:FDD5` transport state; `ram:FDD4` active link id; `ram:FDD6` retry count; `ram:FDD7` a flag; `ram:FDD8`; `ram:FDCA`/`ram:FDCB` status/mode; `ram:FDDC` current descriptor/frame pointer; `ram:FDE6`/`ram:FDE7` received type/sequence; `ram:FDEA`; `ram:FE14` last error word; `ram:FBC9` bit 0 reader-completion event.
+
 ## There is exactly one path to the wire — CONFIRMED
 
 Byte-verified across both 32K images:
@@ -522,8 +761,8 @@ Byte-verified across both 32K images:
 No indirect writes: the only three `ED 79` (`OUT (C),r`) sites load `C` with
 `02h`, `02h` and `46h`.
 
-So **every outbound byte in the machine goes through `LinkBlockTx`**, and
-`LinkBlockTx` cannot emit a payload byte until the `HSBUSY` wait at
+So **every outbound byte in the machine goes through `Link_BlockTx`**, and
+`Link_BlockTx` cannot emit a payload byte until the `HSBUSY` wait at
 `ROM00:32F3` clears. The consequence is worth stating plainly because it
 closes off a whole class of ideas:
 
@@ -534,14 +773,14 @@ closes off a whole class of ideas:
 
 (The main menu's `4 Diagnostics` → `Set Debug mode` screen, with its `Status`
 ON/OFF and `Device` fields, is subject to the same constraint — whatever it
-routes, it routes through `LinkBlockTx`.)
+routes, it routes through `Link_BlockTx`.)
 
-## `LinkProbe` does not select a port — CONFIRMED
+## `Link_Probe` does not select a port — CONFIRMED
 
-`LinkProbe` (`ROM00:348A`) writes `1Fh` to `4Fh` and then toggles `LINK_CTRL`
+`Link_Probe` (`ROM00:348A`) writes `1Fh` to `4Fh` and then toggles `LINK_CTRL`
 bit 5 and bit 0 through the `ram:F794` shadow. It never calls
-`LinkPortSelect`, and it never writes port `2Ch`. Port selection is done only
-by `LinkPortSelect` (`ROM00:3454`), and its only caller is `LinkBlockTx`
+`Link_PortSelect`, and it never writes port `2Ch`. Port selection is done only
+by `Link_PortSelect` (`ROM00:3454`), and its only caller is `Link_BlockTx`
 (`ROM00:327A`):
 
 ```text
@@ -562,7 +801,7 @@ This confirms the mapping already in
 `LINK_CTRL` bit 1 **set** and `2Ch` bit 5 **set**; wire-ID bit 5 **set** → both
 clear.
 
-Therefore, during a cold-boot `LinkProbe`, **the port is whatever the latches
+Therefore, during a cold-boot `Link_Probe`, **the port is whatever the latches
 were left holding**. At that moment nothing has ever written `2Ch` — the first
 write in the machine's life is at `ROM00:3487` — so the port select is in its
 power-up state, not a chosen one.
@@ -601,7 +840,7 @@ of which is a positive confirmation.
   `fdd4=43h` / bit-5-clear latch state, this also fixes the top-port polarity.
   T6 remains a direct observation of the complementary back state.
 * **No IR from the PLINTH port during a cold boot.** Consistent with the
-  `LinkProbe` analysis above.
+  `Link_Probe` analysis above.
 * **The receiver is being rebuilt with a 47k pull-down and an NPN buffer**
   (planned 2026-09-03), which should take the fall time from 5.8% of a bit cell
   to between 2.7% and 1.3%. See the front-end section for the polarity and
@@ -650,6 +889,12 @@ most important planning fact on this page, and it is why T6 exists.
 
 ## Test plan
 
+> **Note:** the detailed build, burn, decode and interpretation guide
+> for the patched-ROM exerciser that superseded T5 is in
+> [ROM exerciser test plan](exerciser-test-plan.md). What follows is the
+> wire-oriented planning (T1–T6) that preceded it, preserved here for
+> its physical-layer reasoning and adapter-design context.
+
 Revised after the owner observations above. T1-T3 and the Arduino sweep T5
 have been exhausted without a post-handshake payload. The next physical step
 is the prepared patched ROM (T6), which exposes the internal status without
@@ -658,7 +903,7 @@ the harder task of instrumenting the Z80 bus.
 ### T1 — capture the cold-boot probe
 
 **Free, and the only other byte the firmware ever hands the controller.**
-`LinkProbe` (`ROM00:348A`) runs twice during cold boot, at `ROM00:0202` and
+`Link_Probe` (`ROM00:348A`) runs twice during cold boot, at `ROM00:0202` and
 `ROM00:0229` (byte-verified: `CD 8A 34` at both sites):
 
 ```text
@@ -714,7 +959,7 @@ the failed controller status phase.
 CONFIRMED (owner, 2026-09-03): **PLINTH is the back port, V24 ADAPTOR is the
 top port.** That fixes the menu-name ↔ physical-port mapping.
 
-The reproduced V24 Load/Run route calls `LinkPortSelect` with `fdd4=43h`:
+The reproduced V24 Load/Run route calls `Link_PortSelect` with `fdd4=43h`:
 wire-ID bit 5 is **clear**, while `LINK_CTRL` bit 1 and port `2Ch` bit 5 are
 both **set**. The owner's capture of that route at the top window establishes
 this as the top state. For `fdd4=63h`, wire-ID bit 5 is set and both output
@@ -833,7 +1078,7 @@ back to the display or the wire**. That turns `LINK_STATUS` bit 6 and
 `LINK_STATUS` bit 7 from unobservables into measurements, which is what
 thirteen optical runs could not do. What makes this
 much cheaper than it sounds is `ROM00:3220`, called at `ROM00:0205` and
-`ROM00:022C` — immediately after each `LinkProbe` — which **restores both
+`ROM00:022C` — immediately after each `Link_Probe` — which **restores both
 device tables from ROM on every cold boot**:
 
 ```text
@@ -876,7 +1121,7 @@ That one edit settles three things at once:
   change length at all.
 
 **Then the full version.** With a burner in the loop, patch the cold-boot
-entry to jump to a wire exerciser: replicate `LinkBlockTx`'s opening sequence
+entry to jump to a wire exerciser: replicate `Link_BlockTx`'s opening sequence
 and walk a value through `LINK_TXD`, one transmission per value with a
 recognisable gap. One capture then yields the encoding of all 256 byte values,
 which closes OPEN 1, and sweeping `OUT (4Ch),n` closes OPEN 8. A multi-byte
@@ -963,7 +1208,7 @@ decoded-contents strings vs sketch mode structures is therefore
 capture filenames — filename digit is run index, not mode. Discriminating
 observation that would confirm or refute: the single `Serial` banner line
 emitted by `setup()` captured with each CSV, or a versioned `.ino` copy
-per run. See `research/TASKS.md` 2026-09-12 entry.
+per run. See `research/session-log.md` 2026-09-12 entry.
 
 `analysis/scope_ir_experiments.py` performs this audit as a streaming parser.
 It measures adjacent trigger cadence, decodes Arduino response bits and
@@ -998,8 +1243,8 @@ an additional path. No tested combination causes a post-handshake payload.
 
 In conn13 the population medians are 93.748 and 109.371 ms, a 15.624 ms
 difference. These match six and seven periods of the normal 64 Hz RTC cadence
-(93.750/109.375 ms) to capture precision. **CONFIRMED:** `RtcInit` leaves RTC
-Register A = `2Ah` (64 Hz); `LinkTransferService` arms a six-sweep countdown;
+(93.750/109.375 ms) to capture precision. **CONFIRMED:** `RTC_Init` leaves RTC
+Register A = `2Ah` (64 Hz); `Link_TransferService` arms a six-sweep countdown;
 and `Comms_WorkItemSweep` runs inline from the RTC periodic-event path while
 the common interrupt worker keeps CPU maskable interrupts disabled.
 
@@ -1015,7 +1260,7 @@ sets either `LINK_STATUS` bit.
 
 The internal cause therefore remains **OPEN**. An inbound controller event is
 another explanation: `Link_IrqPollArmOrService` tests `LINK_STATUS` bit 4 and
-can call `LinkBlockRx`, whose wait also runs with interrupts disabled. The
+can call `Link_BlockRx`, whose wait also runs with interrupts disabled. The
 optical capture exposes none of those status bits, so the cadence extension
 neither proves nor disproves that `LINK_STATUS` bit 6 cleared. Conn13 does show
 that content/completeness cannot steer the observed reaction once response
@@ -1082,8 +1327,8 @@ directly and reads `LINK_STATUS` back; a **real adapter or plinth**; and
 than programming the ROM, so it is the fallback rather than the next step.
 
 T6 is now built: `analysis/rom_exerciser/`. It replaces the cold-boot entry,
-replays `LinkBlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and
-`LinkBlockRx`'s (`3378`-`33A6`) byte for byte, and reports `LINK_STATUS` back
+replays `Link_BlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and
+`Link_BlockRx`'s (`3378`-`33A6`) byte for byte, and reports `LINK_STATUS` back
 over `LINK_TXD` — the same wire, decoded by the same Arduino. The measurement
 it makes is the one this page could not: whether `LINK_STATUS` bit 6 becomes
 set, whether it later falls, and under what conditions.

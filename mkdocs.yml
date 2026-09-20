@@ -51,7 +51,6 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/wavedrom.min.js
   - javascripts/diagrams.js
 exclude_docs: |
-  research/**
   review.md
   node_modules/**
   BUILD.md
@@ -94,6 +93,7 @@ nav:
       - re-notes/README.md
       - Method and evidence rules: re-notes/method.md
       - Commstar evidence and traces: re-notes/commstar-evidence.md
+      - Commstar API evidence: re-notes/commstar-api-evidence.md
       - InlineTableDispatch tables: re-notes/inline-dispatch.md
       - Listing-repair script: re-notes/ghidra-repair-script.md
       - OS internals: re-notes/os-diposb.md
@@ -101,8 +101,17 @@ nav:
       - CP/M comparison: re-notes/cp-m-comparison.md
       - Interrupts: re-notes/interrupts.md
       - Unbanked RAM map: re-notes/unbanked-ram-map.md
+      - Memory and I/O evidence: re-notes/memory-and-io-evidence.md
       - Barcode capture: re-notes/barcode-capture.md
       - RTC: re-notes/rtc.md
       - IR wire protocol: re-notes/ir-wire-protocol.md
       - ROM exerciser test plan: re-notes/exerciser-test-plan.md
       - Open questions: re-notes/open-questions.md
+      - Research archive:
+          - research/README.md
+          - Worklist: research/TASKS.md
+          - Session log: research/session-log.md
+          - Coverage tracker: research/gap-analysis.md
+          - Coverage pass history: research/gap-analysis-history.md
+          - Barcode OS-integration review: research/reviews/barcode-os-integration.md
+          - Quality and agents review: research/reviews/quality-and-agents.md
