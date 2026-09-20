@@ -440,6 +440,63 @@ arm_settle:     dec d                       ;   (B and E hold the record's
                 ld a,0xDF                   ; bit 5 back down
                 jp ctrl_and
 arm_tx_end:
+;@WITNESS_BEGIN@
+; arm_tx then hand off to the witness loop.  The default build calls arm_tx
+; directly; the witness build's build.py points the preamble's call here
+; instead (same 3-byte call, so the main body does not grow).
+arm_witness:    call arm_tx
+                jp witness
+
+; ---------------------------------------------------------------------------
+; RX witness (the --witness build).  After the flag, the first data byte and
+; the arm, this STOPS transmitting and just watches LINK_STATUS and the link
+; interrupt.  Nothing here writes LINK_CMD/LINK_TXD/LINK_CTRL, so our own TX
+; cannot disturb the receive path being measured.  OR/AND are windowed (reset
+; after every LCD update) so a stimulus is visible live; ISRC and IRQN are
+; sticky for the whole run.  LCD row: W OR AND ISRC IRQN ARMD HB.
+; Reset only by power-cycling; the LCD is the only readout because the IR
+; channel is being listened to, not driven.
+witness:        ld a,0x05
+                call progress
+                xor a
+                ld (V_COUNT),a
+                in a,(LINK_STAT)            ; status immediately after the arm
+                ld (V_PSTAT),a
+                call accreset
+                ld a,IRQ_ENABLE
+                out (IRQ_MASK),a
+                ei
+w_window:       ld bc,0x2000                ; ~8192 samples, ~0.1 s window
+w_in:           call sample                 ; sample clobbers A, D, HL only
+                dec bc
+                ld a,b
+                or c
+                jr nz,w_in
+                call lcd_home
+                ld a,'W'
+                call lcd_putc
+                ld a,(V_OR)
+                call lcd_hex                ; OR,  this window
+                ld a,(V_AND)
+                call lcd_hex                ; AND, this window
+                ld a,(V_ISRC)
+                call lcd_hex                ; IRQ sources, sticky
+                ld a,(V_IRQN)
+                call lcd_hex                ; IRQ entries, sticky
+                ld a,(V_PSTAT)
+                call lcd_hex                ; LINK_STATUS right after the arm
+                ld a,(V_COUNT)
+                inc a
+                ld (V_COUNT),a
+                call lcd_hex                ; heartbeat
+                ld b,0x07
+                call blank_tail
+                call accreset               ; fresh OR/AND for the next window
+                ld a,IRQ_ENABLE
+                out (IRQ_MASK),a            ; re-arm the ISR
+                ei
+                jr w_window
+;@WITNESS_END@
 scr_end:
 
                 org LO_ORG

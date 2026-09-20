@@ -109,6 +109,21 @@
 // so no variant can fall outside the window.
 #define LADDER_TEST 1
 
+// Stage 7: receive-convention sweep.  The controller's receive path may not
+// use the same HDLC sense, data polarity or clock phase as its transmit path
+// (doc/re-notes/ir-wire-protocol.md, open question C).  This mode answers each
+// handheld burst with the same frame under every combination of:
+//   - flag sense: 1000_0001 (the handheld's own, ~7Eh) or 0111_1110 (7Eh);
+//   - data polarity: normal or complemented;
+//   - data-to-clock phase: +/-1/2, +/-1/4 and 0 cell (the transmit convention
+//     is a 1/4-cell data lead, DATA_LEAD_US);
+//   - content: flag only, flag+03h echo, or flag+03h plus a legal body.
+// The controller's reaction is read from the ROM exerciser's --witness build
+// (LINK_STATUS OR/AND, ISRC), not scored here.  Nothing in the handheld tells
+// us which combination it accepted, so this mode only varies the stimulus and
+// reports the parameters -- pair it with the witness on the glass.
+#define RX_SWEEP 0
+
 // The three flags are not independent.  ORIENTATION_TEST alternates the
 // orientation inside advanceSweep(), and both advanceSweep() and the reply are
 // compiled out when LISTEN_ONLY or LOOPBACK_TEST is set -- so the wrong
@@ -137,6 +152,9 @@
 #endif
 #if RECORD_READOUT && !LISTEN_ONLY
 #error "RECORD_READOUT needs LISTEN_ONLY 1 -- it is a listen-only mode"
+#endif
+#if RX_SWEEP && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY)
+#error "RX_SWEEP needs every other mode flag 0"
 #endif
 
 // ---------------------------------------------------------------- timing --
@@ -263,9 +281,31 @@ void onClockEdge() {
 uint8_t frameBits[128];
 uint8_t frameLen = 0;
 
+#if RX_SWEEP
+// Receive-convention axes.  The flag byte and the data polarity are the two
+// ways the same bits can appear on the wire; txPhaseEighths (set in the reply
+// path) moves the data edges relative to a fixed clock.  Content maps onto
+// buildReply()'s cases.  Declared here because putFlag() below uses them.
+const uint8_t RX_N_FLAG = 2;
+const uint8_t rxFlagTab[RX_N_FLAG] = { 0x81, 0x7E };
+const int8_t  RX_N_PHASE = 5;
+const int8_t  rxPhaseTab[RX_N_PHASE] = { -4, -2, 0, 2, 4 };  // eighths of a cell
+const uint8_t RX_N_POL = 2;            // data polarity: normal / complemented
+const uint8_t RX_N_CONTENT = 3;        // flag / flag+03h / flag+03h+body+flag
+const uint8_t rxContentMap[RX_N_CONTENT] = { 0, 1, 6 };
+uint8_t rxFlagIdx = 0, rxPhaseIdx = 1, rxPolIdx = 0, rxContentIdx = 1;
+#endif
+
 void putBit(uint8_t b) { if (frameLen < sizeof(frameBits)) frameBits[frameLen++] = b; }
 
-void putFlag() { for (int8_t i = 7; i >= 0; i--) putBit((FLAG >> i) & 1); }
+void putFlag() {
+#if RX_SWEEP
+  uint8_t f = rxFlagTab[rxFlagIdx];
+#else
+  uint8_t f = FLAG;
+#endif
+  for (int8_t i = 7; i >= 0; i--) putBit((f >> i) & 1);
+}
 
 void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
   for (int8_t i = 7; i >= 0; i--) {
@@ -482,6 +522,8 @@ void buildReply(uint8_t content) {
 uint8_t sweepContent = 1, sweepDelay = 0, sweepClock = 0, sweepInvert = 0;
 uint8_t sweepSwap = 0;   // 1 = our clock drives their data detector and vice versa
 unsigned long achievedUs = 0;   // reply delay actually achieved, us
+int8_t  txPhaseEighths = 0;     // data edges shifted by this many 1/8 cells
+                                // (0 for every mode except RX_SWEEP)
 
 void advanceSweep() {
 #if LADDER_TEST
@@ -506,6 +548,18 @@ void advanceSweep() {
   return;
 #elif ORIENTATION_TEST
   sweepSwap ^= 1;          // everything else held still
+  return;
+#elif RX_SWEEP
+  // One axis per burst; content fastest, then polarity, phase and flag, so a
+  // partial connect attempt still visits every content/polarity combination.
+  if (++rxContentIdx < RX_N_CONTENT) return;
+  rxContentIdx = 0;
+  if (++rxPolIdx < RX_N_POL) return;
+  rxPolIdx = 0;
+  if (++rxPhaseIdx < RX_N_PHASE) return;
+  rxPhaseIdx = 0;
+  if (++rxFlagIdx < RX_N_FLAG) return;
+  rxFlagIdx = 0;
   return;
 #else
   // Content advances fastest.  It is the axis with the untested values on it,
@@ -543,14 +597,15 @@ inline void waitUntil(unsigned long t) { while ((long)(micros() - t) < 0) ; }
 // use identical phasing: data rises a quarter cell before the clock.
 void emitCells(unsigned long startUs, uint8_t wrap) {
   uint8_t total = wrap + frameLen + wrap;
+  long    shift = (long)txPhaseEighths * (long)CELL_US / 8;  // 0 normally
   for (uint8_t i = 0; i < total; i++) {
     unsigned long cell = startUs + (unsigned long)i * CELL_US;
     bool inFrame = (i >= wrap) && (i < wrap + frameLen);
     bool wantData = inFrame && (frameBits[i - wrap] ^ sweepInvert);
 
-    waitUntil(cell);                                  if (wantData) datHigh();
+    waitUntil(cell + shift);                          if (wantData) datHigh();
     waitUntil(cell + DATA_LEAD_US);                   clkHigh();
-    waitUntil(cell + DATA_HIGH_US);                   datLow();
+    waitUntil(cell + DATA_HIGH_US + shift);           datLow();
     waitUntil(cell + DATA_LEAD_US + CLK_HIGH_US);     clkLow();
   }
   waitUntil(startUs + (unsigned long)total * CELL_US);
@@ -686,6 +741,14 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us dur=")); Serial.print(PULSE_US);
   Serial.print(F("us"));
+#elif RX_SWEEP
+  Serial.print(F("  [flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" phase=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
+  Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
+  Serial.print(F(" content=")); Serial.print(rxContentIdx);
+  Serial.print(F(" delay=")); Serial.print(delayUs[sweepDelay]);
+  Serial.print(F("/")); Serial.print(achievedUs);
+  Serial.print(F("us"));
 #else
   Serial.print(F("  [content=")); Serial.print(contentName(sweepContent));
   Serial.print(F(" delay=")); Serial.print(delayUs[sweepDelay]);
@@ -741,6 +804,10 @@ void setup() {
 #elif PULSE_TEST
   Serial.println(F("MODE: PULSE TEST -- featureless light, fixed duration."));
   Serial.println(F("  silent control interleaved at every start time"));
+#elif RX_SWEEP
+  Serial.println(F("MODE: RX SWEEP -- flag sense x polarity x phase x content."));
+  Serial.println(F("  pair with the exerciser --witness build"));
+  sweepDelay = 4;                 // ~3 ms reply, inside the responsive window
 #else
   Serial.println(F("MODE: SWEEP -- delay x content x clock x invert x swap."));
 #endif
@@ -844,7 +911,15 @@ void loop() {
       fire = last + k * CELL_US;
     }
     achievedUs = fire - last;
+#if RX_SWEEP
+    // Apply the receive-convention axes: data polarity, data-to-clock phase,
+    // and the mapped buildReply() content (the flag sense lives in putFlag()).
+    sweepInvert = rxPolIdx;
+    txPhaseEighths = rxPhaseTab[rxPhaseIdx];
+    buildReply(rxContentMap[rxContentIdx]);
+#else
     buildReply(sweepContent);
+#endif
     sendFrame(fire);
   }
 #endif
