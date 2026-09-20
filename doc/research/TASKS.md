@@ -138,6 +138,15 @@ State: continuously updated as work progresses.
   push merely pre-empts it. The fix is to answer those requests instead of
   pushing. Reverted; instrumentation kept (`MICRONIC_SHADOW_DEBUG=1`, which now
   also logs the handheld TX during phase 13).
+  *Characterisation (2026-09-20):* with the push suppressed
+  (`MICRONIC_NO_PUSH=1`) the handset still emits the block request repeatedly,
+  so it will ask **without** a preceding object — (b) is viable. However the
+  route's trigger also requires `oracle_ready` (PC `2F78` plus the
+  `FDC5`/`FDC7`/`FDD2`/`FDDC`/`FDD5` predicates), an internal-state oracle that
+  does **not** hold once the route waits, so keying on the request alone stalls
+  the route. (b) therefore requires replacing the oracle predicate with the
+  request condition (and preserving the `--synthetic-loadrun-arm-delay-us`
+  timing print used by `BootSessionTransactionTest`).
 
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only

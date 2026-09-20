@@ -2941,7 +2941,9 @@ while i < MAX_SLICES and stall < 8000:
                 and loadrun_source_arm_epoch_ticks is not None
                 and cpu_ticks_total - loadrun_source_arm_epoch_ticks >= delay_ticks
             )
-            if oracle_ready or delay_ready:
+            if (oracle_ready or delay_ready) and not os.environ.get(
+                "MICRONIC_NO_PUSH"
+            ):
                 if delay_ready:
                     actual_us = (
                         (cpu_ticks_total - loadrun_source_arm_epoch_ticks)
