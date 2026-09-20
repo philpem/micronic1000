@@ -379,11 +379,13 @@ constant 60 at `SP+8` is **SUSPECTED** to be a timeout in seconds.
 
 | Latched field | Source buffer | Notes |
 |---|---|---|
-| `+0` (8 bytes) | `ECAB` (Group id) | |
-| `+8` (6 bytes) | `D120` (always blank — table terminator) | treat as vestigial; host should expect zeroes |
-| `+18` (8 bytes) | `EC8E` (Workstation id) | |
-| `+26` (8 bytes) | `EC99` (User id) | LIKELY — layout inference, see evidence |
-| `+34` (8 bytes) | `ECA2` (Password) | LIKELY — layout inference, see evidence |
+| `+0` (8 bytes) | `ECAB` (`g_acLogonGroupId`) | Group id |
+| `+8` (6 bytes) | `D120` (always blank — a lone zero byte, no writer) | vestigial; host should expect zeroes |
+| `+18` (8 bytes) | `EC8E` (Workstation id) | the cold-boot "Enter the Workstation" serial |
+| `+26` (8 bytes) | `EC99` (`g_acLogonUserId`) | User id |
+| `+34` (8 bytes) | `ECA2` (`g_acLogonPassword`) | Password |
+
+The `+0`/`+26`/`+34` names are the ROM's own labels, so they are CONFIRMED.
 
 The V24 Log-on form's own field labels (`micron2.bin` ROM01:7BA0-7BC8) are
 `User id`, `Password`, `Group id`, `Telephone number` — so `EC99`/`ECA2`/`ECAB`
