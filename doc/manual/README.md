@@ -7,6 +7,8 @@ on, or communicates with, a Micronic 1000.
   keys, menu map, and error-screen format.
 - [Supported application profile](supported-profile.md) — conservative,
   evidence-backed boundary for portable COM applications.
+- [First COM program](first-program.md) — assemble, validate, and run a
+  checked example through the ROM loader in the emulator.
 - [Programmer guide](programmer-guide.md) — DIPOS-B and CP/M-compatible entry
   points.
 - [Devices and storage](devices-and-storage.md) — device routing, RAM disks,

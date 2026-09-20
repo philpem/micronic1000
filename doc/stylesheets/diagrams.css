@@ -1,0 +1,19 @@
+.diagram {
+  margin: 1em 0;
+  max-width: 100%;
+  overflow-x: auto;
+  text-align: left;
+}
+
+.diagram summary {
+  cursor: pointer;
+}
+
+.diagram details pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.diagram [role="status"] {
+  color: var(--md-default-fg-color);
+}

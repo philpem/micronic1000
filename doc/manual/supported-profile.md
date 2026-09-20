@@ -59,6 +59,9 @@ documented value as volatile, and do not turn this list into an ABI guarantee.
 
 ## Packaging and deployment
 
+Start with [Build and run a first COM program](first-program.md) for a
+reproducible emulator workflow and explicit physical-deployment limits.
+
 COM and DIP grammars are byte-verified in
 [Program formats](../reference/program-formats.md). The synthetic peer can
 download programs through the firmware's Load/Run path in the emulator.

@@ -50,6 +50,8 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/skins/default.js
   - https://cdn.jsdelivr.net/npm/wavedrom@3.6.2/wavedrom.min.js
   - javascripts/diagrams.js
+extra_css:
+  - stylesheets/diagrams.css
 exclude_docs: |
   review.md
   node_modules/**
@@ -75,6 +77,7 @@ nav:
       - manual/README.md
       - User guide: manual/user-guide.md
       - Supported application profile: manual/supported-profile.md
+      - First COM program: manual/first-program.md
       - Programmer guide: manual/programmer-guide.md
       - Devices and storage: manual/devices-and-storage.md
   - API and ABI reference:

@@ -17,8 +17,11 @@ split and the speculative loaded-software reconciliation are withdrawn.
 Provisional API cards explicitly identify unspecified contracts instead of
 inventing clobbers, error sets, or blocking bounds. Physical interoperability
 and the unresolved routed-storage contracts remain research questions, not
-documentation claims. Rendered-output/PR checks and a first-program example
-are the next implementation batch. The dated findings below are the
+documentation claims. Rendered-output/PR checks, accessible diagram-source
+fallbacks, and an assembled, emulator-tested first-program walkthrough are
+now implemented. Browser smoke checks cover light/dark and narrow layouts,
+keyboard access, unavailable diagram CDNs, and disabled JavaScript; they
+are not a full accessibility audit. The dated findings below are the
 review-time record, not an additional current worklist.
 
 ## Documentation review — 2026-09-20

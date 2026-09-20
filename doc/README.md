@@ -10,8 +10,8 @@ reverse-engineering questions.
 Choose a path for your task:
 
 * **Use the handheld:** user guide → menus and error recovery.
-* **Write an application:** supported profile → programmer guide → API cards
-  and program formats.
+* **Write an application:** supported profile →
+  [first COM program](manual/first-program.md) → API cards and program formats.
 * **Investigate firmware:** method and evidence rules → subsystem evidence →
   current worklist. Historical session entries describe what was believed
   at the time; consult the current evidence before relying on them.
