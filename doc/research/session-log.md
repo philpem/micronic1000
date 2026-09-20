@@ -1,5 +1,24 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-20 — documentation regression checks and first program
+
+* Added a first-COM walkthrough with source, exact assembled bytes,
+  bounded emulator invocation, success criteria, and deployment limits.
+  CONFIRMED in the emulator: the 30-byte example reaches bank 2 at
+  `0100h`, displays `Hello World`, and writes the marker `0200h=A5h`.
+  This callback-injected run does not validate physical IR or the later
+  warm-restart return. Recorded that scope in a Ghidra bookmark at
+  `ram:D7F0` and saved; before/after function lists are identical.
+* Added generated-HTML checks for local links, fragments, assets, malformed
+  table paragraphs, and table widths, with six regression tests. Added an
+  assembly/source-sync/DIP-packaging test for the documented example.
+* Added keyboard-accessible diagram source and explicit rendering-failure
+  fallback. Browser smoke checks passed for Mermaid and WaveDrom, light
+  and dark themes, narrow layouts, blocked CDNs, and disabled JavaScript.
+* PR builds now run the documentation and program-image tests plus browser
+  checks without deploying. Publication remains a separate deployment job.
+  Strict site build and all seven documentation regression tests passed.
+
 ## 2026-09-20 — documentation review fixes
 
 * Reconciled supported-profile/Commstar status, reference status vocabulary,

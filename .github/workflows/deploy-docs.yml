@@ -1,6 +1,7 @@
 name: Build and deploy documentation
 
 on:
+  pull_request:
   push:
     branches:
       - master
@@ -10,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: docs-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,14 +31,27 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Build documentation
-        run: mkdocs build --strict
+        run: make -C doc check
+
+      - name: Validate program image tooling
+        run: python3 analysis/test_program.py
+
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install -r requirements-doc-browser.txt
+          python -m playwright install --with-deps chromium --only-shell
+
+      - name: Check diagrams and documentation in a browser
+        run: timeout 180s python analysis/check_doc_browser.py
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site-mkdocs
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
