@@ -1,5 +1,16 @@
 # Review: external device capture pipeline ↔ OS integration
 
+> [!CAUTION] Historical / partially superseded — current barcode position
+> This review's correction below that rejected the barcode identity is itself
+> **superseded by owner adjudication (2026-08-24)** that the 5-pin side port /
+> port-2D subsystem **is** the barcode reader front end. For the current
+> position see [`reference/barcode.md`](../../reference/barcode.md) and
+> `AGENTS.md` §3 external ground truth (do-not-regress list: `Barcode_`
+> prefix for new names, `ExtBus*` grandfathered, EXT STORAGE ADAPTER
+> attachment point unadjudicated). The review's *mechanics* remain verified;
+> its semantics ("not proven", "external-device wire-2B/2A edge front end")
+> should be read as historical.
+
 > **Correction (2026-08-24):** This review's *mechanics* (call chain,
 > the `fbc2` decode hook, BDOS fn 03 = `Bdos_ReaderInChar`, routing via
 > `fdca` wire-id) have been re-verified and are correct. Its

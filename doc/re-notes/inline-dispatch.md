@@ -56,9 +56,9 @@ total 1028 → 1001 internal (1002 guarded); all owners byte-verified
 `257f` handlers (`Field_StepMode1 2569`, `Field_StepMode2 2572`,
 `Field_ApplyStepMode 2593`) are blocks of the routine at `254b`
 → `JP 257c` → `2593` → `RET 2658` and were absorbed/labelled in
-Half A. Full per-target maps in
-`/tmp/opencode/rom01_dispatch_auditA.md` and
-`/tmp/opencode/rom01_dispatch_auditB.md`.
+ Half A. Full per-target maps are summarised in
+`research/gap-analysis-history.md` (ROM01 dispatch audit, Half A/B); ephemeral
+per-target audit files were removed from published references.
 
 ROM00 audit complete 2026-09-18 — **25 sites = all ROM00
 `CALL ram:e0b2` sites, hybrid model applied (CONFIRMED):**
@@ -90,12 +90,12 @@ guarded 1002 → 915 (−87; internal 1001 → 914, labels not loss).
 (ROM01 14, ROM00 25 both closed); `ROM01:757F-768E` is **superseded**
 — previously `undefined[272]`, now typed as `ushort[6]` at `757F`
 (`tbl_UiCfgNamePointers`), `UiCfgHeader` at `758B`/`75EB`/`760D`,
-`char[1547]` at `79F4`, etc. (see `research/gap-analysis.md`
+`char[1547]` at `79F4`, etc. (see `research/gap-analysis-history.md`
 data-typing 2026-09-19); 10 `FUN_*` were reduced to **4 retained**
 (ROM00 1 — `441B`, ROM01 2 — `0904`/`1177`, ram 1 — `D937`) by the
-tail pass — see `research/gap-analysis.md`. Coverage tail is the
+tail pass — see `research/gap-analysis-history.md`. Coverage tail is the
 code-gap sweep with the corrected absorb-continuations model (see
-`research/gap-analysis.md`).
+`research/gap-analysis-history.md`).
 
 ## Matching
 
@@ -249,3 +249,5 @@ switches on. Do not read them as wire commands.
   dispatcher whose default arm stores result 6 and raises
   `0x1F9A "Line failure"`.
 * `ROM00:53C4` — cases `0`..`5`, the only fully dense case set.
+
+See also: [Memory and I/O map — inter-bank call RST 10h](../reference/memory-map.md#2-the-inter-bank-call-rst-10h).

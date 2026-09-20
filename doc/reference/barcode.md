@@ -9,13 +9,21 @@ and the evidence behind each claim are in
 Everything here has been executed in the emulator, not only read out of the
 ROM — see `analysis/test_barcode.py`.
 
-!!! note "What the device is"
-    The 5-pin side port is the barcode pen, on the project owner's knowledge
-    of the hardware. **The firmware does not corroborate this**: no string
-    names a barcode, pen or symbology, and the default `FE83` wire table
-    makes wire `2Bh` the EXT STORAGE ADAPTER. The Ghidra names use a neutral
-    `Ext*` prefix for that reason. The mechanism below is exactly as
-    described whatever is plugged in.
+!!! note "What the device is — current position (owner-adjudicated 2026-08-24)"
+    The 5-pin side port / port-2D subsystem **is** the barcode reader front
+    end (owner-adjudicated; see `AGENTS.md` §3 and the do-not-regress list).
+    New names in this subsystem take the `Barcode_` prefix; existing `ExtBus*`
+    names in the database are grandfathered. The attachment point of the
+    EXT STORAGE ADAPTER is **unadjudicated** — do not bind it to wire `2Bh`
+    or any port until confirmed.
+
+    Superseded reasoning (retained for history): an earlier version of this
+    note argued the firmware did not corroborate the barcode identity (no
+    barcode/pen strings; default `FE83` wire table read as making wire `2Bh`
+    the EXT STORAGE ADAPTER) and therefore used a neutral `Ext*` prefix.
+    That reading is superseded by owner adjudication; see `AGENTS.md` §3
+    external ground truth. The mechanism below is exactly as described
+    whatever is plugged in.
 
 ## Stability
 
@@ -163,7 +171,7 @@ marks that bank in use and every program load reuses it, so the decoder is
 gone the moment anything else runs.
 
 Two ways to get code there, covered in
-[Program file formats](program-formats.md#placing-code-in-unbanked-ram):
+[RE notes: OS internals](../re-notes/os-diposb.md#unbanked-ram-placement-confirmed):
 
 * **A DIP** with a type-0 block whose destination is `C000` — the loader
   places it before entry. Verified by experiment.

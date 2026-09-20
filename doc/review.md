@@ -49,9 +49,10 @@ no-hardware priority order is maintained in `TASKS.md`.
 ### Superseded historical claims (BDOS review 2026-08-28 — see `manual/bdos-reference.md`)
 
 The following review observations are **superseded** by the current
-`manual/bdos-reference.md` and `internals/cp-m-comparison.md` after the
-reviewer-approved BDOS pass (no new reverse-engineering; applied existing
-findings):
+`reference/bdos.md` (canonical; `manual/bdos-reference.md` redirects) and
+`re-notes/cp-m-comparison.md` (`internals/cp-m-comparison.md` redirects)
+after the reviewer-approved BDOS pass (no new reverse-engineering; applied
+existing findings):
 
 * **fn `1Ah` as stub / "no contracts":** `1Ah` (`Bdos_SetDmaAddress`,
   `ROM00:0CEC`) is an **implemented set-DMA** (stores `DE`), not a stub; its
@@ -105,7 +106,8 @@ from the manual.
 
 **Update 2026-08-29 — resolved for byte layout, OPEN items preserved:**
 The canonical 8-byte layout is now published in
-[`internals/rtc.md#bdos-eight-byte-rtc-record`](../internals/rtc.md#bdos-eight-byte-rtc-record):
+[`re-notes/rtc.md#bdos-eight-byte-rtc-record`](../re-notes/rtc.md#bdos-eight-byte-rtc-record)
+(`internals/rtc.md` redirects):
 `+1..+7` → regs `09/08/07/04/02/00/06` (year/month/day-of-month/hour/
 minute/second/day-of-week), `+0` metadata handling per service, raw
 binary 24-hour (Reg B `46h`), no firmware validation/conversion, service
@@ -230,7 +232,7 @@ as illustrative rather than executable.
 
 ### 4. Make program packaging reproducible
 
-Keep `manual/program-formats.md` as the byte-level specification, then add a
+Keep `reference/program-formats.md` (`manual/program-formats.md` redirects) as the byte-level specification, then add a
 producer-facing companion:
 
 * annotated hexadecimal examples of one valid COM and one valid DIP;

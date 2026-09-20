@@ -42,8 +42,8 @@ SET-bit freeze → stop → write → restart → clear step. `RTC_Init`
 ## BDOS eight-byte RTC record
 
 Canonical layout used by BDOS FCh/FDh/FFh (`DE` points to an 8-byte
-buffer; see `../manual/bdos-reference.md` and
-`../manual/programmer-guide.md` which link here). Offsets are
+buffer; see [Extensions reference](../reference/extensions.md) (RTC time section)
+and `../manual/programmer-guide.md` which link here). Offsets are
 little-endian byte indices in that buffer.
 
 | Offset | BDOS FCh (set, ROM00:1150) | BDOS FDh (get, ROM00:113E) | BDOS FFh (alarm, ROM00:112D) |
@@ -143,8 +143,9 @@ reports `RTC rate =64.0 Hz (RS=0xa)`.
 ## Live-capture confirmation (emulator, Z80 + MAME-accurate io_stub)
 
 The full set-clock / RTC-init write sequence was captured live from the
-emulated firmware (`analysis/boot_hw.py`; full trace at
-`/tmp/opencode/micronic_boot_io.txt`). This is the definitive,
+emulated firmware (`analysis/boot_hw.py`; full trace reproducible via
+`analysis/boot_hw.py` with I/O tracing — ephemeral file path removed).
+This is the definitive,
 runtime-proven register write (matches the static analysis exactly):
 
 ```
