@@ -421,10 +421,9 @@ as `58 59 00 00 00 00 00 00`. The operation-name field varies by
 `C-COMMAND`'s first argument (`RCV1`, `RCV2`, `SEND`, `LOAD`, `PROG`, `TIME`,
 `ENDC` — see [How READY-RX-PROG, READY-TX-DATA and READY-TX-PROG are entered](#how-ready-rx-prog-ready-tx-data-and-ready-tx-prog-are-entered)).
 The four identity fields are latched by `C-INIT-COMMS` and are empty in
-Load/Run traces. Their byte positions and sizes are CONFIRMED, but the ROM
-treats them opaquely — it never assigns a literal or interprets the contents —
-so their semantic identity is **not determinable from this image**; do not
-invent names.
+Load/Run traces. Their byte positions, sizes and source cells are CONFIRMED;
+their semantic identity is **OPEN** — do not name them without a witness that
+ties a specific source cell to a record offset.
 
 > Variation experiments and assembly provenance: see
 > [`re-notes/commstar-evidence.md#state-45-object-layout`](../re-notes/commstar-evidence.md#state-45-object-layout).

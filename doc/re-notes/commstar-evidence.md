@@ -623,11 +623,12 @@ comparisons. **CONFIRMED by fresh disassembly and a byte read (2026-09-20):**
 * `Session_CoroJumpTx` (`ROM00:3F65`–`3FC8`) walks it: it forms
   `base + i*4` (`ROM00:3F9B` `LD DE,0xE22F`; `ROM00:3FBB` `LD DE,0xE232`),
   compares the packed object's bytes from `ptr+1` (past the `{u8 count}`
-  prefix) against `token[2]` via `ROM00:DB40`, and on a match stores the
-  class byte into `ram:E452`. No match after three entries leaves
-  `ram:E452 = 3` (set at the arm, `ROM00:3F5F`/`3F69`), which the callers
-  (`Session_CmdCommand` `ROM00:4C81`, `Session_CmdEndTx` `ROM00:5380`) turn
-  into `0x1F75 (8053), "Invalid reply"`.
+  prefix) against `token[2]` via the resident helper `ram:DB40`, and on a
+  match stores the class byte into `ram:E452`. No match after three entries
+  leaves `ram:E452 = 3` (set at the arm, `ROM00:3F5F`/`3F69`). The two
+  callers use different codes: `Session_CmdCommand` (`ROM00:4C81`) passes
+  `0x1F75 (8053)` and `Session_CmdEndTx` (`ROM00:5380`) passes
+  `0x1FE3 (8163)`, both to `Session_MsgInvalidReply` (`ROM00:44BD`).
 
 The class values and the fall-through are **CONFIRMED mechanics**. What a
 peer means by `NO` or `DM` is a *server-side* convention: the ROM maps the
@@ -1535,7 +1536,7 @@ and nothing else changed. Frame length stayed 66.
 |---:|---:|---|---|
 | +0 | 8 | `ram:E6D0` | `Session_InitCommsCmd` arg 1 |
 | +8 | 6 | `ram:E6E8` | `Session_InitCommsCmd` arg 2 |
-| +14 | 4 | op-name table `ROM00:E247`, stride 6 | computed `ROM00:4B1C`–`4B3A` |
+| +14 | 4 | op-name table `ram:E247` (ROM `ROM00:731B`), stride 6 | computed `ROM00:4B1C`–`4B3A` |
 | +18 | 8 | `ram:E6EF` | `Session_InitCommsCmd` arg 3 |
 | +26 | 8 | `ram:E6C4` | `Session_InitCommsCmd` arg 4 |
 | +34 | 8 | `ram:E6D9` | `Session_InitCommsCmd` arg 5 |
@@ -1549,14 +1550,17 @@ stack-argument strings into `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
 `Session_Tx5Param` (`ROM00:56A4`).
 
 The four identity fields (+0, +8, +26, +34) and the workstation field (+18)
-are caller-supplied strings — the ROM never assigns them a literal. The caller
-(`Session_HelperRouter11E5`, `ROM01:1304`) sources them from a mode record at
-`0xD467` and its own incoming argument. Their byte positions, sizes, encodings
-and provenance are CONFIRMED; their *semantic* identity (`link name`, `node
-id`, `user id`, …) is **not determinable from this image** — the ROM treats
-them opaquely. **Do not invent names.**
+are caller-supplied strings; the ROM never assigns them a literal. Their byte
+positions, sizes, encodings and provenance are CONFIRMED. The **semantic**
+identity of the four identity fields is **OPEN**: the caller
+`Session_HelperRouter11E5` (`ROM01:12E0`–`1304`) forms its arguments from the
+mode record at `0xD467`, a constant `0`, and one caller-stack word, so no
+cell → record-offset mapping has been witnessed. "Workstation ID" for +18 is
+carried by the existing form labels; the +0/+8/+26/+34 readings (`group`,
+`user`, `password`, …) remain unproven. Do not assign semantic names until a
+witness ties a specific source cell to an offset.
 
-Ghidra note: `ROM00:4BBE` decodes as `AND 0xe5`, but the bytes are
+Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte
 field/encoding table remains on the protocol page.
 
