@@ -97,6 +97,12 @@ State: continuously updated as work progresses.
 
 ## In progress
 
+- **Pre-existing test failure on master (2026-09-20):**
+  `analysis/test_boot_upload.py::CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
+  asserts `agreed >= 13` but measures `agreed=12`. Verified to fail identically
+  on the unmodified harness, so it predates the ir/9–ir/10 work. Either the
+  assertion or the plinth-route agreement count needs re-deriving.
+
 - **Documentation consistency corrections (2026-09-20):** current summaries
   reconciled; see `doc/review.md` for implementation status. The local-only
   storage conclusion was overturned by fresh BDOS `2Eh` tracing and review.
