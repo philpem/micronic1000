@@ -161,7 +161,7 @@ State: continuously updated as work progresses.
 
 4. **Keep the existing remaining hardware items** (4Bh/4Ah electrical mapping, complementary port state + EXT STORAGE ADAPTER attachment point — owner confirmation — banked-RAM dump, Z80-bus fallback).
 
-Process: `docs/static-analysis` (PR #15) ready to merge; `ir/8-transmit-arm` (PR #14) to rebase after #15.
+Process: `docs/static-analysis` (PR #15) merged to `master` 2026-09-20; the documentation-review follow-ups (PR #16, #17) also merged. `ir/8-transmit-arm` (PR #14) rebased to code-only (3 commits, `analysis/` only, tests pass) and awaiting merge.
 
 ### Detailed and historical backlog
 
@@ -637,14 +637,14 @@ current priority order; the concise lists above are authoritative.
 > Historical/resolved open questions have been moved to
 > [`session-log.md`](session-log.md) (see `## Resolved open questions`).
 
-* **Remaining (OPEN) — updated 2026-09-18:** ROM01 and ROM00
-  dispatch models are now both applied (CONFIRMED — 14 + 25
-  sites). **10 retained `FUN_*`** (ROM00 1, ROM01 8, ram 1)
-  with documented open questions plus the tail: only
-  `ram:e020-e0aa` compiler-runtime plates (residual),
-  `ROM00:7409`/`7472` module-A sites, and the code-gap tail
-  remain ( `ROM01:757F-768E` now done — see 2026-09-18
-  residual/`757F` entry).
+* **Remaining (OPEN) — updated 2026-09-20:** analytic work is
+  complete — §12 FINAL PASS fully CLOSED 2026-09-19. **4 retained
+  `FUN_*`** (ROM00 1, ROM01 2, ram 1) carry plates and are
+  documented as dead or reachable-unknown; see
+  [`gap-analysis.md`](gap-analysis.md) for the current coverage
+  figures and [`session-log.md`](session-log.md) for the resolution
+  history. All remaining work is owner/hardware-dependent — see
+  *Hardware-dependent priorities* above.
 
 ---
 
