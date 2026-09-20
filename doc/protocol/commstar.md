@@ -420,10 +420,12 @@ Workstation `ABC` serialises as `20 20 20 20 20 41 42 43`, program name `XY`
 as `58 59 00 00 00 00 00 00`. The operation-name field varies by
 `C-COMMAND`'s first argument (`RCV1`, `RCV2`, `SEND`, `LOAD`, `PROG`, `TIME`,
 `ENDC` — see [How READY-RX-PROG, READY-TX-DATA and READY-TX-PROG are entered](#how-ready-rx-prog-ready-tx-data-and-ready-tx-prog-are-entered)).
-The four identity fields are latched by `C-INIT-COMMS` and are empty in
-Load/Run traces. Their byte positions, sizes and source cells are CONFIRMED;
-their semantic identity is **OPEN** — do not name them without a witness that
-ties a specific source cell to a record offset.
+The four identity fields are latched by `C-INIT-COMMS` from the V24 Log-on
+form buffers and are empty in Load/Run traces (the form is not filled).
+Sources and readings are on the
+[Commstar API page](../reference/commstar-api.md#c-init-comms): `+0` = Group id
+(`ram:ECAB`), `+8` = vestigial blank (`ram:D120`), `+26` = User id (`ram:EC99`),
+`+34` = Password (`ram:ECA2`) — the ROM's own `g_acLogon*` labels, CONFIRMED.
 
 > Variation experiments and assembly provenance: see
 > [`re-notes/commstar-evidence.md#state-45-object-layout`](../re-notes/commstar-evidence.md#state-45-object-layout).

@@ -636,6 +636,25 @@ literal bytes to an ordinal and attaches no semantics of its own, so the
 peer-level meanings are **OPEN** and not recoverable from this image alone —
 the same status as the numeric reply words above.
 
+**But the distinction is not load-bearing in this ROM — CONFIRMED
+(2026-09-20, byte-verified).** Both callers dispatch the class through
+`Kernel_TableDispatch` (`ram:E0B2`) with an inline case table, and in both
+tables classes 1 (`NO`) and 2 (`DM`) point at the **same handler**, while
+class 0 (`OK`) and class 3 (invalid) take distinct paths:
+
+| Class | `Session_CmdCommand` (`ROM00:4CC5`) | `Session_CmdEndTx` (`ROM00:53C4`) |
+|---:|---|---|
+| 0 (`OK`) | `4C41` | `534D` |
+| 1 (`NO`) | `4C70` | `536F` |
+| 2 (`DM`) | `4C70` (same) | `536F` (same) |
+| 3 (invalid) | `4C81` → `0x1F75 (8053)` | `5380` → `0x1FE3 (8163)` |
+
+Both class-1 and class-2 handlers set the same result and issue the same
+follow-on call (`LD HL,0x5 / LD (E488),HL`, `LD HL,0x2 / CALL 0x3BF5`). So a
+peer's choice of `NO` versus `DM` makes **no difference to the firmware's
+state transitions**; only `OK` versus not-`OK` (and the invalid class) does.
+A peer that can send `NO` need not also model `DM` separately.
+
 No historical Commstar state diagram or host/peer session sequence is
 normative yet. A capture must establish each transition as:
 
@@ -1550,19 +1569,50 @@ stack-argument strings into `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
 `Session_Tx5Param` (`ROM00:56A4`).
 
 The four identity fields (+0, +8, +26, +34) and the workstation field (+18)
-are caller-supplied strings; the ROM never assigns them a literal. Their byte
-positions, sizes, encodings and provenance are CONFIRMED. The **semantic**
-identity of the four identity fields is **OPEN**: the caller
-`Session_HelperRouter11E5` (`ROM01:12E0`–`1304`) forms its arguments from the
-mode record at `0xD467`, a constant `0`, and one caller-stack word, so no
-cell → record-offset mapping has been witnessed. "Workstation ID" for +18 is
-carried by the existing form labels; the +0/+8/+26/+34 readings (`group`,
-`user`, `password`, …) remain unproven. Do not assign semantic names until a
-witness ties a specific source cell to an offset.
+are caller-supplied strings; the ROM never assigns them a literal. Their
+sources are the V24 Log-on form buffers, latched by `C-INIT-COMMS` (see
+[Commstar API](../reference/commstar-api.md#c-init-comms)):
+
+| Record field | Source cell | Reading |
+|---|---|---|
+| +0 | `ram:ECAB` | Group id — CONFIRMED (`g_acLogonGroupId`) |
+| +8 | `ram:D120` | vestigial — a zero byte before the callback table at `D121`; no writer, so always blank |
+| +18 | `ram:EC8E` | Workstation id (the banner serial in Load/Run) |
+| +26 | `ram:EC99` | User id — CONFIRMED (`g_acLogonUserId`) |
+| +34 | `ram:ECA2` | Password — CONFIRMED (`g_acLogonPassword`) |
+
+The `+0`/`+8`/`+26`/`+34` slots are blank in Load/Run traces because the
+synthetic run never fills the Log-on form (the source buffers are empty), not
+because the ROM leaves them uninterpreted.
+
+**CONFIRMED dynamically (2026-09-20).** Seeding `ram:ECAB`/`EC99`/`ECA2` at
+the logon step (`MICRONIC_LOGON_POKE=1` in `boot_hw.py`) and running the
+synthetic Load/Run puts `"GRP1"`/`"USER1"`/`"PASS1"` at record `+0`/`+26`/`+34`
+respectively, with `+18="12345678"` and `+8` blank — the cell → offset map is
+proven by execution, not just by the `Lib_StrCopyN` reading. The
+`Group id`/`User id`/`Password` names are the ROM's own labels
+(`g_acLogonGroupId`/`g_acLogonUserId`/`g_acLogonPassword`) — **CONFIRMED**.
 
 Ghidra note: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the bytes are
 `21 C4 E6` (`LD HL,0xE6C4`) — the `+26` source copy. The canonical 54-byte
 field/encoding table remains on the protocol page.
+
+**Dynamic witness — CONFIRMED (2026-09-20).** A bounded synthetic Load/Run
+(`boot_hw.py --trace-loadrun-source plinth --synthetic-loadrun hello.dip
+--synthetic-loadrun-finalize`, LCD off) reaches `Logged on` / `Program received`
+and leaves the record populated:
+
+* `ram:E492 +14` = `45 4E 44 43` (`"ENDC"`) — the operation name.
+* `ram:E492 +18` = `31 32 33 34 35 36 37 38` (`"12345678"`) — the 8-char value
+  typed at the banner (the unit serial in this run), right-justified.
+* `+0`, `+8`, `+26`, `+34` and `+42` remain blank.
+
+The `E6C4-E6F0` watch confirms the assembly path: the field cells are written
+by the `Lib_StrCopyN` copy loop (`ram:DBA2`, 32 writes) and the
+`Session_InitCommsCmd`/`Session_CmdCommand` sites (`45EA`/`4607`/`4641`,
+`4B02`/`4B0F`), matching the static map. This is the first **dynamic** witness
+of the record layout; it settles the offset map and shows `+18` is filled from
+the unit's entered serial number rather than a config-form workstation field.
 
 ### Frame sequence numbers and duplicate suppression — disassembly {#frame-sequence-numbers-and-duplicate-suppression}
 

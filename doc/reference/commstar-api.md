@@ -379,11 +379,25 @@ constant 60 at `SP+8` is **SUSPECTED** to be a timeout in seconds.
 
 | Latched field | Source buffer | Notes |
 |---|---|---|
-| `+0` (8 bytes) | `ECAB` (Group id) | |
-| `+8` (6 bytes) | `D120` (always blank — table terminator) | treat as vestigial; host should expect zeroes |
-| `+18` (8 bytes) | `EC8E` (Telephone / workstation id) | |
-| `+26` (8 bytes) | `EC99` (User id) | LIKELY — layout inference, see evidence |
-| `+34` (8 bytes) | `ECA2` (Password) | LIKELY — layout inference, see evidence |
+| `+0` (8 bytes) | `ECAB` (`g_acLogonGroupId`) | Group id |
+| `+8` (6 bytes) | `D120` (always blank — a lone zero byte, no writer) | vestigial; host should expect zeroes |
+| `+18` (8 bytes) | `EC8E` (Workstation id) | the cold-boot "Enter the Workstation" serial |
+| `+26` (8 bytes) | `EC99` (`g_acLogonUserId`) | User id |
+| `+34` (8 bytes) | `ECA2` (`g_acLogonPassword`) | Password |
+
+The `+0`/`+26`/`+34` names are the ROM's own labels, so they are CONFIRMED.
+
+The V24 Log-on form's own field labels (`micron2.bin` ROM01:7BA0-7BC8) are
+`User id`, `Password`, `Group id`, `Telephone number` — so `EC99`/`ECA2`/`ECAB`
+are the form's User/Password/Group buffers, and *Telephone number* is a
+**separate** buffer (`ram:ECB4`). `+18`/`EC8E` is therefore the **workstation
+id**, not the telephone: the cold-boot prompt is "Enter the Workstation", and a
+dynamic run puts the entered serial there. The earlier "Telephone / workstation
+id" wording conflated the two and has been dropped.
+
+`+8`/`ram:D120` is a single zero byte immediately before the link-method
+callback table at `ram:D121`; nothing in the image writes it, so `+8` is
+always blank (vestigial).
 
 Telephone (`ECB4`) goes to the **connect command**, not `C-INIT-COMMS`. Which
 connect command runs is table-driven from `ram:D108` by the Mode field:
@@ -396,6 +410,16 @@ connect command runs is table-driven from `ram:D108` by the Mode field:
 | `MODEM MAN/D` | 6 | `EE28` `C-MANUAL` | `07h` = 1200 | — |
 
 An IR link is type 4 and uses `C-DIAL` with `ECB4` as its number buffer.
+
+**CONFIRMED dynamically (2026-09-20).** With `MICRONIC_LOGON_POKE=1` the
+harness seeds `ECAB`/`EC99`/`ECA2` just before the V24 Log-on screen is
+accepted (`boot_hw.py`, logon step), then runs the synthetic Load/Run. The
+resulting `ram:E492` record carried `+0="GRP1"`, `+26="USER1"`, `+34="PASS1"`,
+`+18="12345678"` (the banner serial) and `+8` blank — so the cell → offset
+mapping is now **proven**, not only inferred. The `Group id`/`User id`/
+`Password` names are the ROM's own labels (`g_acLogonGroupId`,
+`g_acLogonUserId`, `g_acLogonPassword`), so they are **CONFIRMED**; the mapping
+does not depend on interpretation.
 
 > Form-layout derivation, proposed experiment and correction history: see
 > [`re-notes/commstar-api-evidence.md#where-the-identity-strings-come-from`](../re-notes/commstar-api-evidence.md#where-the-identity-strings-come-from).

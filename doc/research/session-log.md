@@ -10,16 +10,47 @@
   (`Session_CmdEndTx`), both via `Session_MsgInvalidReply`. The peer-level
   meanings of `NO`/`DM` remain OPEN — a server-side convention; the ROM stores
   only ordinals.
+* Follow-up (same day): the `NO`/`DM` distinction is **not load-bearing** —
+  both callers dispatch the class through `ram:E0B2`, and classes 1 and 2 map
+  to the *same* handler (`4C70` in `Session_CmdCommand`, `536F` in
+  `Session_CmdEndTx`), while `OK` and the invalid class differ. A peer needs
+  only `OK` vs not-`OK`. A bounded `--upload` harness run could **not** settle
+  the identity cells: that path bypasses the Commstar session builder
+  (`ram:E492` is zero-filled at PC-after `D70F`, peer `records-received=0`), so
+  `C-INIT-COMMS` never runs.
+* Follow-up 2 (same day): the **full-session** run did settle it. With
+  `--trace-loadrun-source plinth --synthetic-loadrun hello.dip
+  --synthetic-loadrun-finalize`, the record at `ram:E492` ends with
+  `+14="ENDC"` and `+18="12345678"` (the banner serial), the identity fields
+  blank. The `E6C4-E6F0` watch shows the `Lib_StrCopyN` loop (`ram:DBA2`) and
+  the `Session_InitCommsCmd`/`Session_CmdCommand` sites writing the cells,
+  matching the static map — first dynamic witness of the record layout.
+* Follow-up 3 (same day): **identity fields confirmed by execution.** Added an
+  env-gated poke (`MICRONIC_LOGON_POKE=1`) that seeds `ram:ECAB`/`EC99`/`ECA2`
+  at the logon step; the record then carried `+0="GRP1"`, `+26="USER1"`,
+  `+34="PASS1"` — proving the cell → offset map (`ECAB`→+0, `D120`→+8 blank,
+  `EC8E`→+18, `EC99`→+26, `ECA2`→+34). The names are the ROM's own labels
+  (`g_acLogonGroupId`/`g_acLogonUserId`/`g_acLogonPassword`), so Group/User/
+  Password are **CONFIRMED**, not LIKELY. `+18`/`EC8E` is the **workstation
+  id** (the cold-boot serial); Telephone is a separate buffer
+  (`g_acLogonTelephoneNumber`, `ECB4`) used by the connect command. `+8`/`D120`
+  is a lone zero byte before the callback table at `D121` with **no writer**, so
+  it is always blank. Noted a **pre-existing** failure on master:
+  `CommstarShadowPeerTest::test_agrees_on_the_plinth_route` asserts
+  `agreed>=13` but measures 12 (fails identically on the unmodified harness).
 * CONFIRMED the state-45 command-record assembly provenance:
   `Session_CmdCommand` (`ROM00:4AE0`) builds `ram:E492` field-by-field
   (via `Lib_StrCopyN`, `ram:DB89`) from `ram:E6D0`/`E6E8`/`E6EF`/`E6C4`/`E6D9`
   and the operation-name table `ram:E247` (ROM `ROM00:731B`).
   `Session_InitCommsCmd` (`ROM00:4563`) latches five NUL-terminated caller
   arguments (capacities 8/6/8/8/8) into those cells; `Session_InitState`
-  (`ROM00:46E9`) clears them. The four identity fields' byte layout and source
-  cells are CONFIRMED; their semantic identity is OPEN — the caller
-  (`ROM01:12E0`–`1304`) forms arguments from `0xD467`, a constant `0`, and a
-  caller-stack word, and no cell→offset mapping is witnessed. Left unnamed.
+  (`ROM00:46E9`) clears them. The four identity fields' sources are the V24
+  Log-on form buffers (see the Commstar API page): `+0`=Group id (`ECAB`),
+  `+8`=vestigial blank (`D120`), `+26`=User id (`EC99`, LIKELY),
+  `+34`=Password (`ECA2`, LIKELY); `+18`=Telephone/workstation id (`EC8E`).
+  CORRECTION: an earlier draft of this entry called these fields opaque and
+  "not determinable"; the cross-provider reviewer flagged it and the existing
+  API page already carried the mapping. The false claim was retracted.
 * Recorded a Ghidra misdecode affecting any decompiler reading of
   `Session_CmdCommand`: the listing shows `AND 0xe5` at `ROM00:4BC0`, but the
   bytes are `21 C4 E6` (`LD HL,0xE6C4`), the `+26` source copy. Docs updated;
