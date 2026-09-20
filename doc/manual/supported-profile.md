@@ -2,7 +2,10 @@
 
 This page states the portion of DIPOS-B that an application can use from the
 current evidence. It is deliberately narrower than the firmware's full
-surface. Every claim below is **Stable** unless explicitly limited.
+surface. Scope: the supplied DIPOS-B ROM images and the documented emulator
+tests; this is not a compatibility promise for other firmware revisions.
+The [reference status terms](../reference/README.md#stability-terms) separate
+contract maturity from support policy and validation environment.
 
 ## Target environment
 
@@ -44,21 +47,25 @@ documented value as volatile, and do not turn this list into an ABI guarantee.
   requiring resident context.
 * Do not modify the active-device selector or `FE83`/`FE93` configuration tables
   until the complete `F6h-FBh` contracts and restoration rules are published.
-* Do not install a barcode decode hook from a general application. Its complete
-  bank, register-preservation, lifetime, and reentrancy contract is still
-  incomplete.
-* Do not claim Commstar file-transfer compatibility: the controller-facing
-  byte transaction is documented, but live RECORD/BLOCK payloads and session
-  grammar remain open.
+* Barcode hook installation is an advanced resident-code operation, excluded
+  by this profile's support policy. Its measured entry/return contract,
+  bank handling, lifetime and buffer limits are published in the
+  [barcode reference](../reference/barcode.md#the-decode-hook). Reading scans
+  via BDOS `03h` does not require installing a hook.
+* Do not claim physical Commstar interoperability from emulator success.
+  RECORD/BLOCK formats and bidirectional transfers are documented; the
+  remaining return-wire handshake and validation limits are listed in
+  [Commstar status](../protocol/commstar.md#scope-and-implementation-status).
 
 ## Packaging and deployment
 
 COM and DIP grammars are byte-verified in
-[Program formats](../reference/program-formats.md). The runtime loader's physical input
-provider has not been identified, so this repository cannot yet give a
-hardware-independent transfer recipe. A generated image can be checked against
-the documented grammar and size limits, but loading it onto a real device still
-requires an owner-provided route or a future capture-backed workflow.
+[Program formats](../reference/program-formats.md). The synthetic peer can
+download programs through the firmware's Load/Run path in the emulator.
+Outbound IR has been captured; physical deployment remains blocked on the
+return-side handshake and validation against a historical adapter. See
+[Commstar server readiness](../protocol/commstar.md#historical-server-readiness).
+Image validation checks packaging, not hardware transfer compatibility.
 
 ## Reading the references
 

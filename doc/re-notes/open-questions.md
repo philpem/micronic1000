@@ -57,7 +57,7 @@ for the historical session log, see the
   previous OPEN wording see the Resolved section below.
 
 * **Where does the EXT STORAGE ADAPTER attach, and how is it reached?** —
-  Two separate answers, and the second is the surprise.
+  Physical attachment and successful file operations are separate questions.
 
   **Which port:** the drive table (`ROM00:3257` → `ram:FE93`) is `A:=00`,
   `B:=7F`, `C:=73`, `D:=72`. Both `73h` and `72h` have bit 6 **set**, which
@@ -72,30 +72,44 @@ for the historical session log, see the
   read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) — no
   shift register, no clock pair, no framing.
 
-  **How it is reached: not through BDOS.** `ROM00:0824` resolves a drive
-  letter to its `FE93` id, and **every one of its fourteen call sites refuses
-  a non-zero id.** Thirteen are literally `CP 00h; JR NZ,<error>` (`0846`,
-  `087A`, `08A0`, `08C3`, `091D`, `096F`, `09A6`, `0B0C`, `0B92`, `0BF6`,
-  `0C53`, `0CB7`, `0CF4`), and the fourteenth (`0913`, a two-drive rename)
-  compares both ids and then errors at `0961`. The errors are `27h`, `28h`
-  and — via BDOS 2Eh at `ROM00:0DAC` — `2Ch`. **CONFIRMED: this firmware's
-  file system implements local drives only.**
+  **BDOS reaches session helpers; operational storage remains unverified.**
+  **CONFIRMED, byte-verified 2026-09-20:** nonzero drive branches are not
+  universal error returns. In BDOS `2Eh`, `ROM00:0D84` calls the drive-table
+  lookup at `ROM00:3205`; the nonzero branch at `ROM00:0D8A` reaches
+  `ROM00:0DAC -> 0DB7 -> 0A5A -> 0A6D -> 2EAB`. This path preserves the
+  selected `FE93` entry pointer until `ROM00:2EB8-2EB9` copies its byte to
+  `ram:FDCA`. On successful setup, `ROM00:09E4 -> 0ABC -> 2F1A` reaches
+  the transfer path: `ROM00:2F3E-2F46` copies `ram:FDCA` to `ram:FDD4`
+  and tests wire-ID bit 6.
 
-  That contradicts the standing note that "all drive `C:`+ storage I/O runs
-  over the 4-wire byte transport". The byte transport exists and the drive
-  table is populated for it, but no BDOS path reaches it.
-  **SUSPECTED** reconciliation: routed storage is a *loaded-software* feature
-  that drives the Commstar session layer (`C-*`) directly rather than going
-  through BDOS file calls, which would explain a populated table with no
-  firmware consumer. Not established — it is equally possible that a different
-  firmware revision implements the routing.
+  The earlier “all fourteen callers reject nonzero IDs”, “local drives
+  only”, and “no BDOS path reaches the transport” conclusions are
+  **withdrawn**. Their proposed loaded-software/different-ROM reconciliation
+  is also discarded. Branches away from local handling were mistaken for
+  errors without tracing the callees; the immediate `2Ch` on this path
+  is not proof of a returned error.
+
+  BDOS `23h` has the same documentation pitfall: `ROM00:0D6B` loads
+  `2Bh` before calling session helpers. **CONFIRMED, byte-verified
+  2026-09-20:** this is not proof that the function returns `A=2Bh` as an
+  error. The old reference/Ghidra contract asserting that value is withdrawn.
+
+  **Still unresolved:** successful routed open/read/write, peer request
+  semantics, and per-operation pointer handling. For example, Open enters
+  `ROM00:09CA`, whose helper at `ROM00:09D8` clears twelve request bytes
+  and leaves `HL=F94Eh`; it does not preserve the original drive-table
+  pointer for the later `(HL)` read. This is a concrete tracing question,
+  not proof that every routed operation fails. Configuration IDs alone
+  establish neither a working B: RAMDISK nor an attached C:/D: device.
 
   Note the Load/Run menu entry named `EXT STORAGE ADAPTOR` is a third thing
   again: selector 5 = wire id `80h`, bit 6 **clear**, so `2F44` sends it down
   the non-link path. That is why selecting it transmits no IR and fails with
   "Can't open or create file" — owner-observed, and predicted by the table.
-  *Resolve:* find a loaded application that uses `C:`/`D:`, or a firmware
-  revision whose `0824` callers route instead of erroring.
+  *Resolve:* trace a routed operation from its BDOS caller through the
+  request descriptor and actual transfer, recording the selected ID,
+  pointer values, peer reply, and final result; confirm physical attachment
+  independently with the owner.
 
 * **Full eight-bit link id vs observable five bits** — Only `id & 1Fh`
   (bits 0-4) is wire-observable via the prelude; bits 5-7 are not.

@@ -88,6 +88,66 @@ The loader shows decimal IDs; hexadecimal IDs are included for tooling:
 No executable-extension comparison beyond the fallback rule is part of the
 contract.
 
+### Why the ceiling is D081h
+
+`D081h` is the first byte of resident Workstation module B in these ROM
+images. Startup sets the loader's exclusive ceiling to that address, so
+`D080h` is the last byte available to a loaded image. This is a firmware
+layout boundary, not a RAM-page size or a universal COM-format limit.
+
+The Z80 sees a selected 32 KiB bank at `0000h-7FFFh` and fixed RAM at
+`8000h-FFFFh` simultaneously. A COM image can span that boundary:
+
+| Part of the image | Mapping | Capacity |
+|---|---|---:|
+| `0100h-7FFFh` | Selected program RAM bank, excluding page zero | `7F00h` = 32,512 bytes |
+| `8000h-D080h` | Fixed RAM below resident module B | `5081h` = 20,609 bytes |
+| Total | One contiguous CPU address range | `CF81h` = 53,121 bytes |
+
+Thus `D081h - 0100h = CF81h` is correct even though each bank is only
+32 KiB. The upper portion is shared fixed RAM; each bank does not get its
+own additional 20,609 bytes. This is image capacity, not a guarantee of
+spare space for application buffers or resident hooks.
+
+For the byte-verified initialization, boot record and loader calculation,
+see [COM capacity evidence](../re-notes/os-diposb.md#com-capacity-and-the-fixed-ram-boundary).
+
+## Building and validating images
+
+The existing `analysis/micronic/program.py` module provides
+`build_dip_file`, `build_dip_header`, `build_dip_block`, and `validate`.
+Run this from the repository root after assembling a COM image:
+
+```python
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "analysis")
+from micronic.program import build_dip_file, validate
+
+payload = Path("/tmp/hello.com").read_bytes()
+result = validate(payload)
+assert result.kind == "COM" and result.valid, result.errors
+image = build_dip_file(
+    header_kwargs={"image_size": len(payload), "entry_address": 0x0100},
+    blocks=[(0, 0, 0x0100, payload)],
+)
+assert validate(image).valid
+Path("/tmp/hello.dip").write_bytes(image)
+```
+
+The host validator checks syntax, supported system IDs, block count,
+truncation, COM length, and type-1 four-byte alignment. Alignment is a
+host-tool safeguard, not a dedicated ROM error. It does **not** check
+destination-plus-length against the runtime load ceiling, available banks,
+overlapping blocks, runtime memory ownership, or execution safety. A
+producer must check these separately and use only block types 0/1; an
+unknown type is not a supported extension merely because validation passes.
+The `D081h` boundary check must use non-wrapping arithmetic in producer tools.
+
+Run the existing format tests with `python3 analysis/test_program.py`.
+These are host-side tests, not a physical transfer test.
+
 ## Related
 
 * [Programmer guide](../manual/programmer-guide.md) — usage

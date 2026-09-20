@@ -8,13 +8,27 @@ application may rely on and how stable each interface is.
 
 | Stability | Meaning |
 |---|---|
-| **Stable** | Intended application contract. Behaviour is exercised in the published reference and will not be reclassified without a firmware-based justification. Safe to build on. |
-| **Provisional** | Partially documented or subject to future refinement. Usable with caution; check the linked RE note for limits. |
+| **Stable** | The documented contract is established for the supplied ROMs within its stated preconditions. This does not imply cross-version compatibility or physical-hardware validation. |
+| **Provisional** | Partially documented; unspecified behavior must not be treated as a guarantee. Check the linked evidence and limits. |
 | **Not implementable** | Blocked by missing hardware, wire, or session evidence. Do not attempt a compatible implementation from this page alone. |
 
-Reference pages carry no ROM addresses, no `CONFIRMED`/`SUSPECTED`/`OPEN`
-evidence tags, and no trace bytes. Every claim links to the RE-notes anchor
-that carries the underlying evidence.
+Read these independent qualifications alongside contract maturity:
+
+| Field | Meaning |
+|---|---|
+| Evidence | `CONFIRMED`, `LIKELY`, or `SUSPECTED`, with a linked derivation |
+| Validation | Static bytes, emulator execution, or hardware observation; these are not interchangeable |
+| Supported use | Portable subset, advanced resident use, or do not call |
+| ROM scope | Supplied images only unless another revision has been verified |
+
+`Advanced, unsafe` is a use restriction, not an evidence level. A known
+no-op is implemented with limited utility; `Not implementable` is reserved
+for a compatible implementation blocked by missing evidence. RAM addresses
+specific to this ROM remain revision-specific even when confirmed.
+
+References lead with callable contracts and link to evidence. Addresses
+belong in the contract when needed to use it; derivation and discovery
+history belong in the RE notes.
 
 **Three pages are a deliberate exception.** The two Commstar pages
 describe an interface nobody has a manual for, so they carry their
@@ -35,11 +49,9 @@ of this ROM build.
   points a loaded COM or DIP can call, their arguments and results
 * [Commstar peer library](commstar-peer.md) — `micronic.peer.CommstarPeer`,
   the host half of a session
-* [Memory and I/O map](memory-map.md) — the short stability-classified
-  summary: bank window, fixed RAM, vectors, and port assignments
-* [System memory map](memory-map.md) — the full programmer's reference:
+* [Memory and I/O map](memory-map.md) — the programmer's reference:
   the banked memory model, the `RST 10h` inter-bank call and the
-  unbanked-pointer rule it imposes, region tables, the stacks (and why
+  pointer-mapping requirements, region tables, stacks (and why
   there is no heap), the derived I/O port map, and what it takes to write
   resident code — a barcode decoder module or an OS function patch
 

@@ -6,24 +6,15 @@ live, and how long it survives. The sampling mechanics, timing derivations
 and the evidence behind each claim are in
 [RE notes: barcode capture](../re-notes/barcode-capture.md).
 
-Everything here has been executed in the emulator, not only read out of the
-ROM — see `analysis/test_barcode.py`.
+Validation: the capture-to-BDOS path and documented hook contract have
+emulator tests in `analysis/test_barcode.py`. This is not validation of
+every decoder or a guarantee for other ROM revisions.
 
-!!! note "What the device is — current position (owner-adjudicated 2026-08-24)"
-    The 5-pin side port / port-2D subsystem **is** the barcode reader front
-    end (owner-adjudicated; see `AGENTS.md` §3 and the do-not-regress list).
-    New names in this subsystem take the `Barcode_` prefix; existing `ExtBus*`
-    names in the database are grandfathered. The attachment point of the
-    EXT STORAGE ADAPTER is **unadjudicated** — do not bind it to wire `2Bh`
-    or any port until confirmed.
-
-    Superseded reasoning (retained for history): an earlier version of this
-    note argued the firmware did not corroborate the barcode identity (no
-    barcode/pen strings; default `FE83` wire table read as making wire `2Bh`
-    the EXT STORAGE ADAPTER) and therefore used a neutral `Ext*` prefix.
-    That reading is superseded by owner adjudication; see `AGENTS.md` §3
-    external ground truth. The mechanism below is exactly as described
-    whatever is plugged in.
+The 5-pin side port is the barcode-reader front end (owner-confirmed).
+For identity evidence and the superseded interpretations, see
+[barcode capture](../re-notes/barcode-capture.md). Read scans using BDOS
+`03h`; decoder installation is an advanced operation with explicit memory
+ownership and lifetime requirements.
 
 ## Stability
 
@@ -165,7 +156,10 @@ header, leaving `F95E`-`F977`. The copy at `ROM00:148B` is an unbounded
 ## Where the decoder lives, and how long it lasts
 
 **It must be reachable when the hook fires.** Unbanked RAM (`8000`-`D080`)
-is the safe home; `C000`-`D080` is the recommended sub-range. A hook in a
+avoids bank changes; `C000`-`D080` is a candidate only if the application's
+image, buffers, stack, and existing hooks leave it free. Future program
+loads may overwrite it too; reserve and manage its ownership explicitly
+using the [placement rules](memory-map.md#61-where-to-put-it). A hook in a
 banked page *is* called correctly — the thunk pages it back in — but nothing
 marks that bank in use and every program load reuses it, so the decoder is
 gone the moment anything else runs.

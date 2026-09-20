@@ -12,8 +12,11 @@ the complete dispatch table, see
 * **Stable** — documented signature plus tested return value and side effects.
 * **Provisional** — service exists and is exercised, but edge cases, error
   codes, or flag contracts are not yet frozen.
-* **Not implementable / Do not use** — stub or unsafe global-state path;
-  an application must not call it.
+* **Stub** — implemented fixed/no-op result, not the expected CP/M facility.
+* **Do not use** — diagnostic or unsafe global-state path, outside the profile.
+
+Scope: supplied ROM images. Validation and exceptions are in the linked
+evidence; this page does not certify every service on physical hardware.
 
 ## Calling convention
 
@@ -21,9 +24,10 @@ Put the function number in **C**, place a pointer argument in **DE** when
 the service requires one, and `CALL 0005h`. The gate is present in every
 memory bank.
 
-On return, `A` and `HL` carry the service result where documented; `BC`,
-`DE`, `IX`, and `IY` are not preserved and reflect the handler's final
-values. Flag state after `CALL 0005h` is derived from a kernel envelope
+On return, `A` and `HL` carry the service result where documented. Treat
+`BC`, `DE`, `IX`, and `IY` as unspecified unless a card says otherwise;
+this is a conservative caller contract, not a claim that every handler
+changes every register. Flag state after `CALL 0005h` is derived from a kernel envelope
 and is not a handler result — only the documented `A`/`HL` values are
 portable. Any register or flag not listed as an output is unspecified.
 
@@ -38,24 +42,45 @@ For the byte-level envelope that establishes this rule, see
 | 01h, 02h, 06h | console input, output, direct I/O | Provisional | Device-routed; fn 06 poll with `E=FFh` is nonblocking. See [Extensions](extensions.md) for routing |
 | 03h | reader input | Provisional | Barcode-reader byte stream; see [Barcode reader](barcode.md) |
 | 04h, 05h | punch and list output | Provisional | Device-routed |
-| 07h, 08h | get/set IOBYTE | Not implementable | Stub: setting has no routing effect |
+| 07h, 08h | get/set IOBYTE | Stub | Stub: setting has no routing effect |
 | 09h, 0Ah | string output, line input | Provisional | `09h` terminates on `$`; `0Ah` uses `DE[0]` as max and writes `DE[1]` count |
 | 0Bh | console status | Stable | `A=FFh` if input pending else `00h`; no wait |
 | 0Ch | return version | Stable | `HL=0023h` |
-| 0Dh | reset disk system | Not implementable | Unsafe shared diagnostic path — do not call |
+| 0Dh | reset disk system | Do not use | Unsafe shared diagnostic path — do not call |
 | 0Eh | select disk | Stable | `E=00h..0Fh`; `A=00h` on success, `FFh` if `E>=10h` |
 | 19h | get current drive | Provisional | Returns drive in `A` |
 | 0Fh-17h | FCB open through rename | Provisional | `DE` points to FCB; see cards below |
-| 18h | login vector | Not implementable | Stub `HL=FFFFh` |
+| 18h | login vector | Stub | Stub `HL=FFFFh` |
 | 1Ah | set DMA address | Provisional | Stores `DE` as DMA pointer |
-| 1Bh, 1Dh | allocation / read-only vectors | Not implementable | Stub `HL=0000h` |
-| 1Ch, 1Eh, 1Fh | write protect / attributes / DPB | Not implementable | Unsafe shared diagnostic path — do not call |
-| 20h | get/set user code | Not implementable | Stub `A=00h` |
+| 1Bh, 1Dh | allocation / read-only vectors | Stub | Stub `HL=0000h` |
+| 1Ch, 1Eh, 1Fh | write protect / attributes / DPB | Do not use | Unsafe shared diagnostic path — do not call |
+| 20h | get/set user code | Stub | Stub `A=00h` |
 | 21h, 22h, 24h | random read/write/set record | Provisional | |
 | 23h | compute file size | Provisional | Writes record count to FCB `+21h..+23h` |
 
-Functions `25h-F2h` are not allocated. Calling an unallocated function
-jumps through unrelated memory — **Not implementable, do not probe**.
+The unassigned functions in `25h-F2h` jump through unrelated memory.
+There are explicitly special-cased entries in that range, listed in
+[Extensions](extensions.md#other-extensions); the portable profile excludes
+the whole range. Do not probe unassigned function numbers.
+
+## Shared card rules
+
+These rules apply to every card and grouped service below:
+
+* **Clobbers:** any register/flag not explicitly returned is unspecified.
+* **Buffer mapping:** a plain pointer must address memory available to the
+  routine when it dereferences it. Use fixed RAM unless the service's
+  bank-aware handling is documented; see the
+  [DMA exception](memory-map.md#25-the-rule-and-two-independent-corroborations).
+* **Blocking and errors:** where a card does not establish a bound or a
+  complete error set, these remain unspecified. A success value alone is
+  not a complete error contract.
+* **Effects:** file operations mutate FCB/DMA and global filesystem state;
+  console calls use the active device route. They are not promised reentrant.
+
+Grouped provisional descriptions retain those limits. They are not complete
+ABI cards; consult the [function-set evidence](../re-notes/os-diposb.md#bdos-function-set-confirmed-from-the-rom-resident-kernel-image)
+before relying on an undocumented behavior.
 
 ## Verified contract cards
 
@@ -101,8 +126,10 @@ keyboard byte nonzero) else `A=00h`.
 **In:** `DE` points to an FCB on a RAM drive.
 
 **Out:** on success `A=00h` and FCB `+21h..+23h` receives the size in
-128-byte records; missing entry returns `A=FFh`; non-RAM drive takes the
-`2Bh` error path.
+128-byte records; missing entry returns `A=FFh`. The nonzero-drive branch
+loads `2Bh` and calls session helpers; that immediate is not an established
+returned error. Its peer-dependent result contract remains unverified; see
+[storage evidence](../re-notes/open-questions.md#link-identity-and-port-selection).
 
 **Effects:** temporarily wildcards the extent and searches matching
 directory entries.

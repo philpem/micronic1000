@@ -2,7 +2,7 @@
 
 **On this page:** The DIPOS-B operating system internals — kernel
 installation, BDOS dispatch, boot chains, module copying, the Load/Run
-loader, interrupt architecture, the debug monitor, and the patching
+loader, interrupt architecture, the diagnostic entry stub, and the patching
 interface. Intended for kernel analysts, patch authors, and anyone
 tracing the boot chain. Companion: the programmer-facing
 [BDOS reference](../reference/bdos.md) and
@@ -34,8 +34,9 @@ tracing the boot chain. Companion: the programmer-facing
   (`in Commstar` / `in Workstation` error-context strings).
 * Feature strings: `WORKSTATION MEMORY`, `WORKSTATION RAMDISK`,
   `Load/Run Program`, `Set Debug mode`, `Diagnostics`, `Main Menu`.
-* Fatal-error handler offers **"M key for monitor"** (ROM00:2CF2) —
-  a built-in machine-code monitor exists.
+* The fatal-error handler offers **"M key for monitor"** (`ROM00:2CF2`),
+  but the selected entry is a returning stub in these dumps, not a
+  built-in machine-code monitor. See [Debug facilities](#debug-facilities).
 
 ## CP/M compatibility layer
 
@@ -105,7 +106,7 @@ references:
    ram:D6AC) — resident scheduler/command loop rather than a CCP that
    exits to BIOS.
 
-## ABI layers (complete picture)
+## ABI layers {#abi-layers-complete-picture}
 
 ```
 User (.COM) programs      : CALL 0005h          -> kernel F180
@@ -278,10 +279,16 @@ calls kernel services 1-18 (IO, state, clock...) via this table.
 
 ### 3. RST trampolines
 
-`0008 -> F180` (BDOS dispatch) is separate; `RST 20h`/`28h`/`30h`/`38h` →
-`F5EA`/`F5ED`/`F5F0`/`F5F3` share the common IRQ/event handler path
-(see [interrupts](interrupts.md)). `0010 -> F5E1` is the banked-call
-dispatcher; `0066 -> F5F6` is NMI.
+**CONFIRMED, byte-verified 2026-09-20:** `0005 -> F180` is the BDOS
+gate; `0008 -> F5E1` is a separate restart entry. The `0010` banked-call
+dispatcher is inline code, not a jump to `F5E1`. `0066 -> F5F6` is NMI.
+
+The initial kernel image gives `RST 20h -> F5EA -> F64D` and
+`RST 38h -> F5F3 -> F64D`, but `RST 28h -> F5ED -> F57E` and
+`RST 30h -> F5F0 -> 3513`. These four restarts therefore do not all
+share the IRQ handler. RAM vectors can subsequently be patched; these
+are the initial targets from `ROM00:3B07-3B12`, not a claim about every
+runtime state. See [interrupts](interrupts.md).
 
 ## Kernel installation (CONFIRMED)
 
@@ -527,6 +534,28 @@ TWO roles:
 * Menu: `Load/Run Program`. Reception messages: `Receiving prog`,
   `Program received`, `Invalid data stream`.
 
+### COM capacity and the fixed-RAM boundary
+
+**CONFIRMED, byte-verified 2026-09-20:** startup at `ROM00:7052`
+contains `21 81 D0 22 BD E3` (`LD HL,D081h; LD (E3BDh),HL`), setting
+`g_pProgramLoadCeiling` to `D081h`. The bank-1 boot record at
+`ROM01:7E23` is `01 00 CB 7B 81 D0 4A 02`: copy `024Ah` bytes from
+`ROM01:7BCB` to `ram:D081`, the resident Workstation module B.
+
+The raw-COM path at `ROM01:0D9B-0DAB` computes remaining capacity as
+`g_pProgramLoadCeiling - (0100h + firstReadCount)`. The subtraction
+helper at `ram:E0A9` begins with `EX DE,HL`, then subtracts; this
+operand order matters. `Program_ConsumeInputChunk` (`ROM01:0BAC`)
+limits copies to the remaining capacity and reports
+`0x232C` (9004), "COM file too big." for further raw-COM input after
+completion (`ROM01:0BCA`).
+
+The resulting image capacity is `D081h - 0100h = CF81h` (53,121 bytes).
+It comprises `7F00h` bytes in the selected lower RAM bank plus `5081h`
+bytes in shared fixed RAM. It does not require a bank larger than 32 KiB.
+`D081h` is exclusive; an image ending there occupies through `D080h`.
+See the [program-format explanation](../reference/program-formats.md#why-the-ceiling-is-d081h).
+
 ### Unbanked RAM placement (CONFIRMED)
 
 **This is how a program leaves resident code behind**, and it is the single
@@ -595,22 +624,27 @@ directly from a DIP block, because `FBC0` is above the `D081` ceiling and the
 loader would reject it. The socket must be written by running code — see
 [Barcode reader](../reference/barcode.md).
 
-### Code-loading paths (from strings; static evidence) — legacy strings
-
 ## Debug facilities
 
-* **Monitor located**: `Monitor_Enter` (ROM00:3513). Reached two ways:
-  * fatal-error handler `Diag_ErrorHandler` (ROM00:2C00, entered from
-    the banked-call wrapper after a kernel-notified fault): prompts
-    "R key for retry / M key for monitor / Any key for return";
-    M (4Dh) or Z (5Ah) saves HL → FEFA and DE:BC → FEF8 then enters
-    the monitor with the crashed context
-  * cold boot with the service-key combo: reset sets the
-    bootmode flag (f81d=FF) when it detects the combo; the banner
-    flow then calls 3513 directly (ROM00:0291-0296, when f81d == FF)
-    *instead of continuing to the normal card screen / menu*. So
-    holding H+L+P at power-on drops straight into the machine-code
-    monitor - the same monitor reached via "M key for monitor".
+**CONFIRMED, byte-verified 2026-09-20:** the function still named
+`Monitor_Enter` at `ROM00:3513` contains only `AF C9` (`XOR A; RET`).
+The name and the menu string do not establish a monitor implementation.
+The previous claims of a built-in monitor and a service-key boot into
+that monitor are withdrawn.
+
+* **Error-screen path:** `Diag_ErrorHandler` (`ROM00:2C00`) prints the
+  retry/monitor/return prompts. M (`4Dh`) or Z (`5Ah`) selects
+  `ROM00:2C3F-2C55`: restore the stacked registers, save restored HL
+  to `ram:FEFA`, pop the saved AF word into HL and save it to
+  `ram:FEF8`, then call the stub at `ROM00:3513`. It returns, and the
+  handler executes `SCF; CCF; EX AF,AF'; RET`. The saved word is AF,
+  not DE:BC; the handler began with `EX AF,AF'`, so it must not be
+  described as the original incoming main AF without tracing the caller.
+  HL now contains that saved AF word rather than its original value.
+* **Cold-boot path:** `ROM00:0291-0296` tests `ram:F81D` against `FFh`
+  and conditionally calls the same stub. Execution resumes at
+  `ROM00:0299` and continues the boot/banner flow. This call does not
+  bypass the menu into a monitor.
 * **Service key combination = H + L + P ("HELP")**, held at power-on.
   Verified end-to-end: reset probes matrix row-drive 02h and expects
   sense pattern 1Ch (columns 2/3/4 of row 1); the runtime translation
@@ -619,13 +653,19 @@ loader would reject it. The socket must be written by running code — see
   independently validates the whole matrix decode chain.
   Additional gate: port 49h must read bit0=1 / bit1=0 at reset
   (checked twice before the matrix probes).
-  **Effect:** f81d=FF -> at the banner's key-read point (ROM00:0291)
-  the firmware CALLs Monitor_Enter (3513) instead of waiting for
-  ENTER/keys, i.e. the service combo bypasses normal boot into the
-  monitor.
+  **Effect at this call site:** `ram:F81D=FFh` causes the conditional
+  stub call described above; it supplies no interactive monitor.
 * `Set Debug Mode` menu option in ROM01 (string @ ROM01:7B52).
 * Full PARCON-style self-test on cold boot: status flags, bank select,
   ROM checksums (`ROM 0 CS:`), clock test, powerdown test, RAM tests.
+
+**SUSPECTED historical purpose:** an alternate/patched ROM monitor or an
+ICE could intercept the entry and use the saved state, returning to the
+caller's continuation when finished. These dumps do not show such an
+installation, an external-monitor exit, or an ICE handshake. Establishing
+one requires an alternate ROM, debugger documentation, or a hardware trace
+showing interception. The concrete behavior in these images is a stub
+call followed by normal return, not a transfer to another monitor ROM.
 
 ## Power on/off (partially decoded)
 
@@ -651,7 +691,7 @@ loader would reject it. The socket must be written by running code — see
 The RTC and resident BDOS image are no longer open: ports 08h/28h are the
 HD146818 interface, and the RAM kernel is copied from ROM at cold boot.
 
-## Interrupt architecture (fully mapped)
+## Interrupt architecture {#interrupt-architecture-fully-mapped}
 
 - Mode-1 IRQ vector 0038h in BOTH ROMs = `JP F5F3` — dispatch goes
   through battery RAM, so the handler is field-replaceable.
@@ -716,7 +756,7 @@ There is one table base and two windows onto it, which is why the two
 tables sit `0x200` apart:
 
 | Table | Address | Index | Covers |
-|---|---|---|---|---|
+|---|---|---|---|
 | Extension | `ram:F1D1`-`F1EA` | `F1EB + 2×fn − 200h` (via `B = FFh`) | DIPOS-B functions `F3h`-`FFh`, 13 words |
 | CP/M range | `ram:F1EB`+ | `F1EB + 2×fn` | BDOS functions from `00h` |
 

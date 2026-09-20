@@ -344,7 +344,7 @@ data object:  [u16 status][u16 marker][u16 N] data[N] [u16 00]
 ```
 
 | Response | Label | length | status | marker | N |
-|---|---:|---:|---:|---:|
+|---|---|---:|---:|---:|---:|
 | Control | `CONNECT-ANSWER`/`BEGIN-TX`/`BLOCK-OUT` | 7 | — | — | single `00` byte |
 | Control object (state `0x44`) | `BLOCK-IN` | 20 | 0 | 1 | 6 |
 | Program data chunk | — | variable | 0 | 0 or 1 | payload bytes |
