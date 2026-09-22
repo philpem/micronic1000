@@ -7469,3 +7469,21 @@ names renamed, 144 unplated functions plated)
   Uno can drive a 74LS input. The NPN is optional electrical separation;
   current code retains its inversion, so direct wiring requires a software
   polarity/startup change. No firmware or wiring configuration changed.
+
+### 2026-09-22 — Select direct TTL or NPN black-input drive
+
+* Added `BLACK_USE_NPN` beside the sketch wiring header: 0 drives black
+  directly (D7 HIGH idle/LOW command); default 1 retains the external NPN
+  wiring (D7 LOW idle/HIGH command). Setup preloads the selected idle latch
+  before enabling output. Startup and serial R report the selected wiring.
+* Updated both wiring variants and the first silent-probe procedure in the
+  sketch/README/operator guide. This selects a test interface; it does not
+  promote the suggested 74LS receiver identity to confirmed.
+* Validation: 3 integration/configuration tests cover both electrical
+  polarities under ASan/UBSan, startup without a spurious low command,
+  resynchronisation and invalid-option rejection. The existing emitter and
+  logger suite passed 22 tests. Actual Uno compilation passed for NPN
+  (9,680 flash bytes), direct TTL (9,686 flash bytes), and legacy default;
+  both feedback variants use 845 static SRAM bytes.
+* ROM source, image and checksums are unchanged. No further EPROM burn is
+  needed if feedback-v1 is already installed. Documentation checks passed.

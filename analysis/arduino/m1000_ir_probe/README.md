@@ -10,6 +10,23 @@ explicit one-shot USB commands. The matching ROM provides witness (`W`),
 forced receive (`R`), reset/probe (`P`), and receive-pending-gated receive (`G`)
 trials in one burn. See the complete [wiring, command and result guide](../../../doc/re-notes/ir-feedback-protocol.md).
 
+### Choose black interface before uploading
+
+At the top of `m1000_ir_probe.ino`, select exactly one black-command wiring:
+
+```cpp
+#define BLACK_USE_NPN 1  // external NPN, existing wiring
+// #define BLACK_USE_NPN 0  // direct 5 V TTL: D7 -> black / pin 5
+```
+
+`BLACK_USE_NPN=1` is the default and preserves the existing NPN interface:
+D7 low releases black and D7 high commands it low. `BLACK_USE_NPN=0` is the
+direct 5 V TTL option: wire **D7 directly to black / pin 5**, omit the NPN and
+its base resistors, and use D7 high for idle/released and D7 low for command.
+The sketch prints `BLACK: NPN` or `BLACK: DIRECT_TTL` at startup and after
+`R`; verify that banner before a trial. The 74LS input suggestion remains
+SUSPECTED; this selection is a bench wiring choice, not an identity claim.
+
 ### Wiring to the handheld
 
 Power the Uno from USB and the handheld from its batteries. Use the tested
@@ -17,24 +34,27 @@ scanner cable's **blue, black and yellow** wires:
 
 | Connection | Wiring |
 |---|---|
-| Common ground | Handheld **blue / pin 8** to **Uno GND** and NPN **emitter** |
-| Command to handheld | Handheld **black / pin 5** to NPN **collector** |
-| NPN drive | **D7 -> 10 kOhm -> base**; **100 kOhm base-to-emitter** |
+| Common ground | Handheld **blue / pin 8** to **Uno GND**; also NPN **emitter** when selected |
+| Command to handheld | Handheld **black / pin 5** to NPN **collector** (`BLACK_USE_NPN=1`) or directly to **D7** (`=0`) |
+| NPN drive, optional | **D7 -> 10 kOhm -> base**; **100 kOhm base-to-emitter** (`=1` only) |
 | Feedback from handheld | Handheld **yellow / pin 6** to **D8**; **10 kOhm yellow-to-Uno-5-V** pull-up |
 | Optical stimulus | Keep existing IR LED drivers/channels **A on D5**, **B on D6**, facing the top V24 window |
 
 Leave orange/Vcc, red, brown, violet and green disconnected and insulated.
 Remove the earlier connector tests' yellow-to-orange and black-to-ground
-resistors. Do not join handheld Vcc to Uno 5 V or connect black directly to
-D7. Check the actual transistor's B/C/E pinout. Connector pin numbers and
-wire colours are owner-confirmed (2026-09-22).
+resistors. Do not join handheld Vcc to Uno 5 V. In direct-TTL mode, power the
+Uno before the handheld; switch the handheld off before unplugging Uno USB.
+Check the actual transistor's B/C/E pinout when using NPN mode. Connector pin
+numbers and wire colours are owner-confirmed (2026-09-22).
 
 See the [complete wiring diagram and power-up checks](../../../doc/re-notes/ir-feedback-protocol.md#connect-the-handheld-to-the-uno).
-D7 high sinks black; D7 low releases it. D8 is input-only. D2/D4 optical
+D7 polarity follows the selected banner: NPN high commands/low releases;
+direct TTL low commands/high releases. D8 is input-only. D2/D4 optical
 monitoring is unused in feedback mode. The D5/D6 clock/data assignment is
 unknown; `swap` selects the proposed roles without rewiring.
 
-Open the serial monitor at 115200 baud, send `R`, and wait for `READY`. Then:
+Open the serial monitor at 115200 baud, confirm the expected `BLACK:` banner,
+send `R`, and wait for `READY`. Then:
 
 ```text
 T 1 P S 0 -- 0 0 0 -2 0 0 -

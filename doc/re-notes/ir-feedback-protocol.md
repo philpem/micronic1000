@@ -11,6 +11,13 @@ yellow**. Power the handheld from its batteries and the Elegoo Uno R3 from
 USB. Join their grounds, but keep their positive supply rails separate.
 The optical connection still uses the existing two IR LED channels.
 
+Before uploading, set `BLACK_USE_NPN` in `m1000_ir_probe.ino` and wire black
+to match it. `1` is the default external-NPN interface; `0` selects a direct
+5 V TTL wire from D7 to black/pin 5. The startup and `R` output must say
+`BLACK: NPN` or `BLACK: DIRECT_TTL` for the wiring actually fitted. The
+suggestion that black may feed 74LS logic remains SUSPECTED; direct TTL is a
+selected bench interface, not an established hardware identity.
+
 The colours below refer to the owner's tested cable. They are not a standard
 mini-DIN colour code. **CONFIRMED: owner pin-number identification,
 2026-09-22:** black 5, yellow 6, blue 8, red 1, orange 3. No connector-face
@@ -18,8 +25,8 @@ view or plug/socket numbering orientation is implied by the wiring diagram.
 
 | Handheld scanner-connector wire | Connect to | Purpose |
 |---|---|---|
-| **Blue / pin 8 / ground** | **Uno GND**, and transistor emitter | Common signal reference |
-| **Black / pin 5** | **Collector** of an external NPN transistor | Uno command to handheld; transistor pulls black low |
+| **Blue / pin 8 / ground** | **Uno GND**; NPN emitter when selected | Common signal reference |
+| **Black / pin 5** | NPN collector (`BLACK_USE_NPN=1`) or **Uno D7** (`=0`) | Uno command to handheld |
 | **Yellow / pin 6** | **Uno D8**, and one end of a **10 kOhm** resistor | Handheld ACK/START/result output |
 | **Orange / pin 3 / Vcc** | Leave disconnected and insulate | Handheld supply; do not connect to Uno 5 V |
 | **Red / pin 1** | Leave disconnected and insulate | Unused output, measured up to 5.6 V |
@@ -29,16 +36,32 @@ Complete the Arduino-side connections:
 
 | Uno connection | Wire/component |
 |---|---|
-| **D7** | Through **10 kOhm** to transistor **base** |
-| **GND** | Transistor **emitter**, handheld **blue / pin 8**, and one end of **100 kOhm** resistor |
-| Transistor **base** | Other end of the **100 kOhm** resistor |
+| **D7, NPN mode** | Through **10 kOhm** to transistor **base** |
+| **D7, direct-TTL mode** | Directly to black / pin 5; no NPN/base resistors |
+| **GND** | Handheld **blue / pin 8**; NPN emitter and one end of 100 kOhm resistor in NPN mode |
+| Transistor **base, NPN mode** | Other end of the **100 kOhm** resistor |
 | **5 V** | Other end of yellow's **10 kOhm** pull-up resistor |
 | **D8** | Yellow/pull-up junction; configured as input |
 | **D5** | Existing IR LED driver/channel **A** |
 | **D6** | Existing IR LED driver/channel **B** |
 | **D2, D4** | Not required for feedback mode; optical monitoring is disabled |
 
-Wiring diagram (B, C and E mean base, collector and emitter):
+For **direct-TTL mode** (`BLACK_USE_NPN=0`), use this command connection:
+
+```text
+Uno D7 ------------------------------------------------ Black / pin 5
+Uno GND ----------------------------------------------- Blue / pin 8 / ground
+Uno 5 V ------[10 kOhm]-------+------------------------ Yellow / pin 6
+                             |
+Uno D8 ----------------------+
+```
+
+Power the Uno before the handheld. Switch the handheld off before unplugging
+Uno USB; keep the Uno powered while the handheld is powered. The NPN and
+its base resistors are not fitted in this mode.
+
+For the optional **NPN mode** (`BLACK_USE_NPN=1`), B, C and E mean base,
+collector and emitter:
 
 ```text
                  COMMAND: Uno -> handheld
@@ -72,21 +95,23 @@ proposed roles without changing the wiring.
 Assemble with power off. Remove any earlier test resistor connecting yellow
 to **orange/Vcc** or to ground: this harness instead pulls yellow up to
 **Uno 5 V** through 10 kOhm. Likewise remove the earlier black-to-ground test
-resistor. Do not connect black directly to D7; its released level comes from
-the handheld. The NPN lets the Uno sink or release black without receiving
-that voltage on D7. The 100 kOhm base-emitter resistor keeps it released
-while the Uno resets.
+resistor. In NPN mode, the NPN lets the Uno sink or release black without
+receiving that voltage on D7; its 100 kOhm base-emitter resistor keeps it
+released while the Uno resets. In direct-TTL mode, black connects directly to
+D7 under the required power order above.
 
 With power applied, yellow should sit near Uno 5 V when released and near
-0 V when the handheld sinks it; verify that before connecting D8. Black
-should retain its handheld-side high level when the transistor is off.
+0 V when the handheld sinks it; verify that before connecting D8. In NPN mode, black
+retains its handheld-side high level when the transistor is off; in direct
+TTL mode, D7 drives the idle high.
 Use the connector-probe checks in the bench sequence below to verify the
 pull-low/release paths before running a stimulus.
 
-**Signal polarity:** D7 high turns the NPN on and pulls black low; D7 low
-releases black. Yellow low means ROM port `2Ah` bit 0 is set (sink); high
-means release through the Uno-side pull-up. D8 is always an input and never
-drives yellow. The pull-up draws about 0.5 mA when yellow is low; yellow's
+**Signal polarity:** NPN mode uses D7 high to command black low and D7 low to
+release it. Direct-TTL mode uses D7 low to command black low and D7 high for
+idle. Yellow low means ROM port `2Ah` bit 0 is set (sink); high means
+release through the Uno-side pull-up. D8 is always an input and never drives
+yellow. The pull-up draws about 0.5 mA when yellow is low; yellow's
 owner-measured 200 mA sink current is not a component rating.
 
 ## Command and trial timeline
@@ -231,19 +256,23 @@ ROM trial already started. Cancellation is serviced during the scheduled
 delay, or after an optical emission completes (at most 24 ms). In particular, releasing black during a command
 can leave a valid shorter pulse. Observe the returning result/idle state and
 resynchronise before proceeding. `B id L` and `B id R` are idle-only bench
-controls for the black transistor; a held low starts the ROM's command
+controls for the selected black interface; a held low starts the ROM's command
 measurement and eventually its stuck-input error. Use the automatic `T`
 handshake for experiments, not manual pulse timing.
 
-1. Validate the connector interface with the already-tested connector ROM:
-   D7 low releases black, D7 high pulls it low; verify yellow at D8 stays
-   within 0..Uno 5 V. Use a 10 kOhm base resistor and 100 kOhm base-emitter
-   pull-down for the external NPN. Check the chosen transistor's pinout.
+1. Select `BLACK_USE_NPN` before uploading and validate the connector
+   interface with the already-tested connector ROM. For NPN mode, D7 low
+   releases black and D7 high commands it low; use the 10 kOhm base resistor,
+   100 kOhm base-emitter pull-down and verify the transistor pinout. For
+   direct-TTL mode, D7 high releases black and D7 low commands it low; power
+   Uno before handheld and switch handheld off before removing Uno USB.
+   In either mode verify yellow at D8 stays within 0..Uno 5 V.
 2. Install the feedback ROM in ROM00 only and upload the matching sketch.
    Leave ROM01 stock. Power up with black released and both optical outputs
    off. This standalone diagnostic replaces normal startup and uses scratch
    RAM; it does not run the normal barcode API or session menus.
-3. Send `R`, wait for `READY`, then perform a silent probe trial:
+3. Confirm the matching `BLACK:` banner, send `R`, wait for `READY`, then
+   perform a silent probe trial:
 
    ```text
    T 1 P S 0 -- 0 0 0 -2 0 0 -

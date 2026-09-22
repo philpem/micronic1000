@@ -19,6 +19,10 @@
 #define CS20 0
 #define OCIE2A 1
 
+#ifndef BLACK_USE_NPN
+#error "host test must select BLACK_USE_NPN explicitly"
+#endif
+
 typedef char __FlashStringHelper;
 
 volatile uint8_t PORTD = 0, PORTB = 0;
@@ -26,12 +30,16 @@ volatile uint8_t TCCR2A = 0, TCCR2B = 0, OCR2A = 0, TIMSK2 = 0;
 
 static uint32_t hostNow = 0;
 static bool hostYellow = true;
+static bool hostD7Latch = false;
+static bool hostD7Output = false;
 static bool hostBlack = false;
 
 struct GpioEvent {
   uint32_t at;
   uint8_t pin;
-  uint8_t level;
+  bool latch;
+  bool output;
+  bool blackAsserted;
 };
 
 struct IrEvent {
@@ -139,16 +147,30 @@ unsigned long micros() { return hostNow++; }
 void delayMicroseconds(unsigned long us) { hostNow += (uint32_t)us; }
 void noInterrupts() {}
 void interrupts() {}
-void pinMode(uint8_t, uint8_t) {}
+static bool blackAssertedByD7() {
+  if (!hostD7Output) return false;
+  return BLACK_USE_NPN ? hostD7Latch : !hostD7Latch;
+}
+static void recordD7() {
+  hostBlack = blackAssertedByD7();
+  gpioEvents.push_back(
+      GpioEvent{hostNow, 7, hostD7Latch, hostD7Output, hostBlack});
+}
+void pinMode(uint8_t pin, uint8_t mode) {
+  if (pin == 7) {
+    hostD7Output = mode == OUTPUT;
+    recordD7();
+  }
+}
 void attachInterrupt(int, void (*)(), int) {}
 int digitalPinToInterrupt(uint8_t pin) { return pin; }
 int digitalPinToPort(uint8_t pin) { return pin < 8 ? 0 : 1; }
 uint8_t digitalPinToBitMask(uint8_t pin) { return (uint8_t)(1U << (pin & 7)); }
 volatile uint8_t *portOutputRegister(int port) { return port ? &PORTB : &PORTD; }
 void digitalWrite(uint8_t pin, uint8_t value) {
-  if (pin == 7 && hostBlack != (value != 0)) {
-    hostBlack = value != 0;
-    gpioEvents.push_back(GpioEvent{hostNow, pin, value});
+  if (pin == 7) {
+    hostD7Latch = value != 0;
+    recordD7();
   }
 }
 int digitalRead(uint8_t pin) {
@@ -228,6 +250,11 @@ static void resyncAndReady() {
   CHECK(!fbReady);
   CHECK(!hostBlack);
   CHECK(contains("SYNC\n"));
+#if BLACK_USE_NPN
+  CHECK(contains("BLACK: NPN;"));
+#else
+  CHECK(contains("BLACK: DIRECT_TTL;"));
+#endif
   advanceUs(90000);
   CHECK(!fbReady);
   advanceUs(12000);
@@ -518,6 +545,17 @@ int main() {
   hostYellow = true;
   setup();
   CHECK(contains("BOOT\n"));
+#if BLACK_USE_NPN
+  CHECK(contains("BLACK: NPN;"));
+#else
+  CHECK(contains("BLACK: DIRECT_TTL;"));
+#endif
+  CHECK(hostD7Output);
+  CHECK(hostD7Latch == (BLACK_USE_NPN ? false : true));
+  CHECK(!hostBlack);
+  CHECK(gpioEvents.size() >= 3);
+  for (size_t i = 0; i < gpioEvents.size(); ++i)
+    CHECK(!gpioEvents[i].blackAsserted);
   resyncAndReady();
 
   successfulTrials();
@@ -526,6 +564,8 @@ int main() {
   commandFailureCases();
   payloadAndEarlyEdgeCases();
 
-  puts("feedback public state-machine integration: ok");
+  puts(BLACK_USE_NPN
+           ? "feedback public state-machine integration (NPN): ok"
+           : "feedback public state-machine integration (DIRECT_TTL): ok");
   return 0;
 }

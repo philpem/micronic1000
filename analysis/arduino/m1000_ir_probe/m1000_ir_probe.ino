@@ -16,16 +16,22 @@
 // payload.  A short burst does not identify which wait failed.
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
+// Select BLACK_USE_NPN just below this wiring section before uploading:
+//   1 = external NPN interface (default, preserves existing wiring)
+//   0 = direct 5 V TTL drive: D7 -> BLACK / scanner pin 5
+// Direct TTL mode: D7 HIGH is idle; D7 LOW asserts the command. Connect
+// both powered boards' grounds; power Uno before handheld, and switch the
+// handheld off before unplugging Uno USB. No NPN/base resistors are used.
 //   CLK_IN   D2   handheld clock emitter drive (INT0); legacy modes only
 //   DAT_IN   D4   handheld data emitter drive; legacy modes only
 //   CLK_OUT  D5   physical return channel A; proposed clock role
 //   DAT_OUT  D6   physical return channel B; proposed data role
-//   BLACK_OUT D7  command to handheld BLACK / scanner connector pin 5:
+//   BLACK_OUT D7  with BLACK_USE_NPN=1, wire the external transistor:
 //                D7 -> 10k resistor -> external NPN BASE
 //                NPN COLLECTOR -> BLACK; NPN EMITTER -> common GND
 //                100k resistor from BASE to EMITTER (off during Uno reset)
 //                D7 HIGH pulls BLACK low; D7 LOW releases BLACK.
-//                Do NOT wire BLACK directly to D7.
+//                Direct wiring instead requires BLACK_USE_NPN=0.
 //   YELLOW_IN D8  handheld YELLOW / scanner pin 6 -> D8 (input only)
 //                10k pull-up from YELLOW to UNO 5 V, NOT handheld Vcc
 //                YELLOW carries ACK, START and 1200-baud result records.
@@ -42,6 +48,13 @@
 // window. D5/D6 connect optically, not to scanner-connector contacts.
 // D2/D4 monitoring is disabled and not required in feedback mode.
 //
+#ifndef BLACK_USE_NPN
+#define BLACK_USE_NPN 1  // Set to 0 for D7 directly wired to BLACK / pin 5.
+#endif
+#if BLACK_USE_NPN != 0 && BLACK_USE_NPN != 1
+#error "BLACK_USE_NPN must be 0 (direct TTL) or 1 (external NPN)"
+#endif
+
 // Owner clarification 2026-09-22: receive LED roles are unconfirmed. These
 // names describe the generated signals, not identified handheld detectors.
 // Both optical assignments need testing; 7E as a receive flag is SUSPECTED.
@@ -981,8 +994,17 @@ uint8_t fbUartBit = 0, fbUartValue = 0;
 uint32_t fbUartNext = 0;
 
 inline bool fbYellowHigh() { return digitalRead(YELLOW_IN) != 0; }
-inline void fbBlackRelease() { digitalWrite(BLACK_OUT, 0); }
-inline void fbBlackLow() { digitalWrite(BLACK_OUT, 1); }
+// Direct TTL drives the idle high; the NPN interface releases its collector.
+const uint8_t BLACK_IDLE_LEVEL = BLACK_USE_NPN ? 0 : 1;
+inline void fbBlackRelease() { digitalWrite(BLACK_OUT, BLACK_IDLE_LEVEL); }
+inline void fbBlackLow() { digitalWrite(BLACK_OUT, 1 - BLACK_IDLE_LEVEL); }
+void fbPrintWiring() {
+#if BLACK_USE_NPN
+  Serial.println(F("BLACK: NPN; D7 LOW=idle, HIGH=command"));
+#else
+  Serial.println(F("BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"));
+#endif
+}
 inline uint32_t fbHoldUs() {
   return fbConfig.holdKind == 'W' ? 100000UL :
          fbConfig.holdKind == 'R' ? 300000UL :
@@ -1128,7 +1150,7 @@ void fbCommandTick() {
     if (command == FB_RESYNC) {
       fbQuiet(); fbResetUart(); fbHaveSequence = false; fbExpectedSequence = 0;
       fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
-      Serial.println(F("SYNC")); continue;
+      Serial.println(F("SYNC")); fbPrintWiring(); continue;
     }
     if (command == FB_CANCEL) { fbError(F("cancel")); continue; }
     if (command == FB_BLACK_RELEASE && fbManualLow) {
@@ -1409,7 +1431,7 @@ void setup() {
   pinMode(CLK_OUT, OUTPUT);
   pinMode(DAT_OUT, OUTPUT);
 #if FEEDBACK_HARNESS
-  digitalWrite(BLACK_OUT, 0);  // latch low before enabling the NPN driver
+  fbBlackRelease();  // preload the selected idle level before enabling D7
   pinMode(BLACK_OUT, OUTPUT);
   pinMode(YELLOW_IN, INPUT);
 #endif
@@ -1438,6 +1460,7 @@ void setup() {
 #endif
 #if FEEDBACK_HARNESS
   Serial.println(F("MODE: FEEDBACK v1, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input"));
+  fbPrintWiring();
 #elif LOOPBACK_TEST
   Serial.println(F("MODE: LOOPBACK -- transmitting to my own detectors."));
   Serial.println(F("  pass = 10000001000001011 comes back"));
