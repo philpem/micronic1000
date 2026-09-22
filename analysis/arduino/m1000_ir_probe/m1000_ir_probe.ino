@@ -16,15 +16,38 @@
 // payload.  A short burst does not identify which wait failed.
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
-//   CLK_IN   D2   handheld clock emitter drive   (INT0)
-//   DAT_IN   D4   handheld data emitter drive
+//   CLK_IN   D2   handheld clock emitter drive (INT0); legacy modes only
+//   DAT_IN   D4   handheld data emitter drive; legacy modes only
 //   CLK_OUT  D5   physical return channel A; proposed clock role
 //   DAT_OUT  D6   physical return channel B; proposed data role
+//   BLACK_OUT D7  command to handheld BLACK / scanner connector pin 5:
+//                D7 -> 10k resistor -> external NPN BASE
+//                NPN COLLECTOR -> BLACK; NPN EMITTER -> common GND
+//                100k resistor from BASE to EMITTER (off during Uno reset)
+//                D7 HIGH pulls BLACK low; D7 LOW releases BLACK.
+//                Do NOT wire BLACK directly to D7.
+//   YELLOW_IN D8  handheld YELLOW -> D8 (input only)
+//                10k pull-up from YELLOW to UNO 5 V, NOT handheld Vcc
+//                YELLOW carries ACK, START and 1200-baud result records.
+//   GND          handheld BLUE -> UNO GND and NPN EMITTER
+//
+// BLACK/YELLOW/GND are the three scanner-connector wires for feedback mode.
+// Use the owner's tested cable colours; BLUE/YELLOW pin numbers are unknown.
+// Check the actual NPN's B/C/E pinout. Remove old BLACK-to-ground test loads
+// and YELLOW-to-orange/Vcc or YELLOW-to-ground test resistors.
+// Leave ORANGE/pin 3 (handheld Vcc), RED/pin 1, BROWN/pin 2, VIOLET/pin 4
+// and GREEN/pin 7 disconnected and insulated. Power Uno from USB and the
+// handheld from batteries; share GND, not positive supplies.
+// Keep the existing D5/D6 LED current limiting/drivers aimed at the top V24
+// window. D5/D6 connect optically, not to scanner-connector contacts.
+// D2/D4 monitoring is disabled and not required in feedback mode.
+//
 // Owner clarification 2026-09-22: receive LED roles are unconfirmed. These
 // names describe the generated signals, not identified handheld detectors.
 // Both optical assignments need testing; 7E as a receive flag is SUSPECTED.
 //
-// The handheld's drive lines swing to ~5.5 V, which is over VCC+0.5 on a 5 V
+// For legacy D2/D4 monitoring, the handheld's drive lines swing to ~5.5 V,
+// which is over VCC+0.5 on a 5 V
 // part and well over a 3.3 V one.  Put 10k in series with each input, or a
 // divider on a 3.3 V board.  Do not connect an input directly.
 //
