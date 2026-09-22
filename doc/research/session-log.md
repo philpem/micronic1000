@@ -1,5 +1,15 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — black grounded during yellow waveform
+
+* CONFIRMED (owner observations): during the requested yellow-pulsing
+  comparison, black floats high when released; grounding black gives
+  steady `2D=22h`. The low input remains readable during yellow output.
+* Released-state numeric voltage and LCD input byte were not supplied.
+  Asked whether `2D` stays `23h` when released; do not equate a high
+  physical contact voltage with confirmed input readback. Recorded in
+  the guide, task list and Ghidra; no firmware changes.
+
 ## 2026-09-22 — yellow waveform with red held high
 
 * CONFIRMED (owner observation): following an accidental reset, the owner

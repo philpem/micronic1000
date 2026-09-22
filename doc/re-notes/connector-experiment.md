@@ -452,11 +452,13 @@ output behaviour.
    produces the approximately 400 ms waveform with red held high.
    Yellow therefore pulses with red retained either low or high in the
    tested configurations; general independence is not established.
-5. **Next, black input during yellow output:** leave that waveform running
-   and compare black released versus grounded. Check whether `2D` stays
-   `23h` released and `22h` grounded across yellow's pulse cycle. These
-   are expected values from earlier black tests, not yet a result with
-   yellow pulsing.
+5. **Black input during yellow output (CONFIRMED: owner observations):**
+   during the requested yellow-pulsing test with red retained high, black
+   floats high when released; grounded black gives **`2D=22h` steadily**.
+   The released black voltage was reported without a numeric measurement
+   or explicit `2D` reading. Confirmation of steady `2D=23h` when released
+   has been requested; a high contact voltage alone does not establish
+   that readback. The grounded input is readable during yellow pulsing.
 
 The pull-up tests a specific blind spot: an open-drain output can release
 its pin instead of driving high, so an external resistor supplies the high

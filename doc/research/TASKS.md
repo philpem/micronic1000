@@ -67,8 +67,10 @@ The 10 kΩ pull-down follow-up gives yellow near 0 V in both D/L and D/H
 (CONFIRMED: owner measurements), supporting release rather than high drive
 in L under this load. After a reset and full setup sequence, owner also
 confirms yellow's waveform with E retained high (requested D/P test at
-2A=32h/33h, 2C=00h). Next compare black released/grounded while yellow
-pulses. No new ROM is required.
+2A=32h/33h, 2C=00h). During yellow pulsing, owner reports black floats
+high when released and gives steady `2D=22h` when grounded. Released-state
+`2D=23h` confirmation is pending; contact voltage is not readback.
+No new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
