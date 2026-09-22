@@ -1,5 +1,12 @@
 # IR wire protocol — first hardware capture
 
+> **Owner clarification, 2026-09-22:** the Arduino LED assignment to the
+> handheld's receive clock/data channels is unknown, and `7Eh` as a receive
+> flag remains **SUSPECTED**. Historical software channel names and stimulus
+> labels do not establish either fact. Test both LED assignments and candidate
+> framing from the Arduino; preserve the handheld transmit-capture evidence
+> below without assuming the receive direction uses the same conventions.
+
 > **2026-09-22 audit:** the archived capture statistics below were reproduced.
 > Current Arduino phase generation is corrected; `rxb2` now follows the RX
 > descriptor destination and reports raw `Link_BlockRx` status, without frame

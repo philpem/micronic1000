@@ -51,6 +51,12 @@ Validate electrical interfacing, timing and the corrected emitter on the
 scope, then use the repaired instruments to distinguish readiness, receive
 and frame-validation failures. The combined harness is not implemented.
 
+**Owner clarification:** Arduino LED clock/data assignment is unknown and
+`7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
+software names are not physical identification. Prioritise one reusable ROM
+burn: payload, candidate framing, channel roles and timing should be adjustable
+on the USB-programmable Arduino without dismantling the handheld again.
+
 ---
 
 ## Done (verified vs docs + Ghidra + byte-level traces)

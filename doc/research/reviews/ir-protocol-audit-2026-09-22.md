@@ -16,7 +16,13 @@ the poll. Arduino configurations compile for the owner's Elegoo Uno R3.
 See the [current ROM plan](../../re-notes/exerciser-test-plan.md) and
 [one-burn connector experiment](../../re-notes/connector-experiment.md)
 for the release image, checksums, controls and next measurements. The
-physical return framing and six unknown connector contacts remain OPEN.
+physical return framing remains OPEN; subsequent measurements map three of
+the six initially unknown connector contacts (see the connector guide).
+
+**Owner clarification, 2026-09-22:** Arduino LED clock/data assignment is
+unknown; `7Eh` as a receive flag is SUSPECTED, not confirmed by naming it a
+flag in a stimulus. Test both channel assignments and candidate framing with
+Arduino changes. The next ROM should support these tests with one burn.
 
 **Main finding at audit time:** several remaining uncertainties are in the instruments
 themselves. Fix and validate those before interpreting another convention

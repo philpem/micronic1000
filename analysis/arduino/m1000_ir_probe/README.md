@@ -9,14 +9,21 @@ The pin assignments are defined at the top of the sketch:
 |---|---:|---|
 | `CLK_IN` | D2 | handheld clock input / interrupt |
 | `DAT_IN` | D4 | handheld data input |
-| `CLK_OUT` | D5 | return clock output |
-| `DAT_OUT` | D6 | return data output |
+| `CLK_OUT` | D5 | physical return channel A; proposed clock |
+| `DAT_OUT` | D6 | physical return channel B; proposed data |
+
+**Receive conventions remain unconfirmed (owner clarification, 2026-09-22).**
+The Arduino LED assignment to handheld clock/data receivers is unknown.
+`CLK_OUT`/`DAT_OUT` name software roles, not established optical destinations;
+both assignments need testing. `7Eh` as a receive flag is **SUSPECTED**.
+These assumptions must remain adjustable on the Arduino, so testing them
+does not require another handheld EPROM burn.
 
 The input lines must be protected from the handheld voltage as described in
 the sketch comments. The output channels should remain optically separated.
 
 The checked-in default is `RX_NARROW=1`, with `RX_NARROW_AXIS=2`. It sends a
-reply to each completed handheld burst using flag `7Eh`, baseline polarity and
+reply to each completed handheld burst using candidate flag `7Eh`, baseline polarity and
 phase `-2/8` (data rise 30 us before clock rise), while varying the content
 axis. The three content trials are flag only, flag plus `03h`, and an open
 type-2 control acknowledgement. The startup banner and each burst line state

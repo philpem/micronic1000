@@ -2,6 +2,12 @@
 
 ## 2026-09-22 — connector bridge result and PR polish
 
+* Owner clarifies that Arduino LED clock/data assignment is unknown and
+  `7Eh` receive-flag interpretation remains SUSPECTED. Removed unqualified
+  return-channel identities from the sketch guide; retained transmit-capture
+  evidence. Next tests must cover both assignments and candidate framing
+  using Arduino changes, prioritising one reusable handheld ROM burn.
+
 * CONFIRMED (owner observation): R/D/P produces the yellow waveform at
   the requested 2A=20h/21h, 2C=20h top-V24 shared-latch settings. This
   completes the connector-only bridge check, not an optical IR test.
