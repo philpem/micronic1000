@@ -287,10 +287,13 @@ at the zero `Link_Probe` establishes at `ROM00:34B5` (`XOR A`).
 | 5 | `Link_PortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](commstar-evidence.md#device-table-ports) |
 | 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
 
-Bits 0 and 1 are the only candidates for the 5-pin side connector's
-outputs: bit 4 flashes the panel and bit 5 switches the IR port, so
-neither leaves the case. `analysis/rom_exerciser`'s pin walk drives all
-four with a countable pulse code to settle which physical pin is which.
+`CTL_LATCH_2C` bits 0 and 1 are initial output candidates for the scanner
+connector, not an exhaustive physical pinout. Internal use of other bits
+does not prove they are absent from the connector, and `CTL_LATCH_2A` has
+additional candidate signals. The owner identifies eight contacts, with
+power and ground known (2026-09-22). The earlier assertion that the current
+exerciser already implements a pin walk was incorrect; that mode is absent.
+See the [manual output-first experiment](../research/reviews/ir-protocol-audit-2026-09-22.md#manual-scanner-connector-experiment-outputs-first-then-inputs).
 
 ---
 

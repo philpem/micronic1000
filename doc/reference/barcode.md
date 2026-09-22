@@ -10,7 +10,10 @@ Validation: the capture-to-BDOS path and documented hook contract have
 emulator tests in `analysis/test_barcode.py`. This is not validation of
 every decoder or a guarantee for other ROM revisions.
 
-The 5-pin side port is the barcode-reader front end (owner-confirmed).
+The right-side scanner port has eight contacts (owner correction,
+2026-09-22); power and ground are known, leaving six unknown contacts.
+This supersedes the earlier five-pin description. See the
+[manual output-first pin-mapping proposal](../research/reviews/ir-protocol-audit-2026-09-22.md#manual-scanner-connector-experiment-outputs-first-then-inputs).
 For identity evidence and the superseded interpretations, see
 [barcode capture](../re-notes/barcode-capture.md). Read scans using BDOS
 `03h`; decoder installation is an advanced operation with explicit memory

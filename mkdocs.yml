@@ -109,6 +109,7 @@ nav:
       - RTC: re-notes/rtc.md
       - IR wire protocol: re-notes/ir-wire-protocol.md
       - ROM exerciser test plan: re-notes/exerciser-test-plan.md
+      - Connector experiment: re-notes/connector-experiment.md
       - Open questions: re-notes/open-questions.md
       - Research archive:
           - research/README.md
@@ -116,5 +117,6 @@ nav:
           - Session log: research/session-log.md
           - Coverage tracker: research/gap-analysis.md
           - Coverage pass history: research/gap-analysis-history.md
+          - IR instrumentation audit: research/reviews/ir-protocol-audit-2026-09-22.md
           - Barcode OS-integration review: research/reviews/barcode-os-integration.md
           - Quality and agents review: research/reviews/quality-and-agents.md

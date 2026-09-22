@@ -66,8 +66,9 @@ for the historical session log, see the
   select the same likely back-port state. The EXT STORAGE ADAPTER's physical
   attachment remains unadjudicated.
 
-  The 5-pin side connector is excluded on its own terms: **it has no byte
-  transport.** All eight reads of `2Dh` are barcode edge timing
+  The eight-contact side connector's examined stock path is barcode edge
+  timing, not the storage byte transport. All eight reads of `2Dh` are in
+  that path
   (`ROM00:1299`-`13ED`), and `2Ch`'s two outputs are a fixed-width strobe and a
   read-enable ([bit usage](../reference/memory-map.md#port-2ch-bits)) — no
   shift register, no clock pair, no framing.

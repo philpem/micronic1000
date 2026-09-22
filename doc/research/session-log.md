@@ -1,5 +1,41 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — IR repairs and one-burn connector diagnostic
+
+* Fixed the audit's instrument defects: RX descriptor dereference/count/flags
+  and first-descriptor preview bounds; stock-length bit-6 poll with explicit
+  +10 T entry/+107 T exit overhead; witness pre-arm timeout and ordered
+  teardown; Arduino absolute phase, chronological edges, terminal stuffing,
+  strict destuffing, Timer2 startup, receive masking and idle scope captures.
+  The old descriptor-as-payload inference remains withdrawn.
+* Added peer exchange caching so duplicate unacknowledged requests cannot
+  advance program downloads, with lost-reply/completion and sequence tests.
+* Built a standalone cold-entry ROM00 connector experiment. It bypasses OS
+  and barcode handlers, directly selects five candidate latch masks, supports
+  low/high/slow/fast output and retained baselines, and displays live raw
+  EXTBUS_EDGE hex plus per-display OR/AND. Physical connector pin identities
+  remain OPEN. Owner reports eight contacts, power/ground known, six unknown.
+* Independently reviewed the connector source and final release. Corrected a
+  stale intermediate artifact and added exact source/binary/manifest checks.
+  Final connector image: 32768 bytes, MD5
+  `261e828ef2008264e58d8d3db08fb86a`, unsigned-byte sum16 `9568`, sum24
+  `379568`; full path and instructions in
+  [connector experiment](../re-notes/connector-experiment.md).
+* Validation: 218 analysis tests passed (5 gated tests skipped), then all 21
+  focused Arduino/decoder tests passed after the idle-capture addition;
+  28 opt-in actual-ROM boot/session tests passed (6 subtests); 20 connector
+  tests and 80 hook/exerciser tests passed. All 13 sketch configurations
+  compiled with the actual `arduino:avr:uno` target/core 1.8.8. Default sketch
+  uses 5984 bytes flash and 613 bytes static SRAM. Hardware trials remain to
+  be performed; ideal host timing tests do not establish AVR edge timing.
+* Owner specifies Elegoo Uno R3 and `/tmp` is RAM-backed tmpfs. Arduino
+  toolchain/downloads/builds now live in ignored disk-backed
+  `.cache/ir-arduino/`. Delegated fixes and reviews used lower-cost GPT models.
+* Updated Ghidra audit bookmarks and saved `micron1.bin`; function count
+  remains 915. Original ROM bytes were not modified in Ghidra. Working branch:
+  `ir/instrumentation-fixes-connector-probe`. Strict documentation build and
+  rendered-page checks passed.
+
 ## 2026-09-20 — plinth shadow-peer gap resolved (request-driven download)
 
 * Bisected the red `CommstarShadowPeerTest::test_agrees_on_the_plinth_route`
@@ -6816,3 +6852,227 @@ names renamed, 144 unplated functions plated)
    evidence tags preserved (`CONFIRMED`/`dead`);
    ~70-col wrapping. `mkdocs build --strict`
    (site_dir `site-mkdocs`) run — see below.
+
+### 2026-09-20 — IR Phase 0: stock-order witness
+
+* **Stock `Link_BlockTx` sequence extracted and compared (CONFIRMED, static).**
+  Disassembled `ROM00:3277-3377`: flag (`4Ch=81h`) → second `TXRDY` wait →
+  prelude (`4Dh = id & 1Fh`) → `LINK_STATUS` bit-4-clear poll (`32B8`, bound
+  `026Ch`) → arm (`4Ah` b5 up, b4 up, ~112 µs, b5 down) → `LINK_STATUS`
+  bit-6-clear poll (`32F0`, bound `026Ch`) → payload. The exerciser replay kept
+  only the `TXRDY` gate, which is why the first witness emitted nothing.
+* **Witness rewritten to the stock order (CONFIRMED code).** `arm_witness`
+  now runs the bit4 poll, `arm_tx`, the bit6 poll, and samples `ARMD` right
+  after the arm; a bounded `wait_clear` helper reproduces both polls; the
+  `--witness` build swaps the preamble byte `A5` for the stock prelude `03h`.
+  LCD row is now `W OR AND P4 P6 ISRC IRQN ARMD HB` (OR/AND sticky whole run;
+  `P4`/`P6` = `10h`/`40h` cleared, `00h` timeout). Image `2FFF`, 863 changed
+  bytes, SHA-256 `6b31c1737c65456d1d03c077b1fc8807f50729df1521d1b7d12503b1e011a84d`,
+  md5 `455ec69e069019336b16b6dfcdf145bd`; default `2609` byte-identical.
+  Tests updated plus two new poll-outcome tests; 67 exerciser tests pass
+  (163 passed / 33 skipped across `analysis/`).
+* **TX anomaly / front end (2026-09-20).** The stock `Link_BlockTx` I/O was
+  extracted from the harness log (`/tmp/opencode/micronic_boot_io.txt`, 50
+  transactions): a **teardown** after the bit6 poll — drop `LINK_CTRL` bit4
+  then bit0 (`ROM00:3361-3376`) — that every replay omitted. Run 4 (`308E`)
+  added it as one `C2h` write and hardware still emitted nothing. Run 5
+  (`2F71`) added `48h=03h` before the arm; still nothing. The log's
+  last-value-per-port at TX time shows three latches the boot-replacing
+  exerciser never set: `48h` (`IR_STROBE`) = `03h` (`Session_SystemInit`
+  `ROM00:0359`), `07h` (`CTRL_07`) = `00h` (`Link_StatusWatcher`
+  `ROM00:24A5`), and `04h` (`IRQ_MASK`/`OUT_LATCH`, also power-latch bits)
+  = `E0h` (`ROM00:22F2`). **Run 6 (`3351`)** added those (witness-only, via a
+  `nmi_safe` source marker so the default stays byte-identical) plus
+  `04h=E0h`+EI before the arm, and moved `LinkProbe` to boot (after
+  `power_lcd_init`, before the contrast wait) to match stock's early probe
+  (`ROM00:0202`); hardware LCD `W D8 40 10 00 D3 C4 C8 55`, **still no burst**.
+  **Run 7 (`3072`)** added the one remaining difference: stock's controller
+  sits in the `LINK_CTRL` 6/7-set idle state before TX (log `4Ah=C0h`, cleared
+  at TX entry), while the exerciser left 6/7 clear from boot. `early_init`
+  (newly reclaimed witness-only region `01BE-024F`) reset at boot and left 6/7
+  set; `arm_witness` cleared them at TX entry (`34D2`). **Result: the LCD went
+  blank — hard regression.** CONFIRMED (owner): raising 6/7 at boot kills the
+  display, so 6/7 gates more than the link (display power/mode, or it hangs) —
+  new evidence for the Provisional 6/7 reading. **Reverted to the known-good
+  run-6 image `3351`** (`006e0a377f8c0bf51a5ba010849f407c532b92cf96d93b596f4cb1d0f0e0e2c5`,
+  md5 `1962da6caf877fb7d63a4b2cdcf1af7b`); 67 tests pass, default `2609`
+  unchanged. Next (decisive): instrument the stock `Link_BlockTx` bit6 wait
+  (`ROM00:32F0`) to sample `LINK_STATUS` rather than replaying.
+* **Stock-ROM hook instrument built (CONFIRMED, 2026-09-20) — Phase 0 CLEARED.**
+  New `analysis/rom_exerciser/stock_instrument.py` patches the STOCK ROM
+  (boot, menu and session unchanged) and runs our code as guarded hooks, with
+  the LCD as the readout. v1: `32F0` bit6-clear poll → `CALL hook6` (folds
+  every `LINK_STATUS` sample into `OR`/`AND` at `C7E0`/`C7E1`, returns the
+  stock contract), and `3356` error entry → `JP show` (prints `O xx A xx Bx`
+  and halts). Image `micron1_stockhook.bin`: sum16 `EA30`, SHA-256
+  `cda7cf2d2c26d7673812c5ea46e8049d09fb191c4799a9c09b4edc6ace204a70`, md5
+  `afd177f12b080e93afc82aad3f331616`. **Owner result `O C8 A C8 B1`:
+  `LINK_STATUS` was exactly `C8h` in every sample during the stock bit6 wait
+  (OR = AND; bit 6 set, bit 7 set). CONFIRMED with the stock sequence and
+  environment — bit 6 does not clear with no peer; the peer-handshake reading
+  survives. Phase 2 (receive path) is next.** **First attempt crashed the
+  boot** (TESTING banner then blank) because it put the hook in the
+  exerciser's `0250-02FD` region, which with the boot intact is the stock
+  boot's own continuation at `024D`; moved to the genuinely-free `7E96-7FF9`
+  gap. A RAM-test speed-up patch (`26C8` `41h`→`09h`) was tried and removed —
+  it hung the batteries-out cold boot (the RAM test initialises RAM). Three
+  hook tests pass (`analysis/test_stock_instrument.py`). This is the intended
+  reusable framework for future unknowns: add a hook at the stock address of
+  interest, sample to RAM, print on the LCD; triggers beyond the UI include the
+  keyboard, RTC and the side port (`2Dh`).
+* **Phase 2 receive hook built (2026-09-20, emulator-tested).**
+  `stock_instrument.py` refactored into selectable hook sets. New `rx` set
+  patches `LinkRxDispatcher` entry (`ROM00:2FBD`) to `JP hook_rx`, which
+  prints `I ss rr` (`LINK_STATUS`, and `LINK_RXD` when bit 0 says byte-ready)
+  and halts — reached only when the link IRQ (source 2) finds `LINK_STATUS`
+  bit 4 set, i.e. the controller reported a pending receive. Image
+  `micron1_stockhook_rx.bin`: sum16 `DAA6`, SHA-256
+  `5365bd1127656ae9f7e7f7a8cc7511dd9479f4abb7deee716c638f92a7630010`, md5
+  `e4573f3e2cd9d925e7b64c2700baa7db`. Three new hook tests (169 pass total).
+  Procedure: boot, send return bursts from the Arduino (`RX_SWEEP`) while the
+  handheld is idle; an accepted burst freezes on `I ss rr`.
+* **Arduino `FREE_TX` mode added (2026-09-20, host syntax-checked).**
+  `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` gains `FREE_TX`: one
+  swept burst every `FREE_TX_PERIOD_MS` (250 ms) with no handheld burst, so the
+  idle receiver can be probed directly (the `RX_SWEEP` reply lands inside the
+  `6/7`-clear transaction window). Axes are the same as `RX_SWEEP`; parameters
+  print as `# TX flag=.. phase=../8cell pol=.. content=..`. Sketch is set to
+  `FREE_TX 1` (all other mode flags `0`); FREE_TX / RX_SWEEP / default configs
+  all pass a host `-fsyntax-only` check with the Arduino stub.
+* **Phase 2 first hardware result (owner, 2026-09-20).** With the Arduino
+  `FREE_TX` free-running and a V24 connect started, the rx hook fired and the
+  handheld froze on **`I 98 00`** — `LINK_STATUS=98h` (**bit 4 receive-pending
+  set**, bit 7 set, **bit 6 clear**, bit 3 set), `LINK_RXD=00h`. First positive
+  receive signal, but it fired during the transfer so **crosstalk /
+  self-reception (open question D) is a live confound**: the control is to
+  repeat with the Arduino's emitters disabled (`LISTEN_ONLY`); if `I 98 00`
+  still appears, the handheld is hearing itself. The Arduino's own RX log shows
+  `NO DATA-LINE ACTIVITY` (its `DAT_IN` sees no data line), so its receive
+  wiring is incomplete.
+* **Phase 2 receive CONFIRMED + return flag (owner, 2026-09-20).** With the
+  Arduino in `LISTEN_ONLY` (silent) the unit does not stop, so the receive is
+  genuinely the Arduino's burst, **not crosstalk** — the controller accepts a
+  return burst. Then with `RX_SWEEP` (one reply per handheld burst,
+  handheld-paced) the hook halted on **`I 90 00`** (`LINK_STATUS=90h`: bit 4
+  receive-pending set, bit 7 set, bit 6 clear; `LINK_RXD=00h`) at the Arduino's
+  last line **`flag=7E phase=-2/8cell pol=0 content=2 delay=3000/3000us`**
+  (content 2 = flag + stuffed `1Fh`). **The accepted return reply uses the
+  normal HDLC flag `7E`** — inverted line sense vs the TX flag `81h`, the
+  owner's long-standing hypothesis — data lead −2/8 cell, normal polarity.
+  Earlier `7E` lines (phase −4) did not halt, so the trigger needs the phase
+  too. `bit 4` set with `bit 0`/`RXD` clear = pending receive, no byte yet; the
+  reply was at 3 ms (old sketch), i.e. accepted inside the 6/7-clear window, so
+  the receiver is not strictly windowed. Next: fix the flag and vary one axis
+  at a time; extend the rx hook to wait for bit 0 and capture the frame.
+* **Narrowed run + decision + `rxb` hook (owner + built, 2026-09-20).** With
+  Arduino `RX_NARROW` (flag fixed `7E`, axis = phase) the hook fired on the
+  **first** reply (phase −4), so **phase is not the discriminator for bit 4**;
+  the flag `7E` alone raises receive-pending (the earlier `phase=-2` halt was a
+  timing/log artifact). Owner decision: hold the data lead at the handheld's
+  own TX convention (−2/8 cell) and sweep polarity/content instead. New hook
+  set `rxb` is the byte-capture version (`LinkRxDispatcher` entry → `hook_rxb`,
+  waits for `LINK_STATUS` bit 0, captures up to 3 bytes, prints
+  `I ss n b0 b1 b2`; `n=0` = flag seen but no byte). Image
+  `micron1_stockhook_rxb.bin`: sum16 `F818`, SHA-256
+  `820a16ad70abe32440c48194bb0360fa756e26af76706b60f7556a69757b7528`, md5
+  `a8e7dad5ad45949c089a501f46d055f9`. 9 hook tests pass.
+* **Return-path stuffing sense (owner hypothesis, implemented 2026-09-20).** If
+  the return flag is `7E` (normal HDLC), the return data must be **zero-stuffed**
+  (a 0 after five 1s), not the Micronic's inverted one-stuffing (a 1 after five
+  0s). The Arduino now sets `stuffNormal = (flag == 0x7E)` and zero-stuffs
+  accordingly. `content=2` (`1Fh`) has no five-1 run so does not exercise the
+  stuffing; content 4 (`7Fh`) or a frame does. Sketch set to `RX_NARROW 1`,
+  axis 1 (polarity), phase fixed −2/8; all mode configs pass the host
+  `-fsyntax-only` check.
+* **Byte capture result (owner, `rxb` hook, 2026-09-20).** The byte-capture
+  hook halted on **`I 98 03 DF FF FF`**: `LINK_STATUS=98h` (bit 4 set), **n=3
+  bytes** (`DF FF FF`). So the controller delivered **bytes** — the return
+  framing (flag `7E`, phase −2/8, **polarity normal**, zero-stuffed) is
+  accepted at the byte level. The captured values do not match the sent `1Fh`;
+  our hook reads `LINK_RXD` without the stock arm (`Link_BlockRx` arms at
+  `ROM00:33A6`), so the bytes may be misaligned/raw. Next: mimic the stock arm
+  (or hook the stock dispatcher exit) to capture the frame cleanly; add a `7Fh`
+  content to exercise zero-stuffing.
+* **`rxb2` hook built (2026-09-20).** New hook set: instead of reading
+  `LINK_RXD` itself (which missed the stock arm), it calls the stock
+  `Link_BlockRx` (`ROM00:3378`) so the full RX arm runs (bit0=0, bit5=1, dummy
+  `LINK_RXD` read, bit4=1, settle, bit5=0), then prints `I ss a b0 b1 b2`
+  (`ss` = post-call CTRL shadow, `a` = `Link_BlockRx` return code, `bN` = frame
+  bytes). Image `micron1_stockhook_rxb2.bin`: sum16 `ECA2`, SHA-256
+  `63c9072732db0f010601c2c942ef7791033ef589804041611efa5438f0a7c189`, md5
+  `17f3d1275e2c7a8b7bd9f093ab11c0bc`. 10 hook tests pass.
+* **`rxb2` result (owner, 2026-09-20).** Halted on **`I 08 EC 06 00 E4`**:
+  post-call `LINK_CTRL` shadow `08h`, **`Link_BlockRx` return `A=EC` = protocol
+  error** (`ROM00:341C`), buffer bytes `06 00 E4`. So the controller receives
+  and frames (the `7E` flag is read) but **rejects the frame as invalid/too
+  short** — `content=2` is a bare `1Fh` after the flag, not a legal frame.
+  Next: send `content=6` = flag + address `03h` + `ACK_FRAME` body + flag
+  (`RX_NARROW_AXIS 2`').
+* **Narrowed content run (owner, axis 2, 2026-09-20).** The hook did **not**
+  fire (handheld kept polling). But `rxContentMap = {0,1,6}`, so the log's
+  `content=2` **is `buildReply(6)`** — the same full frame that latched in the
+  axis-1 run. So **latch is marginal/intermittent**, not content-dependent.
+  Also: `doc/protocol/commstar.md` is explicit that this transport has **no
+  FCS/checksum** (`Link_BlockTx`/`Link_BlockRx` accumulate nothing), so `A=EC`
+  is a framing / address / length / stuffing rejection, not a CRC. Fixes:
+  (a) reliable latch — phase-lock the reply (`sweepClock=1`); (b) mirror the
+  firmware's own frame (address + length + body), from the harness's initial TX
+  `03 15 00 01 01 7f ... 05`.
+* **Lead-in + handshake reply built (2026-09-20).** The Arduino reply now
+  carries the Micronic's own **4-5 clock-only lead-in** before the flag
+  (`RX_LEAD_CELLS 5`; the handheld's bursts have it too — its framer's pipeline
+  flush), and content index 2 builds the **minimal Commstar type-2 control ack**
+  (`buildReply(7)`): wire = flag `7E` + zero-stuffed(`00 07 00 02 01 43 00 00 02
+  01`) = frame `[u16 len=7][type=2][seq=1][id=43h][spare][payload 00]` + trailer
+  `02 01`. This is the return handshake `Link_BlockTx` waits for. Sketch:
+  `RX_NARROW 1`, axis 2, flag `7E`, phase −2/8, pol 0, lead-in 5. All configs
+  pass the host `-fsyntax-only` check.
+* **Transport trace (2026-09-20) — bit-4 reaction disambiguated.** Traced
+  `Link_BlockTx` (`ROM00:3277`) and the link IRQ (`31B6`). `Link_BlockTx`
+  gates: bit 7 `TXRDY` (flag/prelude/each payload byte), **bit 4 `RXBUSY`
+  clear** (`32B8`, before the arm, timeout `EBh`), **bit 6 `HSBUSY` clear**
+  (`32F0`, after the arm, timeout `EEh`), bit 6 again after the closing flag,
+  then bit 5 (`ECh`). The IRQ: **bit 4 set → `LinkRxDispatcher` (receive); bit 4
+  clear → re-arm 6/7 (idle).** So the Arduino's `7E` flag raising bit 4 enters
+  the **receive** path, *not* the TX handshake — I had conflated them. **`bit 6`
+  is the TX handshake and its clearing cause remains OPEN.** The type-2 ack's
+  value here is being a *legal frame* (RX validator: len ≥ 6, embedded length
+  match, byte+4 == id), not its session meaning. Next: run the `bit6` hook
+  (`micron1_stockhook.bin`) with the Arduino reply to see whether bit 6 clears.
+* **Hardware result recorded.** Run 1 (`2609`) `EE 04 58 13 02`; run 2 (old
+  `2E3E` witness) `W C8 C8 00 00 C8 A0` but no IR output — invalidated as an
+  aborted transaction, so Phase 0 remains OPEN pending run 3.
+* **Docs updated:** `re-notes/exerciser-test-plan.md` (Phase 0 bullet, run 2
+  historical, run 3, Phase 2 pairing, offline item), `research/TASKS.md`
+  (hardware priorities 1-2), `analysis/rom_exerciser/README.md` (variant
+  section). No Ghidra edits.
+
+### 2026-09-22 — IR instrumentation and protocol audit
+
+* Recorded the full review and ordered next steps in
+  [IR protocol audit](reviews/ir-protocol-audit-2026-09-22.md), including
+  existing dirty worktree changes. No implementation or burn-image changes.
+* CONFIRMED and independently reproduced: `rxb2` reads descriptor metadata
+  as payload; Arduino phase scheduling differs from its labels and distorts
+  extreme settings; the stock bit-6 hook expands the nominal wait from
+  9.92 to 22.20 ms; an unacknowledged duplicate request advances the peer's
+  download policy. Withdrawn: interpreting `06 00 E4` as received frame
+  bytes, treating the receive convention as settled, and claiming that
+  `1Fh` lacks a five-one run. Recorded waveform/stuffing/IRQ/provenance gaps.
+* Independently reran conn2, conn11 and conn13 analyses; the archived burst
+  families and cadence statistics survive. They do not establish a return
+  frame or an electrical TX-handshake mechanism.
+* Owner clarified the right-side scanner connector has eight contacts;
+  power and ground are already known, leaving six unknown. The intended
+  tangent is direct, held output-bit tests with barcode APIs/background
+  latch writers bypassed, then input mapping. Updated current hardware
+  notes and documented candidate masks; no physical contact was assigned.
+* Separate same-provider reviewer approved the consequential byte/source
+  findings (cross-provider reviewer unavailable). Saved four Ghidra audit
+  bookmarks; function count remained 915 before/after, no renames or body
+  changes. Detailed reviews and reproductions are under `/tmp/opencode/`.
+* Validation: ROM instrumentation 77 passed; other analysis tests 96 passed,
+  5 initially skipped, 71 subtests passed; opt-in boot/session 28 passed,
+  6 subtests passed; opt-in barcode 24 passed (including those five skips).
+  Strict MkDocs build and rendered-document checks passed. Report is not
+  explicitly in nav, but linked from TASKS and affected test instructions.

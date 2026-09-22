@@ -1,5 +1,13 @@
 # IR wire protocol — first hardware capture
 
+> **2026-09-22 audit:** the archived capture statistics below were reproduced.
+> Current Arduino phase generation is corrected; `rxb2` now follows the RX
+> descriptor destination and reports raw `Link_BlockRx` status, without frame
+> header validation. The current requested physical burn is the eight-contact
+> connector probe, sum16 `9568`; see [connector experiment](connector-experiment.md).
+> See the [review](../research/reviews/ir-protocol-audit-2026-09-22.md) before
+> treating historical receive-convention claims or recipes as settled.
+
 > **Scope: physical/wire layer (below the 4Ah–4Fh latch boundary).**
 > This page documents the first scope capture of the IR line: analog
 > timing, bit modulation, the two-phase clock, burst inventory, HDLC-style
@@ -1326,6 +1334,10 @@ directly and reads `LINK_STATUS` back; a **real adapter or plinth**; and
 **T5b**, a stock-ROM Z80 I/O-bus capture. The owner reports that T5b is harder
 than programming the ROM, so it is the fallback rather than the next step.
 
+The following T6 record-stream description is historical. The current physical
+step is the output-first [connector experiment](connector-experiment.md), which
+maps the six unknown contacts before further receive interpretation.
+
 T6 is now built: `analysis/rom_exerciser/`. It replaces the cold-boot entry,
 replays `Link_BlockTx`'s handshake arm (`ROM00:32CC`-`32EE`) and
 `Link_BlockRx`'s (`3378`-`33A6`) byte for byte, and reports `LINK_STATUS` back
@@ -1338,8 +1350,9 @@ Two design points are worth carrying back here. The firmware waits for
 reading zero means nothing — the arm has to be replayed. Whether the arm itself
 makes `LINK_STATUS` bit 6 set is a measurement, not a premise.
 And each record reports the sticky OR *and* AND of every `LINK_STATUS` sample
-in its window, one every ~35 µs while waiting, so no event on the wire's own
-timescale can be aliased away by the record rate. It also records the
+in its window, one every ~35 µs while waiting. This was not alias-free: LCD,
+key, and settling intervals are unsampled, and ordering inside a record is
+lost. It also records the
 active-low port-`05h` interrupt-source bits directly; `ISRC` bit 0 is the
 keypad control and `ISRC` bit 2 is the link measurement.
 

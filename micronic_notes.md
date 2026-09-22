@@ -75,7 +75,7 @@ character blink (block). Sun page 2 remains a one-key override.
 
 ## Side port
 
-There is a 5-pin port on the right side which seems like it could be some kind of serial port or barcode scanner input.
+There is an 8-contact mini-DIN-like port on the right side intended for a barcode scanner (owner clarification, 2026-09-22). Power and ground are already identified, leaving six unknown contacts. This supersedes the earlier five-pin description; the signal-contact pinout remains to be measured.
 
 ## Power supply
 
