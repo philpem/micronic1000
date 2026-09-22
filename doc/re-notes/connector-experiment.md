@@ -46,6 +46,71 @@ bounded part of the now-unreachable session code. The release regression
 compares the exact burn file, manifest and fresh build, so stale artifacts
 cannot pass the release check.
 
+## First bench run
+
+You need the handheld, the programmed ROM00 and the scope for the first pass.
+The Arduino IR sketch is not needed to identify which connector contacts
+respond to the ROM's output controls.
+
+1. Validate the copied image against the checksums above, fit ROM00/DIP1,
+   and start the handheld. It enters the diagnostic directly; no ENTER or
+   menu selection is needed.
+2. Check for `CONNECTOR PROBE 1`, `2A=20 2C=20`, and
+   `SEL=2C/01 MODE=S`. The two-digit heartbeat should keep changing.
+   Use **NO / YES** for contrast if necessary. The example `2D=FF` below is
+   illustrative: the actual resting input byte is a measurement to record.
+3. Draw the connector as seen looking into the handheld socket. Mark the
+   known power and ground contacts and give the six unknown contacts local
+   labels **U1–U6**. These labels are for this experiment; they do not assume
+   a standard mini-DIN pin numbering or a view from the cable side.
+4. Press and release **R, A, P**. `SEL=2C/01 MODE=P` should appear and `2C`
+   should alternate between `20` and `21`. Find any contact carrying the
+   corresponding slow waveform. **S** stops it; **L / H** hold its two states
+   for voltage measurements.
+5. Repeat from **R** for candidates **B** and **C**. Use the table below to
+   record each result. **D/E** are additional candidates if needed. A latch
+   may control an internal enable instead of appearing directly on a contact;
+   record a negative result without treating it as proof of no connection.
+
+At this point report the resting LCD input byte and the contacts that respond
+for A/B/C, including low/high voltages and any inversion. If there is no
+response, record that along with the displayed output bytes. The gating test
+in the longer sequence below is the next useful comparison.
+
+### Output worksheet
+
+Begin each row with **R**, then the candidate key. **L / H** produce the
+listed software latch values. Physical voltage/polarity is deliberately blank
+until measured. Both complete latch bytes remain visible on the LCD.
+
+| Key | Controlled latch bit | Selected latch at L / H | Contact(s) | Voltage at L / H | Notes |
+|---|---|---|---|---|---|
+| A | `CTL_LATCH_2C` bit 0 | `20 / 21` | | | |
+| B | `CTL_LATCH_2C` bit 1 | `20 / 22` | | | |
+| C | `CTL_LATCH_2A` bit 1 | `20 / 22` | | | |
+| D | `CTL_LATCH_2A` bit 0 | `20 / 21` | | | |
+| E | `CTL_LATCH_2A` bit 4 | `20 / 30` | | | |
+
+For the gated **R, B, SPACE, A, P** experiment, record a separate row: the
+complete `2C` output alternates `22 / 23`, with `CTL_LATCH_2C` bit 1 retained
+high. Do not mix that result with the reset-baseline A row.
+
+### Input observations
+
+After identifying outputs, use the input procedure below on the remaining
+contacts. Record the full `2A` and `2C` output bytes with every observation;
+an enable setting may affect the input path.
+
+| Contact | Stimulus / measured voltage | LCD `2A` / `2C` | LCD `2D` | `OR` / `AND` | Changed input mask |
+|---|---|---|---|---|---|
+| | | | | | |
+
+Within one display interval, `OR XOR AND` identifies input bits that were
+sampled in both states. For example, `OR=FF AND=FE` means port `2Dh` bit 0
+was sampled both high and low. Constant `2D=FF` alone says nothing about
+which contact owns that bit. Start with slow held levels so each state can
+be read; brief activity during LCD/key work may be missed.
+
 ## Keys
 
 Use the letter printed on the physical key, without MODE or Sun.
@@ -161,3 +226,26 @@ masking. `emit_late_max` reports emitter deadline lateness on the actual Uno.
 Scope-check the emitted waveform before interpreting another response sweep.
 The repaired stock hooks then distinguish poll completion from actual
 received bytes; physical receive framing remains unresolved.
+
+## Reading the assembly
+
+The diagnostic source is `analysis/rom_exerciser/connector.asm`. Its routine
+comments describe the intended caller contracts and state transitions:
+
+- `start` bypasses the normal OS, establishes scratch state and initialises
+  the display; `main_loop` alternates input sampling and waveform progress.
+- `sample_wait` collects raw input and window OR/AND; `reset_samples` starts
+  a new display window. Startup, LCD and keyboard work are unsampled gaps.
+- `wave_tick` advances the dwell counter. `apply_output` combines the chosen
+  bit's current level with the retained baseline of its owning latch.
+- `handle_key` changes selection/mode/baseline; `key_scan` maps the polled
+  matrix into the ROM's base key codes. Held keys are suppressed until a
+  different sampled key code appears; this is not a timed switch-debounce
+  filter.
+- `display` writes three complete status rows, with explicit padding to
+  prevent old characters surviving a shorter field.
+
+The baseline is the output state restored by **S** and by changing selection.
+It can differ from `20h` after **SPACE**. **R** explicitly restores both
+baseline bytes to `20h`; **L/H/P/T** temporarily override only the selected
+bit. This distinction allows one candidate to stay high while another pulses.

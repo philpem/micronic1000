@@ -10,7 +10,7 @@
   },
   "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
   "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
-  "assembly_sha256": "81bca62bb97d26f21ba2772b2d91aaa16748c2ae0ff20da7cd29cc909c94c832",
+  "assembly_sha256": "9a70641314575d72ddbae405d6865de1fdcaf517b8ef218e8b9a4f593721c3c3",
   "changed_bytes": 813,
   "entry": "ROM00:6000",
   "end_exclusive": "ROM00:6339",

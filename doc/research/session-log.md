@@ -1,5 +1,19 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — connector bench guide and assembly comments
+
+* Added a first-run checklist, reset-baseline output worksheet and input
+  observation table to the connector guide. Resting input levels and contact
+  assignments remain measurements to make on hardware.
+* Expanded connector assembly comments with state semantics, routine
+  contracts, waveform timing, LCD padding and unsampled intervals. Clarified
+  that held-key suppression is not a timed debounce filter.
+* Verified the executable assembly text and release ROM are unchanged.
+  Refreshed only the manifest's assembly-source hash; burn MD5 and additive
+  sums remain `261e828ef2008264e58d8d3db08fb86a`, `9568`, `379568`.
+* Connector emulator tests: 20 passed. Strict docs build and rendered-page
+  checks passed. No physical test result is claimed.
+
 ## 2026-09-22 — IR repairs and one-burn connector diagnostic
 
 * Fixed the audit's instrument defects: RX descriptor dereference/count/flags
