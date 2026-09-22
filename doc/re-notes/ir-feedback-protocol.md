@@ -605,7 +605,7 @@ or that the optical LED channels have the intended roles.
 | Later clock rise spacing | 122 us | mostly 130 us; 137.5 and final 80 us also occur |
 | Typical clock high width | 61 us | mostly 45–47.5 us |
 | Data high width | 76 us | 55–57.5 us |
-| Data rise before paired clock | 30.5 us | 30–32.5 us |
+| Data rise before paired clock | 30 us (integer phase calculation) | 30–32.5 us |
 
 **CONFIRMED:** the emitted clock period and pulse widths differ materially
 from the requested settings. The previous suggestion that only the first
