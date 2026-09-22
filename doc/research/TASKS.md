@@ -33,8 +33,11 @@ connector. Follow-up confirms red follows E's L/H states without inversion
 and R returns it low; LCD `2A` follows `20h/30h`. The B-high/A-pulse gating
 test also produces no activity change on the other contacts. Black through
 10 kΩ to ground measures 0.9 V with `2D=23h`; disconnected it returns to
-5.1 V. Next repeat with 1 kΩ and measure voltage/readout before excluding
-an input response.
+5.1 V. A subsequent 500 Ω pull-down reaches 0.056 V, still `2D=23h`.
+Fresh byte review exposes a diagnostic gap: v1 holds `CTL_LATCH_2C` bit 5
+high; stock barcode setup clears it before the direct input probe. Current
+keys cannot test that state. Next compare C high with B low/high; negative
+results cannot exclude the unavailable bit-5-clear configuration.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
 

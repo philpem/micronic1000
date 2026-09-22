@@ -222,10 +222,41 @@ while LCD `2D` remains **23h**. Removing the resistor restores black to
 port-`2Dh` change in the tested state; it does not establish black's direction
 or the threshold of any connected input.
 
-**Next measurement:** repeat black-to-ground with **1 kΩ**, retaining
-**R, B, SPACE** (`2C=22h`), and record contact voltage and `2D`. This checks a
-lower level before interpreting the absent input response. Remove the
-resistor afterwards and check recovery. Yellow stimulation is still pending.
+**Stronger pull-down:** owner used **500 Ω** and measured **0.056 V**, still
+with `2D=23h`. The contact is near ground, so inadequate pull-down is no
+longer a useful explanation for this negative result. Gating, a different
+input path or another contact function remain unresolved.
+
+### Input-configuration gap in connector v1
+
+**CONFIRMED, fresh stock listing:** common barcode setup clears
+`CTL_LATCH_2C` bit 5 at `ROM00:1229–1231`, and clears `CTL_LATCH_2A` bit 1 at
+`ROM00:1233–123B`. A selector-specific branch sets `CTL_LATCH_2A` bit 1 at
+`ROM00:1242–124A`; that branch skips the other route's direct presence probe.
+The presence-probe route raises `CTL_LATCH_2C` bit 1 at `ROM00:128A–1292`,
+then reads port `2Dh` at `ROM00:1299`.
+
+Connector v1 resets `2Ch=20h` and exposes only `2Ch` masks `01h/02h`, so
+**it cannot clear `CTL_LATCH_2C` bit 5**. Every test so far retained that bit
+high. The diagnostic deliberately preserved the IR-selection state, but that
+also prevents reproducing this part of the stock barcode configuration.
+Whether that bit gates this connector input is **SUSPECTED**: the decisive
+comparison requires its low state. No existing key sequence produces it;
+a revised diagnostic would be needed to test that state directly.
+
+**Next comparisons available in this burn:** change `CTL_LATCH_2A` bit 1,
+with `CTL_LATCH_2C` bit 1 low and high. This is a mode comparison, not a
+claim that candidate C is an input enable.
+
+| Key sequence | Expected `2A` | Expected `2C` |
+|---|---|---|
+| **R, C, SPACE** | `22` | `20` |
+| **R, B, SPACE, C, SPACE** | `22` | `22` |
+
+For each state, compare `2D` with black released and then through the same
+500 Ω resistor to ground; record the contact voltage too. Disconnect the
+resistor between setups. Negative results still cannot exclude the untested
+`CTL_LATCH_2C`-bit-5-clear configuration. Yellow stimulation remains pending.
 
 From baseline `23h`, a change to `22h` means port `2Dh` bit 0 cleared; `21h`
 means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete

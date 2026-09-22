@@ -1,5 +1,20 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — strong pull-down and missing barcode latch state
+
+* Owner reports black at 0.056 V through 500 Ω to ground, still `2D=23h`.
+  Gating remains possible; black has not been ruled out as an input.
+* Fresh ROM00 listings and an independent review confirm stock common setup
+  clears `CTL_LATCH_2C` bit 5 (1229–1231), while connector v1 fixes it high
+  and has no candidate mask for it. Retaining the IR-selection baseline was
+  a test-coverage gap for the barcode configuration, not evidence of a gate.
+* `CTL_LATCH_2A` bit 1 is selector-dependent (1233–124A); its high branch
+  skips the other route's direct presence probe. Current-burn comparisons
+  R/C/SPACE and R/B/SPACE/C/SPACE produce 2A/2C=22/20 and 22/22; they test
+  an available mode change but cannot substitute for 2Ch bit 5 low.
+* Recorded limitation and next tests in the connector guide and Ghidra.
+  No ROM modification or new burn produced in this pass.
+
 ## 2026-09-22 — black contact pull-down result
 
 * Owner reports black at 0.9 V through 10 kΩ to ground, with `2D=23h`;
