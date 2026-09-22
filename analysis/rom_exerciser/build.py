@@ -22,7 +22,8 @@ declared regions are ever copied out of it.
 Two variants are built from the one source:
 
   * default          -- streams LINK_STATUS records over the IR link
-  * --witness        -- does the flag/first-byte/arm once, then STOPS
+  * --witness        -- replays the full stock transaction (flag, prelude,
+                        bit4-clear poll, arm, bit6-clear poll), then STOPS
                         transmitting and watches LINK_STATUS and the link
                         interrupt on the LCD (see exerciser.asm)
 
@@ -51,6 +52,7 @@ REGIONS = [("isr", 0x0047, 0x0065, "isr_end"),
 RECLAIMED = {
     "scr": "826a1915a2f2ec88fe5e8d25cc1c8d5d89d9327a1b544d45d2680f7346694364",
 }
+WITNESS_ONLY_REGIONS = set()
 # The cold-boot entry itself, not the vector that reaches it: 0000 jumps to
 # 0103 which jumps here, and the emulator harness starts directly at 014B, so
 # patching here is exercised identically on hardware and in the emulator.
@@ -60,20 +62,118 @@ DEFAULT_ROM = HERE.parent.parent / "micronic" / "micron1.bin"
 
 # Source markers for the two variants.  The witness block is stripped for the
 # default build (keeping that image byte-identical); the witness build points
-# the preamble's arm call at the wrapper in that block instead.
+# the preamble's arm call at the wrapper in that block instead, and swaps the
+# preamble's magic byte A5h for the stock prelude (link id & 1Fh = 03h for top
+# V24) so the transmitted transaction matches the firmware's own.
 WITNESS_BEGIN = ";@WITNESS_BEGIN@"
 WITNESS_END = ";@WITNESS_END@"
 ARM_CALL_DEFAULT = "call arm_tx                 ; stock flag/byte/arm order"
 ARM_CALL_WITNESS = "call arm_witness            ; arm, then the RX witness takes over"
+PRELUDE_DEFAULT = "ld a,0xA5"
+PRELUDE_WITNESS = "ld a,0x03                   ; stock prelude: LINK_ID & 1Fh"
+# Front-end latches the full stock boot sets and the boot-replacing exerciser
+# never did.  Injected into nmi_safe (which runs first) for the witness build
+# only, so the default record-stream image stays byte-identical.
+FRONTEND_INIT = ";@FRONTEND_INIT@"
+FRONTEND_WITNESS = (
+    "                ld a,0x00\n"
+    "                out (0x07),a\n"
+    "                ld a,0x03\n"
+    "                out (0x48),a"
+)
+# Stock probes the link controller at boot (ROM00:0202), before LcdInit.  The
+# witness can only probe just after power_lcd_init, before contrast_setup: it
+# gets the operator's contrast wait before the transaction, but not the LCD
+# initialisation interval.  The default image keeps its original placement and
+# bytes.
+EARLY_PROBE = ";@EARLY_PROBE@"
+EARLY_PROBE_WITNESS = (
+    "xor a                       ; seed the link shadows before the reset\n"
+    "                ld (CTRL_SHADOW),a\n"
+    "                ld (PORT2C_SHADOW),a\n"
+    "                call LinkProbe\n"
+    "                ld (V_PSTAT),a"
+)
+LATE_PROBE = ("call LinkProbe\n"
+              "                ld (V_PSTAT),a              ; it returns LINK_STATUS (34BA);")
+LATE_PROBE_WITNESS = ("; probe moved to start for settling (witness build);\n"
+                      "                ; V_PSTAT already holds the reset-time status")
+LATE_SEED = ("xor a\n"
+             "                ld (CTRL_SHADOW),a\n"
+             "                ld (PORT2C_SHADOW),a\n"
+             "                ld hl,V_SWEEP")
+LATE_SEED_WITNESS = ("; shadows seeded before the early reset (witness build)\n"
+                     "                xor a\n"
+                     "                ld hl,V_SWEEP")
+# The witness needs a thirteen-byte ordered teardown helper.  The common LO
+# region has only seven spare bytes, so only that build relocates its eight-byte
+# gap loop into the NMI padding.  To make room there it moves `dead` into the
+# ISR's four-byte tail.  These are marker replacements: default 2609 keeps its
+# original addresses and bytes.
+WITNESS_DEAD_ISR = ";@WITNESS_DEAD_ISR@"
+WITNESS_DEAD_NMI = ";@WITNESS_DEAD_NMI@"
+WITNESS_GAP_NMI = ";@WITNESS_GAP_NMI@"
+WITNESS_GAP_LO = ";@WITNESS_GAP_LO@"
+WITNESS_FINISH_LO = ";@WITNESS_FINISH_LO@"
+INIT_CLEAR_COUNT = "ld b,0x0D                  ; through stage and TX count"
+INIT_CLEAR_COUNT_WITNESS = "ld b,0x10                  ; also clear witness P4/P6"
+WITNESS_DEAD_ISR_CODE = "dead:           jp failure"
+WITNESS_DEAD_NMI_BLOCK = WITNESS_DEAD_NMI + "\ndead:           jp failure"
+WITNESS_GAP_CODE = (
+    "gap:            ld b,GAP_SAMPLES\n"
+    "gap_loop:       call sample\n"
+    "                djnz gap_loop\n"
+    "                ret"
+)
+WITNESS_GAP_LO_BLOCK = (
+    WITNESS_GAP_LO + "\n"
+    "gap:            ld b,GAP_SAMPLES\n"
+    "gap_loop:       call sample                 ; sample leaves B alone\n"
+    "                djnz gap_loop\n"
+    "                ret"
+)
+WITNESS_FINISH_CODE = (
+    "witness_finish: ld a,0xEF\n"
+    "                call ctrl_and\n"
+    "                ld a,0xFE\n"
+    "                call ctrl_and\n"
+    "                jp 0x34BD"
+)
 
 
 def exerciser_source(witness=False):
     """Return the exerciser source with the requested variant selected."""
     text = (HERE / "exerciser.asm").read_text()
     if witness:
-        if ARM_CALL_DEFAULT not in text:
-            raise SystemExit("witness: arm call site not found in source")
-        return text.replace(ARM_CALL_DEFAULT, ARM_CALL_WITNESS)
+        for marker, name in ((ARM_CALL_DEFAULT, "arm call site"),
+                             (PRELUDE_DEFAULT, "preamble byte"),
+                             (FRONTEND_INIT, "front-end init marker"),
+                             (EARLY_PROBE, "early-probe marker"),
+                             (LATE_PROBE, "late-probe code"),
+                             (LATE_SEED, "late shadow seed"),
+                             (WITNESS_DEAD_ISR, "ISR dead marker"),
+                             (WITNESS_DEAD_NMI, "NMI dead marker"),
+                             (WITNESS_GAP_NMI, "NMI gap marker"),
+                             (WITNESS_GAP_LO, "LO gap marker"),
+                             (WITNESS_FINISH_LO, "LO teardown marker"),
+                             (INIT_CLEAR_COUNT, "witness-state clear count")):
+            if marker not in text:
+                raise SystemExit(f"witness: {name} not found in source")
+        text = text.replace(ARM_CALL_DEFAULT, ARM_CALL_WITNESS)
+        text = text.replace(PRELUDE_DEFAULT, PRELUDE_WITNESS)
+        # XOR A is one byte smaller than LD A,0 while preserving the required
+        # 07h=00h / 48h=03h writes.
+        text = text.replace(FRONTEND_INIT, FRONTEND_WITNESS.replace(
+            "ld a,0x00", "xor a"))
+        text = text.replace(EARLY_PROBE, EARLY_PROBE_WITNESS)
+        text = text.replace(LATE_PROBE, LATE_PROBE_WITNESS)
+        text = text.replace(LATE_SEED, LATE_SEED_WITNESS)
+        text = text.replace(WITNESS_DEAD_ISR, WITNESS_DEAD_ISR_CODE)
+        text = text.replace(WITNESS_DEAD_NMI_BLOCK, "")
+        text = text.replace(WITNESS_GAP_NMI, WITNESS_GAP_CODE)
+        text = text.replace(WITNESS_GAP_LO_BLOCK, "")
+        text = text.replace(INIT_CLEAR_COUNT, INIT_CLEAR_COUNT_WITNESS)
+        return text.replace(WITNESS_FINISH_LO, WITNESS_FINISH_CODE)
     begin = text.index(WITNESS_BEGIN)
     end = text.index(WITNESS_END) + len(WITNESS_END)
     return text[:begin] + text[end:]
@@ -102,6 +202,8 @@ def build_image(witness=False, rom_path=None):
             raise SystemExit(
                 f"{name} section is {used} bytes, overruns {lo:04X}-{hi:04X} "
                 f"by {end - hi - 1}")
+        if name in WITNESS_ONLY_REGIONS and not witness:
+            continue
         if name in RECLAIMED:
             if hashlib.sha256(orig[lo:hi + 1]).hexdigest() != RECLAIMED[name]:
                 raise SystemExit(
@@ -149,7 +251,10 @@ def main(argv=None):
     # The chips are labelled with this number (DIP1 ACF8, DIP2 2E12) -- see
     # doc/re-notes/method.md.  Label the burned part with the one printed here
     # so it is never mistaken for a stock ROM.
-    print(f"sum16: {sum(orig) & 0xFFFF:04X} in -> {sum(rom) & 0xFFFF:04X} out")
+    print(f"md5: {hashlib.md5(rom).hexdigest()}")
+    print(f"sum16: {sum(rom) & 0xFFFF:04X}")
+    print(f"sum24: {sum(rom) & 0xFFFFFF:06X}")
+    print(f"sha256: {hashlib.sha256(rom).hexdigest()}")
 
 
 if __name__ == "__main__":

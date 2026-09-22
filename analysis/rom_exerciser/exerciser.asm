@@ -41,9 +41,9 @@
 ;
 ; --- phases -----------------------------------------------------------------
 ;
-; Four, one per frame, cycling forever.  The phase is the top two bits of the
-; record counter, so it costs nothing to encode and cannot drift out of step
-; with the frame boundaries.
+; The following four-phase sweep is historical (wire version 0Dh).  The
+; current 0Eh default is the fixed top-V24 baseline described at the header;
+; it does not exercise all LINK_CTRL combinations.
 ;
 ;   0  baseline    CTRL as LinkBlockTx's opening leaves it.  Establishes the
 ;                  resting value of every status bit, which is the control
@@ -99,11 +99,12 @@
 ;     OR      every LINK_STATUS sample seen since the last record, OR'd
 ;     AND     every LINK_STATUS sample seen since the last record, AND'd
 ;     RXD     LINK_RXD, read once per record
-;     SIDE    port 2Dh, the 5-pin side port, read once per record
+;     SIDE    port 2Dh scanner/front-end input byte, read once per record
 ;     CTRL    the LINK_CTRL value this phase asked for, so a capture is
 ;             self-describing and the sweep needs no schedule shared with
 ;             the decoder
-;     KEY     the keypad index (col*6 + row) of the first key held, or FFh.
+;     KEY     the keypad index (6*sense row + drive column) of the first key
+;             held, or FFh.
 ;             Press keys and watch this to map the keypad; it is also how
 ;             a future exerciser will be steered, with no wiring at all.
 ;     IRQN    rolling count of interrupts taken -- link (source 2) and
@@ -127,25 +128,20 @@
 ;             itself.  CTRL still names it because the watchdog restores the
 ;             hardware without touching V_CTRL.
 ;
-; OR and AND are why a slow record rate costs nothing.  Waiting for TXRDY is a
-; tight polling loop -- one LINK_STATUS sample every ~35 us -- and every
-; sample folds into both accumulators, so a bit that pulses high for a single
-; 122 us wire cell still appears in OR, and one that drops for a single cell
-; still appears in AND.  A genuinely constant bit reads the same in both.
-; Nothing on the wire's own timescale can be aliased away; only the ordering
-; of events inside one record is lost.
+; TX-ready waits sample LINK_STATUS tightly and fold those samples into OR and
+; AND.  They can reveal a pulse during that loop, but LCD output, key scans,
+; settling and other work leave unsampled intervals; the accumulators do not
+; establish that every wire-timescale event was observed.
 ;
 ; The first ten fields also occupy exactly one 20-column LCD row.  ISRC is
 ; wire-only: its job is source attribution in a recorded capture, while IRQN
 ; and ISTAT retain the live interrupt indication on the glass.
 ;
 ; SIDE is here to bootstrap the next burn rather than to measure the link.
-; The firmware reads bits 0 and 1 of 2Dh (ROM00:1299), the barcode front end
-; uses the port, and it is reachable from outside the case -- so it is a
-; command channel into a future exerciser that does not depend on the IR link
-; working.  Holding each side-port pin while watching SIDE identifies the
-; wiring.  A different peripheral entirely, so it cannot confound the
-; LINK_STATUS measurement.
+; The firmware reads bits 0 and 1 of 2Dh (ROM00:1299), but the physical
+; scanner-port contact mapping is OPEN.  The owner identifies an eight-contact
+; mini-DIN-like connector, with power and ground known; do not infer an input
+; contact merely from this byte.
 ;
 ; All loop state lives in memory rather than registers, so every register is
 ; free scratch inside the helpers.  It costs a few microseconds of sample
@@ -159,8 +155,8 @@ LINK_CMD        equ 0x4C
 LINK_TXD        equ 0x4D
 LINK_RXD        equ 0x4E
 LINK_PROBE      equ 0x4F
-SIDE_PORT       equ 0x2D            ; 5-pin side port in;  bits 0,1 read at 1299
-PORT_2C         equ 0x2C            ; 5-pin side port out; bits 0,1 driven at 1283
+SIDE_PORT       equ 0x2D            ; scanner/front-end input; bits 0,1 read at 1299
+PORT_2C         equ 0x2C            ; control latch; connector contact mapping OPEN
 PORT_2A         equ 0x2A
 
 CTRL_SHADOW     equ 0xF794          ; the firmware's LINK_CTRL shadow
@@ -200,10 +196,12 @@ V_BASE          equ 0xC7E9          ; LINK_CTRL as the frame opening left it
 V_ID            equ 0xC7EA          ; current wire ID; wire-ID bit 5 alternates
 V_CTRL          equ 0xC7EB          ; LINK_CTRL the phase asked for (see WD)
 V_PSTAT         equ 0xC7EC          ; LINK_STATUS as LinkProbe left it
-V_KEY           equ 0xC7ED          ; key index this record, or FFh
+V_KEY           equ 0xC7ED          ; key index: 6*sense row + drive column, or FFh
 V_STAGE         equ 0xC7EE          ; startup stage, retained on terminal error
 V_TX_COUNT      equ 0xC7EF          ; completed LINK_TXD writes, modulo 256
 V_FAIL          equ 0xC7F0          ; LINK_STATUS sampled on entry to error path
+V_P4            equ 0xC7F1          ; witness bit4-clear poll: 10h cleared, 00 timeout
+V_P6            equ 0xC7F2          ; witness bit6-clear poll: 40h cleared, 00 timeout
 KEY_NO          equ 0x11            ; matrix index 17; keycode 01h in table
 KEY_ENTER       equ 0x16            ; matrix index 22; keycode 0Dh in table
 KEY_YES         equ 0x17            ; matrix index 23; keycode 06h in table
@@ -331,17 +329,26 @@ isr:            push af
                 ei
                 ret
 isr_end:
+;@WITNESS_DEAD_ISR@
 
                 org NMI_ORG
 
 ; Both initial-open failure and a later bounded ready timeout end here.
+;@WITNESS_DEAD_NMI@
 dead:           jp failure
 
 ; NMI at ROM00:0066 jumps through F5F6, which is uninitialised here.  Plant a
-; RETN there so a stray NMI returns safely and restores IFF1 from IFF2.
+; RETN there so a stray NMI returns safely and restores IFF1 from IFF2.  The
+; witness build also restores two front-end latches the full stock boot sets
+; and the exerciser (which replaces the boot) never did: port 07h CTRL_07,
+; which stock drives to 00h before a link operation (ROM00:24A5,
+; Link_StatusWatcher), and port 48h IR_STROBE, left at 03h by
+; Session_SystemInit (ROM00:0359) and toggled by Link_SelftestRun.
 nmi_safe:       ld hl,0x45ED                ; ED 45 = RETN
                 ld (NMI_VECTOR),hl
+;@FRONTEND_INIT@
                 ret
+;@WITNESS_GAP_NMI@
 nmi_end:
 
                 org VEC_ORG
@@ -441,37 +448,58 @@ arm_settle:     dec d                       ;   (B and E hold the record's
                 jp ctrl_and
 arm_tx_end:
 ;@WITNESS_BEGIN@
-; arm_tx then hand off to the witness loop.  The default build calls arm_tx
-; directly; the witness build's build.py points the preamble's call here
-; instead (same 3-byte call, so the main body does not grow).
-arm_witness:    call arm_tx
-                jp witness
-
 ; ---------------------------------------------------------------------------
-; RX witness (the --witness build).  After the flag, the first data byte and
-; the arm, this STOPS transmitting and just watches LINK_STATUS and the link
-; interrupt.  Nothing here writes LINK_CMD/LINK_TXD/LINK_CTRL, so our own TX
-; cannot disturb the receive path being measured.  OR/AND are windowed (reset
-; after every LCD update) so a stimulus is visible live; ISRC and IRQN are
-; sticky for the whole run.  LCD row: W OR AND ISRC IRQN ARMD HB.
-; Reset only by power-cycling; the LCD is the only readout because the IR
-; channel is being listened to, not driven.
+; Stock-order witness (the --witness build).  It replays LinkBlockTx's opening
+; byte for byte -- flag, prelude, bit4-clear poll, arm, bit6-clear poll -- and
+; only then STOPS transmitting to watch the receive path.  Unlike every earlier
+; build it does NOT skip the two LINK_STATUS polls the stock transaction
+; depends on, so the frame is actually given its chance to leave the
+; controller before anything is read from it.
+;
+; In: the shared preamble has already written the flag (LinkPresent) and the
+;     prelude to LINK_TXD.  C is free.
+; Out: never returns -- falls through into the witness loop.
+; ---------------------------------------------------------------------------
+arm_witness:    ; Match the stock TX-time environment: port 04h (IRQ_MASK /
+                ; OUT_LATCH, which also carries power-latch bits) sits at E0h
+                ; from ROM00:22F2 during normal operation, not the FFh the
+                ; cold-start init leaves.  Interrupts on, so a controller IRQ
+                ; during the transaction is acknowledged (the ISR reads 05h)
+                ; exactly as stock's handler does.
+                ld a,0xE0
+                out (0x04),a
+                ei
+                ld c,0x10                   ; LINK_STATUS bit 4
+                call wait_clear             ; stock 32B8: bit4-clear poll
+                ld (V_P4),a                 ; 10h = cleared, 00h = timeout
+                or a
+                jr z,witness                ; stock aborts before the TX arm
+                call arm_tx                 ; stock 32CC: the TX arm strobes
+                in a,(LINK_STAT)            ; ARMD: status right after the arm
+                ld (V_PSTAT),a
+                ld c,0x40                   ; LINK_STATUS bit 6
+                call wait_clear             ; stock 32F0: bit6-clear poll
+                ld (V_P6),a                 ; 40h = cleared, 00h = timeout
+
+; RX witness.  After the stock opening and arm this STOPS transmitting and
+; just watches LINK_STATUS and the link interrupt.  Nothing here writes
+; LINK_CMD/LINK_TXD/LINK_CTRL, so our own TX cannot disturb the receive path
+; being measured.  OR/AND are sticky for the whole run and therefore include
+; the transaction above, so a later stimulus only shows as a bit that has ever
+; changed.  ISRC and IRQN are sticky for the run.  Reset only by power-cycling;
+; the LCD is the only readout because the IR channel is being listened to.
+; LCD row: W OR AND P4 P6 ISRC IRQN ARMD HB.
 witness:        ld a,0x05
                 call progress
                 xor a
                 ld (V_COUNT),a
-                in a,(LINK_STAT)            ; status immediately after the arm
-                ld (V_PSTAT),a
-                ; Enable the receive path.  The stock firmware raises LINK_CTRL
-                ; bits 6/7 (34BD) after a transaction; every earlier exerciser
-                ; build left them clear, so its RX interrupt could never fire
-                ; and nothing could be received.  Do what LinkTransferService
-                ; does at 2FAE: set both.
-                ld a,0x40
-                call ctrl_or
-                ld a,0x80
-                call ctrl_or
-                call accreset
+                ; Match the ordered stock teardown: bit4 clear, then bit0
+                ; clear (3361-3376), then the later separate 6/7 enable
+                ; (34BD).  Each write uses CTRL_SHADOW, so no latch bit is
+                ; silently overwritten.  Earlier witness runs omitted this
+                ; sequence and showed a single ~11 us clock runt/no burst;
+                ; that observation does not identify the omission as cause.
+                call witness_finish
                 ld a,IRQ_ENABLE
                 out (IRQ_MASK),a
                 ei
@@ -485,9 +513,13 @@ w_in:           call sample                 ; sample clobbers A, D, HL only
                 ld a,'W'
                 call lcd_putc
                 ld a,(V_OR)
-                call lcd_hex                ; OR,  this window
+                call lcd_hex                ; OR,  sticky whole run
                 ld a,(V_AND)
-                call lcd_hex                ; AND, this window
+                call lcd_hex                ; AND, sticky whole run
+                ld a,(V_P4)
+                call lcd_hex                ; bit4 poll: 10h cleared, 00 timeout
+                ld a,(V_P6)
+                call lcd_hex                ; bit6 poll: 40h cleared, 00 timeout
                 ld a,(V_ISRC)
                 call lcd_hex                ; IRQ sources, sticky
                 ld a,(V_IRQN)
@@ -498,13 +530,34 @@ w_in:           call sample                 ; sample clobbers A, D, HL only
                 inc a
                 ld (V_COUNT),a
                 call lcd_hex                ; heartbeat
-                ld b,0x07
+                ld b,0x03
                 call blank_tail
-                call accreset               ; fresh OR/AND for the next window
                 ld a,IRQ_ENABLE
                 out (IRQ_MASK),a            ; re-arm the ISR
                 ei
                 jr w_window
+
+; Wait for (LINK_STATUS AND C) == 0, bounded to 026Ch samples, folding every
+; sample into OR/AND.  These are the stock polls at 32B8 (C=10h) and 32F0
+; (C=40h) that every earlier replay omitted.  sample clobbers D, so the DE
+; counter is parked on the stack across it.
+; In:  C = bit mask to clear.
+; Out: A = C if it cleared, 00h on timeout; Z set on timeout. Clobbers A,DE,HL.
+wait_clear:     ld de,0x026c
+wc_loop:        push de
+                call sample
+                and c
+                pop de
+                jr z,wc_ok
+                dec de
+                ld a,d
+                or e
+                jr nz,wc_loop
+                xor a
+                ret
+wc_ok:          ld a,c
+                or a                         ; success: restore Z=0 after AND C
+                ret
 ;@WITNESS_END@
 scr_end:
 
@@ -567,6 +620,7 @@ putflag:        call waitready
 
 ; Idle long enough for the receiver to call it a gap: stop feeding LINK_TXD
 ; and let the controller drain and stop clocking, sampling throughout.
+;@WITNESS_GAP_LO@
 gap:            ld b,GAP_SAMPLES
 gap_loop:       call sample                 ; sample leaves B alone
                 djnz gap_loop
@@ -669,6 +723,7 @@ dead_adjust:    call kbd_scan
                 ld (V_KEY),a
                 call contrast_keys
                 jp pm_delay                 ; human-scale adjustment rate
+;@WITNESS_FINISH_LO@
 lo_end:
 
                 org MID_ORG
@@ -716,6 +771,7 @@ start:          di
                 ld sp,STACK
                 call nmi_safe               ; protect the whole LCD init too
                 call power_lcd_init
+;@EARLY_PROBE@
                 call contrast_setup         ; ENTER begins the link test
 
                 ; The ROM's RST 38h at 0038 jumps through F5F3 and NMI at 0066
