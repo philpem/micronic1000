@@ -1,5 +1,18 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — merged instrumentation; next IR feedback draft
+
+* Squash-merged PR #21 after 163 focused tests plus 71 subtests and passing
+  GitHub documentation checks. A clean export without connector binaries
+  passed all 27 connector tests and reproduced both burn images exactly.
+* Started `ir/automated-feedback-tests` from merged master with a plan for
+  one reusable ROM and Arduino-adjustable receive hypotheses. No combined
+  image or new checksum exists yet; implementation remains open.
+* Consistency review found historical claims of established LED orientation
+  and `7Eh` framing. Withdraw those interpretations, retain measurements,
+  and require both channel assignments and controlled stimuli. Recorded the
+  owner clarification as an unresolved Ghidra bookmark and saved the program.
+
 ## 2026-09-22 — connector bridge result and PR polish
 
 * Owner clarifies that Arduino LED clock/data assignment is unknown and
@@ -7300,8 +7313,10 @@ names renamed, 144 unplated functions plated)
   the return flag is `7E` (normal HDLC), the return data must be **zero-stuffed**
   (a 0 after five 1s), not the Micronic's inverted one-stuffing (a 1 after five
   0s). The Arduino now sets `stuffNormal = (flag == 0x7E)` and zero-stuffs
-  accordingly. `content=2` (`1Fh`) has no five-1 run so does not exercise the
-  stuffing; content 4 (`7Fh`) or a frame does. Sketch set to `RX_NARROW 1`,
+  accordingly. [Correction, 2026-09-22: `1Fh` ends with five consecutive
+  ones and exercises terminal zero-stuffing. The original claim that it has
+  no five-1 run was wrong.] Content 4 (`7Fh`) exercises a longer run.
+  Sketch set to `RX_NARROW 1`,
   axis 1 (polarity), phase fixed −2/8; all mode configs pass the host
   `-fsyntax-only` check.
 * **Byte capture result (owner, `rxb` hook, 2026-09-20).** The byte-capture
