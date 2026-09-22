@@ -359,9 +359,9 @@ and must not be decoded as output from this image.
 bit 4 set, i.e. the controller reported a pending receive. It prints `I ss rr`
 (`LINK_STATUS`, and `LINK_RXD` when bit 0 says a byte is ready) and halts.
 Image `micron1_stockhook_rx.bin`: sum16 `DAA6`, SHA-256 `5365bd11...`, md5
-`e4573f3e...`. If no burst is accepted the firmware runs its normal error path
-and nothing prints; an accepted return burst (from an Arduino convention sweep)
-freezes the display on `I ss rr`.
+`e4573f3e...`. If the hook does not trigger the firmware runs its normal error
+path and nothing prints; a trigger during an Arduino candidate-stimulus sweep
+freezes the display on `I ss rr` without identifying an accepted return frame.
 
 Pair it with the Arduino `FREE_TX` mode
 (`analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino`, set `FREE_TX 1` and all
@@ -371,26 +371,26 @@ other mode flags `0`): it transmits **one swept burst every
 not confound the result.  Axes are the same as `RX_SWEEP` — flag sense
 `{0x81,0x7E}`, data polarity, ±1/8 ±1/4-cell phase, content — one combination
 per burst, parameters printed as `# TX flag=.. phase=../8cell pol=.. content=..`.
-The stock-hook halts on the first accepted burst, so the last `# TX` line names
-the convention that worked.  (`RX_SWEEP` remains for answering the handheld's
-own bursts, but its reply lands inside the `6/7`-clear transaction window.)
+The stock hook halts on its first observed trigger, so the last `# TX` line
+records the candidate stimulus present then; it does not name a convention
+that worked. (`RX_SWEEP` remains for answering the handheld's own bursts, but
+its reply lands inside the `6/7`-clear transaction window.)
 
-**Narrowing the convention (`RX_NARROW`).** The first handheld-paced run halted
-on `flag=7E phase=-2/8cell pol=0 content=2 delay=3000us`, so the accepted return
-sense is flag `7E` (normal HDLC, inverted vs the TX `81h`).  Earlier `7E` lines
-at phase `-4` did **not** halt, so the flag alone may not be sufficient.
-`RX_NARROW` fixes the accepted convention and varies exactly **one** axis
-(`RX_NARROW_AXIS`: 0 = phase, 1 = polarity, 2 = content) to isolate the
-trigger; reply to each handheld burst, handheld-paced, at the accepted 4 ms.
-The narrowed run showed the hook fires on the **first** `7E` reply regardless
-of phase, so the return **flag `7E` alone raises bit 4**; the data lead is held
-at the handheld's own TX convention (−2/8 cell) and polarity/content are swept.
-**The return frame's stuffing sense follows its flag:** flag `7E` (normal HDLC)
-means **zero-stuffing** (a 0 after five 1s), not the Micronic's inverted
-one-stuffing (a 1 after five 0s).  The sketch now zero-stuffs whenever the flag
-axis selects `7E`.  Note `content=2` is `1Fh`, which has no five-1 run, so it
-does not exercise the stuffing — a content with a long 1-run (e.g. `7Fh`,
-content 4) tests it.
+**Narrowing candidate stimuli (`RX_NARROW`).** The first handheld-paced run
+halted on `flag=7E phase=-2/8cell pol=0 content=2 delay=3000us`. That records
+the Arduino row present at the hook event; it does not establish `7E` as a
+return flag or identify either Arduino LED's handheld destination. `RX_NARROW`
+holds candidate settings and varies exactly **one** axis (`RX_NARROW_AXIS`: 0 =
+phase, 1 = polarity, 2 = content) while replying handheld-paced. The narrowed
+run again fired on its first candidate `7E` row regardless of phase, but that
+does not assign the bit-4 event to the candidate flag. The data lead remains a
+copied handheld-transmit timing candidate while polarity/content are swept.
+When the Arduino selects candidate `7E`, it zero-stuffs as normal HDLC would
+(a 0 after five 1s), rather than using the handheld transmit stream's inverted
+one-stuffing. This is stimulus generation, not a verified return-frame rule.
+`content=2` is `1Fh`, ending in five 1s, so it exercises terminal
+zero-stuffing before a closing candidate flag. `7Fh` (content 4) exercises a
+longer 1-run within the emitted candidate.
 
 **`rxb`** — byte-capture version of `rx`:
 

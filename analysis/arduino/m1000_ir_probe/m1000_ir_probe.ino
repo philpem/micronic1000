@@ -15,16 +15,18 @@
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
 //   CLK_IN   D2   handheld clock emitter drive   (INT0)
 //   DAT_IN   D4   handheld data emitter drive
-//   CLK_OUT  D5   our clock emitter -> handheld's clock detector
-//   DAT_OUT  D6   our data emitter  -> handheld's data detector
+//   CLK_OUT  D5   physical return channel A; proposed clock role
+//   DAT_OUT  D6   physical return channel B; proposed data role
+// Owner clarification 2026-09-22: receive LED roles are unconfirmed. These
+// names describe the generated signals, not identified handheld detectors.
+// Both optical assignments need testing; 7E as a receive flag is SUSPECTED.
 //
 // The handheld's drive lines swing to ~5.5 V, which is over VCC+0.5 on a 5 V
 // part and well over a 3.3 V one.  Put 10k in series with each input, or a
 // divider on a 3.3 V board.  Do not connect an input directly.
 //
 // Keep the two return channels optically separated - a mask or a short opaque
-// tube per LED.  Crosstalk from our clock into the handheld's data detector
-// will look exactly like a protocol failure.
+// tube per LED. Crosstalk between channels can confound protocol tests.
 
 // Stage 1: build with LISTEN_ONLY 1, confirm the monitor prints 17- and
 // 22-cell bursts every 93.75 ms and that they match the scope.  Only then set

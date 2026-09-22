@@ -571,8 +571,9 @@ See the README section "Stock-ROM instrumentation hooks".
 (sum16 `DAA6`, SHA-256 `5365bd11...`, md5 `e4573f3e...`). Pair it with the
 Arduino `FREE_TX` mode (`m1000_ir_probe.ino`, `FREE_TX 1`, all else `0`): one
 swept burst every 250 ms with no handheld burst, so the idle receiver is probed
-directly. An accepted burst freezes on `I ss rr` and the last `# TX` line names
-the convention; no burst leaves the normal error path.
+directly. A hook trigger freezes on `I ss rr`; the last `# TX` line records the
+candidate stimulus present when it froze and does not identify a receive
+convention. No burst leaves the normal error path.
 
 **First result (owner, 2026-09-20):** Arduino `FREE_TX` free-running + a V24
 connect → the hook fired, handheld frozen on **`I 98 00`**
@@ -617,16 +618,20 @@ That is a ROM deadline only; it does not prove a controller receive window or
 give a physical delivery schedule. The
 witness's own timing is not cycle-identical to stock.
 
-**Discriminator:** any of `LINK_STATUS` bit 6 **clear**, `LINK_STATUS` bit 4
-**set**, or **IRQ source 2** asserting identifies the receive convention.
-This answers open questions **C** and **D** and, if bit 6 clears, **A/B**.
+**Observations to correlate:** `LINK_STATUS` bit 6 **clear**,
+`LINK_STATUS` bit 4 **set**, or **IRQ source 2** asserting distinguish
+controller-state outcomes for a candidate Arduino stimulus. None identifies
+the receive convention, the LED-to-detector mapping, or the cause of an event
+by itself. Correlate them with controlled silence, both LED-role assignments,
+and a stock-armed byte capture before resolving open questions **A-D**.
 
 ### Phase 3 — redo the `conn`-style reply with a completed handshake
 
-With a completed transmit handshake (Phase 0 outcome) and — if Phase 2 finds one
-— the correct return convention, redo the `conn`-style reply and hunt for the
-post-handshake payload. `micronic.peer.CommstarPeer` already covers the session
-layer above that boundary. This answers **B**.
+With a completed transmit handshake (Phase 0 outcome), repeat the conn-style
+reply for each candidate return configuration and hunt for the post-handshake
+payload. `micronic.peer.CommstarPeer` already covers the session layer above
+that boundary. The resulting observation still needs a controlled comparison
+before it can resolve **B**.
 
 ### Offline work available (no hardware)
 
