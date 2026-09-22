@@ -208,19 +208,18 @@ was previously available.
 |---|---|
 | Diagnostic boots; heartbeat advances | CONFIRMED by owner observation. |
 | Single YES/NO presses adjust contrast | CONFIRMED by owner observation. |
-| **R, E, P** toggles pin 1 / red | CONFIRMED observed correlation with candidate E, `CTL_LATCH_2A` bit 4. The reset-baseline software output is `2Ah=20h/30h`; physical voltage and inversion are still to be measured. |
+| **R, E, P** toggles pin 1 / red | CONFIRMED observed correlation with candidate E, `CTL_LATCH_2A` bit 4. Follow-up **R, E, L**, then **H** confirms red follows L=0/H=1 without inversion, and LCD `2A=20h/30h` respectively. **R** returns red low. Numeric voltage levels remain unmeasured. |
 | Pin 3 / orange connects directly to Vcc, with high current | Owner-reported power connection; no numeric current measurement supplied. Treat it as power, not a signal candidate. |
 | Black has ESD-diode paths to Vss and Vcc, both about 0.6 V Vf | Owner-reported diode measurements. They do not yet establish input/output direction. |
 | Yellow has an ESD-diode path to Vss, about 0.4 V Vf | Owner-reported diode measurement. No Vcc-side result or signal direction established. |
-| Other candidates produce no detectable connector change | Owner clarified that the negative result concerns the connector, not the LCD controls. No A/B/C/D contact mapping is established; test gating separately. |
+| Other candidates produce no detectable connector change | Owner clarified that the negative result concerns the connector, not the LCD controls. No A/B/C/D contact mapping is established. |
+| **R, B, SPACE, A, P** produces no activity change on other contacts | Owner-reported negative result with `CTL_LATCH_2C` bit 1 retained high while its bit 0 pulses. This configuration did not expose another output; it does not establish that those latch bits have no internal function. |
 
-**Next measurement:** press **R, E, L**, then **H**; record red/pin-1 voltage
-and LCD `2A` in each state. The expected software bytes are `20` and `30`.
-Then return to **P** and check the waveform, using the held levels to identify
-polarity. Since the other candidates showed no detectable connector change,
-try **R, B, SPACE, A, P**: `2C` should alternate `22/23`, testing whether
-`CTL_LATCH_2C` bit 1 enables a path driven by its bit 0. This is a gating
-hypothesis, not an established pin function. Record a negative result too.
+**Next measurement:** note LCD `2D`, `OR` and `AND` after **R**, then after
+**R, B, SPACE** (`2C=22h`). Measure black and yellow's idle voltages in each
+configuration and red's high-state voltage using **R, E, H**. These establish
+the input baseline and electrical levels before choosing an input stimulus.
+The black/yellow diode paths alone do not establish input direction.
 
 ## Scope of the image
 

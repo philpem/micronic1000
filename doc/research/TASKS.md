@@ -29,15 +29,17 @@ observed correlation with `CTL_LATCH_2A` bit 4. Orange/pin 3 is reported
 connected directly to Vcc; black/yellow diode measurements are recorded in
 the [connector guide](../re-notes/connector-experiment.md#hardware-observations-2026-09-22).
 Owner clarifies the other candidates have no detectable effect at the
-connector. Next establish red's held-level voltages/polarity and test whether
-holding `CTL_LATCH_2C` bit 1 high enables its bit-0 path.
+connector. Follow-up confirms red follows E's L/H states without inversion
+and R returns it low; LCD `2A` follows `20h/30h`. The B-high/A-pulse gating
+test also produces no activity change on the other contacts. Next collect
+raw input baseline and numeric pin voltages before stimulating inputs.
 
 **Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
 The owner identifies eight contacts, power/ground known, six unknown. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
-inputs at measured electrical levels. No contact pinout or independent debug
-channel is established yet. Afterwards verify the corrected Arduino waveform
+inputs at measured electrical levels. Red/pin 1 is now mapped to candidate E;
+the remaining signal contacts and an independent debug channel are unresolved. Afterwards verify the corrected Arduino waveform
 on the scope (including `emit_late_max`), then use the repaired stock hooks
 to distinguish readiness, receive and frame-validation failures. Physical
 return framing/controller check bytes remain OPEN; emulator byte queues do

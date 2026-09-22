@@ -1,5 +1,17 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — red output polarity and negative gating test
+
+* Owner confirms R/E/L then H: red/pin 1 follows L=0/H=1, LCD `2A` reads
+  `20h/30h`, and R returns the pin low. This establishes non-inverted
+  candidate-E control (`CTL_LATCH_2A` bit 4) under the tested baseline;
+  numeric voltage levels remain pending.
+* R/B/SPACE/A/P produces no activity change on the other contacts. Holding
+  `CTL_LATCH_2C` bit 1 high while pulsing its bit 0 therefore did not expose
+  another output in this test. No internal latch-function claim follows.
+* Next: raw `2D`/OR/AND baseline with B low/high, black/yellow idle voltages,
+  and red high voltage before selecting an input stimulus. ROM unchanged.
+
 ## 2026-09-22 — connector v1 first physical results
 
 * Owner reports diagnostic boot and advancing heartbeat; single YES/NO
