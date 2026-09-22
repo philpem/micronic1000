@@ -215,14 +215,17 @@ def test_main_loop_debounces_held_key_and_updates_live_input():
     assert p.value('BASE2C') == 0x20
 
 
-def test_published_release_matches_source_and_manifest():
+@pytest.mark.parametrize('version', [1, 2])
+def test_pinned_release_manifest_matches_fresh_source_build(version):
     import json
-    image, _, _ = connector.build_image()
-    release = connector.DEFAULT_OUT
+    image, symbols, original = connector.build_image(version=version)
+    _, release = connector._source_and_output(version)
     manifest = json.loads(release.with_suffix('.json').read_text())
-    assert release.read_bytes() == image
     assert manifest['checksums'] == connector.fingerprint(image)
-    assert manifest['assembly_sha256'] == hashlib.sha256(connector.SOURCE.read_bytes()).hexdigest()
+    assert manifest['assembly_sha256'] == hashlib.sha256(
+        connector.SOURCES[version].read_bytes()).hexdigest()
+    assert manifest == connector.build_manifest(
+        image, symbols, original, version, release.name)
 
 
 def test_v2_f_selects_port2c_bit5_and_low_baseline_survives_selection_changes():
@@ -283,14 +286,34 @@ def test_v2_diff_is_limited_to_its_candidate_limit_and_data_region():
     assert v1[connector.BOOT:connector.BOOT + 3] == v2[connector.BOOT:connector.BOOT + 3]
 
 
-def test_v2_published_release_matches_source_version_and_manifest():
+def test_cli_can_write_a_local_image_and_optional_provenance(tmp_path):
+    image_path = tmp_path / 'micron1_connector_v2.bin'
+    manifest_path = tmp_path / 'provenance' / 'micron1_connector_v2.json'
+    connector.main(['--version', '2', '--out', str(image_path),
+                    '--manifest-out', str(manifest_path)])
+    image, symbols, original = connector.build_image(version=2)
+    assert image_path.read_bytes() == image
     import json
-    image, _, _ = connector.build_image(version=2)
-    release = connector.DEFAULT_OUT_V2
-    manifest = json.loads(release.with_suffix('.json').read_text())
-    assert release.read_bytes() == image
-    assert manifest['version'] == 2
-    assert manifest['assembly_source'] == 'connector_v2.asm'
-    assert manifest['checksums'] == connector.fingerprint(image)
-    assert manifest['assembly_sha256'] == hashlib.sha256(
-        connector.SOURCES[2].read_bytes()).hexdigest()
+    assert json.loads(manifest_path.read_text()) == connector.build_manifest(
+        image, symbols, original, 2, image_path.name)
+
+
+@pytest.mark.parametrize('version', [1, 2])
+def test_cli_does_not_overwrite_pinned_manifest_by_default(tmp_path, version):
+    _, release = connector._source_and_output(version)
+    image_path = tmp_path / release.name
+    manifest_path = image_path.with_suffix('.json')
+    pinned = release.with_suffix('.json').read_bytes()
+    manifest_path.write_bytes(pinned)
+    assert not image_path.exists()
+    connector.main(['--version', str(version), '--out', str(image_path)])
+    assert manifest_path.read_bytes() == pinned
+    import json
+    assert connector.fingerprint(image_path.read_bytes()) == json.loads(pinned)['checksums']
+
+
+def test_cli_rejects_manifest_path_that_would_replace_the_image(tmp_path):
+    image_path = tmp_path / 'burn.bin'
+    with pytest.raises(SystemExit):
+        connector.main(['--out', str(image_path), '--manifest-out', str(image_path)])
+    assert not image_path.exists()

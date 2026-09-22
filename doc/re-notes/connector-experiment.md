@@ -53,8 +53,10 @@ analysis/venv/bin/python -m pytest -q analysis/test_connector_probe.py
 The builder refuses any original ROM other than the pinned 32K image.
 It redirects the cold-boot entry before OS initialisation and reclaims a
 bounded part of the now-unreachable session code. The release regression
-compares the exact burn file, manifest and fresh build, so stale artifacts
-cannot pass the release check.
+checks a fresh build against the tracked checksum/source manifest. Generated
+`.bin` files are local build products and are not tracked in git. Run the
+build command above after a fresh checkout; the output path and burn checksums
+remain unchanged.
 
 ### V1 archive
 
@@ -62,7 +64,8 @@ The existing v1 file remains at
 `analysis/rom_exerciser/releases/connector-v1/micron1_connector_v1.bin`:
 MD5 `261e828ef2008264e58d8d3db08fb86a`, sum16 `9568`, sum24 `379568`.
 `connector.py` without `--version 2` still builds v1 for reproducibility.
-V1's assembly and published binary/manifest are unchanged.
+V1's assembly and generated image bytes are preserved. Its tracked manifest
+retains the pinned image checksums; bench history lives in this guide.
 
 ## V2: test the missing barcode configuration
 
@@ -614,13 +617,14 @@ known-working black-input state (`2Ah` bit 1 high, `2Ch` bit 5 low) is not
 preserved by normal IR selection. Do not restore the connector input gate
 in the middle of an IR transaction merely to read a command.
 
-**One remaining bridge test on the current v2 burn:** leave the 10 kΩ
-pull-up on yellow, black released, then **R, D, P**. Check `2A=20h/21h`,
-`2C=20h` and whether yellow still pulses. This tests the shared-latch bit
-settings used for top V24, with the red baseline low. It does **not** run
-or configure the IR controller and does not prove simultaneous optical
-operation. Red already responded at the reset baseline in the first bench
-run. If yellow responds here too, it is the preferred marker candidate.
+**Bridge test completed (CONFIRMED: owner observation):** with the 10 kΩ
+pull-up on yellow and black released, **R, D, P** produces the yellow
+waveform at the requested `2A=20h/21h`, `2C=20h` settings. This tests the
+shared-latch bit settings used for top V24, with the red baseline low.
+It does **not** run or configure the IR controller and does not prove
+simultaneous optical operation. Red already responded at the reset baseline
+in the first bench run. Yellow is now the preferred marker candidate for
+the next IR harness; further unknown-pin exploration is deferred.
 
 **Proposed next IR harness (not yet implemented):**
 

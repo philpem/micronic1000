@@ -131,6 +131,8 @@ class _Exchange:
     reply: bytes
     completion: bytes
     acked: bool = False
+    reply_queued: bool = False
+    completion_queued: bool = False
 
 
 class CommstarPeer:
@@ -152,14 +154,28 @@ class CommstarPeer:
         self.link_id = link_id
         self._on_request = on_request
         self._tx = bytearray()      # bytes the handheld has sent us
-        self._rx: list[bytes] = []  # queues waiting to go back
+        # Each queued wire reply retains its exchange identity.  Sequence
+        # bytes are reusable, so a per-sequence marker cannot distinguish an
+        # old completion from a new exchange's reply in one output batch.
+        self._rx: list[tuple[_Exchange, bool, bytes]] = []
         self.requests: list[Request] = []
         self.acks = 0
         # Keep at most one current/completed exchange per sequence byte.  A
         # completed entry is replaced when that sequence is reused, so this
         # is not a permanent cache keyed only by sequence.
         self._exchanges: dict[int, _Exchange] = {}
-        self._completion_queued: set[int] = set()
+
+    def _queue_reply(self, exchange: _Exchange) -> None:
+        """Queue one type-2 reply until the caller takes it."""
+        if not exchange.reply_queued:
+            exchange.reply_queued = True
+            self._rx.append((exchange, False, exchange.reply))
+
+    def _queue_completion(self, exchange: _Exchange) -> None:
+        """Queue one type-4 completion until the caller takes it."""
+        if not exchange.completion_queued:
+            exchange.completion_queued = True
+            self._rx.append((exchange, True, exchange.completion))
 
     # ------------------------------------------------------------------ input
     def feed_tx(self, data: bytes) -> None:
@@ -199,12 +215,9 @@ class CommstarPeer:
             if not exchange.acked:
                 exchange.acked = True
                 self.acks += 1
-            # Do not enqueue the same completion twice if a duplicate ACK
-            # arrives before the first queued completion is taken.  Once the
-            # caller has taken it, a later duplicate ACK enqueues it again.
-            if seq not in self._completion_queued:
-                self._completion_queued.add(seq)
-                self._rx.append(exchange.completion)
+            # A duplicate ACK before the caller takes this completion adds
+            # nothing.  Once taken, a later duplicate ACK replays it.
+            self._queue_completion(exchange)
             return
         if ftype != TYPE_REQUEST:
             raise ProtocolError(f"unexpected frame type {ftype} from handheld")
@@ -230,8 +243,9 @@ class CommstarPeer:
                 )
             # A lost type-2 reply causes the exact request to be retried.
             # Calling the policy again could advance a download or repeat an
-            # application side effect.
-            self._rx.append(exchange.reply)
+            # application side effect.  A duplicate buffered before the
+            # caller takes the first reply must not queue that reply twice.
+            self._queue_reply(exchange)
             return
 
         answer = self._on_request(request) if self._on_request else None
@@ -246,19 +260,18 @@ class CommstarPeer:
             completion=self.completion(seq),
         )
         self._exchanges[seq] = exchange
-        # A request with a completed, reused sequence starts a new lifecycle.
-        self._completion_queued.discard(seq)
-        self._rx.append(reply)
+        self._queue_reply(exchange)
 
     # ----------------------------------------------------------------- output
     def take_rx(self) -> list[bytes]:
         """Return and clear the reply queues waiting to go to the handheld."""
         out, self._rx = self._rx, []
-        for seq in tuple(self._completion_queued):
-            exchange = self._exchanges.get(seq)
-            if exchange is not None and exchange.completion in out:
-                self._completion_queued.discard(seq)
-        return out
+        for exchange, completion, _ in out:
+            if completion:
+                exchange.completion_queued = False
+            else:
+                exchange.reply_queued = False
+        return [wire for _, _, wire in out]
 
     @property
     def pending(self) -> bool:

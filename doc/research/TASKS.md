@@ -4,112 +4,52 @@ State: continuously updated as work progresses.
 
 > Historical session log: see [`session-log.md`](session-log.md).
 
-## IR audit follow-up — 2026-09-22
+## IR instrumentation and connector handoff — 2026-09-22
 
-See [IR protocol and diagnostic-ROM audit](reviews/ir-protocol-audit-2026-09-22.md).
-Its historical defect evidence is retained; implementation fixes are now
-complete on `ir/instrumentation-fixes-connector-probe`:
+[PR #21](https://github.com/philpem/micronic1000/pull/21) contains the fixes
+and bench record. See the [audit](reviews/ir-protocol-audit-2026-09-22.md)
+for defect evidence and the [connector guide](../re-notes/connector-experiment.md)
+for the full measurements, controls and rebuild/checksum instructions.
+
+Completed instrumentation repairs:
 
 - `rxb2` follows the destination pointer, records raw return A/F and received
   count, and bounds its preview to the first descriptor. Errors show dashes.
-- Arduino phase is absolute data-to-clock phase; chronological scheduling,
-  final stuffing, strict destuffing, startup ordering and RX masking are
-  covered by adversarial tests. All 13 configurations compile for Uno R3.
+- Arduino phase scheduling, terminal stuffing, strict destuffing, startup
+  ordering and RX masking have adversarial tests; all 13 configurations
+  were compiled for Elegoo Uno R3.
 - The bit-6 hook preserves the stock 620-iteration poll, adding 10 T-states
   before its first sample and 107 T-states after the loop.
 - The witness skips arm after a bit-4 timeout and separates teardown writes.
 - The peer replays unacknowledged replies without advancing policy state.
 
-The recorded LCD observations remain; the `06 00 E4` payload/framing
-interpretation is withdrawn. `1Fh` contains five consecutive ones.
+The `06 00 E4` payload/framing interpretation is withdrawn. Recorded LCD
+observations remain; physical return framing/controller check bytes remain
+OPEN. Emulator byte queues do not settle them.
 
-**Hardware trial started (2026-09-22):** owner confirms connector-v1 boot,
-heartbeat and single-press contrast controls. R/E/P toggles red/pin 1, an
-observed correlation with `CTL_LATCH_2A` bit 4. Orange/pin 3 is reported
-connected directly to Vcc; black/yellow diode measurements are recorded in
-the [connector guide](../re-notes/connector-experiment.md#hardware-observations-2026-09-22).
-Owner clarifies the other candidates have no detectable effect at the
-connector. Follow-up confirms red follows E's L/H states without inversion
-and R returns it low; LCD `2A` follows `20h/30h`. The B-high/A-pulse gating
-test also produces no activity change on the other contacts. Black through
-10 kΩ to ground measures 0.9 V with `2D=23h`; disconnected it returns to
-5.1 V. A subsequent 500 Ω pull-down reaches 0.056 V, still `2D=23h`.
-Fresh byte review exposes a diagnostic gap: v1 holds `CTL_LATCH_2C` bit 5
-high; stock barcode setup clears it before the direct input probe. V1
-keys cannot test that state. Owner now reports C high gives `2D=20h` with
-B low or high, with black released (OR/AND also 20h in the B-low report).
-Grounding black also leaves `2D=20h` with C high in both B states in v1.
-Yellow subsequently measures 0 V at blue/GND and 5.3 V at orange/Vcc, both with `2D=23h` under
-R/B/SPACE. V2 now exposes `CTL_LATCH_2C` bit 5 low. Owner confirms
-R/F/SPACE/B/SPACE gives 2A/2C/2D=20/02/23, with no `2D` response to
-black/yellow high/low. Subsequent C/SPACE gives 22/02: black low changes
-`2D=23h` to `22h`; yellow high/low has no effect. Then B/SPACE gives 22/00,
-with `2D=23h` for black floating/high and `22h` for black low.
-**CONFIRMED (owner measurements): black controls port `2Dh` bit 0 without
-inversion at 2A=22h and 2C=00h/02h.** `CTL_LATCH_2C` bit 1 need not be high
-for this response; internal gating remains unresolved. Further C/SPACE
-produces no black response (`2D=23h`), but the owner typed `2A=2-`, not a
-complete hex byte; expected 20h remains unverified for that report.
-Owner then confirms C/SPACE restores 22/00. E/P pulses red at roughly
-400 ms per period, and grounded black reads `2D=22h` under E/P, E/L and
-E/H. Released black reads `2D=23h` throughout those same three modes
-(CONFIRMED: owner measurements), completing the held-level simultaneous
-input/output comparison.
-Owner identifies the remaining contacts as pin 2 brown, pin 4 violet and
-pin 7 green; functions remain unknown. Fresh ROM review prioritises `2Dh`
-bit 1 (input classification) and `2Ch` bits 0/1 (programmed pulse/control)
-as unassigned candidates, not physical mappings. Brown has no observed
-input effect in the requested 22/00 and 20/02 tests, and unloaded voltage
-near zero with AC hum (owner report); no NC assignment follows. Owner
-identifies black as pin 5. The connector guide records the test plan and
-scanner-role assessment: black is the barcode timing input; yellow sustained
-power/scan enable and red startup trigger/reset are SUSPECTED. Stock control
-writes sink yellow while pulsing red low, then return red high; stop releases
-yellow with red high. Owner now measures 200 mA sink current on yellow
-with a multimeter; test voltage/duration and continuous rating are not
-established. No diode paths to either rail were detected on brown/2,
-violet/4 or green/7. Log those pins as unassigned and defer further mapping
-while returning to IR.
-Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
-0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
-(CONFIRMED: owner measurements). With that pull-up, D/P then produces a
-roughly 400 ms yellow waveform while 2A=22h/23h and 2C=00h. Owner reports
-D/H pulls yellow low and D/L floats it: **yellow maps to `CTL_LATCH_2A`
-bit 0 as a sink/release output in this configuration (CONFIRMED: owner
-measurements)**. Internal topology and scanner-side purpose remain unknown.
-The 10 kΩ pull-down follow-up gives yellow near 0 V in both D/L and D/H
-(CONFIRMED: owner measurements), supporting release rather than high drive
-in L under this load. After a reset and full setup sequence, owner also
-confirms yellow's waveform with E retained high (requested D/P test at
-2A=32h/33h, 2C=00h). During yellow pulsing, owner reports black floats
-high when released and gives steady `2D=22h` when grounded. Owner then
-confirms steady `2D=23h` released: both held input states are readable
-throughout yellow pulsing with red held high (CONFIRMED: owner observations).
-This does not establish short-pulse capture or coexistence with IR.
-No new ROM is required.
-V1 remains preserved.
-Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
-5.6 V, black resting at 5.1 V, and yellow apparently floating.
+**CONFIRMED (owner bench measurements and recorded ROM evidence):**
 
-**Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
-The owner identifies eight contacts; power, ground and three signals are
-mapped, with brown/2, violet/4 and green/7 still unassigned. The
-single ROM directly controls selected latch bits while showing raw `2Dh`,
-window OR/AND and output shadows. Map outputs first, then slowly stimulate
-inputs at measured electrical levels. Red/pin 1 is mapped to candidate E,
-and black to input `2Dh` bit 0 in the configurations above. Simultaneous
-red output and both held black input levels work in the tested modes. Next
-test yellow at the top-V24 shared-latch settings using R/D/P (20/21,20),
-then develop the Arduino interface and feedback timing. Fresh Link_PortSelect
-bytes clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5, so the known black
-input gate is not preserved. Plan commands between IR trials and output
-markers during them; do not change the input gate mid-transaction. The
-combined harness remains to be implemented.
-Afterwards verify the corrected Arduino waveform
-on the scope (including `emit_late_max`), then use the repaired stock hooks
-to distinguish readiness, receive and frame-validation failures. Physical
-return framing/controller check bytes remain OPEN; emulator byte queues do
-not settle them.
+| Contact | Mapping / result |
+|---|---|
+| Orange/pin 3; blue | Vcc; ground respectively |
+| Black/pin 5 | Barcode timing input, `2Dh` bit 0; working gate has `2Ah` bit 1 high and `2Ch` bit 5 low |
+| Red/pin 1 | Non-inverted output, `2Ah` bit 4; reported high 5.6 V |
+| Yellow | Sink/release output, `2Ah` bit 0; owner measured 200 mA sink current, not a characterised rating |
+| Brown/2, violet/4, green/7 | Unassigned; no owner-detected diode paths to either rail. Brown's held-input tests produced no effect. Further mapping deferred. |
+
+Both black input levels are readable while red pulses and while yellow
+pulses with red held high in the tested connector configurations. The
+owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
+the relevant top-V24 shared-latch settings. This does not run the IR
+controller or prove optical coexistence.
+
+**Next IR round:** implement command handshakes between trials and output
+markers during IR operation. Fresh `Link_PortSelect` bytes clear `2Ah`
+bit 1 on both routes and top V24 sets `2Ch` bit 5: the known black-input
+gate is not preserved. Do not change it during a live IR transaction.
+Validate electrical interfacing, timing and the corrected emitter on the
+scope, then use the repaired instruments to distinguish readiness, receive
+and frame-validation failures. The combined harness is not implemented.
 
 ---
 

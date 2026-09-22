@@ -17,5 +17,9 @@ session-*.md
 # built ROM image -- reproducible byte-for-byte from build.py + micronic/micron1.bin
 analysis/rom_exerciser/*.bin
 
+# Connector probe burn images are built locally. Their pinned fingerprints
+# remain in the adjacent, tracked JSON manifests.
+analysis/rom_exerciser/releases/**/*.bin
+
 # Disk-backed local Arduino toolchain/build cache (not /tmp tmpfs).
 /.cache/ir-arduino/

@@ -1,5 +1,26 @@
 # Link-controller exerciser
 
+## Connector probe builds
+
+The tested connector images are generated locally; `.bin` files are ignored
+rather than committed. Versioned assembly and JSON checksum manifests remain
+tracked so a fresh checkout can reproduce the exact v1/v2 burn images:
+
+```sh
+analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 1
+analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 2
+analysis/venv/bin/python -m pytest -q analysis/test_connector_probe.py
+```
+
+Output is `releases/connector-vN/micron1_connector_vN.bin` beneath this
+folder. V2 still has MD5 `68f303e274b7d7d80e43b7e07c5b1176`, additive byte
+sum16 `9429` and sum24 `379429` (hexadecimal). The builder prints provenance
+without overwriting the pinned manifest; use `--manifest-out PATH` to
+explicitly export JSON with a build. Manifests describe reproducibility;
+[the connector guide](../../doc/re-notes/connector-experiment.md) records
+physical validation, pin mappings and the handoff to the next IR experiment.
+
+
 > **2026-09-22 audit:** see the
 > [IR instrumentation review](../../doc/research/reviews/ir-protocol-audit-2026-09-22.md)
 > before selecting a historical recipe. Current `rxb2` follows the first RX
@@ -257,9 +278,10 @@ LCD/key activity and settling periods are outside this sampling claim.
 out); `ISRC`/`IRQN` are sticky; `ARMD` is the immediate post-arm status; `HB`
 is a heartbeat. Reset only by power-cycling.
 
-Arduino `RX_SWEEP` phase generation is corrected, but connector mapping remains
-the prerequisite for receive interpretation. The current physical procedure is
-the output-first [connector experiment](../../doc/re-notes/connector-experiment.md).
+Arduino `RX_SWEEP` phase generation is corrected. The
+[connector experiment](../../doc/re-notes/connector-experiment.md) now records
+two output mappings and an input mapping for future test feedback. Their
+electrical interface and interaction with live IR still need validation.
 The ROM's
 stock bit-6 loop is 620 × 59 T, about 9.92 ms at 3.6864 MHz; this establishes
 the ROM deadline, not a cycle-identical deadline for witness or Arduino work.
@@ -414,9 +436,10 @@ timeout 60 analysis/venv/bin/python -m pytest -q analysis/test_stock_instrument.
 **This is the intended framework for future unknowns:** add a hook at the stock
 address of interest, sample into RAM, and print on the LCD. Candidate triggers
 beyond the UI: the keyboard, the RTC, and the port-`2Dh` edge input. The
-physical connector mapping is OPEN; use the output-first
-[connector experiment](../../doc/re-notes/connector-experiment.md), not a
-connector-pin assumption.
+measured connector mappings and the black input's gating constraint are in the
+[connector experiment](../../doc/re-notes/connector-experiment.md). Use black
+for commands between IR trials; the stock IR selector does not preserve its
+known working gate.
 
 ## The LCD, first
 

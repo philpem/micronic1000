@@ -14,5 +14,5 @@
   "changed_bytes": 813,
   "entry": "ROM00:6000",
   "end_exclusive": "ROM00:6339",
-  "hardware_validation": "not yet run on the physical handheld"
+  "manifest_scope": "build provenance only; physical results are documented separately"
 }

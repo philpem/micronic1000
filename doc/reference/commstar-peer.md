@@ -72,7 +72,10 @@ synthetic push has been removed.
 
 Outstanding exchanges are cached by sequence and request bytes. Repeating
 an unacknowledged request replays the same reply without calling the policy
-again. A duplicate acknowledgement replays completion; a completed sequence
+again. A reply already waiting in the output queue is not duplicated; after
+`take_rx()` delivers it, a retry queues it again. Queue state belongs to the
+exchange, so sequence reuse cannot confuse older queued frames with a new
+exchange. A duplicate acknowledgement replays completion; a completed sequence
 may then be reused. Tests cover lost replies/completions, conflicting reuse,
 unknown acknowledgements and sequence wrap. These checks exercise retry
 semantics above the physical transport.

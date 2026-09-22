@@ -1,5 +1,21 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — connector bridge result and PR polish
+
+* CONFIRMED (owner observation): R/D/P produces the yellow waveform at
+  the requested 2A=20h/21h, 2C=20h top-V24 shared-latch settings. This
+  completes the connector-only bridge check, not an optical IR test.
+* Prepared PR #21 for merge: keep generated connector images local and
+  ignored, retain reproducibility manifests and source, and verify fresh
+  builds without checked-in binaries. Burn image bytes/checksums unchanged.
+* Replaced the accumulated current-task narrative with a concise result
+  summary; detailed observations remain in the guide and session history.
+  The next IR harness belongs in a separate branch/PR after this merge.
+* Final review found buffered duplicate requests could queue duplicate
+  type-2 replies. Queue state now belongs to each exchange, so retries
+  replay after delivery without duplicating an already queued reply;
+  regression tests also cover sequence reuse before an older queue drains.
+
 ## 2026-09-22 — connector handoff to IR automation
 
 * Owner measures 200 mA yellow sink current with a multimeter, superseding

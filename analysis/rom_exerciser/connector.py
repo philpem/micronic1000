@@ -62,19 +62,11 @@ def fingerprint(image):
     }
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--rom', type=Path, default=DEFAULT_ROM)
-    parser.add_argument('--version', type=int, choices=(1, 2), default=1)
-    parser.add_argument('-o', '--out', type=Path)
-    args = parser.parse_args(argv)
-    source, default_out = _source_and_output(args.version)
-    if args.out is None:
-        args.out = default_out
-    image, symbols, original = build_image(args.rom, version=args.version)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+def build_manifest(image, symbols, original, version, image_name):
+    """Return build provenance for an image; bench results belong in the docs."""
+    source, _ = _source_and_output(version)
     manifest = {
-        'image': args.out.name,
+        'image': image_name,
         'purpose': 'standalone connector output/input experiment; ROM00 only',
         'checksums': fingerprint(image),
         'checksum_definition': 'unsigned byte sum modulo 2^16 or 2^24; no complement',
@@ -83,15 +75,35 @@ def main(argv=None):
         'changed_bytes': sum(a != b for a, b in zip(original, image)),
         'entry': f'ROM00:{symbols["start"]:04X}',
         'end_exclusive': f'ROM00:{symbols["end"]:04X}',
-        'hardware_validation': 'not yet run on the physical handheld',
+        'manifest_scope': 'build provenance only; physical results are documented separately',
     }
-    # Keep v1's published manifest byte-for-byte reproducible. v2 records the
-    # explicit source/version needed to distinguish its added PORT2C bit-5 key.
-    if args.version == 2:
+    if version == 2:
         manifest['version'] = 2
         manifest['assembly_source'] = source.name
+    return manifest
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--rom', type=Path, default=DEFAULT_ROM)
+    parser.add_argument('--version', type=int, choices=(1, 2), default=1)
+    parser.add_argument('-o', '--out', type=Path)
+    parser.add_argument('--manifest-out', type=Path,
+                        help='also write build provenance JSON to this explicit path')
+    args = parser.parse_args(argv)
+    _, default_out = _source_and_output(args.version)
+    if args.out is None:
+        args.out = default_out
+    image, symbols, original = build_image(args.rom, version=args.version)
+    if args.manifest_out and args.manifest_out.resolve() == args.out.resolve():
+        parser.error('--manifest-out must differ from the image path')
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    if args.manifest_out:
+        args.manifest_out.parent.mkdir(parents=True, exist_ok=True)
+    manifest = build_manifest(image, symbols, original, args.version, args.out.name)
     # Stage on the same filesystem; never expose a partially written image.
-    # Pair equality is additionally checked by the release regression test.
+    # Pinned manifests are reference evidence, never implicit build outputs.
+    # Tests compare fresh image hashes and provenance with those references.
     def publish(path, data):
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + '.',
                                          delete=False) as staged:
@@ -103,7 +115,8 @@ def main(argv=None):
             raise OSError('release staging verification failed')
         os.replace(temporary, path)
     publish(args.out, image)
-    publish(args.out.with_suffix('.json'), (json.dumps(manifest, indent=2) + '\n').encode())
+    if args.manifest_out:
+        publish(args.manifest_out, (json.dumps(manifest, indent=2) + '\n').encode())
     print(args.out.resolve())
     print(json.dumps(manifest, indent=2))
 

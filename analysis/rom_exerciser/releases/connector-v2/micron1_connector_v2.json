@@ -14,7 +14,7 @@
   "changed_bytes": 817,
   "entry": "ROM00:6000",
   "end_exclusive": "ROM00:633B",
-  "hardware_validation": "not yet run on the physical handheld",
+  "manifest_scope": "build provenance only; physical results are documented separately",
   "version": 2,
   "assembly_source": "connector_v2.asm"
 }

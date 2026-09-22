@@ -168,6 +168,21 @@ class SequenceTest(unittest.TestCase):
         self.assertEqual(seen, [0x0044])
         self.assertEqual(len(peer.requests), 2)  # both wire requests are logged
 
+    def test_unacked_duplicate_before_drain_queues_one_reply(self):
+        seen = []
+        peer = CommstarPeer(
+            link_id=LINK_ID,
+            on_request=lambda request: (seen.append(request.state), b"data")[1],
+        )
+        request = with_seq(STATE44, 0x09)
+        # `feed_tx` accepts capture streams.  If the duplicate arrives before
+        # the adapter has taken the first reply, there is still one exchange
+        # and exactly one type-2 frame to send.
+        peer.feed_tx(request + request)
+        self.assertEqual(peer.take_rx(), [peer.data_object(0x09, b"data")])
+        self.assertEqual(seen, [0x0044])
+        self.assertEqual(len(peer.requests), 2)
+
     def test_different_request_cannot_reuse_an_unacked_sequence(self):
         seen = []
         peer = CommstarPeer(
@@ -207,6 +222,23 @@ class SequenceTest(unittest.TestCase):
             peer.feed_tx(peer.expected_ack(0x01))
             peer.take_rx()
         self.assertEqual(seen, [0x0061, 0x0064])
+
+    def test_sequence_reuse_does_not_confuse_old_completion_and_new_reply(self):
+        peer = CommstarPeer(link_id=LINK_ID)
+        peer.feed_tx(STATE61)
+        peer.take_rx()                         # type-2 from lifecycle one
+        peer.feed_tx(peer.expected_ack(0x01))  # queue lifecycle one's type-4
+
+        # Start lifecycle two with the same sequence before draining the old
+        # completion, then receive a duplicate request in the same batch.
+        peer.feed_tx(STATE64 + STATE64)
+        self.assertEqual(peer.take_rx(), [COMPLETION, CONTROL_REPLY])
+
+        # Its type-2 has now left the queue, so a later lost-reply retry must
+        # replay it once.  This also proves clearing the old completion marker
+        # did not clear lifecycle two's reply marker by sequence alone.
+        peer.feed_tx(STATE64)
+        self.assertEqual(peer.take_rx(), [CONTROL_REPLY])
 
     def test_sequence_wrap_does_not_keep_a_permanent_cache(self):
         seen = []
