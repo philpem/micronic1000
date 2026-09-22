@@ -1,5 +1,17 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — both black input levels with red output
+
+* CONFIRMED (owner measurements): released black reads `2D=23h`
+  throughout E/P, E/L and E/H. Together with the previous grounded
+  `22h` readings, both input levels remain distinguishable in all three
+  tested output modes, with `CTL_LATCH_2C=00h`.
+* Recorded the completed comparison and a from-reset setup sequence in
+  the connector guide and saved the Ghidra observation bookmark. Red and
+  black provide a candidate Arduino feedback pair. Electrical interfacing,
+  pulse timing and combined IR operation remain untested; no additional
+  connector-only ROM burn is needed. No firmware changes in this update.
+
 ## 2026-09-22 — red waveform with grounded black input
 
 * CONFIRMED (owner measurements): C/SPACE restores 2A/2C=22/00. E/P

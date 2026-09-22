@@ -365,17 +365,34 @@ were supplied for these v2 comparisons.
 The sequence should produce `2A=20h`; the literal `2-` report is retained
 as an ambiguous transcription, not a verified complete output byte.
 
-**Simultaneous output and grounded input (CONFIRMED: owner measurements):**
+**Simultaneous output and input (CONFIRMED: owner measurements):**
 **C, SPACE** restores `2A=22h`, `2C=00h`. **E, P** pulses red with an
 approximately **400 ms period**. With black grounded, `2D=22h` remains
 constant under **E/P**, **E/L** and **E/H**. The low input state therefore
 remains readable with the output pulsing or held in either state. This is
 an observed period for this run, not a precision timing specification.
 
-**Next:** release black and check that `2D=23h` under **E/P**, **E/L** and
-**E/H** as well. Together with the grounded results, this tests both input
-levels across the output modes. The latest run only reports the grounded
-input; full independence and short-pulse capture are not established.
+**Released-input follow-up (CONFIRMED: owner measurements):** released
+black reads **`2D=23h` throughout E/P, E/L and E/H**. Both held input levels
+therefore remain distinguishable across all three tested red-output modes.
+
+| Red output mode | `2D`, black released | `2D`, black grounded |
+|---|---|---|
+| E/P, approximately 400 ms period | `23` | `22` |
+| E/L, held low | `23` | `22` |
+| E/H, held high | `23` | `22` |
+
+This establishes a candidate pair for Arduino feedback: red/pin 1 carries
+handheld output, and black supplies handheld input via port `2Dh` bit 0.
+To reproduce from reset, use **R, F, SPACE, C, SPACE**, verify `2A=22h`,
+`2C=00h`, then **E, P** (or E/L, E/H). No further burn is needed for this
+connector-only comparison.
+
+**Next:** integrate the mapped pair with the Arduino after choosing the
+electrical interface from the measured voltage levels. Then measure usable
+pulse timing and check coexistence with IR operation. The standalone test
+does not establish short-pulse capture, arbitrary-state independence or
+compatibility with the latch states used by the IR controller.
 
 Yellow and the other three signal contacts remain unmapped; their identities
 and any existing measurements have been requested. Only red, orange, blue,
@@ -402,8 +419,9 @@ The target is **Elegoo Uno R3**, board `arduino:avr:uno`, serial 115200 baud.
 All 13 compile-time configurations build with the actual AVR toolchain. The
 current default remains `RX_NARROW=1`, content axis 2; the README documents
 pins and mode selection. It is an IR experiment sketch, not yet a connector
-pin-mapping interface: first establish the six-contact map with the scope,
-then choose measured input/output contacts for Arduino feedback.
+pin-mapping interface. Red and black now provide a tested output/input pair
+for developing Arduino feedback; electrical interfacing, timing and combined
+IR operation remain to be implemented and checked.
 
 The IR fixes include absolute phase scheduling, timestamp-ordered edges,
 terminal stuffing, malformed-stuffing rejection and reply-window receive
