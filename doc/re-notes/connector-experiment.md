@@ -259,19 +259,25 @@ black was **released** for both readings, making `20h` the C-high idle
 baseline. Port `2Dh` bits 0 and 1 are low; this does not yet establish a
 black-contact input response.
 
-**Next measurement:** leave `2A=22h`, `2C=22h`, connect black to ground
-through 500 Ω, and report `2D` and the contact voltage. Then disconnect the
-resistor and check that `2D` returns to the released baseline `20h`. This separates configuration-dependent
-readback from a response to the contact voltage. The untested
-`CTL_LATCH_2C`-bit-5-clear configuration remains a limitation; yellow
-stimulation remains pending.
+**Owner's grounded-black follow-up:** black grounded also gives
+`2A=22h`, `2C=20h`, `2D=20h` after **R, C, SPACE**, and
+`2A=22h`, `2C=22h`, `2D=20h` after **R, B, SPACE, C, SPACE**. Thus the
+C-high released and grounded results agree in both B states. C changes the
+idle readback, but these tests have not shown a black-contact response.
+The untested `CTL_LATCH_2C`-bit-5-clear state remains a limitation.
+
+**Next measurement:** release black and select **R, B, SPACE**
+(`2A=20h`, `2C=22h`). Connect yellow through **10 kΩ to ground**, recording
+its actual voltage and `2D`. Disconnect that path, then connect yellow
+through **10 kΩ to known Vcc (orange)** and record voltage/readout again.
+Use only one resistor path at a time. This establishes two controlled levels
+on the apparently floating contact; its input/output direction remains open.
 
 From baseline `23h`, a change to `22h` means port `2Dh` bit 0 cleared; `21h`
 means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete
 byte even if it differs from these examples. `OR`/`AND` can differ briefly
 while a display window includes the transition; steady held levels should
-subsequently be visible in `2D`. Yellow stimulation is deferred until this
-first controlled observation.
+subsequently be visible in `2D`. Yellow stimulation is now the next controlled comparison.
 
 ## Scope of the image
 

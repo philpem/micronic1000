@@ -38,8 +38,9 @@ Fresh byte review exposes a diagnostic gap: v1 holds `CTL_LATCH_2C` bit 5
 high; stock barcode setup clears it before the direct input probe. Current
 keys cannot test that state. Owner now reports C high gives `2D=20h` with
 B low or high, with black released (OR/AND also 20h in the B-low report).
-Next apply the 500 Ω pull-down with 2A/2C=22/22 and check readback/recovery.
-This has not yet identified black as an input.
+Grounding black also leaves `2D=20h` with C high in both B states. No
+black-contact input response has been established. Next test yellow through
+10 kΩ to ground, then separately to Vcc, with 2A/2C=20/22 and black released.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
 

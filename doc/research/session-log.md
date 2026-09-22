@@ -1,5 +1,15 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — grounded-black C-high comparisons
+
+* Owner reports black grounded: R/C/SPACE gives 2A/2C/2D=22/20/20;
+  R/B/SPACE/C/SPACE gives 22/22/20. These match the released-black
+  readings. C affects idle readback, but black has no observed input
+  response in these configurations.
+* Next test yellow with black released, 2A/2C=20/22: 10 kΩ to ground and
+  then separately to known Vcc, recording actual pin voltage and `2D`.
+  Yellow direction and the unavailable 2Ch-bit-5-low state remain open.
+
 ## 2026-09-22 — C-high input readback
 
 * Owner reports R/C/SPACE gives `2D=OR=AND=20h`; R/B/SPACE/C/SPACE gives
