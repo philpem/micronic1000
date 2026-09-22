@@ -4,21 +4,90 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
-## Contacts and polarity
+## Connect the handheld to the Uno
 
-* Uno D7 drives an external NPN base through a resistor; emitter goes to
-  common ground and collector to black/pin 5. D7 high sinks black; D7 low
-  releases it. Add a base-emitter pull-down so reset releases the line.
-* Uno D8 senses yellow, with an external 10 kOhm pull-up to Uno 5 V.
-  Yellow low means ROM port `2Ah` bit 0 set (sink); high means release.
-  D8 is always an input. The Uno never drives yellow.
-* D5 is physical optical output A, D6 output B. Clock/data roles are
-  hypotheses selected on the Arduino. Both outputs low means silent.
-* Blue is common ground. Do not join orange handheld Vcc to Uno 5 V.
-  Red is unused by this harness; its measured 5.6 V must not enter an Uno pin.
+Use **three wires from the right-side scanner connector: blue, black and
+yellow**. Power the handheld from its batteries and the Elegoo Uno R3 from
+USB. Join their grounds, but keep their positive supply rails separate.
+The optical connection still uses the existing two IR LED channels.
 
-Validate levels and transistor orientation with the connector probe before
-connecting the harness. Yellow's measured 200 mA sink current is not a rating.
+The colours below refer to the owner's tested cable. They are not a standard
+mini-DIN colour code. Black is owner-identified pin 5; numeric pin assignments
+for blue and yellow have not been recorded. Identify those by the tested
+wires, not an assumed connector pin-numbering diagram.
+
+| Handheld scanner-connector wire | Connect to | Purpose |
+|---|---|---|
+| **Blue / ground** | **Uno GND**, and transistor emitter | Common signal reference |
+| **Black / pin 5** | **Collector** of an external NPN transistor | Uno command to handheld; transistor pulls black low |
+| **Yellow** | **Uno D8**, and one end of a **10 kOhm** resistor | Handheld ACK/START/result output |
+| **Orange / pin 3 / Vcc** | Leave disconnected and insulate | Handheld supply; do not connect to Uno 5 V |
+| **Red / pin 1** | Leave disconnected and insulate | Unused output, measured up to 5.6 V |
+| **Brown / pin 2, violet / pin 4, green / pin 7** | Leave disconnected and insulate | Unassigned contacts |
+
+Complete the Arduino-side connections:
+
+| Uno connection | Wire/component |
+|---|---|
+| **D7** | Through **10 kOhm** to transistor **base** |
+| **GND** | Transistor **emitter**, handheld **blue**, and one end of **100 kOhm** resistor |
+| Transistor **base** | Other end of the **100 kOhm** resistor |
+| **5 V** | Other end of yellow's **10 kOhm** pull-up resistor |
+| **D8** | Yellow/pull-up junction; configured as input |
+| **D5** | Existing IR LED driver/channel **A** |
+| **D6** | Existing IR LED driver/channel **B** |
+| **D2, D4** | Not required for feedback mode; optical monitoring is disabled |
+
+Wiring diagram (B, C and E mean base, collector and emitter):
+
+```text
+                 COMMAND: Uno -> handheld
+
+Uno D7 -------[10 kOhm]-------+------- B
+                             |        |  NPN transistor
+                          [100 kOhm]  C------------- Black / pin 5
+                             |        E
+Uno GND ---------------------+--------+------------- Blue / ground
+
+
+                 FEEDBACK: handheld -> Uno
+
+Uno 5 V ------[10 kOhm]-------+--------------------- Yellow
+                             |
+Uno D8 ----------------------+
+
+
+                 OPTICAL STIMULUS
+
+Uno D5 ------ existing LED driver A ---- IR light --> handheld top V24 window
+Uno D6 ------ existing LED driver B ---- IR light --> handheld top V24 window
+```
+
+The transistor drawing is a **connection diagram, not a package pinout**.
+Check the B/C/E arrangement for the actual transistor. Keep the existing IR
+LED current limiting/drivers: D5/D6 are not wired to scanner-connector pins.
+Their clock/data roles remain unknown; the USB `swap` setting reverses the
+proposed roles without changing the wiring.
+
+Assemble with power off. Remove any earlier test resistor connecting yellow
+to **orange/Vcc** or to ground: this harness instead pulls yellow up to
+**Uno 5 V** through 10 kOhm. Likewise remove the earlier black-to-ground test
+resistor. Do not connect black directly to D7; its released level comes from
+the handheld. The NPN lets the Uno sink or release black without receiving
+that voltage on D7. The 100 kOhm base-emitter resistor keeps it released
+while the Uno resets.
+
+With power applied, yellow should sit near Uno 5 V when released and near
+0 V when the handheld sinks it; verify that before connecting D8. Black
+should retain its handheld-side high level when the transistor is off.
+Use the connector-probe checks in the bench sequence below to verify the
+pull-low/release paths before running a stimulus.
+
+**Signal polarity:** D7 high turns the NPN on and pulls black low; D7 low
+releases black. Yellow low means ROM port `2Ah` bit 0 is set (sink); high
+means release through the Uno-side pull-up. D8 is always an input and never
+drives yellow. The pull-up draws about 0.5 mA when yellow is low; yellow's
+owner-measured 200 mA sink current is not a component rating.
 
 ## Command and trial timeline
 

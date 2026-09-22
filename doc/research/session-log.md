@@ -7439,3 +7439,13 @@ names renamed, 144 unplated functions plated)
   `7Eh` framing remain SUSPECTED. No semantic Ghidra changes; saved the
   current program. Operator instructions and image checksums are in
   [the feedback interface](../re-notes/ir-feedback-protocol.md).
+
+### 2026-09-22 — Make the feedback harness wiring explicit
+
+* Owner identified that the interface guide lacked buildable connection
+  instructions. Added a complete handheld/Uno wire table, NPN B/C/E diagram,
+  resistor values, separate-supply/common-ground wiring, unused contacts,
+  removal of old test pull-ups/loads, and the existing optical-head hookup.
+* Blue/yellow numeric connector pins remain unrecorded; the guide uses the
+  owner-tested colours without inventing a mini-DIN pin numbering scheme.
+  Firmware and EPROM image/checksums are unchanged.

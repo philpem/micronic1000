@@ -10,11 +10,29 @@ explicit one-shot USB commands. The matching ROM provides witness (`W`),
 forced receive (`R`), reset/probe (`P`), and receive-pending-gated receive (`G`)
 trials in one burn. See the complete [wiring, command and result guide](../../../doc/re-notes/ir-feedback-protocol.md).
 
-D7 drives black through an external NPN (high sinks, low releases); D8 senses
-yellow with an external 10 kOhm pull-up to Uno 5 V. Do not connect black
-straight to D7 or handheld Vcc to Uno 5 V. Red is unused. The existing D5/D6
-LED outputs remain physical channels A/B; `swap` selects their proposed roles.
-D2/D4 optical monitoring is not used to trigger this mode.
+### Wiring to the handheld
+
+Power the Uno from USB and the handheld from its batteries. Use the tested
+scanner cable's **blue, black and yellow** wires:
+
+| Connection | Wiring |
+|---|---|
+| Common ground | Handheld **blue** to **Uno GND** and NPN **emitter** |
+| Command to handheld | Handheld **black / pin 5** to NPN **collector** |
+| NPN drive | **D7 -> 10 kOhm -> base**; **100 kOhm base-to-emitter** |
+| Feedback from handheld | Handheld **yellow** to **D8**; **10 kOhm yellow-to-Uno-5-V** pull-up |
+| Optical stimulus | Keep existing IR LED drivers/channels **A on D5**, **B on D6**, facing the top V24 window |
+
+Leave orange/Vcc, red, brown, violet and green disconnected and insulated.
+Remove the earlier connector tests' yellow-to-orange and black-to-ground
+resistors. Do not join handheld Vcc to Uno 5 V or connect black directly to
+D7. Check the actual transistor's B/C/E pinout. Blue/yellow numeric connector
+pin assignments are not recorded; use the owner's tested wire colours.
+
+See the [complete wiring diagram and power-up checks](../../../doc/re-notes/ir-feedback-protocol.md#connect-the-handheld-to-the-uno).
+D7 high sinks black; D7 low releases it. D8 is input-only. D2/D4 optical
+monitoring is unused in feedback mode. The D5/D6 clock/data assignment is
+unknown; `swap` selects the proposed roles without rewiring.
 
 Open the serial monitor at 115200 baud, send `R`, and wait for `READY`. Then:
 
