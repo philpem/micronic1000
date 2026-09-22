@@ -11,6 +11,12 @@
 > preserves the stock loop body but shifts its first sample by 10 T and adds
 > 107 T after exit.
 
+> **Connector handoff:** three signal contacts are now mapped; see the
+> [IR automation handoff](connector-experiment.md#connector-investigation-stopping-point-and-return-to-ir).
+> Stock IR selection overwrites black's known-working input-gate settings.
+> Plan command handshakes between transactions and output markers during
+> trials; the combined harness is not yet implemented.
+
 > **Scope: hardware test plan (patched-ROM run).**
 > This page documents the patched-ROM exerciser that reads `LINK_STATUS`
 > directly — what it measures, how to burn and run it, how to decode

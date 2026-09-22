@@ -65,7 +65,11 @@ identifies black as pin 5. The connector guide records the test plan and
 scanner-role assessment: black is the barcode timing input; yellow sustained
 power/scan enable and red startup trigger/reset are SUSPECTED. Stock control
 writes sink yellow while pulsing red low, then return red high; stop releases
-yellow with red high. High-current yellow capability remains unquantified.
+yellow with red high. Owner now measures 200 mA sink current on yellow
+with a multimeter; test voltage/duration and continuous rating are not
+established. No diode paths to either rail were detected on brown/2,
+violet/4 or green/7. Log those pins as unassigned and defer further mapping
+while returning to IR.
 Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
 0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
 (CONFIRMED: owner measurements). With that pull-up, D/P then produces a
@@ -88,15 +92,19 @@ Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
 
 **Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
-The owner identifies eight contacts, power/ground known, six unknown. The
+The owner identifies eight contacts; power, ground and three signals are
+mapped, with brown/2, violet/4 and green/7 still unassigned. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
 inputs at measured electrical levels. Red/pin 1 is mapped to candidate E,
 and black to input `2Dh` bit 0 in the configurations above. Simultaneous
 red output and both held black input levels work in the tested modes. Next
-develop the Arduino electrical interface and feedback timing, then check
-coexistence with IR latch states. The remaining signal contacts and a working
-Arduino debug channel are unresolved.
+test yellow at the top-V24 shared-latch settings using R/D/P (20/21,20),
+then develop the Arduino interface and feedback timing. Fresh Link_PortSelect
+bytes clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5, so the known black
+input gate is not preserved. Plan commands between IR trials and output
+markers during them; do not change the input gate mid-transaction. The
+combined harness remains to be implemented.
 Afterwards verify the corrected Arduino waveform
 on the scope (including `emit_late_max`), then use the repaired stock hooks
 to distinguish readiness, receive and frame-validation failures. Physical

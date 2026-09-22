@@ -525,10 +525,12 @@ ROM00:14C8–14D6 also schedules it as a delayed callback.
   startup pulse and in the deasserted state. The existing tests also show
   red is not required to gate black's input in the tested configurations.
 
-The recorded yellow test used a 10 kΩ pull-up, demonstrating only about
-0.5 mA of load. The owner's high-current description has no quantified
-current or transistor identification in this record; high-current capacity
-must not become evidence for power switching without that measurement.
+**Owner's subsequent current measurement:** yellow sank **200 mA**, measured
+with a multimeter. This supersedes the earlier evidence limited to about
+0.5 mA through the 10 kΩ pull-up and supports substantial current drive.
+The test's low-state voltage and duration were not supplied; 200 mA is a
+reported bench result, not a characterised continuous or maximum rating.
+This strengthens the power-control hypothesis without proving that function.
 Open-drain-like behaviour alone does not resolve the role: dedicated
 active-low trigger inputs also exist (for example the unrelated modern
 [Zebex Z-5212 Plus manual, pin definition](https://www.zebex.com/uploads/files/Z-5212_Plus/Z-5212_Plus_UserManual.pdf)).
@@ -587,6 +589,62 @@ These are **SUSPECTED contact links**, not a three-pin/three-bit mapping.
 A negative result could reflect internal routing, different gating or an
 unused contact. Firmware alone cannot choose among brown, violet and green;
 held-level or waveform correlation, or PCB continuity, is required.
+
+## Connector investigation stopping point and return to IR
+
+The owner reports **no detectable diode paths from brown/2, violet/4 or
+green/7 to either Vcc or Vss**. Together with brown's negative input tests
+and near-zero unloaded voltage with hum, these contacts remain unassigned;
+absence of detected diode paths does not prove no connection. Record them
+and defer further pin hunting while returning to the IR experiment.
+
+The useful measured signals are now black/pin 5 input (`2Dh` bit 0),
+red/pin 1 output (`2Ah` bit 4), and yellow sink/release output (`2Ah` bit 0,
+including the owner's 200 mA sink measurement). Three signal contacts
+remain unassigned; no additional connector ROM burn is required to retain
+these results.
+
+**CONFIRMED compatibility constraint, fresh stock bytes:**
+`Link_PortSelect` at ROM00:3455–345D clears `CTL_LATCH_2A` bit 1 on both
+IR routes, preserving that latch's bits 0 and 4. For top V24, its branch at
+ROM00:347D–3487 clears `CTL_LATCH_2C` bits 0/1 and sets its bit 5.
+The other branch clears `CTL_LATCH_2C` bits 0/1/5. The caller at
+ROM00:3277–327A selects the branch using wire-ID bit 5. Consequently the
+known-working black-input state (`2Ah` bit 1 high, `2Ch` bit 5 low) is not
+preserved by normal IR selection. Do not restore the connector input gate
+in the middle of an IR transaction merely to read a command.
+
+**One remaining bridge test on the current v2 burn:** leave the 10 kΩ
+pull-up on yellow, black released, then **R, D, P**. Check `2A=20h/21h`,
+`2C=20h` and whether yellow still pulses. This tests the shared-latch bit
+settings used for top V24, with the red baseline low. It does **not** run
+or configure the IR controller and does not prove simultaneous optical
+operation. Red already responded at the reset baseline in the first bench
+run. If yellow responds here too, it is the preferred marker candidate.
+
+**Proposed next IR harness (not yet implemented):**
+
+1. Receive a test command on black while idle in the proven connector
+   configuration. Use held-level handshakes initially, not an assumed data
+   rate, and release the command before entering the IR trial.
+2. Restore/select the stock IR state. Use a mapped output for bounded
+   markers identifying the test and controller stages. Preserve other
+   latch bits through their shadows; validate electrical interfacing and
+   marker visibility in the actual IR configuration.
+3. Exercise one controlled IR stimulus and record its waveform together
+   with controller wait outcomes/receive status. Initially bracket the
+   timing-critical waits; any marker instructions added inside them must
+   have their timing cost measured and documented.
+4. Only after the IR operation completes, return to the connector input
+   state and report the result/accept the next command. Timestamp markers
+   alongside Arduino stimulus settings so results identify a specific
+   physical trial, not just an LCD screen observed afterwards.
+
+Use the corrected Arduino emitter and existing stock instrumentation as
+starting points. Command handling, marker capture and the combined ROM
+still need implementation and validation; the current connector ROM has
+no IR experiment in it. Scope-check the corrected emitter before using
+protocol acceptance/rejection to draw conclusions.
 
 ## Scope of the image
 

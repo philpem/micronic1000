@@ -1,5 +1,21 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — connector handoff to IR automation
+
+* Owner measures 200 mA yellow sink current with a multimeter, superseding
+  the earlier unquantified-current limitation. Record as a bench result,
+  not a continuous/maximum rating; low-state voltage/duration unreported.
+* Owner detects no rail-diode paths on brown/2, violet/4 or green/7.
+  Leave them unassigned and defer further connector hunting in favour of IR.
+* Fresh ROM00:3454 listing and 3277 caller confirm IR selection clears
+  `2Ah` bit 1, while top V24 sets `2Ch` bit 5; the known black-input gate
+  is not retained. Red/yellow output bits are preserved by the selector.
+* Proposed idle-phase input handshakes and in-trial output markers. One
+  existing-burn bridge test remains useful: yellow R/D/P at20/21,20.
+  This only tests shared-latch settings, not an active IR transaction.
+  Combined ROM/Arduino automation remains unimplemented; documentation
+  records the dependency rather than assuming simultaneous compatibility.
+
 ## 2026-09-22 — scanner signal roles and brown negative result
 
 * Owner reports brown/pin 2 has no effect in the requested input tests;
