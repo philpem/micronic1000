@@ -43,13 +43,14 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Next IR round:** implement command handshakes between trials and output
-markers during IR operation. Fresh `Link_PortSelect` bytes clear `2Ah`
-bit 1 on both routes and top V24 sets `2Ch` bit 5: the known black-input
-gate is not preserved. Do not change it during a live IR transaction.
-Validate electrical interfacing, timing and the corrected emitter on the
-scope, then use the repaired instruments to distinguish readiness, receive
-and frame-validation failures. The combined harness is not implemented.
+**Current IR round:** feedback-v1 implements black command handshakes, yellow
+markers, stock-order witness and bounded raw RX in one standalone ROM. Fresh
+`Link_PortSelect` bytes still clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5,
+so the harness restores the known black gate only after teardown. The canonical
+contract is [IR feedback harness interface](../re-notes/ir-feedback-protocol.md).
+Host validation is 32 ROM tests plus 2 UART tests; physical burn, electrical
+validation and scope correlation remain pending. Do not interpret raw status
+or bytes as accepted protocol data.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
@@ -57,10 +58,10 @@ software names are not physical identification. Prioritise one reusable ROM
 burn: payload, candidate framing, channel roles and timing should be adjustable
 on the USB-programmable Arduino without dismantling the handheld again.
 
-The [IR feedback automation plan](../re-notes/ir-feedback-test-plan.md) is the
-next-round starting point on `ir/automated-feedback-tests`. It specifies
-controlled silence, both LED-role assignments, idle-only black commands,
-in-trial markers and correlated LCD/scope results. No new burn image yet.
+The [IR feedback automation plan](../re-notes/ir-feedback-test-plan.md) keeps
+the control rationale and bench worksheet; its linked canonical interface
+defines the current feedback-v1 procedure. Arduino LED roles and `7Eh` remain
+SUSPECTED until bench evidence discriminates them.
 
 ---
 

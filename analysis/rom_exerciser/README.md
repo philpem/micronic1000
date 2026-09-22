@@ -1,5 +1,25 @@
 # Link-controller exerciser
 
+## Current combined feedback build
+
+**feedback-v1** is the requested standalone combined burn. Build it only to an
+explicit output path and, if wanted, an explicit manifest path:
+
+```sh
+analysis/venv/bin/python analysis/rom_exerciser/feedback.py -o /path/feedback-v1.bin \
+  --manifest-out /path/feedback-v1.json
+analysis/venv/bin/python -m pytest -q analysis/test_feedback_rom.py \
+  analysis/test_feedback_uart.py
+```
+
+The builder guards the stock ROM and writes atomically. The current result
+grammar, timings and electrical boundaries are in the
+[IR feedback harness interface](../../doc/re-notes/ir-feedback-protocol.md),
+not in historical `RX_NARROW` recipe text below. Host validation is 32 ROM and
+2 UART tests; no physical feedback-v1 bench result is claimed yet. The final
+feedback-v1 checksum manifest is generated per burn and is not a substitute
+for scope or electrical validation.
+
 ## Connector probe builds
 
 The tested connector images are generated locally; `.bin` files are ignored
@@ -28,8 +48,9 @@ physical validation, pin mappings and the handoff to the next IR experiment.
 > it does not validate a frame header. The current bit-6 hook keeps the stock
 > 620-iteration poll body but delays its first sample by 10 T and returns 107 T
 > after exit. Arduino phase generation is corrected and all 13 actual-Uno
-> configurations compile. The current requested hardware burn is the connector
-> probe v2, sum16 `9429`; follow [connector experiment](../../doc/re-notes/connector-experiment.md).
+> configurations compile. The historical connector probe v2 remains available;
+> the current requested burn is feedback-v1. Follow the
+> [IR feedback harness interface](../../doc/re-notes/ir-feedback-protocol.md).
 
 > **DO NOT REBURN `1225`, `2692` OR `1E3E`.** The verified `1225` image produced a
 > constant buzz and uniformly black LCD. The verified `2692` image reduced

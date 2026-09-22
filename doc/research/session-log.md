@@ -7411,3 +7411,31 @@ names renamed, 144 unplated functions plated)
   6 subtests passed; opt-in barcode 24 passed (including those five skips).
   Strict MkDocs build and rendered-document checks passed. Report is not
   explicitly in nav, but linked from TASKS and affected test instructions.
+
+### 2026-09-22 — Implement the one-burn IR feedback harness
+
+* Added the standalone feedback-v1 ROM, guarded reproducible builder and
+  tracked checksum manifest. W/R/P/G cover the stock-order opening witness,
+  forced raw receive, probe and pending-gated raw receive in one EPROM.
+  Black commands run only with the tested input gate; yellow marks START
+  and returns a checksummed 30-byte record. LCD and keypad controls use the
+  same trial results. Generated binaries remain untracked.
+* Added default Uno feedback mode to the existing sketch directory: explicit
+  silent/one-stimulus requests, USB-selected LED roles and candidate bytes,
+  protected black drive, yellow UART receive, timeouts and cancellation.
+  Added a POSIX serial batch logger that preserves raw records and stops
+  without replaying failed trials. Existing optical modes remain available.
+* Review corrected UART cadence, result timeout, payload-buffer capacity,
+  early data-edge scheduling and a stale final port-2Dh sample. Raw stock
+  receive DE is retained without equating it to a physical frame count.
+* Validation: 201 tests and 5 subtests passed across the focused IR suite,
+  including executed-ROM tests, independent UART decoding at nominal
+  1200 baud and receiver clocks offset by +/-2%, Arduino state-machine
+  integration and existing IR regressions. The actual Uno feedback build
+  uses 9,630 flash bytes and 845 static SRAM bytes; all 13 legacy build
+  configurations also compile. Strict documentation/render checks pass.
+* Physical feedback/IR coexistence remains untested. Owner-confirmed
+  connector mappings are reused; LED clock/data assignments and receive
+  `7Eh` framing remain SUSPECTED. No semantic Ghidra changes; saved the
+  current program. Operator instructions and image checksums are in
+  [the feedback interface](../re-notes/ir-feedback-protocol.md).

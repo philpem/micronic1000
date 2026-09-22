@@ -16,6 +16,14 @@ Use the Elegoo Uno R3 target (`arduino:avr:uno`). Large tool downloads and
 build outputs belong in the ignored disk-backed `.cache/ir-arduino/`, not
 `/tmp` (tmpfs on the owner's machine).
 
+The current combined burn is **feedback-v1**. Build it explicitly with
+`analysis/venv/bin/python analysis/rom_exerciser/feedback.py -o PATH` and use
+the [IR feedback harness interface](../doc/re-notes/ir-feedback-protocol.md)
+for the black-command, yellow-UART and result-record contract. Its ROM (26)
+and UART (2) host checks pass; it has not yet received physical bench
+validation. The legacy `RX_NARROW` material remains experimental evidence,
+not feedback-v1's default procedure.
+
 ## IR scope-capture decoders
 
 * `scope_ir_decode.py` recovers the analogue handheld waveform in the
