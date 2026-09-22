@@ -440,10 +440,11 @@ output behaviour.
    controls `CTL_LATCH_2A` bit 0; expect `2A=22h/23h`, `2C=00h`.
    **Completed:** the waveform and sink/release polarity are recorded
    above. **D, L** and **D, H** still allow numeric held voltage measurements.
-3. **Next, pull-down check:** move the 10 kΩ resistor from orange/Vcc
-   to blue/GND (one resistor path at a time). Compare **D/L**, then **H**.
-   Near-ground voltage in both states would support the reported release
-   behaviour in L; a driven high level in L would contradict it.
+3. **Pull-down check completed (CONFIRMED: owner measurements):** with
+   the 10 kΩ resistor moved from orange/Vcc to blue/GND, yellow remains
+   **near 0 V in both D/L and D/H**. This supports release rather than
+   high drive in L under this load. Exact voltages were not supplied;
+   no transistor topology is established.
 4. **Other red baseline, still untested:** restore the 10 kΩ pull-up,
    then **E, SPACE, D, P** retains E high and pulses D;
    expect `2A=32h/33h`, `2C=00h`. Record whether yellow still responds.

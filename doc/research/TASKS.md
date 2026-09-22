@@ -63,8 +63,10 @@ roughly 400 ms yellow waveform while 2A=22h/23h and 2C=00h. Owner reports
 D/H pulls yellow low and D/L floats it: **yellow maps to `CTL_LATCH_2A`
 bit 0 as a sink/release output in this configuration (CONFIRMED: owner
 measurements)**. Internal topology and scanner-side purpose remain unknown.
-Next 10 kΩ pull-down with D/L and D/H checks for high drive; E-high output
-comparison remains available. No new ROM is required.
+The 10 kΩ pull-down follow-up gives yellow near 0 V in both D/L and D/H
+(CONFIRMED: owner measurements), supporting release rather than high drive
+in L under this load. Next restore the pull-up and compare E retained high
+with D/P (2A=32h/33h, 2C=00h). No new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.

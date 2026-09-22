@@ -1,5 +1,15 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow pull-down comparison
+
+* CONFIRMED (owner measurements): with 10 kΩ from yellow to ground,
+  yellow remains near 0 V in both D/L and D/H. This supports the reported
+  release rather than high drive in L under this load; exact voltages and
+  internal transistor topology remain unestablished.
+* Next restore the 10 kΩ pull-up, then E/SPACE/D/P for 2A=32h/33h,
+  2C=00h: compare yellow output with red retained high. Updated the guide,
+  task list and Ghidra observation bookmark; no firmware changes.
+
 ## 2026-09-22 — yellow output correlation and polarity
 
 * CONFIRMED (owner measurements): with a 10 kΩ pull-up, D/P alternates
