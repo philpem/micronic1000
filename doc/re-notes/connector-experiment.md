@@ -397,8 +397,8 @@ does not establish short-pulse capture, arbitrary-state independence or
 compatibility with the latch states used by the IR controller.
 
 Yellow is mapped below. The remaining contacts are owner-identified as
-**pin 2 brown, pin 4 violet and pin 7 green**; their functions and electrical
-measurements remain unknown.
+**pin 2 brown, pin 4 violet and pin 7 green**; their functions remain
+unknown. Brown's first negative tests are recorded below.
 
 ## Yellow: sink/release output and remaining tests
 
@@ -476,6 +476,72 @@ of these bytes identifies yellow or establishes a scanner-side purpose.
 Tracing yellow's PCB connection or observing a working scanner would help
 establish the electrical circuit or scanner-side purpose; neither follows
 from the output-bit mapping alone.
+
+## Interpreting the scanner controls
+
+The owner identifies **black as pin 5** and proposes black=data,
+red=scanner enable, yellow=power control/scan trigger. Brown/pin 2 has no
+observed input effect in the requested 22h/00h and 20h/02h comparisons;
+its unloaded voltage is near zero with AC hum. These are owner observations.
+Brown appearing floating is **SUSPECTED**, not proof of an unused contact
+or absence of every possible bias path. Exact driven voltages and input
+bytes were not supplied for brown.
+
+**Black/pin 5 as barcode data is CONFIRMED by the combined evidence:**
+the owner mapped black to `EXTBUS_EDGE` bit 0, and the stock capture loop
+reads precisely that bit at ROM00:13CB–13CD and 13ED–13F2 to time signal
+levels before passing widths to the decoder. This identifies a barcode
+level/timing input; actual scanner waveforms have not yet been captured.
+
+The selector-`2Ah` control sequence provides a useful distinction between
+red and yellow. The saved selector is a device-route value, not a port read
+or the input-classification result. Fresh listing at ROM00:1500–1505 selects
+this branch; ROM00:12FF calls it before reading the data input at 1302.
+
+| Stage | `CTL_LATCH_2A` bit 0 / yellow | `CTL_LATCH_2A` bit 4 / red | Evidence |
+|---|---|---|---|
+| Stop/deassert state | Clear: released | Set: high | ROM00:14E8–14F2 |
+| Begin activation | Set: sinks low | Clear: low | ROM00:1537–1541 |
+| After startup delay | Remains set: sinks low | Set: high | ROM00:1543–1550 |
+| Later stop/deassert | Clear: released | Remains set: high | ROM00:14DE–14F5 |
+
+The startup red-low interval is approximately **7.65 ms**, calculated from
+ROM00:35CE's delay loop and intervening instructions at the owner-stated
+3.6864 MHz clock, assuming no wait states (28,218 T-states between output
+writes). This is a calculated stock-ROM interval, not the diagnostic's
+measured approximately 400 ms waveform period. Yellow is not released by
+the end of this short red pulse; the deassert routine releases it later.
+The polling path can call that routine at ROM00:130B and 134E;
+ROM00:14C8–14D6 also schedules it as a delayed callback.
+
+**SUSPECTED roles, consistent with that sequence:**
+
+- Yellow is a sustained active-low scan enable/trigger or a power-control
+  signal. Its assertion at activation and release at stop fit the owner's
+  power/scan hypothesis. They do not distinguish a logic enable from an
+  actual supply/return switch.
+- Red is a startup pulse, potentially trigger/reset or temporary inhibit.
+  A simple level-held enable is a weaker fit: red is high both after the
+  startup pulse and in the deasserted state. The existing tests also show
+  red is not required to gate black's input in the tested configurations.
+
+The recorded yellow test used a 10 kΩ pull-up, demonstrating only about
+0.5 mA of load. The owner's high-current description has no quantified
+current or transistor identification in this record; high-current capacity
+must not become evidence for power switching without that measurement.
+Open-drain-like behaviour alone does not resolve the role: dedicated
+active-low trigger inputs also exist (for example the unrelated modern
+[Zebex Z-5212 Plus manual, pin definition](https://www.zebex.com/uploads/files/Z-5212_Plus/Z-5212_Plus_UserManual.pdf)).
+That example establishes plausibility only, not a Micronic pin assignment.
+
+**Discriminating observations:** trace yellow's driver and the original
+scanner connection, or observe scanner supply current/illumination while
+holding yellow asserted with red high, then applying the short red-low
+pulse. A supply/return connection supports power switching; an already
+powered scanner starting acquisition supports a control/trigger role.
+Capture black at the same time to relate the control sequence to data.
+Without the original scanner, retain the measured signal names and test
+violet/4 and green/7 next; brown's negative result is not an NC assignment.
 
 ## Remaining contacts: brown 2, violet 4, green 7
 

@@ -75,7 +75,7 @@ character blink (block). Sun page 2 remains a one-key override.
 
 ## Side port
 
-There is an 8-contact mini-DIN-like port on the right side intended for a barcode scanner (owner clarification, 2026-09-22). Power and ground are already identified, leaving six unknown contacts. This supersedes the earlier five-pin description; the signal-contact pinout remains to be measured.
+There is an 8-contact mini-DIN-like port on the right side intended for a barcode scanner (owner clarification, 2026-09-22). This supersedes the earlier five-pin description. Owner bench tests identify orange/pin 3 as Vcc, blue as ground, black/pin 5 as the port-2Dh bit-0 input, red/pin 1 as the port-2Ah bit-4 output, and yellow as the port-2Ah bit-0 sink/release output in the tested control states. Brown/pin 2, violet/pin 4 and green/pin 7 remain unassigned. See [connector measurements and control conditions](doc/re-notes/connector-experiment.md); scanner-side power/trigger roles remain hypotheses.
 
 ## Power supply
 

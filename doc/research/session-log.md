@@ -1,5 +1,24 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — scanner signal roles and brown negative result
+
+* Owner reports brown/pin 2 has no effect in the requested input tests;
+  unloaded voltage is near zero with AC hum. Recorded possible floating
+  behaviour without declaring NC. Owner identifies black as pin 5.
+* Fresh capture and caller listings tie black's measured `2Dh` bit-0
+  mapping to barcode edge timing. Fresh selector-2Ah control listings
+  establish yellow asserted/red low, then yellow asserted/red high;
+  stop releases yellow and leaves red high. Red's calculated low pulse
+  is about 7.65 ms at 3.6864 MHz without wait states.
+* Yellow power/scan enable and red trigger/reset are hypotheses fitting
+  that sequence; simple red level-enable and yellow high-current capacity
+  are not established. Defined scanner-current/data and PCB-trace tests
+  to discriminate. Updated hardware summary and barcode reference links.
+* Independent review supports the bounded conclusions and timing. Removed
+  five unsupported Ghidra beep/sounder EOL interpretations at the control
+  writes, replacing them with pulse mechanics and measured contact behaviour.
+  Saved Ghidra; before/after function snapshots are identical.
+
 ## 2026-09-22 — remaining scanner contacts and register candidates
 
 * Owner identifies pin 2 brown, pin 4 violet and pin 7 green as the

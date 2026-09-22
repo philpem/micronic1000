@@ -58,8 +58,14 @@ input/output comparison.
 Owner identifies the remaining contacts as pin 2 brown, pin 4 violet and
 pin 7 green; functions remain unknown. Fresh ROM review prioritises `2Dh`
 bit 1 (input classification) and `2Ch` bits 0/1 (programmed pulse/control)
-as unassigned candidates, not physical mappings. The connector guide lists
-both 22/00 and 20/02 input comparisons and F-low A/B output tests.
+as unassigned candidates, not physical mappings. Brown has no observed
+input effect in the requested 22/00 and 20/02 tests, and unloaded voltage
+near zero with AC hum (owner report); no NC assignment follows. Owner
+identifies black as pin 5. The connector guide records the test plan and
+scanner-role assessment: black is the barcode timing input; yellow sustained
+power/scan enable and red startup trigger/reset are SUSPECTED. Stock control
+writes sink yellow while pulsing red low, then return red high; stop releases
+yellow with red high. High-current yellow capability remains unquantified.
 Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
 0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
 (CONFIRMED: owner measurements). With that pull-up, D/P then produces a
