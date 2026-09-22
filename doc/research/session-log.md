@@ -7543,3 +7543,18 @@ names renamed, 144 unplated functions plated)
 * Routine reports need full TRIAL/RESULT/ERROR lines, not duplicated LCD
   transcription. Request LCD only for mismatch, missing serial result, or
   display debugging.
+
+### 2026-09-23 — Repeat stimulus ID 4 and clipped scope view
+
+* Owner supplied successful trial 4 (valid 30-byte checksum), followed by
+  repeated ID-4 command rejections despite R. Explained that R preserves
+  the last accepted host ID; the final log is READY and next ID is 5.
+* Same bit-4-pass/arm/bit-6-timeout outcome; probe/before/after A0h/80h/C8h.
+  Emission dispatch again START+7044 us, interval 1852 us, maximum event
+  lateness again 110 us. Preserved complete TRIAL/RESULT lines in guide.
+* Owner initially reported apparent D6 onset before D5 with activity
+  off-screen, then identified incorrect scope labels. Withdraw the apparent
+  physical reversal. Pulse timing remains unverified: requested per-bit
+  data lead is 30 us, while the D5 train starts about 702 us before D6.
+  Next repeat ID 5 captures both with corrected labels, single-shot D6
+  trigger and pre-trigger. No code change.

@@ -57,9 +57,13 @@ LINK_STATUS bit-4 poll passed, arm executed, bit-6 poll timed out. Raw
 probe/before/after status is A0h/80h/C8h; LCD agrees. Matched X stimulus
 (host ID 3) returned valid feedback with the same poll/arm/timeout outcome;
 probe/before/after A0h/C0h/C8h. **OPEN timing concern:** Uno reports maximum
-event lateness 110 us against a 122 us cell. Next repeat identical X settings
-as ID 4 with D5/D6 scope capture; do not interpret this as a clean negative
-framing/LED-role result until the emitted waveform is checked.
+event lateness 110 us against a 122 us cell, repeated in successful ID 4.
+The owner corrected wrongly labelled scope channels; the apparent
+D6-before-D5 onset is withdrawn. Pulse timing remains OPEN. Next ID 5:
+same settings, single-shot D6
+trigger with pre-trigger covering the expected earlier D5 lead clocks.
+Do not interpret this as a clean negative framing/LED-role result until the
+emitted waveform is checked. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

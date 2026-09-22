@@ -536,6 +536,47 @@ These are requested timings, not yet measured outputs or confirmed handheld
 receive conventions. Record first and later pulse spacing/widths separately,
 plus the full serial result. Keep placement/settings fixed for this repeat.
 
+## Stimulus repeat, host ID 4 — 2026-09-23
+
+**CONFIRMED (owner report):** after R/SYNC/READY, trial 4 completed:
+
+```text
+TRIAL id=4 mode=W kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=4 rom_seq=4 mode=1 err=6 ack_us=1083669104 release_us=1083769104 start_us=1083854008 emit_start_us=1083861052 emit_end_us=1083862904 emit_late_max=110 raw=A55A0101040006A080C810000100000000000000000000000000220023B7
+READY
+```
+
+Independent decode: 30 bytes, checksum zero; bit-4 poll 10h, arm 1, bit-6
+poll 00h/error 6; probe/before/after A0h/80h/C8h. Final latch/input fields
+remain 22h/00h/23h. No RX. Logged hold 100 ms, release/START 84.904 ms,
+emission dispatch START+7044 us, emission interval 1852 us, maximum lateness
+again 110 us. This repeats the timing concern without identifying its edge.
+
+The owner initially reported D6 appeared to begin before D5, with activity
+extending off the left side of the scope display, then identified incorrect
+scope channel labels. **Correction:** withdraw the apparent pin-order
+reversal; it is not evidence that the sketch drives the channels backwards.
+This correction does not establish pulse widths or resolve the 110 us timing
+concern. In the selected software roles, individual D6 data edges are
+requested 30 us before their paired D5 clocks; the five lead cells plus
+initial zero of 7Eh request the start of the D5 train about 702 us before
+the first D6 rising edge. Check first and later pulses in a complete capture
+with corrected channel labels.
+
+Following successful trial 4, repeated R/SYNC/READY followed by ID 4 produced
+`ERROR id=4 reason=command`, as expected: R preserves the last accepted host
+ID. The last supplied log ends at READY; the next usable ID is 5.
+
+Next capture: CH1 on Uno header D5, CH2 on D6, common ground; single-shot
+rising-edge trigger on D6 at about 2.5 V, 200 us/div with 50% pre-trigger.
+Arm before sending the same command with ID 5. This should include the
+intended earlier D5 lead clocks and later data; if either end is clipped,
+increase the capture span. Keep the waveform and full serial result.
+
+```text
+T 5 W X 0 7E 1 0 0 -2 5 7000 -
+```
+
 ## Validation and limits
 
 Automated checks execute the assembled ROM with simulated port reads,
