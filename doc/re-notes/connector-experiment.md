@@ -365,14 +365,17 @@ were supplied for these v2 comparisons.
 The sequence should produce `2A=20h`; the literal `2-` report is retained
 as an ambiguous transcription, not a verified complete output byte.
 
-**Next — simultaneous input/output:** press **C, SPACE** again and verify
-`2A=22h`, `2C=00h`. Then press **E, P**. The selected `CTL_LATCH_2A` bit 4
-should pulse red, with the displayed output alternating `2A=22h/32h` and
-`2C=00h` retained. Compare black released/high versus low while observing
-red. Record whether `2D=23h/22h` still follows black in both red states.
-Use **L** and **H** on E for held output states if the pulsed display makes
-this hard to distinguish. This tests simultaneous operation; it is not yet
-established by the separate input and output observations.
+**Simultaneous output and grounded input (CONFIRMED: owner measurements):**
+**C, SPACE** restores `2A=22h`, `2C=00h`. **E, P** pulses red with an
+approximately **400 ms period**. With black grounded, `2D=22h` remains
+constant under **E/P**, **E/L** and **E/H**. The low input state therefore
+remains readable with the output pulsing or held in either state. This is
+an observed period for this run, not a precision timing specification.
+
+**Next:** release black and check that `2D=23h` under **E/P**, **E/L** and
+**E/H** as well. Together with the grounded results, this tests both input
+levels across the output modes. The latest run only reports the grounded
+input; full independence and short-pulse capture are not established.
 
 Yellow and the other three signal contacts remain unmapped; their identities
 and any existing measurements have been requested. Only red, orange, blue,

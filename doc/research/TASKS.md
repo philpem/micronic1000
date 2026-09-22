@@ -49,8 +49,11 @@ with `2D=23h` for black floating/high and `22h` for black low.
 inversion at 2A=22h and 2C=00h/02h.** `CTL_LATCH_2C` bit 1 need not be high
 for this response; internal gating remains unresolved. Further C/SPACE
 produces no black response (`2D=23h`), but the owner typed `2A=2-`, not a
-complete hex byte; expected 20h remains unverified for that report. Next
-restore/verify 22/00 and use E/P to test red pulsing while reading black.
+complete hex byte; expected 20h remains unverified for that report.
+Owner then confirms C/SPACE restores 22/00. E/P pulses red at roughly
+400 ms per period, and grounded black reads `2D=22h` under E/P, E/L and
+E/H (CONFIRMED: owner measurements). Next release black and verify `23h`
+in all three modes to complete the simultaneous input/output comparison.
 The other three contacts' identities/measurements have also been requested.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
@@ -61,8 +64,10 @@ The owner identifies eight contacts, power/ground known, six unknown. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
 inputs at measured electrical levels. Red/pin 1 is mapped to candidate E,
-and black to input `2Dh` bit 0 in the configurations above. The remaining signal contacts, simultaneous input/output
-operation and an independent debug channel are unresolved.
+and black to input `2Dh` bit 0 in the configurations above. Simultaneous
+red output and grounded-black input now work in the tested modes; released
+black remains to be checked across those modes. The remaining signal
+contacts and an independent debug channel are unresolved.
 Afterwards verify the corrected Arduino waveform
 on the scope (including `emit_late_max`), then use the repaired stock hooks
 to distinguish readiness, receive and frame-validation failures. Physical

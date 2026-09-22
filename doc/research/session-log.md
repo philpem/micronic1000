@@ -1,5 +1,16 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — red waveform with grounded black input
+
+* CONFIRMED (owner measurements): C/SPACE restores 2A/2C=22/00. E/P
+  pulses red at approximately 400 ms per period. With black grounded,
+  `2D=22h` remains constant under E/P, E/L and E/H.
+* This establishes simultaneous output operation and a readable low
+  input in these modes. Next release black and check `2D=23h` under
+  each mode; full independence and short-pulse capture remain untested.
+* Recorded the observations in the connector guide and Ghidra. No ROM
+  or Arduino changes; the existing v2 burn supports the next comparison.
+
 ## 2026-09-22 — black contact input mapping in v2
 
 * CONFIRMED (owner measurements): at 2A/2C=22/02, black low changes
