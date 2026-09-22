@@ -31,10 +31,10 @@ OPEN. Emulator byte queues do not settle them.
 
 | Contact | Mapping / result |
 |---|---|
-| Orange/pin 3; blue | Vcc; ground respectively |
+| Orange/pin 3; blue/pin 8 | Vcc; ground respectively |
 | Black/pin 5 | Barcode timing input, `2Dh` bit 0; working gate has `2Ah` bit 1 high and `2Ch` bit 5 low |
 | Red/pin 1 | Non-inverted output, `2Ah` bit 4; reported high 5.6 V |
-| Yellow | Sink/release output, `2Ah` bit 0; owner measured 200 mA sink current, not a characterised rating |
+| Yellow/pin 6 | Sink/release output, `2Ah` bit 0; owner measured 200 mA sink current, not a characterised rating |
 | Brown/2, violet/4, green/7 | Unassigned; no owner-detected diode paths to either rail. Brown's held-input tests produced no effect. Further mapping deferred. |
 
 Both black input levels are readable while red pulses and while yellow
@@ -48,9 +48,13 @@ markers, stock-order witness and bounded raw RX in one standalone ROM. Fresh
 `Link_PortSelect` bytes still clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5,
 so the harness restores the known black gate only after teardown. The canonical
 contract is [IR feedback harness interface](../re-notes/ir-feedback-protocol.md).
-Host validation is 32 ROM tests plus 2 UART tests; physical burn, electrical
-validation and scope correlation remain pending. Do not interpret raw status
-or bytes as accepted protocol data.
+Host validation includes 32 ROM tests and 2 UART tests. **CONFIRMED (owner
+bench report, 2026-09-23):** feedback-v1 boot and the first direct-TTL silent
+P request passed: sequence 1/error 0, valid 30-byte result checksum, status
+C0h, LCD agreement, and return to READY. See the [raw bench record](../re-notes/ir-feedback-protocol.md#first-hardware-result-2026-09-23).
+Next: silent W witness (host ID 2), then paired stimulus trials. Active IR
+coexistence and scope correlation remain pending; raw status is not protocol
+acceptance.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

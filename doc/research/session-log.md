@@ -7487,3 +7487,17 @@ names renamed, 144 unplated functions plated)
   both feedback variants use 845 static SRAM bytes.
 * ROM source, image and checksums are unchanged. No further EPROM burn is
   needed if feedback-v1 is already installed. Documentation checks passed.
+
+### 2026-09-23 — First direct-TTL feedback transaction on hardware
+
+* CONFIRMED (owner report): feedback-v1 boot/LCD banner and Arduino direct
+  TTL startup/resync succeed. Silent P trial ID 1 returns ROM sequence 1,
+  mode 3/error 0, then READY. Preserved complete serial result and LCD rows
+  in the feedback interface guide.
+* Independently decoded 30 bytes and verified the zero-sum check byte. Probe
+  and before/after status are C0h; witness polls FFh/not run; TX arm and RX
+  fields zero. Final 2Ah=22h, 2Ch=00h, 2Dh=23h agree with the display.
+  Logged ACK/release interval is 500 ms; release/START interval is 80 ms.
+* One command/result round trip is established; active IR coexistence,
+  physical LED roles and receive framing remain unproven. Next test is the
+  silent W witness, ID 2. Recorded the owner result in Ghidra and saved.

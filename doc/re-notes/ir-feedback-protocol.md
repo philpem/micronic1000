@@ -378,6 +378,54 @@ Open `m1000_ir_probe.ino`; the neighbouring `feedback_harness.h` is required.
 Select Arduino Uno / Elegoo Uno R3. The default build is feedback mode;
 remove old compile-time sweep flags when compiling this experiment.
 
+## First hardware result — 2026-09-23
+
+**CONFIRMED (owner bench report):** feedback-v1 boots on the handheld,
+and the Uno reports `BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command`.
+Serial `R` produces `SYNC` and a fresh `READY`. The first silent probe
+completed and returned to `READY`:
+
+```text
+T 1 P S 0 -- 0 0 0 -2 0 0 -
+TRIAL id=1 mode=P kind=S swap=0 flag=-- stuff=0 close=0 pol=0 phase=-2 lead=0 delay_us=0 cell_us=122 order=MSB payload=-
+RESULT id=1 rom_seq=1 mode=3 err=0 ack_us=68872424 release_us=69372424 start_us=69452424 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0103010000C0C0C0FFFF000000000000000000000000000022002379
+READY
+```
+
+Owner-reported LCD:
+
+```text
+M3 S0001 E00 BC0AC0
+Q=C0FFFF00000000
+D00=0000000000000000
+A22C00I23
+```
+
+Decoded independently from the supplied hex: exactly 30 bytes, byte sum
+modulo 256 is zero; sequence 1, probe mode 3, diagnostic error 0. Probe,
+before and after `LINK_STATUS` values are all C0h. The two witness poll
+fields are FFh (not run), the TX-arm flag is zero, and RX return/count/preview
+fields are zero (RX not run). Final latch values are `2Ah=22h`, `2Ch=00h`,
+with raw `2Dh=23h`; all agree with the LCD.
+
+The logged ACK-to-black-release interval is 500,000 us, matching P mode;
+release-to-START is 80,000 us, consistent with the 30 ms release check plus
+50 ms guard. These are Arduino observation times, not a scope measurement.
+The zero emission timestamps are consistent with the selected silent mode.
+This demonstrates one successful direct-TTL command and yellow result
+transaction through the probe/reset/select path. It does not establish IR
+receive framing, LED roles, or coexistence with active TX/RX trials.
+
+Next run the silent W witness, host ID 2, before its paired stimulus:
+
+```text
+T 2 W S 0 7E 1 0 0 -2 5 7000 -
+```
+
+Retain the full result even if it reports a ROM witness timeout. W performs
+the handheld's transmit-opening sequence; `S` means the Arduino sends no
+optical response. It is not a promise that the handheld emits no IR.
+
 ## Validation and limits
 
 Automated checks execute the assembled ROM with simulated port reads,
@@ -389,8 +437,8 @@ The ROM UART cell measured 3067 Z80 T-states against nominal 3072; decoding
 also passes at receiver clock offsets of plus/minus 2 percent.
 
 The feedback build and all 13 legacy configurations compile for the Uno.
-Physical connector/IR coexistence, the feedback link on this board and actual
-IR reception still require the bench sequence above. `7Eh` and the physical
+The first direct-TTL silent probe passed on hardware as recorded above.
+Feedback during active IR trials and actual IR reception remain untested. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make
 this a diagnostic environment, not an exact replay of the running OS.

@@ -46,7 +46,9 @@ calling any of them accepted.
 
 ## Electrical boundary
 
-The combined electrical interface is still to be designed and validated. Red
+The combined electrical interface has direct-TTL and NPN options documented
+in the canonical interface guide. One direct-TTL silent probe has passed;
+active IR coexistence remains untested. Red
 has measured as high as 5.6 V, so it must not connect directly to an Uno input.
 The proposed black command path uses a protected open-drain pull-low/release interface,
 validated first at the connector with actual voltage and current measured.
@@ -66,8 +68,11 @@ accepted protocol frame.
 The Uno configuration remains USB-selected hypothesis input. The legacy
 `RX_NARROW` sweep records are historical evidence, not feedback-v1's trial
 grammar. The host checks currently cover the ROM (32 tests) and result UART
-timing/decoding (2 tests). A physical burn, electrical checks, scope capture
-and all protocol conclusions remain pending.
+timing/decoding (2 tests). The owner completed the first hardware boot and
+direct-TTL silent P transaction on 2026-09-23; its valid result and LCD agree.
+See the [raw bench record](ir-feedback-protocol.md#first-hardware-result-2026-09-23).
+Active IR trials, scope correlation and receive protocol conclusions remain
+pending.
 
 ## Original design, superseded by feedback-v1
 
@@ -96,7 +101,7 @@ output transitions, scheduler lateness or protocol acceptance.
 The ROM accepts the bounded black pulse encoding defined in the
 [canonical interface](ir-feedback-protocol.md) only between trials. After
 ordered stock teardown it restores `2A` bit 1 high and `2C` bit 5 low before
-permitting the protected Uno open-drain command. A physically stuck-low black
+permitting the selected Uno direct-TTL or NPN command interface. A physically stuck-low black
 input prevents arming after the Uno releases its driver.
 Record the complete `2A`/`2C` values, raw `2D`, command result and dwell time.
 The concrete release, START and trial sequencing is defined only by the

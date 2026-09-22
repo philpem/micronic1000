@@ -16,7 +16,9 @@ The builder guards the stock ROM and writes atomically. The current result
 grammar, timings and electrical boundaries are in the
 [IR feedback harness interface](../../doc/re-notes/ir-feedback-protocol.md),
 not in historical `RX_NARROW` recipe text below. Host validation is 32 ROM and
-2 UART tests; no physical feedback-v1 bench result is claimed yet. The final
+2 UART tests. The owner completed the first direct-TTL silent P probe on
+2026-09-23: valid result, LCD agreement and READY. Active IR testing remains
+pending; see the raw bench record in the linked interface guide. The final
 feedback-v1 checksum manifest is generated per burn and is not a substitute
 for scope or electrical validation.
 
