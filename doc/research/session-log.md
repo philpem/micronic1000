@@ -1,5 +1,21 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — black contact input mapping in v2
+
+* CONFIRMED (owner measurements): at 2A/2C=22/02, black low changes
+  `2D=23h` to `22h`; yellow high/low has no effect. At 22/00, black
+  floating/high gives `23h`, black low gives `22h`. Black therefore maps
+  to port `2Dh` bit 0 without inversion in these two configurations.
+* `CTL_LATCH_2C` bit 1 need not be high for this response. Previous
+  no-response results remain valid for their recorded configurations;
+  they did not rule out black as an input. Gate topology remains unknown.
+* Independent evidence review approved the configuration-bound mapping.
+  Added a tested-state matrix to the guide. Further C/SPACE gives no
+  black response (`2D=23h`), but the literal `2A=2-` report is ambiguous;
+  expected 20h is not recorded as a verified measurement. Next restore
+  and verify 22/00, then E/P to test red pulsing while reading black.
+  No ROM change.
+
 ## 2026-09-22 — v2 bit-5-low physical comparison
 
 * Owner reports R/F/SPACE/B/SPACE gives 2A/2C/2D=20/02/23 on v2, with

@@ -38,14 +38,21 @@ Fresh byte review exposes a diagnostic gap: v1 holds `CTL_LATCH_2C` bit 5
 high; stock barcode setup clears it before the direct input probe. V1
 keys cannot test that state. Owner now reports C high gives `2D=20h` with
 B low or high, with black released (OR/AND also 20h in the B-low report).
-Grounding black also leaves `2D=20h` with C high in both B states. No
-black-contact input response has been established. Yellow subsequently
-measures 0 V at blue/GND and 5.3 V at orange/Vcc, both with `2D=23h` under
+Grounding black also leaves `2D=20h` with C high in both B states in v1.
+Yellow subsequently measures 0 V at blue/GND and 5.3 V at orange/Vcc, both with `2D=23h` under
 R/B/SPACE. V2 now exposes `CTL_LATCH_2C` bit 5 low. Owner confirms
 R/F/SPACE/B/SPACE gives 2A/2C/2D=20/02/23, with no `2D` response to
-black/yellow high/low. Next C/SPACE gives 2A/2C=22/02 for the remaining
-mode comparison. The other three contacts' identities/measurements have
-also been requested. V1 remains preserved.
+black/yellow high/low. Subsequent C/SPACE gives 22/02: black low changes
+`2D=23h` to `22h`; yellow high/low has no effect. Then B/SPACE gives 22/00,
+with `2D=23h` for black floating/high and `22h` for black low.
+**CONFIRMED (owner measurements): black controls port `2Dh` bit 0 without
+inversion at 2A=22h and 2C=00h/02h.** `CTL_LATCH_2C` bit 1 need not be high
+for this response; internal gating remains unresolved. Further C/SPACE
+produces no black response (`2D=23h`), but the owner typed `2A=2-`, not a
+complete hex byte; expected 20h remains unverified for that report. Next
+restore/verify 22/00 and use E/P to test red pulsing while reading black.
+The other three contacts' identities/measurements have also been requested.
+V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
 
@@ -53,8 +60,9 @@ Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 The owner identifies eight contacts, power/ground known, six unknown. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
-inputs at measured electrical levels. Red/pin 1 is now mapped to candidate E;
-the remaining signal contacts and an independent debug channel are unresolved.
+inputs at measured electrical levels. Red/pin 1 is mapped to candidate E,
+and black to input `2Dh` bit 0 in the configurations above. The remaining signal contacts, simultaneous input/output
+operation and an independent debug channel are unresolved.
 Afterwards verify the corrected Arduino waveform
 on the scope (including `emit_late_max`), then use the repaired stock hooks
 to distinguish readiness, receive and frame-validation failures. Physical

@@ -1,7 +1,7 @@
 # Connector experiment — outputs and input together
 
 The target is the owner's eight-contact right-side scanner connector. Power
-and ground are already known; six contacts remain to be mapped. This image
+and ground were already known at the start; six contacts required mapping. This image
 provides manual port control without the barcode API or background OS code.
 It continuously samples `EXTBUS_EDGE` (port `2Dh`) while generating selected
 output patterns and showing raw input bytes on the LCD.
@@ -13,8 +13,9 @@ reproducing the measurements below.
 
 **Hardware status:** v1 boots on the owner's handheld, with heartbeat,
 contrast and a non-inverted output on red/pin 1 established. The owner has
-now run v2: its F-low setup reaches `2A=20h`, `2C=02h`, with `2D=23h`
-unchanged by black/yellow high/low tests. Input mapping remains open. Only ROM00
+now mapped black to input port `2Dh` bit 0 with v2: at `2A=22h` and
+`2C=00h` or `02h`, black high/released reads `23h`, black low reads `22h`
+(CONFIRMED: owner measurements). Yellow remains unmapped. Only ROM00
 (`micron1.bin`, DIP1) is replaced; leave ROM01 (`micron2.bin`, DIP2)
 unchanged. This dedicated diagnostic does not run normal menus. It writes
 scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
@@ -336,12 +337,46 @@ pin voltages for this v2 run were not supplied. This tests
 `CTL_LATCH_2C` bit 5 low with its bit 1 high and `CTL_LATCH_2A` bit 1 low;
 that state alone has not exposed either contact as a readable input.
 
-**Next:** from that state press **C, SPACE**, without R. Check
-**`2A=22h`, `2C=02h`**, record idle `2D`, then compare black/yellow high/low
-again. This completes the C-low/C-high comparison with `CTL_LATCH_2C`
-bit 5 low. The other three contact identities and any existing measurements
-have also been requested; only red, orange, blue, black and yellow are
-currently described in the hardware record.
+**C-high result:** pressing **C, SPACE** gives **`2A=22h`, `2C=02h`,
+`2D=23h`**. Pulling black low changes `2D` to **`22h`**. Yellow high/low
+still causes no observed change.
+
+**B-low result:** then **B, SPACE** gives **`2A=22h`, `2C=00h`**. Black
+floating or high reads **`2D=23h`**; black low reads **`2D=22h`**.
+
+**CONFIRMED (owner measurements):** black controls port `2Dh` bit 0
+without inversion in both tested `2A=22h`, `2C=00h/02h` configurations.
+`CTL_LATCH_2C` bit 1 need not be high for this response. These observations
+establish configuration-dependent visibility, not the internal gate topology
+or behaviour under arbitrary other latch values. No numeric pin voltages
+were supplied for these v2 comparisons.
+
+| ROM | `2A` | `2C` | `2D`, black released/high | `2D`, black low |
+|---|---|---|---|---|
+| v1 | `20` | `22` | `23` | `23` |
+| v1 | `22` | `20` | `20` | `20` |
+| v1 | `22` | `22` | `20` | `20` |
+| v2 | `20` | `02` | `23` | `23` |
+| v2 | `22` | `02` | `23` | `22` |
+| v2 | `22` | `00` | `23` | `22` |
+
+**C-low follow-up:** the owner then pressed **C, SPACE** and reported
+`2A=2-`, `2C=00`, `2D=23`, with grounding black producing no change.
+The sequence should produce `2A=20h`; the literal `2-` report is retained
+as an ambiguous transcription, not a verified complete output byte.
+
+**Next — simultaneous input/output:** press **C, SPACE** again and verify
+`2A=22h`, `2C=00h`. Then press **E, P**. The selected `CTL_LATCH_2A` bit 4
+should pulse red, with the displayed output alternating `2A=22h/32h` and
+`2C=00h` retained. Compare black released/high versus low while observing
+red. Record whether `2D=23h/22h` still follows black in both red states.
+Use **L** and **H** on E for held output states if the pulsed display makes
+this hard to distinguish. This tests simultaneous operation; it is not yet
+established by the separate input and output observations.
+
+Yellow and the other three signal contacts remain unmapped; their identities
+and any existing measurements have been requested. Only red, orange, blue,
+black and yellow are currently described in the hardware record.
 
 ## Scope of the image
 
