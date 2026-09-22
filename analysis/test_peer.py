@@ -42,6 +42,13 @@ COMPLETION = bytes.fromhex("000600040143000401")
 STATE44_OBJECT = bytes.fromhex("001400020143000000010006004f4ba55a3cc300000201")
 
 
+def with_seq(capture: bytes, seq: int) -> bytes:
+    """Return a captured request with its sequence byte replaced."""
+    frame = bytearray(capture)
+    frame[4] = seq & 0xFF
+    return bytes(frame)
+
+
 class FramingTest(unittest.TestCase):
     def test_splits_a_stream_into_captures(self):
         stream = INITIAL + STATE61 + STATE45
@@ -139,9 +146,81 @@ class SequenceTest(unittest.TestCase):
 
     def test_several_requests_in_one_feed(self):
         peer = CommstarPeer(link_id=LINK_ID)
-        peer.feed_tx(STATE61 + STATE64)
+        # Distinct sequence bytes permit two outstanding exchanges.  Reusing
+        # a sequence before its ACK is a protocol error, not a second request.
+        state64_seq2 = with_seq(STATE64, 0x02)
+        peer.feed_tx(STATE61 + state64_seq2)
         self.assertEqual([r.state for r in peer.requests], [0x0061, 0x0064])
-        self.assertEqual(peer.take_rx(), [CONTROL_REPLY, CONTROL_REPLY])
+        self.assertEqual(peer.take_rx(), [CONTROL_REPLY, peer.control_ack(0x02)])
+
+    def test_unacked_duplicate_replays_without_calling_policy(self):
+        seen = []
+        peer = CommstarPeer(
+            link_id=LINK_ID,
+            on_request=lambda request: (seen.append(request.state), b"data")[1],
+        )
+        request = with_seq(STATE44, 0x09)
+        peer.feed_tx(request)
+        first = peer.take_rx()
+        peer.feed_tx(request)                 # lost type-2: retry the request
+        retry = peer.take_rx()
+        self.assertEqual(retry, first)
+        self.assertEqual(seen, [0x0044])
+        self.assertEqual(len(peer.requests), 2)  # both wire requests are logged
+
+    def test_different_request_cannot_reuse_an_unacked_sequence(self):
+        seen = []
+        peer = CommstarPeer(
+            link_id=LINK_ID,
+            on_request=lambda request: seen.append(request.state),
+        )
+        peer.feed_tx(STATE61)
+        peer.take_rx()
+        with self.assertRaises(ProtocolError):
+            peer.feed_tx(STATE64)               # seq 1, but not a retry
+        self.assertEqual(seen, [0x0061])
+
+    def test_duplicate_ack_replays_missing_completion(self):
+        peer = CommstarPeer(link_id=LINK_ID)
+        peer.feed_tx(STATE61)
+        peer.take_rx()
+        ack = peer.expected_ack(0x01)
+        peer.feed_tx(ack)
+        peer.feed_tx(ack)                     # duplicate before first is sent
+        self.assertEqual(peer.take_rx(), [peer.completion(0x01)])
+        peer.feed_tx(ack)                     # now the completion was lost
+        first = peer.take_rx()
+        peer.feed_tx(ack)                     # lost type-4: retry the ACK
+        retry = peer.take_rx()
+        self.assertEqual(retry, first)
+        self.assertEqual(peer.acks, 1)
+
+    def test_sequence_is_reusable_after_completion(self):
+        seen = []
+        peer = CommstarPeer(
+            link_id=LINK_ID,
+            on_request=lambda request: seen.append(request.state),
+        )
+        for request in (STATE61, STATE64):
+            peer.feed_tx(request)
+            peer.take_rx()
+            peer.feed_tx(peer.expected_ack(0x01))
+            peer.take_rx()
+        self.assertEqual(seen, [0x0061, 0x0064])
+
+    def test_sequence_wrap_does_not_keep_a_permanent_cache(self):
+        seen = []
+        peer = CommstarPeer(
+            link_id=LINK_ID,
+            on_request=lambda request: seen.append(request.seq),
+        )
+        for seq in (0xFF, 0x00, 0xFF):
+            request = with_seq(STATE61, seq)
+            peer.feed_tx(request)
+            peer.take_rx()
+            peer.feed_tx(peer.expected_ack(seq))
+            peer.take_rx()
+        self.assertEqual(seen, [0xFF, 0x00, 0xFF])
 
 
 def command_capture(operation=b"LOAD", parameter=b"HELLO", workstation=b"12345678",
@@ -201,10 +280,14 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
         peer = CommstarPeer(link_id=LINK_ID, on_request=policy)
         peer.feed_tx(command_capture(**kwargs))
         acks = peer.take_rx()                      # the command record's own ack
+        peer.feed_tx(peer.expected_ack(kwargs.get("seq", 0x01)))
+        peer.take_rx()                             # command completion
         objects = []
         for _ in range(64):                        # first is the OK reply
             peer.feed_tx(block_request())
             objects.append(object_of(peer.take_rx()[0]))
+            peer.feed_tx(peer.expected_ack(0x01))
+            peer.take_rx()                         # block completion
             if len(objects) > 1 and policy.finished:
                 break
         return policy, acks, objects
@@ -222,6 +305,31 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
         self.assertEqual([m for m, _ in blocks], [0, 0, 1])
         self.assertEqual(b"".join(d for _, d in blocks), image)
 
+    def test_lost_block_reply_is_replayed_without_skipping_data(self):
+        policy = ProgramDownloadPolicy({"HELLO": b"abcdefghijkl"}, chunk=4)
+        peer = CommstarPeer(link_id=LINK_ID, on_request=policy)
+        peer.feed_tx(command_capture())
+        peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
+
+        request = block_request(seq=0x01)
+        peer.feed_tx(request)                   # command's OK reply
+        peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
+        peer.feed_tx(request)
+        first = peer.take_rx()[0]
+        peer.feed_tx(request)                  # lost type-2 response
+        retry = peer.take_rx()[0]
+        self.assertEqual(retry, first)
+        self.assertEqual(policy.served, [b"abcd"])
+
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
+        peer.feed_tx(block_request(seq=0x01))  # same seq, new complete exchange
+        self.assertEqual(object_of(peer.take_rx()[0]), (0, b"efgh"))
+
     def test_a_shorter_chunk_is_honoured(self):
         image = bytes(200)
         _, _, objects = self.serve(image, chunk=64)
@@ -234,7 +342,11 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
         peer = CommstarPeer(link_id=LINK_ID, on_request=policy)
         peer.feed_tx(command_capture())
         peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
         peer.feed_tx(block_request())          # the OK reply
+        peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
         peer.take_rx()
         peer.feed_tx(block_request(size=0x0080))   # the handheld asks for 128
         self.assertEqual(len(object_of(peer.take_rx()[0])[1]), 126)
@@ -248,6 +360,8 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
         peer = CommstarPeer(link_id=LINK_ID, on_request=policy)
         peer.feed_tx(command_capture(parameter=b"NOSUCH"))
         peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
         peer.feed_tx(block_request())
         self.assertEqual(object_of(peer.take_rx()[0]), (1, b"NO"))
 
@@ -256,8 +370,12 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
         peer = CommstarPeer(link_id=LINK_ID, on_request=policy)
         peer.feed_tx(command_capture(parameter=b"ANYTHING"))
         peer.take_rx()
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
         peer.feed_tx(block_request())
         self.assertEqual(object_of(peer.take_rx()[0]), (1, b"OK"))
+        peer.feed_tx(peer.expected_ack(0x01))
+        peer.take_rx()
         peer.feed_tx(block_request())
         self.assertEqual(object_of(peer.take_rx()[0]), (1, b"xyz"))
 
@@ -268,8 +386,8 @@ class ProgramDownloadPolicyTest(unittest.TestCase):
 
     def test_other_states_still_get_a_plain_control_ack(self):
         peer = CommstarPeer(link_id=LINK_ID, on_request=ProgramDownloadPolicy(b"abc"))
-        peer.feed_tx(STATE61 + STATE64)
-        self.assertEqual(peer.take_rx(), [CONTROL_REPLY, CONTROL_REPLY])
+        peer.feed_tx(STATE61 + with_seq(STATE64, 0x02))
+        self.assertEqual(peer.take_rx(), [CONTROL_REPLY, peer.control_ack(0x02)])
 
 
 class LinkIdTest(unittest.TestCase):

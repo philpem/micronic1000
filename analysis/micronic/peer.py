@@ -123,6 +123,16 @@ class ProtocolError(ValueError):
     """The handheld sent something this peer cannot parse."""
 
 
+@dataclass
+class _Exchange:
+    """Cached reply and lifecycle state for one request sequence."""
+
+    request_frame: bytes
+    reply: bytes
+    completion: bytes
+    acked: bool = False
+
+
 class CommstarPeer:
     """Parses handheld transmissions and produces the replies to send back.
 
@@ -145,6 +155,11 @@ class CommstarPeer:
         self._rx: list[bytes] = []  # queues waiting to go back
         self.requests: list[Request] = []
         self.acks = 0
+        # Keep at most one current/completed exchange per sequence byte.  A
+        # completed entry is replaced when that sequence is reused, so this
+        # is not a permanent cache keyed only by sequence.
+        self._exchanges: dict[int, _Exchange] = {}
+        self._completion_queued: set[int] = set()
 
     # ------------------------------------------------------------------ input
     def feed_tx(self, data: bytes) -> None:
@@ -176,9 +191,20 @@ class CommstarPeer:
 
         ftype, seq = frame[2], frame[3]
         if ftype == TYPE_ACK:
-            # The handheld has taken our type-2; close the exchange.
-            self.acks += 1
-            self._rx.append(self.completion(seq))
+            exchange = self._exchanges.get(seq)
+            if exchange is None:
+                raise ProtocolError(f"ACK for unknown sequence {seq:#04x}")
+            # A repeated ACK means the type-4 completion was lost.  Replay
+            # the cached completion without invoking application code.
+            if not exchange.acked:
+                exchange.acked = True
+                self.acks += 1
+            # Do not enqueue the same completion twice if a duplicate ACK
+            # arrives before the first queued completion is taken.  Once the
+            # caller has taken it, a later duplicate ACK enqueues it again.
+            if seq not in self._completion_queued:
+                self._completion_queued.add(seq)
+                self._rx.append(exchange.completion)
             return
         if ftype != TYPE_REQUEST:
             raise ProtocolError(f"unexpected frame type {ftype} from handheld")
@@ -194,19 +220,44 @@ class CommstarPeer:
             obj=bytes(body[6:]),
             frame=frame,
         )
+
         self.requests.append(request)
+        exchange = self._exchanges.get(seq)
+        if exchange is not None and not exchange.acked:
+            if frame != exchange.request_frame:
+                raise ProtocolError(
+                    f"sequence {seq:#04x} reused before its ACK"
+                )
+            # A lost type-2 reply causes the exact request to be retried.
+            # Calling the policy again could advance a download or repeat an
+            # application side effect.
+            self._rx.append(exchange.reply)
+            return
 
         answer = self._on_request(request) if self._on_request else None
         if answer is None:
-            self._rx.append(self.control_ack(seq))
+            reply = self.control_ack(seq)
         else:
             marker, data = (0, answer) if isinstance(answer, (bytes, bytearray)) else answer
-            self._rx.append(self.data_object(seq, bytes(data), marker))
+            reply = self.data_object(seq, bytes(data), marker)
+        exchange = _Exchange(
+            request_frame=bytes(frame),
+            reply=reply,
+            completion=self.completion(seq),
+        )
+        self._exchanges[seq] = exchange
+        # A request with a completed, reused sequence starts a new lifecycle.
+        self._completion_queued.discard(seq)
+        self._rx.append(reply)
 
     # ----------------------------------------------------------------- output
     def take_rx(self) -> list[bytes]:
         """Return and clear the reply queues waiting to go to the handheld."""
         out, self._rx = self._rx, []
+        for seq in tuple(self._completion_queued):
+            exchange = self._exchanges.get(seq)
+            if exchange is not None and exchange.completion in out:
+                self._completion_queued.discard(seq)
         return out
 
     @property
