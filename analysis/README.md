@@ -2,6 +2,20 @@
 
 Everything for reverse-engineering and emulating the Micronic 1000.
 
+## IR diagnostics and connector experiment
+
+The [connector experiment](../doc/re-notes/connector-experiment.md) provides
+one ROM00 image with selected output patterns and live hexadecimal input
+monitoring, plus release checksums and operating instructions.
+Build with `analysis/venv/bin/python analysis/rom_exerciser/connector.py` from
+the repository root. The release lives under `rom_exerciser/releases/`.
+
+The Uno sketch and its self-contained rsync directory are
+[`arduino/m1000_ir_probe/`](arduino/m1000_ir_probe/README.md).
+Use the Elegoo Uno R3 target (`arduino:avr:uno`). Large tool downloads and
+build outputs belong in the ignored disk-backed `.cache/ir-arduino/`, not
+`/tmp` (tmpfs on the owner's machine).
+
 ## IR scope-capture decoders
 
 * `scope_ir_decode.py` recovers the analogue handheld waveform in the
