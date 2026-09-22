@@ -16,3 +16,6 @@ session-*.md
 
 # built ROM image -- reproducible byte-for-byte from build.py + micronic/micron1.bin
 analysis/rom_exerciser/*.bin
+
+# Disk-backed local Arduino toolchain/build cache (not /tmp tmpfs).
+/.cache/ir-arduino/
