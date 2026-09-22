@@ -1,0 +1,18 @@
+{
+  "image": "micron1_connector_v1.bin",
+  "purpose": "standalone connector output/input experiment; ROM00 only",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "261e828ef2008264e58d8d3db08fb86a",
+    "sum16": "9568",
+    "sum24": "379568",
+    "sha256": "b435f3bc2c6e14e55ed04579063a22231581c22426fd5ed19aba35647fb42f77"
+  },
+  "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "assembly_sha256": "9a70641314575d72ddbae405d6865de1fdcaf517b8ef218e8b9a4f593721c3c3",
+  "changed_bytes": 813,
+  "entry": "ROM00:6000",
+  "end_exclusive": "ROM00:6339",
+  "manifest_scope": "build provenance only; physical results are documented separately"
+}

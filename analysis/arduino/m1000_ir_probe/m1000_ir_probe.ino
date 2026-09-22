@@ -30,7 +30,9 @@
 // 22-cell bursts every 93.75 ms and that they match the scope.  Only then set
 // it to 0 and let the sweep transmit.  A responder debugged against a decoder
 // you have not validated is two unknowns at once.
+#ifndef LISTEN_ONLY
 #define LISTEN_ONLY 0
+#endif
 
 // Exerciser readout.  The patched-ROM exerciser (analysis/rom_exerciser/)
 // streams LINK_STATUS records as inverted-HDLC frames of 64 x 11-byte records.
@@ -39,7 +41,9 @@
 // byte; the burst gap ends the line, so decode_records.py --hex sees one frame
 // per line exactly as it expects.  Needs LISTEN_ONLY 1 (it never transmits).
 // Use it to read the exerciser's records over serial with no scope in the loop.
+#ifndef RECORD_READOUT
 #define RECORD_READOUT 0
+#endif
 
 // Stage 1b: point the Arduino's own emitters at its own detectors and build
 // with LOOPBACK_TEST 1.  It transmits twice a second and reports what its
@@ -48,7 +52,9 @@
 // to work.  A correct flag+03h reply must come back as 10000001000001011, the
 // handheld's own form A.  Until that passes, a silent handheld proves nothing:
 // a dead or misaimed emitter looks exactly like a protocol we have not guessed.
+#ifndef LOOPBACK_TEST
 #define LOOPBACK_TEST 0
+#endif
 
 // Stage 2b: which of the handheld's two detectors is clock and which is data
 // is NOT known.  Its two emitters identify themselves -- one is periodic, one
@@ -59,7 +65,9 @@
 // stretches its retry cadence from 93.75 ms to ~109 ms when it notices us, so
 // comparing that stretch between the two interleaved populations decides the
 // orientation without needing it to answer.
+#ifndef ORIENTATION_TEST
 #define ORIENTATION_TEST 0
+#endif
 
 // Stage 3: is the handheld reacting to our BITS, or just to light being
 // present at a particular moment?  conn7 said the latter -- the disturbance
@@ -74,7 +82,9 @@
 // itself prove content decoding.  If only the modulated variants do it, the
 // front end is edge-sensitive and a carrier matters.  If nothing does it,
 // conn7's correlation was an artefact and we are back to needing a channel.
+#ifndef PULSE_TEST
 #define PULSE_TEST 0
+#endif
 
 // Stage 4: sweep the address byte.  conn10 showed the handheld reacts to
 // 00h/03h/1Fh but not to FFh under identical conditions, so the byte after the
@@ -83,7 +93,9 @@
 // link id -- so 00h-3Fh covers the whole of the field the firmware is known to
 // use, and the bits above it are the interesting unknown.  Raise ADDR_HI to
 // widen; 7Fh and FFh ride along as deliberate out-of-range controls.
+#ifndef ADDR_SWEEP
 #define ADDR_SWEEP 0
+#endif
 
 // Stage 5: a genuinely free-running return clock.  Everything tried so far has
 // been a burst a few ms long, but the firmware dies waiting for LINK_STATUS
@@ -94,7 +106,9 @@
 // Stimulus 4 gates the clock off and sends an ordinary burst instead, so the
 // comparison against everything before is made inside one run rather than
 // across two.
+#ifndef FREERUN_TEST
 #define FREERUN_TEST 0
+#endif
 
 // Stage 6: a completeness ladder.  conn7's complete frames (flag + body +
 // closing flag) scored 0% where a bare flag+address scored 74%, which I put
@@ -107,7 +121,9 @@
 // Length and completeness are crossed so they cannot be confused: stim 3 is
 // the same length as stim 4 but has no closing flag.  Everything starts early
 // so no variant can fall outside the window.
-#define LADDER_TEST 1
+#ifndef LADDER_TEST
+#define LADDER_TEST 0
+#endif
 
 // Stage 7: receive-convention sweep.  The controller's receive path may not
 // use the same HDLC sense, data polarity or clock phase as its transmit path
@@ -122,7 +138,53 @@
 // (LINK_STATUS OR/AND, ISRC), not scored here.  Nothing in the handheld tells
 // us which combination it accepted, so this mode only varies the stimulus and
 // reports the parameters -- pair it with the witness on the glass.
+#ifndef RX_SWEEP
 #define RX_SWEEP 0
+#endif
+
+// Stage 8: free-running receive-convention sweep, for the stock-ROM receive
+// hook (micron1_stockhook_rx.bin).  RX_SWEEP above answers the handheld's own
+// bursts, but the stock instrument watches the IDLE receiver, and during a
+// connect attempt the handheld holds LINK_CTRL 6/7 clear for the ~10-12 ms
+// transaction, so a burst-timed reply lands in the disabled window.  This mode
+// transmits one swept burst every FREE_TX_PERIOD_MS with no handheld burst at
+// all, so the idle (6/7-raised) receiver can be probed directly.  Axes are the
+// same as RX_SWEEP: flag sense, data polarity, phase and content, one
+// combination per burst, parameters printed.
+#ifndef FREE_TX
+#define FREE_TX 0
+#endif
+#ifndef FREE_TX_PERIOD_MS
+#define FREE_TX_PERIOD_MS 250
+#endif
+
+// Stage 9: narrowed receive sweep.  The first handheld-paced RX_SWEEP run
+// halted on flag=7E phase=-2/8 pol=0 content=2 (the controller reported a
+// pending receive), while earlier 7E lines at phase -4 did not -- so the flag
+// alone may not be sufficient. This mode fixes that trial baseline and
+// varies exactly ONE axis, to isolate what the receive path actually needs:
+//   RX_NARROW_AXIS 0 = phase (-4,-2,0,2,4 eighths of a cell)
+//                  1 = data polarity (normal / complemented)
+//                  2 = content (flag / flag+03h / open type-2 control ack)
+// Flag is fixed to 7E (the current trial baseline); the data lead and the
+// other axes stay at the handheld's own TX convention unless selected here. Reply
+// to each handheld burst, handheld-paced.
+#ifndef RX_NARROW
+#define RX_NARROW 1
+#endif
+#ifndef RX_NARROW_AXIS
+#define RX_NARROW_AXIS 2
+#endif
+
+// Reply lead-in: the handheld's own bursts carry 4-5 clock-only cells before
+// the flag (its framer's pipeline flush); a faithful reply should too.
+#define RX_LEAD_CELLS 5
+// The minimal Commstar type-2 control-ack reply -- i.e. the return handshake
+// the firmware's Link_BlockTx waits for.  Content 7 in buildReply():
+//   wire:  flag 7E + zero-stuffed( 00 07 00 02 seq id 00 00 02 seq )
+//   frame: [u16 len=7][type=2][seq][id][spare 00][payload 00], trailer [02 seq]
+#define RX_ACK_SEQ 1
+#define RX_ACK_ID  0x43
 
 // The three flags are not independent.  ORIENTATION_TEST alternates the
 // orientation inside advanceSweep(), and both advanceSweep() and the reply are
@@ -153,8 +215,14 @@
 #if RECORD_READOUT && !LISTEN_ONLY
 #error "RECORD_READOUT needs LISTEN_ONLY 1 -- it is a listen-only mode"
 #endif
-#if RX_SWEEP && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY)
+#if RX_SWEEP && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY || FREE_TX)
 #error "RX_SWEEP needs every other mode flag 0"
+#endif
+#if FREE_TX && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY || RX_SWEEP || RX_NARROW)
+#error "FREE_TX needs every other mode flag 0"
+#endif
+#if RX_NARROW && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY || RX_SWEEP || FREE_TX)
+#error "RX_NARROW needs every other mode flag 0"
 #endif
 
 // ---------------------------------------------------------------- timing --
@@ -213,11 +281,13 @@ volatile uint8_t dfByte    = 0;   // byte being assembled, MSB first
 volatile uint8_t dfBits    = 0;   // bits collected in dfByte, 0..7
 volatile uint8_t dfZeros   = 0;   // run of 0s since the last 1
 volatile uint8_t dfStuff   = 0;   // set: the next bit is the stuffed 1
+volatile uint8_t dfMalformed = 0; // set after a non-stuffed bit follows 5 zeros
 
 // Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
 // after five consecutive 0s, MSB first.  Stuffed data can never contain the
 // flag (six 0s are forbidden), so a sliding 8-bit match is unambiguous.
 inline void destuffBit(uint8_t b) {
+  if (dfMalformed) return;
   if (dfHunting) {
     dfShift = (uint8_t)((dfShift << 1) | b);
     if (dfShift == FLAG) {                    // flag: start of a frame
@@ -226,6 +296,10 @@ inline void destuffBit(uint8_t b) {
     return;
   }
   if (dfStuff) {                              // drop the inserted 1
+    if (b != 1) {                              // five zeros require a raw 1
+      dfMalformed = 1;                        // do not emit corrupt bytes
+      return;
+    }
     dfStuff = 0; dfZeros = 0;
     return;
   }
@@ -242,7 +316,8 @@ inline void destuffBit(uint8_t b) {
 // A burst gap ends the frame; re-arm the flag hunt for the next one.
 void destuffReset() {
   noInterrupts();
-  dfHunting = 1; dfShift = 0; dfByte = 0; dfBits = 0; dfZeros = 0; dfStuff = 0;
+  dfHunting = 1; dfShift = 0; dfByte = 0; dfBits = 0; dfZeros = 0;
+  dfStuff = 0; dfMalformed = 0;
   interrupts();
 }
 
@@ -281,7 +356,7 @@ void onClockEdge() {
 uint8_t frameBits[128];
 uint8_t frameLen = 0;
 
-#if RX_SWEEP
+#if RX_SWEEP || FREE_TX || RX_NARROW
 // Receive-convention axes.  The flag byte and the data polarity are the two
 // ways the same bits can appear on the wire; txPhaseEighths (set in the reply
 // path) moves the data edges relative to a fixed clock.  Content maps onto
@@ -291,15 +366,15 @@ const uint8_t rxFlagTab[RX_N_FLAG] = { 0x81, 0x7E };
 const int8_t  RX_N_PHASE = 5;
 const int8_t  rxPhaseTab[RX_N_PHASE] = { -4, -2, 0, 2, 4 };  // eighths of a cell
 const uint8_t RX_N_POL = 2;            // data polarity: normal / complemented
-const uint8_t RX_N_CONTENT = 3;        // flag / flag+03h / flag+03h+body+flag
-const uint8_t rxContentMap[RX_N_CONTENT] = { 0, 1, 6 };
+const uint8_t RX_N_CONTENT = 3;        // flag / flag+03h / type-2 ack (open)
+const uint8_t rxContentMap[RX_N_CONTENT] = { 0, 1, 7 };
 uint8_t rxFlagIdx = 0, rxPhaseIdx = 1, rxPolIdx = 0, rxContentIdx = 1;
 #endif
 
 void putBit(uint8_t b) { if (frameLen < sizeof(frameBits)) frameBits[frameLen++] = b; }
 
 void putFlag() {
-#if RX_SWEEP
+#if RX_SWEEP || FREE_TX || RX_NARROW
   uint8_t f = rxFlagTab[rxFlagIdx];
 #else
   uint8_t f = FLAG;
@@ -307,13 +382,35 @@ void putFlag() {
   for (int8_t i = 7; i >= 0; i--) putBit((f >> i) & 1);
 }
 
+// Stuffing sense follows the flag sense.  The Micronic's own (inverted) HDLC
+// uses flag 81h and inserts a 1 after five 0s; normal HDLC uses flag 7Eh and
+// inserts a 0 after five 1s.  The return path uses the normal flag 7Eh, so it
+// must ZERO-stuff.  `zeroRun` is a run counter for whichever bit is being
+// counted (0s in the inverted sense, 1s in the normal sense).
+bool stuffNormal = false;   // true = normal HDLC: insert a 0 after five 1s
 void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
   for (int8_t i = 7; i >= 0; i--) {
-    if (*zeroRun == 5) { putBit(1); *zeroRun = 0; }
+    if (*zeroRun == 5) { putBit(stuffNormal ? 0 : 1); *zeroRun = 0; }
     uint8_t b = (v >> i) & 1;
     putBit(b);
-    *zeroRun = b ? 0 : *zeroRun + 1;
+    *zeroRun = stuffNormal ? (b ? *zeroRun + 1 : 0) : (b ? 0 : *zeroRun + 1);
   }
+}
+
+// A closing flag is outside the stuffed data stream, but a terminal run of
+// five counted bits must still be terminated before that flag begins. Without
+// this bit, the first one of the closing flag is consumed as the supposed
+// stuff bit and the receiver sees a malformed frame.
+void finishStuffing(uint8_t *zeroRun) {
+  if (*zeroRun == 5) {
+    putBit(stuffNormal ? 0 : 1);
+    *zeroRun = 0;
+  }
+}
+
+void putClosingFlag(uint8_t *zeroRun) {
+  finishStuffing(zeroRun);
+  putFlag();
 }
 
 #if LADDER_TEST
@@ -435,15 +532,17 @@ const char *stimName(uint8_t k) {
 // ----------------------------------------------------------- the sweep ----
 // Reply content variants.  0 = flag only ... see contentName().
 const uint8_t N_CONTENT = 8;
-const uint8_t N_DELAY   = 8;
-const uint16_t delayUs[N_DELAY] = { 500, 750, 1000, 2000, 3000, 5000, 7000, 9000 };
-// The HSBUSY deadline is 9.92 ms: DE=026Ch = 620 iterations of a 59 T loop at
-// ROM00:32F0, on a 3.6864 MHz Z80.  That bounds this one firmware poll; later
-// light can still affect controller state or a different firmware path.
-// The floor is set by GAP_US: a burst is not known to have ended until 400 us
-// of silence, so anything below ~450 us is unreachable by this method.  If the
-// sweep comes up empty everywhere, detect the end by pattern instead -- both
-// burst forms end with the cells 1,0,1,1 -- which would reach ~150 us.
+const uint8_t N_DELAY   = 10;
+const uint16_t delayUs[N_DELAY] = {
+  500, 1000, 2000, 4000, 8000, 12000, 18000, 26000, 40000, 60000 };
+// Reply delay is measured from the handheld burst END.  The handheld holds
+// LINK_CTRL 6/7 clear for its ~10-12 ms transmit transaction (bit6 wait 9.92 ms
+// at ROM00:32F0, 620 x 59 T on a 3.6864 MHz Z80) and raises them after, so a
+// reply must land after that window: delays above ~10 ms are the safe ones.
+// (The stock rx hook showed the receiver does accept a reply; the free-run
+// test tripped it, but only the handheld-paced reply makes the pattern
+// unambiguous.)  Below ~450 us is unreachable anyway: GAP_US is how the burst
+// end is detected.
 
 const uint8_t PREAMBLE_CELLS = 16;   // clock-only cells before and after the
                                      // frame in modes 2 and 3, so a receiver
@@ -459,6 +558,7 @@ const char *contentName(uint8_t c) {
     case 4: return "flag+7Fh";
     case 5: return "flag+frame+flag";
     case 6: return "flag+03h+frame+flag";
+    case 7: return "type-2 control ack";
     default: return "flag x4 (fill)";
   }
 }
@@ -470,6 +570,25 @@ const char *contentName(uint8_t c) {
 // id -- so a one-byte reply can never be valid however well it is framed.
 // 43h is (prelude & 1Fh) | 40h, which is what micronic.peer reconstructs.
 const uint8_t ACK_FRAME[] = { 0x07, 0x00, 0x02, 0x00, 0x43, 0x00, 0x00 };
+uint8_t replyContent = 0;
+uint8_t replyPayload[10];
+uint8_t replyPayloadLen = 0;
+
+void recordReplyPayload(uint8_t content, const uint8_t *payload, uint8_t len) {
+  replyContent = content;
+  replyPayloadLen = (len <= sizeof(replyPayload)) ? len : sizeof(replyPayload);
+  for (uint8_t i = 0; i < replyPayloadLen; i++) replyPayload[i] = payload[i];
+}
+
+void printReplyPayload() {
+  Serial.print(F(" wire_content=")); Serial.print(replyContent);
+  Serial.print(F(" payload="));
+  if (!replyPayloadLen) Serial.print('-');
+  for (uint8_t i = 0; i < replyPayloadLen; i++) {
+    if (replyPayload[i] < 0x10) Serial.print('0');
+    Serial.print(replyPayload[i], HEX);
+  }
+}
 
 #if LADDER_TEST
 // One builder for the whole ladder, so every rung shares the same flag, the
@@ -481,13 +600,14 @@ void buildLadder(uint8_t k) {
   if (k >= 3) for (uint8_t i = 0; i < sizeof(ACK_FRAME); i++)
                 putStuffedByte(ACK_FRAME[i], &zr); // a legal 7-byte type-2 body
   if (k == 5) { putStuffedByte(0x00, &zr); putStuffedByte(0x00, &zr); }  // FCS slot
-  if (k == 2 || k >= 4) putFlag();                 // closing flag, unstuffed
+  if (k == 2 || k >= 4) putClosingFlag(&zr);       // closing flag, unstuffed
 }
 #endif
 
 // flag + one address byte, stuffed, at the protocol's phase
 void buildFramed(uint8_t addr) {
   frameLen = 0; uint8_t zr = 0;
+  recordReplyPayload(0xFF, &addr, 1);
   putFlag(); putStuffedByte(addr, &zr);
 }
 
@@ -498,14 +618,37 @@ void putFrame(uint8_t *zeroRun) {
 void buildReply(uint8_t content) {
   frameLen = 0;
   uint8_t zeroRun = 0;
+  replyContent = content;
+  replyPayloadLen = 0;
   switch (content) {
     case 0: putFlag(); break;
-    case 1: putFlag(); putStuffedByte(0x03, &zeroRun); break;
-    case 2: putFlag(); putStuffedByte(0x1F, &zeroRun); break;
-    case 3: putFlag(); putStuffedByte(0x00, &zeroRun); break;
-    case 4: putFlag(); putStuffedByte(0x7F, &zeroRun); break;
-    case 5: putFlag(); putFrame(&zeroRun); putFlag(); break;
-    case 6: putFlag(); putStuffedByte(0x03, &zeroRun); putFrame(&zeroRun); putFlag(); break;
+    case 1: { const uint8_t p[] = { 0x03 };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag(); putStuffedByte(0x03, &zeroRun); break; }
+    case 2: { const uint8_t p[] = { 0x1F };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag(); putStuffedByte(0x1F, &zeroRun); break; }
+    case 3: { const uint8_t p[] = { 0x00 };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag(); putStuffedByte(0x00, &zeroRun); break; }
+    case 4: { const uint8_t p[] = { 0x7F };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag(); putStuffedByte(0x7F, &zeroRun); break; }
+    case 5: recordReplyPayload(content, ACK_FRAME, sizeof(ACK_FRAME));
+      putFlag(); putFrame(&zeroRun); putClosingFlag(&zeroRun); break;
+    case 6: replyPayloadLen = sizeof(ACK_FRAME) + 1;
+      replyPayload[0] = 0x03;
+      for (uint8_t i = 0; i < sizeof(ACK_FRAME); i++) replyPayload[i + 1] = ACK_FRAME[i];
+      putFlag(); putStuffedByte(0x03, &zeroRun); putFrame(&zeroRun);
+      putClosingFlag(&zeroRun); break;
+    case 7: {                                  // type-2 control ack (handshake)
+      static const uint8_t ack[10] = {
+        0x00, 0x07, 0x00, 0x02, RX_ACK_SEQ, RX_ACK_ID, 0x00, 0x00, 0x02, RX_ACK_SEQ };
+      recordReplyPayload(content, ack, sizeof(ack));
+      putFlag();
+      for (uint8_t i = 0; i < sizeof(ack); i++) putStuffedByte(ack[i], &zeroRun);
+      break;
+    }
     default: for (uint8_t i = 0; i < 4; i++) putFlag(); break;
   }
 }
@@ -522,8 +665,8 @@ void buildReply(uint8_t content) {
 uint8_t sweepContent = 1, sweepDelay = 0, sweepClock = 0, sweepInvert = 0;
 uint8_t sweepSwap = 0;   // 1 = our clock drives their data detector and vice versa
 unsigned long achievedUs = 0;   // reply delay actually achieved, us
-int8_t  txPhaseEighths = 0;     // data edges shifted by this many 1/8 cells
-                                // (0 for every mode except RX_SWEEP)
+int8_t  txPhaseEighths = -2;    // data-rise minus clock-rise, in 1/8 cells
+                                // (-2 is the nominal 30 us data lead)
 
 void advanceSweep() {
 #if LADDER_TEST
@@ -549,7 +692,19 @@ void advanceSweep() {
 #elif ORIENTATION_TEST
   sweepSwap ^= 1;          // everything else held still
   return;
-#elif RX_SWEEP
+#elif RX_NARROW
+  // Vary exactly one axis; flag fixed to 7E, the others to the trial baseline.
+#if RX_NARROW_AXIS == 0
+  if (++rxPhaseIdx < RX_N_PHASE) return;
+  rxPhaseIdx = 0;
+#elif RX_NARROW_AXIS == 1
+  rxPolIdx ^= 1;
+#else
+  if (++rxContentIdx < RX_N_CONTENT) return;
+  rxContentIdx = 0;
+#endif
+  return;
+#elif RX_SWEEP || FREE_TX || RX_NARROW
   // One axis per burst; content fastest, then polarity, phase and flag, so a
   // partial connect attempt still visits every content/polarity combination.
   if (++rxContentIdx < RX_N_CONTENT) return;
@@ -591,34 +746,167 @@ inline void clkLow()  { if (sweepSwap) *datReg &= ~datMask; else *clkReg &= ~clk
 inline void datHigh() { if (sweepSwap) *clkReg |=  clkMask; else *datReg |=  datMask; }
 inline void datLow()  { if (sweepSwap) *clkReg &= ~clkMask; else *datReg &= ~datMask; }
 
-inline void waitUntil(unsigned long t) { while ((long)(micros() - t) < 0) ; }
+inline int32_t txTimeDiff(uint32_t a, uint32_t b) {
+  return (int32_t)(a - b);
+}
 
-// The bit-cell emitter, shared by the framed reply and the pulse test so both
-// use identical phasing: data rises a quarter cell before the clock.
-void emitCells(unsigned long startUs, uint8_t wrap) {
-  uint8_t total = wrap + frameLen + wrap;
-  long    shift = (long)txPhaseEighths * (long)CELL_US / 8;  // 0 normally
-  for (uint8_t i = 0; i < total; i++) {
-    unsigned long cell = startUs + (unsigned long)i * CELL_US;
-    bool inFrame = (i >= wrap) && (i < wrap + frameLen);
-    bool wantData = inFrame && (frameBits[i - wrap] ^ sweepInvert);
+inline void waitUntil(uint32_t t) {
+  while (txTimeDiff((uint32_t)micros(), t) < 0) ;
+}
 
-    waitUntil(cell + shift);                          if (wantData) datHigh();
-    waitUntil(cell + DATA_LEAD_US);                   clkHigh();
-    waitUntil(cell + DATA_HIGH_US + shift);           datLow();
-    waitUntil(cell + DATA_LEAD_US + CLK_HIGH_US);     clkLow();
+struct TxEvent {
+  uint32_t at;
+  uint8_t type;                 // 0=data rise, 1=clock rise,
+                                // 2=clock fall, 3=data fall
+};
+
+// Keep this declaration below the struct: the Arduino prototype generator
+// otherwise emits txEventBefore before it has seen TxEvent.
+inline bool txEventBefore(const TxEvent &a, const TxEvent &b);
+
+// The event queue is deliberately small.  At most the tail of one cell and
+// the head of the next can overlap: the largest phase tested puts a data fall
+// 167 us after the cell origin, while the next cell's earliest data rise is
+// 91 us after that origin.  The queue is filled lazily so events are executed
+// in timestamp order without storing a whole frame in AVR RAM.
+TxEvent txEvents[8];
+uint8_t txEventCount = 0;
+uint32_t txMaxLatenessUs = 0;
+
+inline uint32_t txEventTime(uint32_t cell, int32_t offset) {
+  return cell + (uint32_t)offset;
+}
+
+void addTxCellEvents(uint32_t cell, uint8_t cellIndex, uint8_t pre,
+                     uint8_t post, int32_t phaseUs) {
+  (void)post;
+  bool inFrame = (cellIndex >= pre) && (cellIndex < pre + frameLen);
+  bool wantData = inFrame && (frameBits[cellIndex - pre] ^ sweepInvert);
+  int32_t clockRise = (int32_t)DATA_LEAD_US;
+  int32_t dataRise = clockRise + phaseUs;
+  int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
+
+  // Keep insertion order meaningful for equal timestamps: data is presented
+  // before a simultaneous clock sample, and a falling edge is then applied.
+  if (wantData) txEvents[txEventCount++] = {txEventTime(cell, dataRise), 0};
+  txEvents[txEventCount++] = {txEventTime(cell, clockRise), 1};
+  txEvents[txEventCount++] = {txEventTime(cell, clockRise + CLK_HIGH_US), 2};
+  // Drive the data line low in every cell.  For a zero bit this is redundant,
+  // but it makes the inter-cell state explicit and prevents a delayed data
+  // fall from being lost when phases are swept.
+  txEvents[txEventCount++] = {txEventTime(cell, dataFall), 3};
+}
+
+inline bool txEventBefore(const TxEvent &a, const TxEvent &b) {
+  if (txTimeDiff(a.at, b.at) != 0) return txTimeDiff(a.at, b.at) < 0;
+  return a.type < b.type;
+}
+
+inline int32_t txMinEventOffset(int32_t phaseUs) {
+  // The first event is whichever rise comes first.  This bound is exact for
+  // both phase polarities and lets the lazy queue handle adjacent cells.
+  int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
+  return dataRise < (int32_t)DATA_LEAD_US ? dataRise : (int32_t)DATA_LEAD_US;
+}
+
+// Find the first edge that will actually be driven.  For a negative phase the
+// first data edge can precede the cell origin; callers mask reception at this
+// time so the requested phase is not silently shortened by waitUntil().
+uint32_t txFirstEventTime(uint32_t startUs, uint8_t pre) {
+  if (pre) return txEventTime(startUs, (int32_t)DATA_LEAD_US);
+  uint32_t cell = startUs;
+  int32_t first = (int32_t)DATA_LEAD_US;
+  if (pre < pre + frameLen &&
+      (frameBits[0] ^ sweepInvert)) {
+    int32_t dataRise = first +
+                       (int32_t)txPhaseEighths * (int32_t)CELL_US / 8;
+    if (dataRise < first) first = dataRise;
   }
-  waitUntil(startUs + (unsigned long)total * CELL_US);
+  return txEventTime(cell, first);
+}
+
+uint32_t waitUntilMeasured(uint32_t t) {
+  uint32_t now;
+  do now = (uint32_t)micros();
+  while (txTimeDiff(now, t) < 0);
+  int32_t late = txTimeDiff(now, t);
+  if (late > (int32_t)txMaxLatenessUs) txMaxLatenessUs = (uint32_t)late;
+  return now;
+}
+
+void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
+#ifdef IR_HOST_TEST
+  extern void irHostEvent(uint32_t, uint32_t, uint8_t);
+  irHostEvent(at, actual, type);
+#endif
+  if (type == 0) datHigh();
+  else if (type == 1) clkHigh();
+  else if (type == 2) clkLow();
+  else datLow();
+}
+
+// The bit-cell emitter, shared by framed replies and pulse tests.  The phase
+// setting is absolute: txPhaseEighths is data-rise minus clock-rise, in eighths
+// of a cell.  A negative value therefore gives data setup before sampling.
+void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
+  uint8_t total = pre + frameLen + post;
+  int32_t phaseUs = (int32_t)txPhaseEighths * (int32_t)CELL_US / 8;
+  uint8_t nextCell = 0;
+  txEventCount = 0;
+  txMaxLatenessUs = 0;
+
+  while (txEventCount || nextCell < total) {
+    // Add future cells only when their earliest possible edge cannot precede
+    // an already queued event.  This is what handles data edges crossing a
+    // cell boundary for positive and negative phase values.
+    if (nextCell < total) {
+      uint32_t cell = startUs + (uint32_t)nextCell * (uint32_t)CELL_US;
+      uint32_t earliest = txEventTime(cell, txMinEventOffset(phaseUs));
+      uint32_t earliestQueued = 0;
+      for (uint8_t i = 0; i < txEventCount; i++) {
+        if (i == 0 || txTimeDiff(txEvents[i].at, earliestQueued) < 0)
+          earliestQueued = txEvents[i].at;
+      }
+      if (!txEventCount ||
+          txTimeDiff(earliest, earliestQueued) <= 0) {
+        addTxCellEvents(cell, nextCell, pre, post, phaseUs);
+        nextCell++;
+        continue;
+      }
+    }
+
+    uint8_t best = 0;
+    for (uint8_t i = 1; i < txEventCount; i++) {
+      if (txEventBefore(txEvents[i], txEvents[best])) best = i;
+    }
+    TxEvent event = txEvents[best];
+    txEvents[best] = txEvents[--txEventCount];
+    uint32_t actual = waitUntilMeasured(event.at);
+    applyTxEvent(event.type, event.at, actual);
+  }
+  waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
   clkLow(); datLow();
 }
 
+// Clock-only lead-in / postamble, Micronic-style.  The handheld's own bursts
+// carry 4-5 clock-only cells before the flag (its framer's pipeline flush), so
+// a faithful reply should too; set by the RX modes.
+uint8_t txPre = 0, txPost = 0;
+
 void sendFrame(unsigned long startUs) {
 #if !LOOPBACK_TEST
+  // Wait before masking crosstalk.  Setting txActive here used to discard
+  // genuine receive edges during the requested reply delay.
+  uint8_t pre = (sweepClock >= 2) ? PREAMBLE_CELLS : txPre;
+  waitUntil(txFirstEventTime((uint32_t)startUs, pre));
   txActive = true;          // in loopback we deliberately listen to ourselves
 #endif
-  emitCells(startUs, (sweepClock >= 2) ? PREAMBLE_CELLS : 0);
-  delayMicroseconds(300);          // let any crosstalk settle
+  if (sweepClock >= 2) emitCells(startUs, PREAMBLE_CELLS, PREAMBLE_CELLS);
+  else                 emitCells(startUs, txPre, txPost);
+#if !LOOPBACK_TEST
   txActive = false;
+#endif
+  delayMicroseconds(300);          // let any crosstalk settle, while listening
 }
 
 #if FREERUN_TEST
@@ -678,10 +966,20 @@ void steadyFor(unsigned long from, unsigned long len, bool useClk, bool useDat) 
 }
 
 void sendPulse(unsigned long startUs, uint8_t stim) {
+  txMaxLatenessUs = 0;
   if (stim == 0) return;                       // the control: emit nothing
   // Non-framed stimuli must drive the pins they name, so the emitter swap is
   // only ever applied to a framed variant that asks for it.
   sweepSwap = stimFramed(stim) && stimSwap(stim);
+  bool preparedFrame = false;
+  if (stimFramed(stim) && !stimHasPre(stim)) {
+    buildFramed(stimAddr(stim));
+    preparedFrame = true;
+  }
+  uint32_t maskAt = (uint32_t)startUs;
+  if (stimFramed(stim) && !stimHasPre(stim))
+    maskAt = txFirstEventTime((uint32_t)startUs, 0);
+  waitUntil(maskAt);
   txActive = true;
 #if ADDR_SWEEP
   if (false) { }                               // every non-zero stimulus is framed
@@ -703,12 +1001,12 @@ void sendPulse(unsigned long startUs, uint8_t stim) {
     // no gap between the two.
     unsigned long pre = stimHasPre(stim) ? PRE_US : 0;
     if (pre) steadyFor(startUs, pre, true, true);
-    buildFramed(stimAddr(stim));
-    emitCells(startUs + pre, 0);
+    if (!preparedFrame) buildFramed(stimAddr(stim));
+    emitCells(startUs + pre, 0, 0);
   }
   clkLow(); datLow();
-  delayMicroseconds(300);
   txActive = false;
+  delayMicroseconds(300);
 }
 #endif
 
@@ -719,6 +1017,31 @@ void loopbackTick() {
   nextTx = micros() + 500000UL;
   buildReply(sweepContent);
   sendFrame(micros() + 1000);
+}
+#endif
+
+#if FREE_TX
+// Transmit one swept burst every FREE_TX_PERIOD_MS, independent of the
+// handheld: the idle receiver is what the stock receive hook is watching.
+void freeTxTick() {
+  static unsigned long nextTx = 0;
+  unsigned long now = micros();
+  if ((long)(now - nextTx) < 0) return;
+  nextTx = now + (unsigned long)FREE_TX_PERIOD_MS * 1000UL;
+  sweepInvert = rxPolIdx;                       // data polarity axis
+  txPhaseEighths = rxPhaseTab[rxPhaseIdx];      // data-to-clock phase axis
+  stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E); // 7E -> normal zero-stuffing
+  buildReply(rxContentMap[rxContentIdx]);       // content axis (flag via putFlag)
+  sendFrame(now + 1000);
+  Serial.print(F("# TX flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
+  Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
+  Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  printReplyPayload();
+  Serial.print(F(" start=1000us"));
+  Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.println();
+  advanceSweep();
 }
 #endif
 
@@ -740,20 +1063,24 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F(" start=")); Serial.print(startUsTab[pulseStart]);
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us dur=")); Serial.print(PULSE_US);
-  Serial.print(F("us"));
-#elif RX_SWEEP
+  Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
+#elif RX_SWEEP || RX_NARROW
   Serial.print(F("  [flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
-  Serial.print(F(" phase=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
+  Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
-  Serial.print(F(" content=")); Serial.print(rxContentIdx);
-  Serial.print(F(" delay=")); Serial.print(delayUs[sweepDelay]);
+  Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  printReplyPayload();
+  Serial.print(F(" delay_req=")); Serial.print(delayUs[sweepDelay]);
   Serial.print(F("/")); Serial.print(achievedUs);
-  Serial.print(F("us"));
+  Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
 #else
-  Serial.print(F("  [content=")); Serial.print(contentName(sweepContent));
-  Serial.print(F(" delay=")); Serial.print(delayUs[sweepDelay]);
+  Serial.print(F("  [content_idx=")); Serial.print(sweepContent);
+  Serial.print(F(" name=")); Serial.print(contentName(sweepContent));
+  printReplyPayload();
+  Serial.print(F(" delay_req=")); Serial.print(delayUs[sweepDelay]);
   Serial.print(F("/")); Serial.print(achievedUs);
-  Serial.print(F("us clock=")); Serial.print(sweepClock);
+  Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" clock=")); Serial.print(sweepClock);
   Serial.print(F(" invert=")); Serial.print(sweepInvert);
   Serial.print(F(" swap=")); Serial.print(sweepSwap);
 #endif
@@ -770,9 +1097,6 @@ void setup() {
   Serial.begin(115200);
   pinMode(CLK_IN, INPUT);
   pinMode(DAT_IN, INPUT);
-#if FREERUN_TEST
-  freerunBegin();
-#endif
   pinMode(CLK_OUT, OUTPUT);
   pinMode(DAT_OUT, OUTPUT);
   clkReg = portOutputRegister(digitalPinToPort(CLK_OUT));
@@ -781,6 +1105,10 @@ void setup() {
   datMask = digitalPinToBitMask(DAT_OUT);
   clkLow(); datLow();
   attachInterrupt(digitalPinToInterrupt(CLK_IN), onClockEdge, RISING);
+#if FREERUN_TEST
+  // Enable Timer2 only after the ISR's GPIO pointers and masks are valid.
+  freerunBegin();
+#endif
   // State the build in the log.  The IDE will happily flash a stale sketch, so
   // the run must say which one it actually is.
   Serial.println(F("M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."));
@@ -804,10 +1132,31 @@ void setup() {
 #elif PULSE_TEST
   Serial.println(F("MODE: PULSE TEST -- featureless light, fixed duration."));
   Serial.println(F("  silent control interleaved at every start time"));
+#elif RX_NARROW
+  Serial.println(F("MODE: RX NARROW -- flag fixed to 7E, one axis varied."));
+#if RX_NARROW_AXIS == 0
+  Serial.println(F("  axis = phase (-4,-2,0,2,4 eighths of a cell)"));
+#elif RX_NARROW_AXIS == 1
+  Serial.println(F("  axis = data polarity (normal / complemented)"));
+#else
+  Serial.println(F("  axis = content (flag / flag+03h / open type-2 ack)"));
+#endif
+  rxFlagIdx = 1;                  // 7E: current trial baseline
+  rxPolIdx = 0;                   // baseline polarity, fixed unless swept
+  rxContentIdx = 2;               // content index 2 -> map 7 = type-2 control ack
+  rxPhaseIdx = 1;                 // -2/8: nominal data lead baseline
+  txPre = RX_LEAD_CELLS;          // Micronic-style clock-only lead-in
+  sweepDelay = 3;                 // 4 ms; hold the timing, vary only the axis
 #elif RX_SWEEP
-  Serial.println(F("MODE: RX SWEEP -- flag sense x polarity x phase x content."));
-  Serial.println(F("  pair with the exerciser --witness build"));
-  sweepDelay = 4;                 // ~3 ms reply, inside the responsive window
+  Serial.println(F("MODE: RX SWEEP -- reply to each handheld burst, one"));
+  Serial.println(F("  convention per burst: flag x polarity x phase x content."));
+  Serial.println(F("  pair with micron1_stockhook_rx.bin; the handheld stops"));
+  Serial.println(F("  polling once a reply changes state -- last line names it."));
+  sweepDelay = 7;                 // 26 ms after the burst end: in the RX window
+#elif FREE_TX
+  Serial.print(F("MODE: FREE TX -- one swept burst every "));
+  Serial.print(FREE_TX_PERIOD_MS); Serial.println(F(" ms, no handheld burst."));
+  Serial.println(F("  pair with micron1_stockhook_rx.bin; watch its `I ss rr` row"));
 #else
   Serial.println(F("MODE: SWEEP -- delay x content x clock x invert x swap."));
 #endif
@@ -830,6 +1179,9 @@ void loop() {
 #if LOOPBACK_TEST
   loopbackTick();
 #endif
+#if FREE_TX
+  freeTxTick();
+#endif
 
   uint8_t d = digitalRead(DAT_IN);
   if (d && !datPrev) { datRises++; datPhase = micros() - last; }
@@ -842,17 +1194,24 @@ void loop() {
   if (n == 0) return;
   if (micros() - last < GAP_US) return;            // burst still in progress
 
+#if RECORD_READOUT
+  noInterrupts();
+  n = rxCount;
+  rxCount = 0;
+  interrupts();
+#else
   uint8_t snapshot[160];
   noInterrupts();
   n = rxCount;                                     // may have grown; re-read
   for (uint8_t i = 0; i < n; i++) snapshot[i] = rxBits[i];
   rxCount = 0;
   interrupts();
+#endif
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
   // the LINK_STATUS bit-6-clear wait is about 9.92 ms; printing first would
   // lose every trial aimed at that window.
-#if !LISTEN_ONLY && !LOOPBACK_TEST
+#if !LISTEN_ONLY && !LOOPBACK_TEST && !FREE_TX
 #if LADDER_TEST
   if (n <= SUCCESS_CELLS) {
     unsigned long fire = last + ldStartTab[pulseStart];
@@ -861,7 +1220,9 @@ void loop() {
     achievedUs = fire - last;
     if (pulseStim > 0) {
       buildLadder(pulseStim);
-      txActive = true; emitCells(fire, 0); delayMicroseconds(300); txActive = false;
+      waitUntil(txFirstEventTime((uint32_t)fire, 0));
+      txActive = true; emitCells(fire, 0, 0);
+      txActive = false; delayMicroseconds(300);
     }
   }
 #elif FREERUN_TEST
@@ -875,7 +1236,9 @@ void loop() {
     } else if (pulseStim == 4) {                // gate the clock, send a burst
       clkFree = false; clkLow(); datLow();
       buildFramed(0x03);
-      txActive = true; emitCells(fire, 0); delayMicroseconds(300); txActive = false;
+      waitUntil(txFirstEventTime((uint32_t)fire, 0));
+      txActive = true; emitCells(fire, 0, 0);
+      txActive = false; delayMicroseconds(300);
     } else {
       clkFree = true;                           // clock runs regardless
       if (pulseStim > 0) {
@@ -911,11 +1274,12 @@ void loop() {
       fire = last + k * CELL_US;
     }
     achievedUs = fire - last;
-#if RX_SWEEP
+#if RX_SWEEP || RX_NARROW
     // Apply the receive-convention axes: data polarity, data-to-clock phase,
     // and the mapped buildReply() content (the flag sense lives in putFlag()).
     sweepInvert = rxPolIdx;
     txPhaseEighths = rxPhaseTab[rxPhaseIdx];
+    stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E);   // 7E -> zero-stuffing
     buildReply(rxContentMap[rxContentIdx]);
 #else
     buildReply(sweepContent);
@@ -928,13 +1292,14 @@ void loop() {
 #if RECORD_READOUT
   drainRing();                                     // flush the frame's tail
   Serial.println();                                // one frame per line
+  if (dfMalformed) Serial.println(F("! MALFORMED_STUFFING"));
   Serial.print(F("# burst ")); Serial.print(n);
   Serial.println(F(" cells"));
   destuffReset();                                  // re-arm for the next burst
 #else
   report(n, snapshot);
 #endif
-#if !LISTEN_ONLY && !LOOPBACK_TEST
+#if !LISTEN_ONLY && !LOOPBACK_TEST && !FREE_TX
   if (n <= SUCCESS_CELLS) advanceSweep();
 #endif
 }

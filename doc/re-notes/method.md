@@ -36,12 +36,13 @@ The owner has the hardware and is the arbiter when ROM evidence is silent:
 * The `08h/28h` pair **is** the HD146818 RTC; the `4Ah-4Fh` cluster is not.
 * There is no serial EEPROM; the serial number is user-entered and lives in
   battery RAM near `FEAB`.
-* The **5-pin** side port was used with a barcode pen; the port-`2Dh`
-  edge-timing code is the barcode-reader front end (`Barcode_` prefix). The
-  owner's reading of it: VCC and GND (determined), one GPIO input nominally
-  for the barcode pen, and potentially two GPIO outputs — which matches the
-  firmware, where `2Dh` is read-only and `2Ch` bits 0 and 1 are the only
-  candidate outputs ([bit usage](../reference/memory-map.md#port-2ch-bits)).
+* The right-side scanner port has **eight contacts** (owner correction,
+  2026-09-22), with power and ground known and six contacts still unknown.
+  The port-`2Dh` edge-timing code is the barcode-reader front end
+  (`Barcode_` prefix). The logical scan input is `EXTBUS_EDGE` bit 0;
+  its physical contact and the output-contact mappings remain unmeasured.
+  The owner proposes manual output-port writes first, then input mapping;
+  see the [audit plan](../research/reviews/ir-protocol-audit-2026-09-22.md).
 * The two IR ports are **V24 ADAPTOR = top, PLINTH = back**. Firmware
   selects between two line states by wire-id bit 5. A fresh trace of the real
   V24 Load/Run choice uses `fdd4=43h`, the wire-ID-bit-5-clear branch

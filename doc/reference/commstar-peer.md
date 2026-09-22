@@ -61,14 +61,24 @@ replied. On a live firmware trace it agrees everywhere:
 | Route | Agreed | Differed |
 |---|---:|---:|
 | V24 mode 1 | 12 | 0 |
-| PLINTH | 13 | 0 |
+| PLINTH | 14 | 0 |
 
 Pinned by `CommstarShadowPeerTest`. `analysis/test_peer.py` additionally
 checks the framing and decode against captured bytes with no emulator at all.
 
-The counts also report *unsolicited* feeds — queues the script pushes without
-a preceding request. Those are peer-initiated type-2 frames, a real protocol
-feature, and the peer correctly does not generate them as replies.
+The harness also counts unsolicited feeds. The current PLINTH download is
+request-driven and has zero unsolicited feeds; the earlier peer-initiated
+synthetic push has been removed.
+
+Outstanding exchanges are cached by sequence and request bytes. Repeating
+an unacknowledged request replays the same reply without calling the policy
+again. A reply already waiting in the output queue is not duplicated; after
+`take_rx()` delivers it, a retry queues it again. Queue state belongs to the
+exchange, so sequence reuse cannot confuse older queued frames with a new
+exchange. A duplicate acknowledgement replays completion; a completed sequence
+may then be reused. Tests cover lost replies/completions, conflicting reuse,
+unknown acknowledgements and sequence wrap. These checks exercise retry
+semantics above the physical transport.
 
 Beyond shadow mode, the peer drives real firmware through complete sessions
 in both directions: `CommstarProgramDownloadTest` (a 300-byte image in three

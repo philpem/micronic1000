@@ -58,14 +58,14 @@ def test_witness_image_has_a_locked_fingerprint():
     image, sym = _burn_image(witness=True)
 
     assert len(image) == 0x8000
-    assert sum(a != b for a, b in zip(image, stock)) == 824
-    assert sum(image) & 0xFFFF == 0x2E3E
+    assert sum(a != b for a, b in zip(image, stock)) == 878
+    assert sum(image) & 0xFFFF == 0x379D
     assert hashlib.sha256(bytes(image)).hexdigest() == (
-        "aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0"
+        "ffe276ba265f7a04e673547260c870d4530fcf0049ecc5490853939248d52973"
     )
-    # The witness build carries the hand-off wrapper and the loop, and still
-    # inherits the arm.
-    assert {"arm_tx", "arm_witness", "witness"} <= set(sym)
+    # The witness build carries the stock-order hand-off wrapper, the loop and
+    # the bounded bit-clear poll that reproduces ROM00:32B8/32F0.
+    assert {"arm_tx", "arm_witness", "witness", "wait_clear"} <= set(sym)
 
 
 def test_lcd_powerup_delegates_to_the_complete_stock_initializer():
@@ -516,7 +516,12 @@ def test_decoder_does_not_invent_phases_for_startup_diagnostic(capsys):
 
 
 @pytest.mark.skipif(z80 is None, reason="needs the z80 module")
-def test_witness_stops_transmitting_after_the_arm():
+def _run_witness_until_witness(status4b):
+    """Run the witness image to the `witness` label with a fixed LINK_STATUS.
+
+    status4b is an int, or a callable returning one.  Returns
+    (machine, mem, sym, data, commands, controls).
+    """
     image, sym = _burn_image(witness=True)
     mem = bytearray([0xA5] * 0x10000)
     mem[:0x8000] = image
@@ -527,7 +532,7 @@ def test_witness_stops_transmitting_after_the_arm():
         if port == 0:
             return 8 if drive[0] == 16 else 0   # ENTER at the contrast screen
         if port == 0x4B:
-            return 0x80                          # TXRDY ready, nothing else
+            return status4b() if callable(status4b) else status4b
         return 0
 
     def output_port(port, value):
@@ -557,16 +562,54 @@ def test_witness_stops_transmitting_after_the_arm():
         if machine.pc == sym["witness"]:
             break
     assert machine.pc == sym["witness"], "witness loop never entered"
+    return machine, mem, sym, data, commands, controls
+
+
+def test_witness_stops_transmitting_after_the_stock_transaction():
+    # LINK_STATUS = 80h: TXRDY ready, bit4 and bit6 both clear, so both stock
+    # polls exit at once (10h and 40h) and the arm strobes.
+    machine, mem, sym, data, commands, controls = _run_witness_until_witness(0x80)
+    assert mem[0xC7F1] == 0x10               # bit4 poll cleared
+    assert mem[0xC7F2] == 0x40               # bit6 poll cleared
 
     # In the witness loop it must never transmit again: exactly the one
-    # LinkPresent flag and the one first data byte, then silence.
+    # LinkPresent flag and the one stock prelude byte, then silence.
     machine.clear_breakpoint(sym["witness"])
     for _ in range(400):
         machine.ticks_to_stop = 50000
         machine.run()
-    assert data == [0xA5]
+    assert data == [0x03]                     # stock prelude, not the A5 magic
     assert commands == [0x81]
     assert {0x23, 0x33, 0x13} <= set(controls)   # the arm strobed
-    # ...and it enables the receive path (LINK_CTRL 6/7) before listening.
-    assert any(c & 0x40 for c in controls) and any(c & 0x80 for c in controls)
-    assert set(controls) <= {0, 1, 2, 3, 0x13, 0x23, 0x33, 0x53, 0xD3}
+    # ...then the ordered stock teardown flushes bit4 followed by bit0.  The
+    # later stock helper raises bit6 and bit7 in separate shadow-preserving
+    # writes, producing 13 -> 03 -> 02 -> 42 -> C2.
+    assert controls[-4:] == [0x03, 0x02, 0x42, 0xC2]
+    assert set(controls) <= {
+        0, 1, 2, 3, 0x13, 0x23, 0x33, 0x42, 0xC2}
+
+
+def test_witness_records_a_bit6_timeout_and_still_arms():
+    # LINK_STATUS = C0h: bit4 clear (poll exits, 10h) but bit6 stays set, so
+    # the bit6 poll times out (00h).  The arm must still have run.
+    _, mem, sym, data, commands, controls = _run_witness_until_witness(0xC0)
+    assert mem[0xC7F1] == 0x10
+    assert mem[0xC7F2] == 0x00
+    assert data == [0x03] and commands == [0x81]
+    assert {0x23, 0x33, 0x13} <= set(controls)
+
+
+def test_witness_records_a_bit4_timeout_and_aborts_before_arm():
+    # LINK_STATUS = 90h leaves bit4 set.  The witness records that timeout and
+    # takes the stock abort before arm_witness can touch LINK_CTRL bits 5/4.
+    machine, mem, sym, data, commands, controls = _run_witness_until_witness(0x90)
+    assert mem[0xC7F1] == 0x00
+    assert mem[0xC7F2] == 0x00
+    assert data == [0x03] and commands == [0x81]
+    assert not ({0x23, 0x33, 0x13} & set(controls))
+
+    machine.clear_breakpoint(sym["witness"])
+    for _ in range(400):
+        machine.ticks_to_stop = 50000
+        machine.run()
+    assert controls[-4:] == [0x03, 0x02, 0x42, 0xC2]

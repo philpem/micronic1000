@@ -179,23 +179,42 @@ def show_bits(bits: str, limit: int = 72) -> str:
     return bits if len(bits) <= limit else f"{bits[:limit]}...({len(bits)})"
 
 
-def destuff(bits: str) -> str:
+def destuff_checked(
+    bits: str, *, require_terminal: bool = False
+) -> tuple[str, bool, str | None]:
+    """Decode inverted-HDLC stuffing and reject a wrong stuffed bit."""
     output = []
     zero_run = 0
-    for value in bits:
+    for index, value in enumerate(bits):
         if zero_run == 5:
+            if value != "1":
+                return "".join(output), False, f"expected stuffed 1 at bit {index}"
             zero_run = 0
             continue
         output.append(value)
         zero_run = zero_run + 1 if value == "0" else 0
-    return "".join(output)
+    if require_terminal and zero_run == 5:
+        return "".join(output), False, "missing terminal stuffed 1"
+    return "".join(output), True, None
+
+
+def destuff(bits: str) -> str:
+    """Historical string-only wrapper around :func:`destuff_checked`."""
+    return destuff_checked(bits)[0]
 
 
 def response_address(bits: str) -> int | None:
     flag = bits.find(FLAG_BITS)
     if flag < 0:
         return None
-    field = destuff(bits[flag + len(FLAG_BITS):])
+    start = flag + len(FLAG_BITS)
+    closing = bits.find(FLAG_BITS, start)
+    body_end = closing if closing >= 0 else len(bits)
+    field, valid, _ = destuff_checked(
+        bits[start:body_end], require_terminal=closing >= 0
+    )
+    if not valid:
+        return None
     return int(field[:8], 2) if len(field) >= 8 else None
 
 

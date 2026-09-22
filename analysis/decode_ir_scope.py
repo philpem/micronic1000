@@ -54,6 +54,24 @@ def decode_segment(
         if not edges or index - edges[-1] >= min_edge_samples:
             edges.append(index)
 
+    if not edges:
+        # Idle or trigger-only segments are valid captures. Keep the segment
+        # metadata and thresholds, but do not index edges[0] below.
+        return {
+            "start_s": times[0],
+            "end_s": times[-1],
+            "sample_period_s": times[1] - times[0],
+            "clock_threshold_v": clk,
+            "data_threshold_v": dat,
+            "clock_rising_edges": 0,
+            "bits": "",
+            "clock_cells": 0,
+            "cell_bits": "",
+            "unclocked_cell_positions": [],
+            "edge_times_s": [],
+            "clock_intervals_s": [],
+        }
+
     sample_indices = [
         index + data_offset
         for index in edges

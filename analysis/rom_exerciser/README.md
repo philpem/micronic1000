@@ -1,5 +1,36 @@
 # Link-controller exerciser
 
+## Connector probe builds
+
+The tested connector images are generated locally; `.bin` files are ignored
+rather than committed. Versioned assembly and JSON checksum manifests remain
+tracked so a fresh checkout can reproduce the exact v1/v2 burn images:
+
+```sh
+analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 1
+analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 2
+analysis/venv/bin/python -m pytest -q analysis/test_connector_probe.py
+```
+
+Output is `releases/connector-vN/micron1_connector_vN.bin` beneath this
+folder. V2 still has MD5 `68f303e274b7d7d80e43b7e07c5b1176`, additive byte
+sum16 `9429` and sum24 `379429` (hexadecimal). The builder prints provenance
+without overwriting the pinned manifest; use `--manifest-out PATH` to
+explicitly export JSON with a build. Manifests describe reproducibility;
+[the connector guide](../../doc/re-notes/connector-experiment.md) records
+physical validation, pin mappings and the handoff to the next IR experiment.
+
+
+> **2026-09-22 audit:** see the
+> [IR instrumentation review](../../doc/research/reviews/ir-protocol-audit-2026-09-22.md)
+> before selecting a historical recipe. Current `rxb2` follows the first RX
+> descriptor's destination pointer and reports the raw `Link_BlockRx` result;
+> it does not validate a frame header. The current bit-6 hook keeps the stock
+> 620-iteration poll body but delays its first sample by 10 T and returns 107 T
+> after exit. Arduino phase generation is corrected and all 13 actual-Uno
+> configurations compile. The current requested hardware burn is the connector
+> probe v2, sum16 `9429`; follow [connector experiment](../../doc/re-notes/connector-experiment.md).
+
 > **DO NOT REBURN `1225`, `2692` OR `1E3E`.** The verified `1225` image produced a
 > constant buzz and uniformly black LCD. The verified `2692` image reduced
 > that to the expected brief power-up bleep, but its display remained black;
@@ -10,9 +41,9 @@
 > displays readable `CONTRASTC0`, but keys still have no observable effect.
 > Do not reburn unchanged `27E8` to investigate the keypad.
 
-## Current startup diagnostic: `2609` (2026-09-13)
+## Historical startup diagnostic: `2609` (2026-09-13)
 
-**Burn this candidate for the frozen-after-ENTER investigation.** The validated
+**Historical frozen-after-ENTER candidate.** The validated
 LCD startup and full keypad status screen are retained, with default contrast
 `A4h`. Press ENTER once. The next screen shows a two-digit startup stage at
 the upper left, with the rest of the row blank:
@@ -219,20 +250,43 @@ and there is one symbol table.
 
 **716 bytes differ from the original.** One chip: `ROM01` is untouched.
 
-### Two build variants — record-stream and witness (CONFIRMED)
+### Two build variants — record-stream and stock-order witness (CONFIRMED)
 
 `analysis/rom_exerciser/build.py` builds two variants from the one source (CONFIRMED):
 
 * **Default — record-stream (`2609`):** unchanged — 32768 bytes, sum16 `2609`, 716 changed bytes, SHA-256 `ec7d06b03167531c3099ce3afc925c013b6abee0cc6b62096c123c203f7b7b72` (`micron1_exerciser.bin`).
-* **Witness — `micron1_witness.bin` (`2E3E`):** built with `--witness` — 32768 bytes, sum16 `2E3E`, 824 changed bytes, SHA-256 `aa843c38dcb8131612d3d235871397bf6e6ace73d00aeeb50c79d4a7a6f124a0`.
+* **Stock-order witness — `micron1_witness.bin` (`379D`):** built with `--witness` — 32768 bytes, sum16 `379D`, sum24 `39379D`, 878 changed bytes, MD5 `9d2a7a5c9fbf309e5b529c3de966cf80`, SHA-256 `ffe276ba265f7a04e673547260c870d4530fcf0049ecc5490853939248d52973`.
 
 Both live in the same reclaimed `scr` region at `0250-02FD`; the default build strips the witness code and stays byte-identical to `2609` (CONFIRMED).
 
-The witness variant does the stock opening (LinkProbe, top-V24 port select, control setup), writes the flag via LinkPresent, writes ONE first data byte (`A5`), performs the `arm_tx` handshake, then **enables the receive path** (`LINK_CTRL` bits 6/7 via `ctrl_or 40h` then `ctrl_or 80h`, doing what `ROM00:34BD`/`ROM00:2FAE` does) and watches it. Every earlier exerciser build left those bits clear, so its RX interrupt could never fire and the `ISRC` bit-2 measurement was inert — CONFIRMED by emulator; the witness fix performs the enables. It then never writes `LINK_CMD`/`LINK_TXD`/`LINK_CTRL` again, so nothing it sends can disturb the receive path being measured (CONFIRMED by emulator: exactly one `0x81` to `LINK_CMD`, one `0xA5` to `LINK_TXD`, the arm values `23h`/`33h`/`13h`, enables `53h`/`0D3h`, then silence).
+The witness reproduces the opening latch order: LinkProbe, top-V24 selection,
+the bit0/bit4 idle strobes and settle, `81h` via LinkPresent, prelude `03h`,
+the bit-4-clear poll, arm strobes, and the bit-6-clear poll. A bit-4 timeout
+records `P4=00`, skips the arm, and reaches the passive witness with `P6=00`.
+After either outcome it performs the ordered teardown `13h → 03h → 02h`, then
+uses the stock helper's separate `02h → 42h → C2h` bit-6/bit-7 raises.
+Emulator traces lock one `81h`, one `03h`, arm values `23h`/`33h`/`13h` only
+after a passing bit-4 gate, and that complete teardown tail before silence.
+`LinkProbe` is after `power_lcd_init`, so it receives the later operator wait,
+but not the LCD-initialisation interval. Earlier missing polls/teardown and the
+single ~11 µs runt are observations, not a demonstrated causal explanation.
 
-Witness LCD row: `W` then six hex bytes `OR AND ISRC IRQN ARMD HB`. `OR`/`AND` are `LINK_STATUS` (`4Bh`) over the current window (~0.1 s, reset after each LCD update) so a stimulus is visible live; `ISRC`/`IRQN` are sticky for the run; `ARMD` is `LINK_STATUS` sampled immediately after the arm; `HB` is a heartbeat. Reset only by power-cycling; the IR channel is being listened to, so the LCD is the only readout.
+Witness LCD row: `W` then eight hex bytes `OR AND P4 P6 ISRC IRQN ARMD HB`.
+`OR`/`AND` are sticky for the whole run, not an alias-free event sampler;
+LCD/key activity and settling periods are outside this sampling claim.
+`P4`/`P6` are the bit-4/bit-6 outcomes (`10h`/`40h` = cleared, `00h` = timed
+out); `ISRC`/`IRQN` are sticky; `ARMD` is the immediate post-arm status; `HB`
+is a heartbeat. Reset only by power-cycling.
 
-Pairing: use the witness ROM with the Arduino `RX_SWEEP` mode (`analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` with `RX_SWEEP 1`, all other mode flags `0`) to sweep receive conventions and read the controller's reaction from the witness LCD (`LINK_STATUS` `OR`/`AND`, `ISRC`). The Arduino answers each handheld burst with one combination of flag sense, data polarity, phase and content and prints the parameters; it does not score itself. **Timing note — CONFIRMED (emulator):** the gating is temporal — the receiver is disabled for the `LinkBlockTx` transaction (~10–12 ms, 620 × 59 T ~ 9.92 ms at `ROM00:32F0` within ~93.75 ms retry) and re-enabled after it, so a reply must arrive in the enabled window; a burst-timed reply (~1–9 ms) lands inside the disabled window. Emulator tests lock the witness fingerprint (`2E3E`, 824 bytes, `aa843c...`) and verify `test_witness_stops_transmitting_after_the_arm` (65 exerciser tests pass, CONFIRMED; default `2609` unchanged).
+Arduino `RX_SWEEP` phase generation is corrected. The
+[connector experiment](../../doc/re-notes/connector-experiment.md) now records
+two output mappings and an input mapping for future test feedback. Their
+electrical interface and interaction with live IR still need validation.
+The ROM's
+stock bit-6 loop is 620 × 59 T, about 9.92 ms at 3.6864 MHz; this establishes
+the ROM deadline, not a cycle-identical deadline for witness or Arduino work.
+The witness fingerprint and ordered traces are covered by 67 exerciser tests;
+the default remains byte-identical to `2609`.
 
 Build:
 
@@ -240,6 +294,152 @@ Build:
 analysis/venv/bin/python analysis/rom_exerciser/build.py            # default record-stream
 analysis/venv/bin/python analysis/rom_exerciser/build.py --witness  # witness variant
 ```
+
+## Stock-ROM instrumentation hooks (`stock_instrument.py`)
+
+The boot-replacing exerciser above reproduces every latch write the stock
+`Link_BlockTx` makes and the stock TX-time port state, yet the controller still
+will not clock a frame (only a ~11 µs runt — see
+`doc/re-notes/exerciser-test-plan.md`). The replay is the remaining variable.
+`stock_instrument.py` removes it: **the stock boot, menu and session all run
+unchanged**, and we splice a small measurement routine into a stock loop.
+
+Mechanism:
+
+* Hook code is assembled into a genuinely-free stock region (default
+  `7E96-7FF9`, an all-zero 356-byte gap at the end of ROM00; guarded so a
+  non-empty region refuses). **Do not use the boot-replacing exerciser's
+  `0250-02FD` region here** — with the boot intact that is the stock boot's own
+  continuation at `024D` (`LD SP` / `LcdInit` / kernel install / banner), and
+  overwriting it crashes the boot (observed on hardware: TESTING banner, then
+  blank).
+* Named stock addresses are patched with `CALL`/`JP` (or raw bytes) to that
+  block; every patch site is byte-guarded, so a wrong ROM revision refuses to
+  build.
+* **Readout is the LCD.** A hook writes directly to the HD61830 (ports
+  `23h`/`03h`, the stock `Lcd_Init` sequence) and then halts. The firmware
+  never refreshes again, so the printed result persists on the glass. No
+  scope, no Arduino, no decode.
+* **Trigger is the normal UI** — e.g. select V24 and start a connection — so no
+  wiring or special boot is needed.
+* Accumulators live in free upper-TPA RAM (`C7E0`/`C7E1`; the stock firmware's
+  SP is at `F81A`, far above).
+
+Hook sets (`--hook NAME`):
+
+**`bit6`** (default) — sample `LINK_STATUS` during `Link_BlockTx`'s bit6 wait
+(Phase 0):
+
+| patch | stock | becomes |
+|---|---|---|
+| `32F0-32FF` | bit6-clear poll | `JP hook6` + NOPs |
+| `3356` | error-`EE` entry | `JP show` |
+
+`hook6` executes the original 16-byte poll sequence unchanged, then snapshots
+the exit. It preserves `B`, `HL`, and the final Z/AF contract. The patched JP
+has the same 10 T as the overwritten `LD DE`, but the relocated `LD DE` makes
+the first sample 10 T (about 2.71 µs) later; the post-loop snapshot takes
+107 T (about 29.0 µs). Thus it is a loop-body-preserving instrument, not an
+exact wall-clock replacement. On the no-peer timeout `show` prints
+`O ss F ff Bx`: last sampled status, raw return flags, and status bit 6.
+Image `micron1_stockhook.bin`: sum16 `E7B6`, sum24 `37E7B6`, MD5
+`29fd7794d699916d83dc3f382dfed181`, SHA-256
+`50cdb41c4fa13208e94ae9d1488fd386156ba96125a4f99697b6b4f8887a2636`.
+The dated owner result `O C8 A C8 B1` belongs to the former OR/AND hook layout
+and must not be decoded as output from this image.
+
+**`rx`** — detect a received burst on the interrupt-driven receive path
+(Phase 2):
+
+| patch | stock | becomes |
+|---|---|---|
+| `2FBD` | `LinkRxDispatcher` entry | `JP hook_rx` |
+
+`hook_rx` is reached only when the link IRQ (source 2) found `LINK_STATUS`
+bit 4 set, i.e. the controller reported a pending receive. It prints `I ss rr`
+(`LINK_STATUS`, and `LINK_RXD` when bit 0 says a byte is ready) and halts.
+Image `micron1_stockhook_rx.bin`: sum16 `DAA6`, SHA-256 `5365bd11...`, md5
+`e4573f3e...`. If no burst is accepted the firmware runs its normal error path
+and nothing prints; an accepted return burst (from an Arduino convention sweep)
+freezes the display on `I ss rr`.
+
+Pair it with the Arduino `FREE_TX` mode
+(`analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino`, set `FREE_TX 1` and all
+other mode flags `0`): it transmits **one swept burst every
+`FREE_TX_PERIOD_MS` (250 ms) with no handheld burst at all**, so the idle
+(`6/7`-raised) receiver is probed directly and the handheld's TX window does
+not confound the result.  Axes are the same as `RX_SWEEP` — flag sense
+`{0x81,0x7E}`, data polarity, ±1/8 ±1/4-cell phase, content — one combination
+per burst, parameters printed as `# TX flag=.. phase=../8cell pol=.. content=..`.
+The stock-hook halts on the first accepted burst, so the last `# TX` line names
+the convention that worked.  (`RX_SWEEP` remains for answering the handheld's
+own bursts, but its reply lands inside the `6/7`-clear transaction window.)
+
+**Narrowing the convention (`RX_NARROW`).** The first handheld-paced run halted
+on `flag=7E phase=-2/8cell pol=0 content=2 delay=3000us`, so the accepted return
+sense is flag `7E` (normal HDLC, inverted vs the TX `81h`).  Earlier `7E` lines
+at phase `-4` did **not** halt, so the flag alone may not be sufficient.
+`RX_NARROW` fixes the accepted convention and varies exactly **one** axis
+(`RX_NARROW_AXIS`: 0 = phase, 1 = polarity, 2 = content) to isolate the
+trigger; reply to each handheld burst, handheld-paced, at the accepted 4 ms.
+The narrowed run showed the hook fires on the **first** `7E` reply regardless
+of phase, so the return **flag `7E` alone raises bit 4**; the data lead is held
+at the handheld's own TX convention (−2/8 cell) and polarity/content are swept.
+**The return frame's stuffing sense follows its flag:** flag `7E` (normal HDLC)
+means **zero-stuffing** (a 0 after five 1s), not the Micronic's inverted
+one-stuffing (a 1 after five 0s).  The sketch now zero-stuffs whenever the flag
+axis selects `7E`.  Note `content=2` is `1Fh`, which has no five-1 run, so it
+does not exercise the stuffing — a content with a long 1-run (e.g. `7Fh`,
+content 4) tests it.
+
+**`rxb`** — byte-capture version of `rx`:
+
+| patch | stock | becomes |
+|---|---|---|
+| `2FBD` | `LinkRxDispatcher` entry | `JP hook_rxb` |
+
+Reached the same way (link IRQ source 2 with bit 4 set), but it then waits
+(bounded, ~16 ms per byte) for `LINK_STATUS` bit 0 and captures up to 3 bytes
+from `LINK_RXD`, printing **`I ss n b0 b1 b2`** and halting. `n=0` means only
+that this hook saw no byte-ready within its own bound; it does not diagnose
+data polarity or phase. Image
+`micron1_stockhook_rxb.bin`: sum16 `F818`, SHA-256 `820a16ad...`, md5
+`a8e7dad5...`.
+
+**`rxb2`** — same entry, but instead of reading `LINK_RXD` itself it **calls
+the stock `Link_BlockRx`** (`ROM00:3378`), so the full RX arm is performed
+(bit0=0 → bit5=1 → dummy `LINK_RXD` read → bit4=1 → settle → bit5=0) before
+the read. It follows the first descriptor's destination pointer at descriptor
+`+2`, as the dispatcher does; it never pre-fills that destination. Prints
+**`I ss aa ff nnnn b0 b1 b2`**: `ss` is post-call `LINK_CTRL`, `aa` and `ff`
+are raw `Link_BlockRx` return A/F, `ff` carry marks its error exit, and `nnnn`
+is bytes read (`DE+2`) on success or `FFFF` on error. Preview bytes are read
+only on success and are bounded by both that count and the first descriptor's
+length; `--` marks unavailable bytes. This diagnoses `Link_BlockRx` only; it
+does not establish that `Link_ValidateFrameHeader` accepted the frame. Image
+`micron1_stockhook_rxb2.bin`: sum16 `2943`, sum24 `382943`, MD5
+`440a8acbd2793f0dc691e1cd1a8b9e85`, SHA-256
+`3dc78f35af2446e37e728626be553beea04d161fde3d40ecfcebbd34b323a79b`.
+
+A RAM-test page-bound patch at `26C8` (`41h`→`09h`) was tried and **removed**:
+it booted from warm RAM but hung the cold boot (batteries out) — the RAM test
+initialises RAM, so it cannot be shortened blindly.
+
+Build / test:
+
+```
+analysis/venv/bin/python analysis/rom_exerciser/stock_instrument.py            # bit6
+analysis/venv/bin/python analysis/rom_exerciser/stock_instrument.py --hook rx  # rx
+timeout 60 analysis/venv/bin/python -m pytest -q analysis/test_stock_instrument.py
+```
+
+**This is the intended framework for future unknowns:** add a hook at the stock
+address of interest, sample into RAM, and print on the LCD. Candidate triggers
+beyond the UI: the keyboard, the RTC, and the port-`2Dh` edge input. The
+measured connector mappings and the black input's gating constraint are in the
+[connector experiment](../../doc/re-notes/connector-experiment.md). Use black
+for commands between IR trials; the stock IR selector does not preserve its
+known working gate.
 
 ## The LCD, first
 
@@ -470,11 +670,11 @@ record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
 
 | field | |
 |---|---|
-| `COUNT` | rolling record number, +1 each record — a lost record is visible, and it is the time base. Top two bits are the phase |
+| `COUNT` | rolling record number, +1 each record — a lost record is visible, and it is the time base. Current wire version `0Eh` has no phase encoding in its top bits. |
 | `OR` | every `LINK_STATUS` sample taken during this record's window, OR'd together |
 | `AND` | the same samples, AND'd together |
 | `RXD` | `LINK_RXD`, read once per record, after the status samples |
-| `SIDE` | port `2Dh`, the 5-pin side port, read once per record |
+| `SIDE` | port `2Dh` edge input, read once per record |
 | `CTRL` | the `LINK_CTRL` value this phase asked for, so a capture is self-describing and the sweep needs no schedule shared with the decoder |
 | `WD` | rolling count of `waitready` watchdog trips — it rises only when a `LINK_CTRL` value stopped the controller accepting bytes |
 | `KEY` | keypad index (`6*sense-bit-index + drive-bit-index`) of the first key held, or `FFh` |
@@ -482,13 +682,14 @@ record     COUNT OR AND RXD SIDE CTRL WD KEY IRQN ISTAT ISRC
 | `ISTAT` | `LINK_STATUS` OR'd across every interrupt, sticky for the run |
 | `ISRC` | active-high port-`05h` source bits OR'd across every interrupt; bit 0 is keypad and bit 2 is link. Wire-only; the first ten fields fill the LCD row |
 
-`OR` and `AND` are what make the modest record rate sufficient. Waiting for
+In the historical record-stream design, `OR` and `AND` were intended to make
+the modest record rate sufficient. Waiting for
 `TXRDY` is a tight polling loop — one `LINK_STATUS` sample every ~35 µs — and
 every sample folds into both accumulators. A bit that pulses high for a single
 122 µs wire cell still shows up in `OR`; one that drops for a single cell still
-shows in `AND`; a genuinely constant bit reads the same in both. **No event on
-the wire's own timescale can be aliased away.** Only the ordering of events
-inside one record is lost.
+shows in `AND`; a genuinely constant bit reads the same in both. This does not
+make the measurement alias-free: it omits LCD/key work and settling periods,
+and loses ordering inside a record.
 
 **Every port is touched in the direction the firmware touches it, and only
 that direction.** `4Ah`, `4Ch`, `4Dh`, `2Ah` and `2Ch` are write-only across

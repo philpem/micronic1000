@@ -64,7 +64,7 @@ in transmission order.
 
 The two IR ports are **V24 ADAPTOR (top)** and **PLINTH (back)**. Wire-ID bit 5
 clear selects the top V24 state: `LINK_CTRL` bit 1 and port `2Ch` bit 5 are
-set. The complementary state is **LIKELY** the back PLINTH state. The 5-pin
+set. The complementary state is **LIKELY** the back PLINTH state. The 8-contact
 side port is the barcode-reader front end and is not part of this transport —
 see [Barcode reader](../reference/barcode.md).
 
@@ -450,8 +450,14 @@ host must therefore **echo sequence numbers rather than inventing them** and
 **be idempotent on a repeat** — the same sequence twice means the handheld did
 not see your answer.
 
-`CommstarPeer` echoes the sequence from the request it is answering, which is
-why it interoperates without modelling the table.
+`CommstarPeer` echoes request sequences and now caches outstanding exchanges.
+A repeated unacknowledged request replays its reply without invoking the
+application policy again; duplicate acknowledgements replay completion
+without advancing the download. A sequence can be reused after its exchange
+is acknowledged. Regression tests cover lost replies/completions, conflicting
+reuse and sequence wrap. This fixes the defect reproduced in the
+[2026-09-22 audit](../research/reviews/ir-protocol-audit-2026-09-22.md#4-the-session-peer-is-not-retry-safe);
+it does not establish electrical return-frame acceptance.
 
 > Table initialisation and branch listing: see
 > [`re-notes/commstar-evidence.md#frame-sequence-numbers-and-duplicate-suppression`](../re-notes/commstar-evidence.md#frame-sequence-numbers-and-duplicate-suppression).

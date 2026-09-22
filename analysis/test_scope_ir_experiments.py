@@ -6,9 +6,11 @@ import unittest
 from scope_ir_experiments import (
     FLAG_BITS,
     cadence_reacted,
+    destuff_checked,
     parse_segment,
     response_address,
 )
+from scope_ir_decode import destuff_checked as decode_destuff_checked, unframe
 
 
 def stuffed_byte(value: int) -> str:
@@ -37,6 +39,28 @@ class ScopeIrExperimentTest(unittest.TestCase):
                 frame = FLAG_BITS + stuffed_byte(address)
                 self.assertEqual(response_address(frame), address)
                 self.assertEqual(response_address("1" + frame), address)
+
+    def test_malformed_stuffing_is_rejected(self):
+        # Six zero wire bits are illegal in inverted HDLC data: the sixth bit
+        # must be the inserted one.  The old decoder silently dropped it.
+        decoded, valid, error = destuff_checked("000000")
+        self.assertFalse(valid)
+        self.assertIn("stuffed 1", error)
+        self.assertEqual(response_address(FLAG_BITS + "000000"), None)
+
+    def test_terminal_stuffing_before_closing_flag_is_required(self):
+        # 20h ends in five zero data bits, so the valid stream has an
+        # explicit stuffed one before its closing flag.
+        valid = FLAG_BITS + "001000001" + FLAG_BITS
+        malformed = FLAG_BITS + "00100000" + FLAG_BITS
+        self.assertIsNotNone(response_address(valid))
+        self.assertIsNone(response_address(malformed))
+
+    def test_waveform_decoder_reports_bad_stuffing(self):
+        _, valid, error = decode_destuff_checked("000000")
+        self.assertFalse(valid)
+        self.assertIn("stuffed 1", error)
+        self.assertIsNone(unframe(FLAG_BITS + "00000000" + FLAG_BITS))
 
     def test_scope_pod_channel_mapping(self):
         # Scope D1 is handheld clock and D0 is handheld data.  Scope D2 is

@@ -99,19 +99,31 @@ def decode(ch1, ch2, dt):
 FLAG = "10000001"        # = ~0x7E: six 0s bracketed by 1s
 
 
-def destuff(bits):
-    """Drop the 1 the framer inserts after five consecutive 0s."""
+def destuff_checked(bits, *, require_terminal=False):
+    """Return ``(bits, valid, error)`` for inverted-HDLC stuffing.
+
+    A run of five zero data bits requires a raw one immediately afterwards.
+    Older versions silently discarded whatever followed the run, turning a
+    malformed frame into a plausible byte stream.  A terminal run is allowed
+    for an open capture, but is an error when a closing flag is known to follow.
+    """
     out, run = [], 0
-    i = 0
-    while i < len(bits):
-        if run == 5:                    # this bit was inserted, not data
+    for index, value in enumerate(bits):
+        if run == 5:
+            if value != "1":
+                return "".join(out), False, f"expected stuffed 1 at bit {index}"
             run = 0
-            i += 1
             continue
-        out.append(bits[i])
-        run = run + 1 if bits[i] == "0" else 0
-        i += 1
-    return "".join(out)
+        out.append(value)
+        run = run + 1 if value == "0" else 0
+    if require_terminal and run == 5:
+        return "".join(out), False, "missing terminal stuffed 1"
+    return "".join(out), True, None
+
+
+def destuff(bits):
+    """Drop valid stuffing, retaining the historical string return type."""
+    return destuff_checked(bits)[0]
 
 
 def unframe(bits):
@@ -119,9 +131,17 @@ def unframe(bits):
     i = bits.find(FLAG)
     if i < 0:
         return None
-    field = destuff(bits[i + len(FLAG):])
+    start = i + len(FLAG)
+    closing = bits.find(FLAG, start)
+    body_end = closing if closing >= 0 else len(bits)
+    field, valid, _ = destuff_checked(
+        bits[start:body_end], require_terminal=closing >= 0
+    )
+    if not valid:
+        return None
     whole = len(field) // 8
-    return bits[:i], [int(field[j*8:(j+1)*8], 2) for j in range(whole)], field[whole*8:]
+    tail_start = closing + len(FLAG) if closing >= 0 else body_end
+    return bits[:i], [int(field[j*8:(j+1)*8], 2) for j in range(whole)], field[whole*8:] + bits[tail_start:]
 
 
 def main():
