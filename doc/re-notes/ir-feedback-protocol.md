@@ -310,7 +310,36 @@ trial. It exclusively creates the log, so rerunning cannot overwrite
 measurements. Close any Arduino Serial Monitor before opening the same port.
 A ROM diagnostic timeout is recorded as data and does not abort a batch.
 
+## Recovering from a serial command rejection
+
+The current sketch uses a generic `ERROR ... reason=command` for malformed
+or empty command lines, non-increasing IDs, and requests made outside READY.
+Its `id` is the last accepted trial ID; any `raw` bytes may be retained from
+that completed trial. They are not a new handheld response and do not reveal
+which input line was rejected. Inspect the preceding TRIAL/READY lines.
+
+On 2026-09-23, after completed trial 3, the owner reported:
+
+```text
+ERROR id=3 reason=command raw=A55A0101030006A0C0C81000010000000000000000000000000022002378
+```
+
+The owner then confirmed resending the same ID-3 command to repeat the
+trial. This explains the rejection: every trial, including an identical
+repeat, needs a strictly greater host ID. The old bytes are not a new result.
+To recover, select Newline in Serial Monitor, send `R` as a separate line,
+wait for SYNC/wiring banner/READY, then send the intended trial 4 command
+once. If it is rejected again, retain the exact transmitted text as well
+as the response. R resets synchronisation, not the host-ID monotonic check.
+The next accepted host ID must still exceed the last accepted ID.
+
 ## LCD and keypad
+
+For routine bench reports, retain the complete TRIAL and RESULT lines (and
+any ERROR), plus scope captures when requested. RESULT includes every LCD
+field and additional data, so LCD transcription is unnecessary. Report LCD
+contents when they disagree with serial, when no RESULT arrives, or when
+debugging the display itself.
 
 The LCD refreshes after each completed trial; it does not continuously poll
 IR status. YES/NO adjust contrast. W, R, P and G run the corresponding manual

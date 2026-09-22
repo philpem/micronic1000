@@ -7530,3 +7530,16 @@ names renamed, 144 unplated functions plated)
   timing before changing assignments. Source review identifies post-deadline
   queue setup as a possible contributor; actual AVR costs are not modelled
   by the host scheduler tests. Saved the observation as an open Ghidra item.
+
+### 2026-09-23 — Generic command rejection after trial 3
+
+* Owner reports ERROR id=3 reason=command with the exact preceding trial-3
+  bytes. Source verification shows command errors retain fbConfig's last
+  accepted ID and the old result buffer: this is not another ROM result.
+* Owner clarified that the same ID-3 command was entered twice. Duplicate
+  ID rejection explains this event; every repeat needs a new ID. Documented
+  recovery using serial R, READY, then ID 4. R retains the host-ID monotonic
+  limit. No hardware conclusion or code change.
+* Routine reports need full TRIAL/RESULT/ERROR lines, not duplicated LCD
+  transcription. Request LCD only for mismatch, missing serial result, or
+  display debugging.
