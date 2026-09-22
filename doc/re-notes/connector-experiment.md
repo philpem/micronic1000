@@ -398,6 +398,50 @@ Yellow and the other three signal contacts remain unmapped; their identities
 and any existing measurements have been requested. Only red, orange, blue,
 black and yellow are currently described in the hardware record.
 
+## Yellow: remaining tests using the same ROM
+
+**Black's observed working condition:** `CTL_LATCH_2A` bit 1 high and
+`CTL_LATCH_2C` bit 5 low. `CTL_LATCH_2C` bit 1 can be low or high; red's
+`CTL_LATCH_2A` bit 4 can be low, high or pulsing. These are bench conditions,
+not a determination of the internal gate circuit. **R, F, SPACE, C, SPACE**
+reaches the tested `2A=22h`, `2C=00h` baseline.
+
+Yellow remains **unmapped**. Held-level tests gave no input response at
+20h/22h in v1 and 20h/02h and 22h/02h in v2. Its high impedance and
+owner-reported ground-side diode do not distinguish an input from a disabled
+or open-collector/open-drain output. Those are **SUSPECTED candidates**;
+the tests below discriminate some of them without another burn.
+
+1. **Input comparison:** reset/setup with **R, F, SPACE, C, SPACE**;
+   verify `2A=22h`, `2C=00h` and leave black released. Pull yellow through
+   **10 kΩ** to blue/GND, then separately through **10 kΩ** to orange/Vcc.
+   Record yellow voltage and `2D`/OR/AND. This exact input configuration
+   has not yet been reported for yellow. Do not assume a particular input
+   bit; record the entire byte.
+2. **Output comparison:** leave a **10 kΩ pull-up** from yellow to
+   orange/Vcc, observe yellow on the scope, then **D, P**. Candidate D
+   controls `CTL_LATCH_2A` bit 0; expect `2A=22h/23h`, `2C=00h`.
+   **D, L** and **D, H** allow held voltage measurements. A waveform
+   correlated with D would establish an output association in that state.
+3. **Other red baseline:** **E, SPACE, D, P** retains E high and pulses D;
+   expect `2A=32h/33h`, `2C=00h`. If neither output comparison responds,
+   repeat from step 1's reset/setup with the 10 kΩ resistor moved from
+   Vcc to GND, one resistor path at a time. Negative results still do not establish an unused contact.
+
+The pull-up tests a specific blind spot: an open-drain output can release
+its pin instead of driving high, so an external resistor supplies the high
+state ([TI, pull-up/pull-down selection](https://www.ti.com/lit/an/slva485/slva485.pdf)).
+This general electrical behaviour is not evidence that yellow uses that
+circuit. The pull-down comparison tests for drive in the opposite direction.
+
+**CONFIRMED, fresh stock listing:** ROM00:1537–1541 sets `CTL_LATCH_2A`
+bit 0 while clearing its bit 4; ROM00:1548–1550 subsequently sets its bit 4.
+ROM00:14E8–14F2 sets that latch's bit 4 while clearing its bit 0. This makes
+candidate D worth testing alongside the physically mapped E output; none
+of these bytes identifies yellow or establishes a scanner-side purpose.
+If these tests are negative, tracing yellow's PCB connection is more useful
+than assigning a function from its diode reading alone.
+
 ## Scope of the image
 
 Interrupts remain disabled and the NMI target is a standalone return.

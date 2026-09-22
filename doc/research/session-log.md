@@ -1,5 +1,18 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow discrimination plan and black control conditions
+
+* Summarised black's tested working condition: `CTL_LATCH_2A` bit 1 high,
+  `CTL_LATCH_2C` bit 5 low; `CTL_LATCH_2C` bit 1 may be either state.
+  Red's `CTL_LATCH_2A` bit 4 may be held low/high or pulsed. This describes
+  measured configurations, not the internal gate topology.
+* Fresh stock listings at ROM00:14DE and ROM00:14FF confirm coordinated
+  writes to `CTL_LATCH_2A` bits 0 and 4. No yellow assignment follows.
+* Proposed yellow held-level comparison at 22/00 and candidate-D output
+  tests with 10 kΩ pull-up/pull-down, E baseline low/high. Yellow input,
+  disabled-output and open-collector/drain candidates remain unconfirmed;
+  the guide records the discriminating observations. No firmware change.
+
 ## 2026-09-22 — both black input levels with red output
 
 * CONFIRMED (owner measurements): released black reads `2D=23h`
