@@ -17,17 +17,17 @@ scanner cable's **blue, black and yellow** wires:
 
 | Connection | Wiring |
 |---|---|
-| Common ground | Handheld **blue** to **Uno GND** and NPN **emitter** |
+| Common ground | Handheld **blue / pin 8** to **Uno GND** and NPN **emitter** |
 | Command to handheld | Handheld **black / pin 5** to NPN **collector** |
 | NPN drive | **D7 -> 10 kOhm -> base**; **100 kOhm base-to-emitter** |
-| Feedback from handheld | Handheld **yellow** to **D8**; **10 kOhm yellow-to-Uno-5-V** pull-up |
+| Feedback from handheld | Handheld **yellow / pin 6** to **D8**; **10 kOhm yellow-to-Uno-5-V** pull-up |
 | Optical stimulus | Keep existing IR LED drivers/channels **A on D5**, **B on D6**, facing the top V24 window |
 
 Leave orange/Vcc, red, brown, violet and green disconnected and insulated.
 Remove the earlier connector tests' yellow-to-orange and black-to-ground
 resistors. Do not join handheld Vcc to Uno 5 V or connect black directly to
-D7. Check the actual transistor's B/C/E pinout. Blue/yellow numeric connector
-pin assignments are not recorded; use the owner's tested wire colours.
+D7. Check the actual transistor's B/C/E pinout. Connector pin numbers and
+wire colours are owner-confirmed (2026-09-22).
 
 See the [complete wiring diagram and power-up checks](../../../doc/re-notes/ir-feedback-protocol.md#connect-the-handheld-to-the-uno).
 D7 high sinks black; D7 low releases it. D8 is input-only. D2/D4 optical

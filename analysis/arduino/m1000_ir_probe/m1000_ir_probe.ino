@@ -26,13 +26,13 @@
 //                100k resistor from BASE to EMITTER (off during Uno reset)
 //                D7 HIGH pulls BLACK low; D7 LOW releases BLACK.
 //                Do NOT wire BLACK directly to D7.
-//   YELLOW_IN D8  handheld YELLOW -> D8 (input only)
+//   YELLOW_IN D8  handheld YELLOW / scanner pin 6 -> D8 (input only)
 //                10k pull-up from YELLOW to UNO 5 V, NOT handheld Vcc
 //                YELLOW carries ACK, START and 1200-baud result records.
-//   GND          handheld BLUE -> UNO GND and NPN EMITTER
+//   GND          handheld BLUE / scanner pin 8 -> UNO GND and NPN EMITTER
 //
 // BLACK/YELLOW/GND are the three scanner-connector wires for feedback mode.
-// Use the owner's tested cable colours; BLUE/YELLOW pin numbers are unknown.
+// Connector pin numbers/colours confirmed by owner, 2026-09-22.
 // Check the actual NPN's B/C/E pinout. Remove old BLACK-to-ground test loads
 // and YELLOW-to-orange/Vcc or YELLOW-to-ground test resistors.
 // Leave ORANGE/pin 3 (handheld Vcc), RED/pin 1, BROWN/pin 2, VIOLET/pin 4

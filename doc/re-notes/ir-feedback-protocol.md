@@ -12,15 +12,15 @@ USB. Join their grounds, but keep their positive supply rails separate.
 The optical connection still uses the existing two IR LED channels.
 
 The colours below refer to the owner's tested cable. They are not a standard
-mini-DIN colour code. Black is owner-identified pin 5; numeric pin assignments
-for blue and yellow have not been recorded. Identify those by the tested
-wires, not an assumed connector pin-numbering diagram.
+mini-DIN colour code. **CONFIRMED: owner pin-number identification,
+2026-09-22:** black 5, yellow 6, blue 8, red 1, orange 3. No connector-face
+view or plug/socket numbering orientation is implied by the wiring diagram.
 
 | Handheld scanner-connector wire | Connect to | Purpose |
 |---|---|---|
-| **Blue / ground** | **Uno GND**, and transistor emitter | Common signal reference |
+| **Blue / pin 8 / ground** | **Uno GND**, and transistor emitter | Common signal reference |
 | **Black / pin 5** | **Collector** of an external NPN transistor | Uno command to handheld; transistor pulls black low |
-| **Yellow** | **Uno D8**, and one end of a **10 kOhm** resistor | Handheld ACK/START/result output |
+| **Yellow / pin 6** | **Uno D8**, and one end of a **10 kOhm** resistor | Handheld ACK/START/result output |
 | **Orange / pin 3 / Vcc** | Leave disconnected and insulate | Handheld supply; do not connect to Uno 5 V |
 | **Red / pin 1** | Leave disconnected and insulate | Unused output, measured up to 5.6 V |
 | **Brown / pin 2, violet / pin 4, green / pin 7** | Leave disconnected and insulate | Unassigned contacts |
@@ -30,7 +30,7 @@ Complete the Arduino-side connections:
 | Uno connection | Wire/component |
 |---|---|
 | **D7** | Through **10 kOhm** to transistor **base** |
-| **GND** | Transistor **emitter**, handheld **blue**, and one end of **100 kOhm** resistor |
+| **GND** | Transistor **emitter**, handheld **blue / pin 8**, and one end of **100 kOhm** resistor |
 | Transistor **base** | Other end of the **100 kOhm** resistor |
 | **5 V** | Other end of yellow's **10 kOhm** pull-up resistor |
 | **D8** | Yellow/pull-up junction; configured as input |
@@ -47,12 +47,12 @@ Uno D7 -------[10 kOhm]-------+------- B
                              |        |  NPN transistor
                           [100 kOhm]  C------------- Black / pin 5
                              |        E
-Uno GND ---------------------+--------+------------- Blue / ground
+Uno GND ---------------------+--------+------------- Blue / pin 8 / ground
 
 
                  FEEDBACK: handheld -> Uno
 
-Uno 5 V ------[10 kOhm]-------+--------------------- Yellow
+Uno 5 V ------[10 kOhm]-------+--------------------- Yellow / pin 6
                              |
 Uno D8 ----------------------+
 

@@ -7449,3 +7449,13 @@ names renamed, 144 unplated functions plated)
 * Blue/yellow numeric connector pins remain unrecorded; the guide uses the
   owner-tested colours without inventing a mini-DIN pin numbering scheme.
   Firmware and EPROM image/checksums are unchanged.
+
+### 2026-09-22 — Owner supplies the remaining connector pin numbers
+
+* CONFIRMED (owner identification): black=5, yellow=6, blue=8, red=1,
+  orange=3. Recorded in the sketch wiring header, operator guide, sketch
+  README, hardware notes and connector pin table; the preceding statement
+  that blue/yellow numbers were unrecorded is superseded.
+* Stored the owner pin identification in a Ghidra bookmark and saved the
+  program. This records physical evidence, without new scanner-role claims.
+  No firmware bytes or image checksums changed.

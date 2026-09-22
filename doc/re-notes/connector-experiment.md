@@ -23,6 +23,23 @@ unchanged. This dedicated diagnostic does not run normal menus. It writes
 scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
 and restart procedure afterwards.
 
+## Owner-confirmed connector pin numbers
+
+**CONFIRMED: owner identification, 2026-09-22.** These are the owner's
+connector pin numbers and tested cable colours; no plug/socket viewing
+orientation is inferred.
+
+| Pin | Wire | Established connection |
+|---:|---|---|
+| 1 | Red | Port `2Ah` bit 4 output |
+| 2 | Brown | Unassigned |
+| 3 | Orange | Handheld Vcc |
+| 4 | Violet | Unassigned |
+| 5 | Black | Port `2Dh` bit 0 input, subject to the documented gate |
+| 6 | Yellow | Port `2Ah` bit 0 sink/release output |
+| 7 | Green | Unassigned |
+| 8 | Blue | Ground |
+
 ## Image and transfer checks
 
 File:
@@ -602,7 +619,7 @@ absence of detected diode paths does not prove no connection. Record them
 and defer further pin hunting while returning to the IR experiment.
 
 The useful measured signals are now black/pin 5 input (`2Dh` bit 0),
-red/pin 1 output (`2Ah` bit 4), and yellow sink/release output (`2Ah` bit 0,
+red/pin 1 output (`2Ah` bit 4), and yellow/pin 6 sink/release output (`2Ah` bit 0,
 including the owner's 200 mA sink measurement). Three signal contacts
 remain unassigned; no additional connector ROM burn is required to retain
 these results.
