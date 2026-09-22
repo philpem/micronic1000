@@ -35,16 +35,17 @@ test also produces no activity change on the other contacts. Black through
 10 kΩ to ground measures 0.9 V with `2D=23h`; disconnected it returns to
 5.1 V. A subsequent 500 Ω pull-down reaches 0.056 V, still `2D=23h`.
 Fresh byte review exposes a diagnostic gap: v1 holds `CTL_LATCH_2C` bit 5
-high; stock barcode setup clears it before the direct input probe. Current
+high; stock barcode setup clears it before the direct input probe. V1
 keys cannot test that state. Owner now reports C high gives `2D=20h` with
 B low or high, with black released (OR/AND also 20h in the B-low report).
 Grounding black also leaves `2D=20h` with C high in both B states. No
 black-contact input response has been established. Yellow subsequently
 measures 0 V at blue/GND and 5.3 V at orange/Vcc, both with `2D=23h` under
-R/B/SPACE. Next test the missing `CTL_LATCH_2C`-bit-5-low configuration
-using connector v2 candidate F: R/F/SPACE/B/SPACE gives 2A/2C=20/02.
-V1 remains preserved; v2 adds the missing control without altering the
-existing defaults. The actual low-state hardware comparison is pending.
+R/B/SPACE. V2 now exposes `CTL_LATCH_2C` bit 5 low. Owner confirms
+R/F/SPACE/B/SPACE gives 2A/2C/2D=20/02/23, with no `2D` response to
+black/yellow high/low. Next C/SPACE gives 2A/2C=22/02 for the remaining
+mode comparison. The other three contacts' identities/measurements have
+also been requested. V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
 

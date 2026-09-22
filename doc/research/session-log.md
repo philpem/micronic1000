@@ -1,5 +1,17 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — v2 bit-5-low physical comparison
+
+* Owner reports R/F/SPACE/B/SPACE gives 2A/2C/2D=20/02/23 on v2, with
+  black/yellow high/low producing no displayed input change. No numeric
+  pin voltages were supplied for this run; contact directions remain open.
+* Clearing `CTL_LATCH_2C` bit 5 alone has not exposed an input response in
+  this configuration. Next C/SPACE at the retained baseline gives 22/02
+  for the remaining `CTL_LATCH_2A`-bit-1 comparison.
+* Requested colours/pin numbers and existing measurements for the other
+  three contacts, which have not yet been individually described. No ROM
+  change is needed for the next comparison.
+
 ## 2026-09-22 — yellow result and connector v2 control-state repair
 
 * Owner reports yellow at 0 V to blue/GND and 5.3 V to orange/Vcc after

@@ -12,8 +12,9 @@ All other controls and reset baselines are retained. V1 is preserved for
 reproducing the measurements below.
 
 **Hardware status:** v1 boots on the owner's handheld, with heartbeat,
-contrast and a non-inverted output on red/pin 1 established. V2 uses the same
-startup and has not yet run on the physical handheld. Only ROM00
+contrast and a non-inverted output on red/pin 1 established. The owner has
+now run v2: its F-low setup reaches `2A=20h`, `2C=02h`, with `2D=23h`
+unchanged by black/yellow high/low tests. Input mapping remains open. Only ROM00
 (`micron1.bin`, DIP1) is replaced; leave ROM01 (`micron2.bin`, DIP2)
 unchanged. This dedicated diagnostic does not run normal menus. It writes
 scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
@@ -326,6 +327,21 @@ means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete
 byte even if it differs from these examples. `OR`/`AND` can differ briefly
 while a display window includes the transition; steady held levels should
 subsequently be visible in `2D`. The next comparison changes the previously fixed control state.
+
+## V2 hardware observations — 2026-09-22
+
+The owner reports **R, F, SPACE, B, SPACE** gives **`2A=20h`, `2C=02h`,
+`2D=23h`**. Taking black and yellow high/low does not change `2D`. Numeric
+pin voltages for this v2 run were not supplied. This tests
+`CTL_LATCH_2C` bit 5 low with its bit 1 high and `CTL_LATCH_2A` bit 1 low;
+that state alone has not exposed either contact as a readable input.
+
+**Next:** from that state press **C, SPACE**, without R. Check
+**`2A=22h`, `2C=02h`**, record idle `2D`, then compare black/yellow high/low
+again. This completes the C-low/C-high comparison with `CTL_LATCH_2C`
+bit 5 low. The other three contact identities and any existing measurements
+have also been requested; only red, orange, blue, black and yellow are
+currently described in the hardware record.
 
 ## Scope of the image
 
