@@ -58,9 +58,13 @@ input/output comparison.
 The other three contacts' identities/measurements have also been requested.
 Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
 0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
-(CONFIRMED: owner measurements). Next scope yellow with the 10 kΩ pull-up
-while D/P changes 2A=22h/23h, 2C=00h; then compare E retained high.
-Yellow's function remains unknown; no new ROM is required.
+(CONFIRMED: owner measurements). With that pull-up, D/P then produces a
+roughly 400 ms yellow waveform while 2A=22h/23h and 2C=00h. Owner reports
+D/H pulls yellow low and D/L floats it: **yellow maps to `CTL_LATCH_2A`
+bit 0 as a sink/release output in this configuration (CONFIRMED: owner
+measurements)**. Internal topology and scanner-side purpose remain unknown.
+Next 10 kΩ pull-down with D/L and D/H checks for high drive; E-high output
+comparison remains available. No new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.

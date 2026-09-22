@@ -1,5 +1,17 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow output correlation and polarity
+
+* CONFIRMED (owner measurements): with a 10 kΩ pull-up, D/P alternates
+  2A=22h/23h, 2C=00h and produces a yellow waveform of approximately
+  400 ms period. D/H pulls yellow low; D/L floats it. This maps yellow
+  to `CTL_LATCH_2A` bit 0 as a sink/release output in the tested state.
+* No transistor topology or scanner-side role is assigned. Numeric held
+  output voltages remain unreported. Next move the 10 kΩ resistor to
+  ground and compare D/L then D/H; E-high comparison remains untested.
+* Updated the connector guide, task list and Ghidra bookmark. No firmware
+  or release image changes.
+
 ## 2026-09-22 — yellow held-level result at 22/00
 
 * CONFIRMED (owner measurements): after the requested 2A/2C=22/00 setup

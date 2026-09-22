@@ -15,7 +15,9 @@ reproducing the measurements below.
 contrast and a non-inverted output on red/pin 1 established. The owner has
 now mapped black to input port `2Dh` bit 0 with v2: at `2A=22h` and
 `2C=00h` or `02h`, black high/released reads `23h`, black low reads `22h`
-(CONFIRMED: owner measurements). Yellow remains unmapped. Only ROM00
+(CONFIRMED: owner measurements). Yellow now maps to `2Ah` bit 0 with
+sink/release behaviour, as detailed below; its scanner-side purpose remains
+unknown. Only ROM00
 (`micron1.bin`, DIP1) is replaced; leave ROM01 (`micron2.bin`, DIP2)
 unchanged. This dedicated diagnostic does not run normal menus. It writes
 scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
@@ -394,11 +396,11 @@ pulse timing and check coexistence with IR operation. The standalone test
 does not establish short-pulse capture, arbitrary-state independence or
 compatibility with the latch states used by the IR controller.
 
-Yellow and the other three signal contacts remain unmapped; their identities
-and any existing measurements have been requested. Only red, orange, blue,
+Yellow is mapped below; the other three signal contacts remain unmapped.
+Their identities and any existing measurements have been requested. Only red, orange, blue,
 black and yellow are currently described in the hardware record.
 
-## Yellow: remaining tests using the same ROM
+## Yellow: sink/release output and remaining tests
 
 **Black's observed working condition:** `CTL_LATCH_2A` bit 1 high and
 `CTL_LATCH_2C` bit 5 low. `CTL_LATCH_2C` bit 1 can be low or high; red's
@@ -406,11 +408,24 @@ black and yellow are currently described in the hardware record.
 not a determination of the internal gate circuit. **R, F, SPACE, C, SPACE**
 reaches the tested `2A=22h`, `2C=00h` baseline.
 
-Yellow remains **unmapped**. Held-level tests gave no input response at
-20h/22h in v1 and 20h/02h and 22h/02h in v2. Its high impedance and
-owner-reported ground-side diode do not distinguish an input from a disabled
-or open-collector/open-drain output. Those are **SUSPECTED candidates**;
-the tests below discriminate some of them without another burn.
+**CONFIRMED (owner measurements): yellow responds to `CTL_LATCH_2A` bit 0**
+with `CTL_LATCH_2C=00h`, `CTL_LATCH_2A` bit 1 high and its bit 4 low.
+With a 10 kΩ pull-up to orange/Vcc, D/P produces a yellow waveform with
+approximately 400 ms period while `2A` alternates `22h/23h`. The owner
+then reports **H pulls yellow low, L floats it**:
+
+| Command | `2A` | `2C` | Yellow behaviour |
+|---|---|---|---|
+| D/L | `22` | `00` | Released/floating; external resistor sets voltage |
+| D/H | `23` | `00` | Pulled low |
+| D/P | `22/23` | `00` | Alternates release/sink, approximately 400 ms period |
+
+This is an active-low, sink/release output in the tested configuration.
+Open-collector/open-drain topology is **SUSPECTED**, not established by
+these observations alone; an equivalent switched or tri-stated driver is
+not excluded. The scanner-side purpose and numeric held output voltages
+remain unreported. Earlier held-level tests alone did not establish this
+output behaviour.
 
 1. **Input comparison:** reset/setup with **R, F, SPACE, C, SPACE**;
    verify `2A=22h`, `2C=00h` and leave black released. Pull yellow through
@@ -418,31 +433,36 @@ the tests below discriminate some of them without another burn.
    **Completed (CONFIRMED: owner measurements):** yellow measures **0 V**
    with the ground connection and **5.22 V** with the Vcc connection;
    **`2D=OR=AND=23h` in both cases**. No held-level response was observed
-   through port `2Dh` in this configuration. Yellow's function remains
-   unknown; this does not rule out an input under other conditions.
+   through port `2Dh` in this configuration. This does not rule out
+   an input under other conditions.
 2. **Output comparison:** leave a **10 kΩ pull-up** from yellow to
    orange/Vcc, observe yellow on the scope, then **D, P**. Candidate D
    controls `CTL_LATCH_2A` bit 0; expect `2A=22h/23h`, `2C=00h`.
-   **D, L** and **D, H** allow held voltage measurements. A waveform
-   correlated with D would establish an output association in that state.
-3. **Other red baseline:** **E, SPACE, D, P** retains E high and pulses D;
-   expect `2A=32h/33h`, `2C=00h`. If neither output comparison responds,
-   repeat from step 1's reset/setup with the 10 kΩ resistor moved from
-   Vcc to GND, one resistor path at a time. Negative results still do not establish an unused contact.
+   **Completed:** the waveform and sink/release polarity are recorded
+   above. **D, L** and **D, H** still allow numeric held voltage measurements.
+3. **Next, pull-down check:** move the 10 kΩ resistor from orange/Vcc
+   to blue/GND (one resistor path at a time). Compare **D/L**, then **H**.
+   Near-ground voltage in both states would support the reported release
+   behaviour in L; a driven high level in L would contradict it.
+4. **Other red baseline, still untested:** restore the 10 kΩ pull-up,
+   then **E, SPACE, D, P** retains E high and pulses D;
+   expect `2A=32h/33h`, `2C=00h`. Record whether yellow still responds.
 
 The pull-up tests a specific blind spot: an open-drain output can release
 its pin instead of driving high, so an external resistor supplies the high
 state ([TI, pull-up/pull-down selection](https://www.ti.com/lit/an/slva485/slva485.pdf)).
-This general electrical behaviour is not evidence that yellow uses that
-circuit. The pull-down comparison tests for drive in the opposite direction.
+The owner's sink/release observation is consistent with that behaviour,
+but does not identify the internal transistor circuit. The pull-down
+comparison tests for drive in the opposite direction.
 
 **CONFIRMED, fresh stock listing:** ROM00:1537–1541 sets `CTL_LATCH_2A`
 bit 0 while clearing its bit 4; ROM00:1548–1550 subsequently sets its bit 4.
 ROM00:14E8–14F2 sets that latch's bit 4 while clearing its bit 0. This makes
 candidate D worth testing alongside the physically mapped E output; none
 of these bytes identifies yellow or establishes a scanner-side purpose.
-If these tests are negative, tracing yellow's PCB connection is more useful
-than assigning a function from its diode reading alone.
+Tracing yellow's PCB connection or observing a working scanner would help
+establish the electrical circuit or scanner-side purpose; neither follows
+from the output-bit mapping alone.
 
 ## Scope of the image
 
