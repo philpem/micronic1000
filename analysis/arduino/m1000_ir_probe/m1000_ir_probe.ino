@@ -873,20 +873,17 @@ inline int32_t txMinEventOffset(int32_t phaseUs) {
   return dataRise < (int32_t)DATA_LEAD_US ? dataRise : (int32_t)DATA_LEAD_US;
 }
 
-// Find the first edge that will actually be driven.  For a negative phase the
-// first data edge can precede the cell origin; callers mask reception at this
-// time so the requested phase is not silently shortened by waitUntil().
+// Feedback state machine uses this to dispatch the emitter before its first
+// physical edge, leaving time for setup without shortening the first pulse.
 uint32_t txFirstEventTime(uint32_t startUs, uint8_t pre) {
   if (pre) return txEventTime(startUs, (int32_t)DATA_LEAD_US);
-  uint32_t cell = startUs;
   int32_t first = (int32_t)DATA_LEAD_US;
-  if (pre < pre + frameLen &&
-      (frameBits[0] ^ sweepInvert)) {
+  if (frameLen && (frameBits[0] ^ sweepInvert)) {
     int32_t dataRise = first +
                        (int32_t)txPhaseEighths * (int32_t)CELL_US / 8;
     if (dataRise < first) first = dataRise;
   }
-  return txEventTime(cell, first);
+  return txEventTime(startUs, first);
 }
 
 uint32_t waitUntilMeasured(uint32_t t) {
@@ -899,6 +896,11 @@ uint32_t waitUntilMeasured(uint32_t t) {
 }
 
 void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
+#if !LOOPBACK_TEST
+  // Arm crosstalk masking at the first actual edge, after queue setup and
+  // deadline waiting.  Masking during the requested reply delay loses RX.
+  txActive = true;
+#endif
 #ifdef IR_HOST_TEST
   extern void irHostEvent(uint32_t, uint32_t, uint8_t);
   irHostEvent(at, actual, type);
@@ -907,6 +909,37 @@ void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
   else if (type == 1) clkHigh();
   else if (type == 2) clkLow();
   else datLow();
+}
+
+inline void dispatchTxEvent(uint32_t cell, int32_t offset, uint8_t type) {
+  uint32_t deadline = txEventTime(cell, offset);
+  uint32_t actual = waitUntilMeasured(deadline);
+  applyTxEvent(type, deadline, actual);
+}
+
+// When all four edges fit inside their cell, no adjacent-cell sorting is
+// needed.  Dispatch in time order so a 16 MHz AVR does no queue scans between
+// edges 15-30 us apart.  The feedback trial's phase=-2 uses this path.
+void emitSimpleCells(uint32_t startUs, uint8_t pre, uint8_t total,
+                     int32_t phaseUs) {
+  int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
+  int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
+  int32_t clockFall = (int32_t)DATA_LEAD_US + (int32_t)CLK_HIGH_US;
+  bool dataFallsFirst = dataFall < clockFall;
+  for (uint8_t index = 0; index < total; index++) {
+    uint32_t cell = startUs + (uint32_t)index * (uint32_t)CELL_US;
+    bool wantData = index >= pre && index < pre + frameLen &&
+                    (frameBits[index - pre] ^ sweepInvert);
+    if (wantData) dispatchTxEvent(cell, dataRise, 0);
+    dispatchTxEvent(cell, (int32_t)DATA_LEAD_US, 1);
+    if (dataFallsFirst) {
+      dispatchTxEvent(cell, dataFall, 3);
+      dispatchTxEvent(cell, clockFall, 2);
+    } else {
+      dispatchTxEvent(cell, clockFall, 2);
+      dispatchTxEvent(cell, dataFall, 3);
+    }
+  }
 }
 
 // The bit-cell emitter, shared by framed replies and pulse tests.  The phase
@@ -918,6 +951,17 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
   uint8_t nextCell = 0;
   txEventCount = 0;
   txMaxLatenessUs = 0;
+
+  int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
+  int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
+  if (dataRise >= 0 && dataRise <= (int32_t)DATA_LEAD_US &&
+      dataFall < (int32_t)CELL_US &&
+      DATA_LEAD_US + CLK_HIGH_US < CELL_US) {
+    emitSimpleCells(startUs, pre, total, phaseUs);
+    waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
+    clkLow(); datLow();
+    return;
+  }
 
   while (txEventCount || nextCell < total) {
     // Add future cells only when their earliest possible edge cannot precede
@@ -958,13 +1002,8 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
 uint8_t txPre = 0, txPost = 0;
 
 void sendFrame(unsigned long startUs) {
-#if !LOOPBACK_TEST
-  // Wait before masking crosstalk.  Setting txActive here used to discard
-  // genuine receive edges during the requested reply delay.
-  uint8_t pre = (sweepClock >= 2) ? PREAMBLE_CELLS : txPre;
-  waitUntil(txFirstEventTime((uint32_t)startUs, pre));
-  txActive = true;          // in loopback we deliberately listen to ourselves
-#endif
+  // Prepare the emitter before the first deadline.  applyTxEvent masks
+  // crosstalk when the first edge is actually driven.
   if (sweepClock >= 2) emitCells(startUs, PREAMBLE_CELLS, PREAMBLE_CELLS);
   else                 emitCells(startUs, txPre, txPost);
 #if !LOOPBACK_TEST
@@ -1220,11 +1259,14 @@ void feedbackTick() {
       if (fbState == FB_WAIT_START && fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("start"));
     }
   } else if (fbState == FB_WAIT_RESULT) {
-    // Schedule against the earliest physical edge, which can precede the
-    // cell origin for a negative data phase with no lead clock cells.
+    // Enter the emitter ahead of the first physical edge.  Earlier versions
+    // dispatched at the deadline and built the lazy queue afterward, making
+    // the first clock late even when the requested delay was otherwise valid.
+    // Keep cancellation/serial handling live until this bounded setup window.
+    const uint32_t setupAheadUs = 256;
     sweepInvert = fbConfig.polarity; txPhaseEighths = fbConfig.phaseEighths;
     if (fbEmitPending && txTimeDiff(now, txFirstEventTime(
-        fbStartAt + fbConfig.delayUs, fbConfig.leadCells)) >= 0) {
+        fbStartAt + fbConfig.delayUs, fbConfig.leadCells) - setupAheadUs) >= 0) {
       // All serial parsing and cancellation remain live during the delay.
       // Once emitting, service resumes within 24 ms. No serial prints occur
       // inside sendFrame; its deadline lateness is reported with the result.

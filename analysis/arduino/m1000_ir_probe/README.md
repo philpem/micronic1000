@@ -2,6 +2,17 @@
 
 This sketch targets an Elegoo Uno R3 (`arduino:avr:uno`). Build it with the
 Arduino CLI or IDE and open the serial monitor at **115200 baud**.
+For the current direct-TTL bench connection, compile from the repository root:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 \
+  analysis/arduino/m1000_ir_probe
+```
+
+The command-line define overrides the source default. Upload the same build
+to the Uno. The [current physical-test handoff](../../../doc/re-notes/ir-feedback-protocol.md#current-handoff-next-physical-trial)
+gives the next ID, scope setup, measurements and result fields.
 
 ## Combined feedback harness (default)
 

@@ -137,7 +137,7 @@ int main() {
   clkMask = 0x01;
   datMask = 0x02;
 
-  for (int phase : {-4, -2, 0, 2, 4}) {
+  for (int phase : {-4, -2, -1, 0, 2, 4}) {
     for (const std::vector<uint8_t> &bits : {
         std::vector<uint8_t>{1, 1, 1},
         std::vector<uint8_t>{1, 0},
@@ -165,6 +165,26 @@ int main() {
   // Exercise both sides of the explicit 32-bit micros() wrap.
   for (uint32_t start : {0x7fffff00u, 0xffffff00u})
     runCase(start, {1, 0, 1}, -2);
+
+  // Exercise the exact current feedback stimulus through the new simple
+  // dispatch path: five lead clocks followed by the candidate 7Eh bits.
+  const std::vector<uint8_t> flagBits{0, 1, 1, 1, 1, 1, 1, 0};
+  frameLen = (uint8_t)flagBits.size();
+  for (uint8_t i = 0; i < frameLen; ++i) frameBits[i] = flagBits[i];
+  txPhaseEighths = -2;
+  sweepInvert = 0;
+  const uint32_t feedbackStart = 1000;
+  fakeNow = feedbackStart;
+  fakeReads = 0;
+  trace.clear();
+  emitCells(feedbackStart, 5, 0);
+  assert(txMaxLatenessUs == 0);
+  const std::vector<uint8_t> feedbackSampled = sampled(trace);
+  assert(feedbackSampled.size() == 13);
+  assert(std::vector<uint8_t>(feedbackSampled.begin() + 5,
+                              feedbackSampled.end()) == flagBits);
+  assert(std::count_if(trace.begin(), trace.end(),
+                       [](const TraceEvent &e) { return e.type == 0; }) == 6);
 
   buildReply(5);
   std::string wire;

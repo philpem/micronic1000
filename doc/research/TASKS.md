@@ -65,9 +65,14 @@ but early lead-clock intervals are about 90 us, later ones mostly 130 us,
 and pulse widths are shorter than requested. This withdraws the earlier
 "only first lead pulse clipped" possibility. Physical scope-pod D2/D3 to
 Uno D5/D6 correspondence is inherited from earlier captures and needs
-confirmation for this setup. Fix the USB-loadable Uno emitter, then re-scope
-the same trial with next host ID 6 before interpreting error 6 as a clean
-negative framing/LED-role result. R preserves the last accepted host ID.
+confirmation for this setup. The USB-loadable Uno emitter now dispatches
+256 us before the first edge and has a queue-free path for the current phase.
+Host tests and direct-TTL Uno build pass; **physical waveform remeasurement
+remains OPEN.** Trial-5 source CSV is tracked at
+`analysis/captures/feedback-trial5-keysight.csv`. Re-scope the same trial
+with next host ID 6 using the exact handoff procedure at the top of the
+[canonical interface](../re-notes/ir-feedback-protocol.md) before interpreting
+error 6 as a framing/LED-role result. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

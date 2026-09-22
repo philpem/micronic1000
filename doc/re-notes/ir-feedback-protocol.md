@@ -4,6 +4,58 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
+## Current handoff: next physical trial
+
+**Status 2026-09-23:** feedback-v1 ROM00 is already installed; trial 5
+returned mode 1/error 6, and its tracked Keysight capture at
+`analysis/captures/feedback-trial5-keysight.csv`
+showed distorted Uno timing. The sketch now enters its emitter 256 us before
+the first edge and uses a direct, preordered schedule for the current phase.
+Host tests and an Elegoo Uno R3 direct-TTL build pass. **OPEN:** the repaired
+waveform has not yet been measured on the actual Uno; no receive-convention
+conclusion follows from trial 5. The one-burn feedback ROM remains in place.
+After this change `emit_start_us` marks scheduler entry about 256 us before
+the requested first edge, not the edge itself; compare edge times in CSV,
+not the before/after software interval from older trials.
+
+1. From branch `ir/automated-feedback-tests`, copy the **whole**
+   `analysis/arduino/m1000_ir_probe/` directory to the Arduino PC and upload
+   `m1000_ir_probe.ino` for `arduino:avr:uno` (Elegoo Uno R3, 16 MHz). The
+   current bench uses direct TTL: set `BLACK_USE_NPN=0` before upload, or
+   build with `--build-property compiler.cpp.extra_flags=-DBLACK_USE_NPN=0`.
+   Keep blue/black/yellow and LED-driver wiring as below. Confirm the boot
+   banner says `BLACK: DIRECT_TTL` and LCD says `IR FEEDBACK/W/R/P/G`.
+2. Scope **Uno header D5 and D6**, with ground on Uno GND. If using a digital
+   pod, write down which pod bits actually contact D5 and D6; the prior
+   D2/D3 mapping is not confirmed for every capture. Capture at least 2 ms
+   around the candidate burst (D6 rising trigger, enough pre-trigger to
+   include the five earlier D5 lead pulses). Export Keysight
+   `x-axis,D0-D7` CSV with 2.5 us/sample or finer.
+3. Open serial at 115200 baud; send `R`, wait for `READY`, then send exactly
+   `T 6 W X 0 7E 1 0 0 -2 5 7000 -`. Wait for the full `TRIAL`, `RESULT`,
+   and subsequent `READY`. `R` does **not** reset the strictly increasing
+   host ID; if ID 6 was accepted already, use the next unused ID. Repeating
+   an accepted ID yields `ERROR reason=command`. Keep optical geometry fixed.
+4. Run `python3 analysis/feedback_scope.py path/to/new.csv` from the repo
+   root (specify `--clock-bit`/`--data-bit` if the pod mapping differs).
+   Check for 13 proposed clock and six data pulses, sampled candidate `7E`,
+   all clock rise intervals near 122 us (target within 8 us), clock high
+   near 61 us and data high near 76 us (both within 8 us), and
+   `emit_late_max` below about 15 us. These are acceptance targets, not
+   claims about unmeasured AVR output. If timing still fails, preserve the
+   full trace and repair the Uno scheduler before comparing protocol choices.
+   If timing passes but error 6 remains, record that exact stimulus and
+   timeout without inferring a rejected flag or LED role; optical delivery
+   to the handheld remains unmeasured.
+
+For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
+scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
+The LCD need only be transcribed if it disagrees with the serial result or
+serial feedback is missing. The installed ROM00 image is
+`analysis/rom_exerciser/releases/feedback-v1/micron1_feedback_v1.bin`, MD5
+`815db5763ad1f0b9910620a7dd83ed7c`, additive 16-bit `A1FA`, additive
+24-bit `37A1FA`; ROM01 remains stock. See the detailed setup below.
+
 ## Connect the handheld to the Uno
 
 Use **three wires from the right-side scanner connector: blue, black and
@@ -620,8 +672,8 @@ and `emitCells` in the Uno sketch), but the scope trace does not isolate AVR
 runtime costs from other scheduling effects. Correct the USB-loadable Uno
 emitter and re-scope the same candidate before treating another error 6 as
 evidence against framing, LED assignment, or receive polarity. The one-burn
-feedback ROM remains suitable for this repeat. The on-disk copy of this
-capture is `.cache/ir-arduino/trial5-keysight.csv` (ignored by Git); its
+feedback ROM remains suitable for this repeat. The source capture is tracked
+at `analysis/captures/feedback-trial5-keysight.csv`; its
 SHA-256 is `16baa457c5cd74cbdf5650839d931b251db12785ee3e8f4954465748b6507e50`.
 
 ## Validation and limits

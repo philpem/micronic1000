@@ -72,8 +72,12 @@ timing/decoding (2 tests). The owner completed the first hardware boot and
 direct-TTL silent P transaction on 2026-09-23; its valid result and LCD agree.
 See the [raw bench record](ir-feedback-protocol.md#first-hardware-result-2026-09-23).
 The subsequent silent W witness returned valid feedback after its arm and
-bit-6 timeout. Stimulated trials, scope correlation and receive protocol
-conclusions remain pending.
+bit-6 timeout. Stimulated W/X trials 3–5 produced the same timeout; trial 5
+has a tracked digital scope capture. That capture exposed significant Uno
+emitter timing distortion, so protocol conclusions remain pending. The
+emitter has now been revised, with physical remeasurement as the next test.
+The exact next command and capture acceptance targets are at the top of the
+[canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 
 ## Original design, superseded by feedback-v1
 
@@ -135,9 +139,11 @@ equation of controller status with accepted protocol data.
 
 ## Trial worksheet fields
 
-For every run collect: commit/build ID; ROM image identity verified separately;
+For every run collect: sketch commit/build ID and `BLACK_USE_NPN` setting;
+ROM image identity verified separately;
 port and optical geometry; electrical protection used; controller trial ID and
-mode; command timing; scope file and timebase; marker and complete latch
+mode; command timing; scope file and timebase; explicit scope pod-to-Uno D5/D6
+map; marker and complete latch
 bytes; LCD/UART result record; raw bytes/status; and the result category
 (`silent control`, `gate change`, `RX pending`, `byte delivery`, `validated
 frame`, or `inconclusive`).  Preserve negative and timeout runs beside the

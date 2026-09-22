@@ -7575,3 +7575,20 @@ names renamed, 144 unplated functions plated)
   disk-backed `.cache/ir-arduino/` and recorded its SHA-256 in the guide.
   Next: correct the Uno emitter via USB and re-scope using host ID 6; no
   additional EPROM burn indicated by this timing observation.
+
+### 2026-09-23 — Uno emitter repair and physical retest handoff
+
+* Source review found two contributors to the trial-5 timing defect: the
+  feedback state machine entered `sendFrame` only at the first edge deadline,
+  and the generic emitter sorted a lazy event queue between close edges.
+  It now enters 256 us ahead, masks RX crosstalk only at the first driven
+  edge, and uses a direct ordered path when every edge stays within its cell.
+  Other overlapping phase settings retain the generic queue.
+* Host emitter/feedback tests pass; the actual Elegoo Uno R3 direct-TTL
+  sketch compiles to 10072 flash bytes and 845 RAM bytes. AVR timing remains
+  OPEN until the next scope capture. No ROM or connector wiring change.
+* Tracked the 31 KB trial-5 Keysight CSV as
+  `analysis/captures/feedback-trial5-keysight.csv`, added a fixture check,
+  and wrote an explicit next-trial handoff in the canonical interface:
+  upload sketch with `BLACK_USE_NPN=0`, confirm probe mapping, use ID 6,
+  collect complete serial/CSV, and measure against bounded timing targets.

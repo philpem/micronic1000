@@ -9,6 +9,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import feedback_scope
 
 
+def test_archived_trial5_capture_reproduces_bench_measurement():
+    capture = Path(__file__).resolve().parent / "captures" / "feedback-trial5-keysight.csv"
+    result = feedback_scope.measure(capture, 2, 3, 5, 0x7E, 122)
+    assert result["samples"] == 2000
+    assert result["sample_step_us"] == pytest.approx(2.5)
+    assert (len(result["clock"]), len(result["data"])) == (13, 6)
+    assert result["sampled_flag_hex"] == "7E"
+    assert result["lead_interval_median_us"] == pytest.approx(90)
+    assert result["later_interval_median_us"] == pytest.approx(130)
+
+
 def test_mso_packed_capture_measures_complete_candidate(tmp_path):
     capture = tmp_path / "capture.csv"
     rows = ["x-axis,D0-D7", "second,"]
