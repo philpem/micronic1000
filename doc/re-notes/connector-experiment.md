@@ -415,9 +415,11 @@ the tests below discriminate some of them without another burn.
 1. **Input comparison:** reset/setup with **R, F, SPACE, C, SPACE**;
    verify `2A=22h`, `2C=00h` and leave black released. Pull yellow through
    **10 kΩ** to blue/GND, then separately through **10 kΩ** to orange/Vcc.
-   Record yellow voltage and `2D`/OR/AND. This exact input configuration
-   has not yet been reported for yellow. Do not assume a particular input
-   bit; record the entire byte.
+   **Completed (CONFIRMED: owner measurements):** yellow measures **0 V**
+   with the ground connection and **5.22 V** with the Vcc connection;
+   **`2D=OR=AND=23h` in both cases**. No held-level response was observed
+   through port `2Dh` in this configuration. Yellow's function remains
+   unknown; this does not rule out an input under other conditions.
 2. **Output comparison:** leave a **10 kΩ pull-up** from yellow to
    orange/Vcc, observe yellow on the scope, then **D, P**. Candidate D
    controls `CTL_LATCH_2A` bit 0; expect `2A=22h/23h`, `2C=00h`.

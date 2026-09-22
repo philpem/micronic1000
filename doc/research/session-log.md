@@ -1,5 +1,16 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow held-level result at 22/00
+
+* CONFIRMED (owner measurements): after the requested 2A/2C=22/00 setup
+  with black released, yellow through 10 kΩ to ground measures 0 V;
+  through 10 kΩ to Vcc it measures 5.22 V. `2D=OR=AND=23h` in both cases.
+* No held-level yellow response is visible through port `2Dh` at this
+  configuration. No pin function is assigned. Next retain the 10 kΩ
+  pull-up and scope yellow while D/P toggles 2A=22h/23h with 2C=00h.
+* Updated the guide, task list and Ghidra observation bookmark; no ROM
+  or Arduino changes.
+
 ## 2026-09-22 — yellow discrimination plan and black control conditions
 
 * Summarised black's tested working condition: `CTL_LATCH_2A` bit 1 high,

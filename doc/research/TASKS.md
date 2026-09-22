@@ -56,9 +56,11 @@ E/H. Released black reads `2D=23h` throughout those same three modes
 (CONFIRMED: owner measurements), completing the held-level simultaneous
 input/output comparison.
 The other three contacts' identities/measurements have also been requested.
-Yellow follow-up now documented: test held levels at 22/00, then candidate
-D output with weak pull-up/pull-down and E retained low/high. Yellow's
-function remains unknown; no new ROM is required for these comparisons.
+Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
+0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
+(CONFIRMED: owner measurements). Next scope yellow with the 10 kΩ pull-up
+while D/P changes 2A=22h/23h, 2C=00h; then compare E retained high.
+Yellow's function remains unknown; no new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
