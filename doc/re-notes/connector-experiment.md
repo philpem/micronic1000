@@ -40,6 +40,24 @@ orientation is inferred.
 | 7 | Green | Unassigned |
 | 8 | Blue | Ground |
 
+## Black input electrical interface: TTL hypothesis
+
+**SUSPECTED (owner suggestion):** black/pin 5 may feed a 74LS input; a
+floating-high indication alone does not identify the device. The measured
+0.9 V through 10 kOhm and 0.056 V through 500 Ohm correspond to about
+90 uA and 112 uA respectively, consistent with a weakly biased input.
+Trace black to the receiving IC and read its marking to resolve the identity.
+
+If it is a 74LS input, a 5 V Uno can drive it HIGH/LOW directly. For example,
+TI specifies a 2 V minimum HIGH and 0.8 V maximum LOW for the SN74LS00;
+see the [TI datasheet](https://www.ti.com/lit/ds/symlink/sn74ls00.pdf).
+The feedback harness's NPN is an optional means of separating the GPIO from
+the handheld input voltage, not a TTL logic requirement. The earlier claim
+that push-pull HIGH is inherently wrong is withdrawn. **The current sketch
+still assumes the inverting NPN:** direct wiring would need idle HIGH and
+command LOW in software, including startup. Power-off behaviour would also
+need to be considered for the directly connected boards.
+
 ## Image and transfer checks
 
 File:

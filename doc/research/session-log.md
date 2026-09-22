@@ -7459,3 +7459,13 @@ names renamed, 144 unplated functions plated)
 * Stored the owner pin identification in a Ghidra bookmark and saved the
   program. This records physical evidence, without new scanner-role claims.
   No firmware bytes or image checksums changed.
+
+### 2026-09-22 — Clarify the black-input transistor rationale
+
+* Owner suggests black/pin 5 feeds a 74LS IC. Recorded as SUSPECTED pending
+  a PCB trace/part marking. Existing load measurements fit a weakly biased
+  input but do not identify its logic family.
+* Withdrew the blanket claim that driving this input HIGH is wrong: a 5 V
+  Uno can drive a 74LS input. The NPN is optional electrical separation;
+  current code retains its inversion, so direct wiring requires a software
+  polarity/startup change. No firmware or wiring configuration changed.
