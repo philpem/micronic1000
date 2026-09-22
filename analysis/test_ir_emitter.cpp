@@ -20,14 +20,18 @@
 #define WGM21 1
 #define CS20 0
 #define OCIE2A 1
+typedef char __FlashStringHelper;
 
 volatile uint8_t PORTD = 0, PORTB = 0;
 volatile uint8_t TCCR2A = 0, TCCR2B = 0, OCR2A = 0, TIMSK2 = 0;
 struct SerialStub {
   void begin(unsigned long) {}
+  int available() { return 0; }
+  int read() { return -1; }
   template <typename T> void print(T) {}
   template <typename T> void print(T, int) {}
   template <typename T> void println(T) {}
+  template <typename T> void println(T, int) {}
   void println() {}
   void write(char) {}
 } Serial;
@@ -46,6 +50,7 @@ void delayMicroseconds(unsigned long) {}
 void noInterrupts() {}
 void interrupts() {}
 void pinMode(uint8_t, uint8_t) {}
+void digitalWrite(uint8_t, uint8_t) {}
 void attachInterrupt(int, void (*)(), int) {}
 int digitalPinToInterrupt(uint8_t p) { return p; }
 int digitalPinToPort(uint8_t p) { return p < 8 ? 0 : 1; }

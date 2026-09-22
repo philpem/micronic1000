@@ -60,4 +60,4 @@ def test_real_emitter_waveform_and_terminal_stuffing():
 )
 def test_host_syntax_checks_all_sketch_modes(defines):
     with tempfile.TemporaryDirectory(prefix="m1000-ir-mode-") as directory:
-        compile_harness(Path(directory) / "mode.o", *defines)
+        compile_harness(Path(directory) / "mode.o", "FEEDBACK_HARNESS=0", *defines)

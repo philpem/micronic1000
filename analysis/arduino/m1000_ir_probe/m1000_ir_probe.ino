@@ -1,4 +1,7 @@
 // M1000 IR link probe and responder.
+// Default: combined feedback harness, silent until a USB T command. See
+// doc/re-notes/ir-feedback-protocol.md. FEEDBACK_HARNESS=0 enables the
+// historical optical monitor/sweep modes described below.
 //
 // Listens to the handheld's outbound clock/data pair, decodes the
 // inverted-HDLC frame documented in doc/re-notes/ir-wire-protocol.md, and
@@ -171,8 +174,19 @@
 // Flag is fixed to 7E (the current trial baseline); the data lead and the
 // other axes stay at the handheld's own TX convention unless selected here. Reply
 // to each handheld burst, handheld-paced.
+#ifndef FEEDBACK_HARNESS
+#if LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW
+#define FEEDBACK_HARNESS 0
+#else
+#define FEEDBACK_HARNESS 1
+#endif
+#endif
 #ifndef RX_NARROW
+#if FEEDBACK_HARNESS
+#define RX_NARROW 0
+#else
 #define RX_NARROW 1
+#endif
 #endif
 #ifndef RX_NARROW_AXIS
 #define RX_NARROW_AXIS 2
@@ -226,6 +240,9 @@
 #if RX_NARROW && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY || RX_SWEEP || FREE_TX)
 #error "RX_NARROW needs every other mode flag 0"
 #endif
+#if FEEDBACK_HARNESS && (LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW)
+#error "FEEDBACK_HARNESS needs every legacy mode 0"
+#endif
 
 // ---------------------------------------------------------------- timing --
 // True values, not raw measurements.  The handheld's drive is slew-limited
@@ -253,6 +270,11 @@ const uint8_t  FLAG        = 0x81;  // = ~0x7E, six 0s bracketed by 1s
 const uint8_t  SUCCESS_CELLS = 30;  // a payload frame is 100+ cells; 17/22 is not
 
 const uint8_t CLK_IN = 2, DAT_IN = 4, CLK_OUT = 5, DAT_OUT = 6;
+const uint8_t BLACK_OUT = 7, YELLOW_IN = 8;
+
+#if FEEDBACK_HARNESS
+#include "feedback_harness.h"
+#endif
 
 // ------------------------------------------------------------- reception --
 volatile uint8_t  rxBits[160];  // a 12-byte payload frame is ~120 cells
@@ -355,7 +377,11 @@ void onClockEdge() {
 // ------------------------------------------------------------ the framer --
 // Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
 // after five consecutive 0s, MSB first.
+#if FEEDBACK_HARNESS
+uint8_t frameBits[192];  // 16 data bytes + worst stuffing + two flags
+#else
 uint8_t frameBits[128];
+#endif
 uint8_t frameLen = 0;
 
 #if RX_SWEEP || FREE_TX || RX_NARROW
@@ -911,6 +937,264 @@ void sendFrame(unsigned long startUs) {
   delayMicroseconds(300);          // let any crosstalk settle, while listening
 }
 
+#if FEEDBACK_HARNESS
+// Half-duplex connector controller. IR emission is bounded below 24 ms;
+// the ROM's 100 ms post-trial cooldown keeps UART reporting outside it.
+enum FbRunState : uint8_t { FB_IDLE, FB_WAIT_ACK, FB_HOLD, FB_WAIT_START,
+                            FB_WAIT_RESULT, FB_DESYNC };
+FeedbackLineParser fbParser;
+FeedbackConfig fbConfig = {};
+FbRunState fbState = FB_IDLE;
+uint32_t fbLastId = 0, fbStateAt = 0, fbHighAt = 0, fbStartAt = 0;
+uint32_t fbSerialAt = 0, fbAckAt = 0, fbReleaseAt = 0;
+uint32_t fbEmitStart = 0, fbEmitEnd = 0;
+uint8_t fbResult[30], fbResultLen = 0;
+bool fbReady = false, fbHighTracking = false, fbRequestLow = false;
+bool fbEmitPending = false, fbManualLow = false;
+bool fbHaveSequence = false;
+uint16_t fbExpectedSequence = 0;
+bool fbYellowWasHigh = true, fbUartActive = false;
+uint8_t fbUartBit = 0, fbUartValue = 0;
+uint32_t fbUartNext = 0;
+
+inline bool fbYellowHigh() { return digitalRead(YELLOW_IN) != 0; }
+inline void fbBlackRelease() { digitalWrite(BLACK_OUT, 0); }
+inline void fbBlackLow() { digitalWrite(BLACK_OUT, 1); }
+inline uint32_t fbHoldUs() {
+  return fbConfig.holdKind == 'W' ? 100000UL :
+         fbConfig.holdKind == 'R' ? 300000UL :
+         fbConfig.holdKind == 'P' ? 500000UL : 700000UL;
+}
+inline bool fbElapsed(uint32_t now, uint32_t then, uint32_t us) {
+  return (uint32_t)(now - then) >= us;
+}
+void fbPrintPrefix(const __FlashStringHelper *kind) {
+  Serial.print(kind); Serial.print(F(" id=")); Serial.print(fbConfig.trialId);
+}
+void fbPrintHex(const uint8_t *bytes, uint8_t n) {
+  if (!n) Serial.print('-');
+  for (uint8_t i = 0; i < n; ++i) {
+    if (bytes[i] < 0x10) Serial.print('0');
+    Serial.print(bytes[i], HEX);
+  }
+}
+void fbQuiet() {
+  fbBlackRelease(); clkLow(); datLow(); txActive = false;
+  fbEmitPending = false; fbManualLow = false; fbRequestLow = false;
+}
+void fbResetUart() {
+  fbUartActive = false; fbYellowWasHigh = fbYellowHigh(); fbResultLen = 0;
+}
+void fbError(const __FlashStringHelper *reason) {
+  fbQuiet(); fbReady = false; fbState = FB_DESYNC;
+  fbPrintPrefix(F("ERROR")); Serial.print(F(" reason=")); Serial.print(reason);
+  if (fbResultLen) { Serial.print(F(" raw=")); fbPrintHex(fbResult, fbResultLen); }
+  Serial.println();
+}
+void fbBuildStimulus() {
+  frameLen = 0;
+  uint8_t run = 0;
+  if (fbConfig.haveFlag)
+    for (int8_t bit = 7; bit >= 0; --bit) putBit((fbConfig.flagByte >> bit) & 1);
+  for (uint8_t i = 0; i < fbConfig.payloadLen; ++i) {
+    uint8_t byte = fbConfig.payload[i];
+    for (int8_t bit = 7; bit >= 0; --bit) {
+      uint8_t value = (byte >> bit) & 1;
+      if (fbConfig.stuffing && run == 5) {
+        putBit(fbConfig.stuffing == 1 ? 0 : 1); run = 0;
+      }
+      putBit(value);
+      if (fbConfig.stuffing)
+        run = (fbConfig.stuffing == 1 ? value : !value) ? (uint8_t)(run + 1) : 0;
+    }
+  }
+  // Finish the pending stuffed run at the end of data, even without a flag.
+  if (fbConfig.stuffing && run == 5) putBit(fbConfig.stuffing == 1 ? 0 : 1);
+  if (fbConfig.closeFlag)
+    for (int8_t bit = 7; bit >= 0; --bit) putBit((fbConfig.flagByte >> bit) & 1);
+}
+bool fbResultValid() {
+  if (fbResultLen != 30 || fbResult[0] != 0xA5 || fbResult[1] != 0x5A ||
+      fbResult[2] != 1 || fbResult[3] > 4 || fbResult[6] > 8 ||
+      fbResult[17] > 8 || fbResult[16] != 0 || fbResult[15] > 134 ||
+      fbResult[17] > fbResult[15]) return false;
+  if (!fbResult[3] && (fbResult[6] < 1 || fbResult[6] > 3)) return false;
+  uint8_t sum = 0; for (uint8_t i = 0; i < 30; ++i) sum += fbResult[i];
+  return sum == 0;
+}
+void fbStoreResultByte(uint8_t value) {
+  // Hunt for the sync word rather than treating a busy-low break as data.
+  if (!fbResultLen && value != 0xA5) return;
+  if (fbResultLen == 1 && value != 0x5A) {
+    fbResultLen = value == 0xA5 ? 1 : 0; return;
+  }
+  if (fbResultLen < sizeof(fbResult)) fbResult[fbResultLen++] = value;
+  if (fbResultLen != sizeof(fbResult)) return;
+  if (!fbResultValid()) { fbError(F("result")); return; }
+  uint16_t seq = (uint16_t)fbResult[4] | ((uint16_t)fbResult[5] << 8);
+  uint8_t expectedMode = fbConfig.holdKind == 'W' ? 1 :
+                        fbConfig.holdKind == 'R' ? 2 : fbConfig.holdKind == 'P' ? 3 : 4;
+  if (fbResult[3] && (fbResult[3] != expectedMode || fbState != FB_WAIT_RESULT)) {
+    fbError(F("mode")); return;
+  }
+  if (fbHaveSequence && seq != (fbResult[3] ? fbExpectedSequence : (uint16_t)(fbExpectedSequence - 1))) {
+    fbError(F("sequence")); return;
+  }
+  if (fbResult[3]) { fbExpectedSequence = (uint16_t)(seq + 1); fbHaveSequence = true; }
+  fbQuiet();
+  fbPrintPrefix(F("RESULT")); Serial.print(F(" rom_seq=")); Serial.print(seq);
+  Serial.print(F(" mode=")); Serial.print(fbResult[3]);
+  Serial.print(F(" err=")); Serial.print(fbResult[6]);
+  Serial.print(F(" ack_us=")); Serial.print(fbAckAt);
+  Serial.print(F(" release_us=")); Serial.print(fbReleaseAt);
+  Serial.print(F(" start_us=")); Serial.print(fbStartAt);
+  Serial.print(F(" emit_start_us=")); Serial.print(fbEmitStart);
+  Serial.print(F(" emit_end_us=")); Serial.print(fbEmitEnd);
+  Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" raw=")); fbPrintHex(fbResult, sizeof(fbResult)); Serial.println();
+  fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+}
+// Sample start, eight data bits and stop without blocking. A long busy-low
+// interval is ignored before magic; a framing error inside a record fails it.
+void fbUartTick(uint32_t now) {
+  bool high = fbYellowHigh();
+  if (!fbUartActive && fbYellowWasHigh && !high) {
+    fbUartActive = true; fbUartBit = 0; fbUartValue = 0; fbUartNext = now + 416;
+  }
+  if (fbUartActive && txTimeDiff(now, fbUartNext) >= 0) {
+    if (txTimeDiff(now, fbUartNext) > 200 ||
+        (fbUartBit == 0 && high) || (fbUartBit == 9 && !high)) {
+      fbUartActive = false;
+      if (fbResultLen) fbError(F("uart_framing"));
+    } else if (fbUartBit == 9) {
+      fbUartActive = false; fbStoreResultByte(fbUartValue);
+    } else {
+      if (fbUartBit && high) fbUartValue |= (uint8_t)(1U << (fbUartBit - 1));
+      ++fbUartBit; fbUartNext += 833;
+    }
+  }
+  fbYellowWasHigh = high;
+}
+void fbLogTrial() {
+  fbPrintPrefix(F("TRIAL")); Serial.print(F(" mode=")); Serial.print((char)fbConfig.holdKind);
+  Serial.print(F(" kind=")); Serial.print(fbConfig.mode == FB_SILENT ? 'S' : 'X');
+  Serial.print(F(" swap=")); Serial.print(fbConfig.swapRoles);
+  Serial.print(F(" flag=")); if (fbConfig.haveFlag) fbPrintHex(&fbConfig.flagByte, 1); else Serial.print(F("--"));
+  Serial.print(F(" stuff=")); Serial.print(fbConfig.stuffing);
+  Serial.print(F(" close=")); Serial.print(fbConfig.closeFlag);
+  Serial.print(F(" pol=")); Serial.print(fbConfig.polarity);
+  Serial.print(F(" phase=")); Serial.print(fbConfig.phaseEighths);
+  Serial.print(F(" lead=")); Serial.print(fbConfig.leadCells);
+  Serial.print(F(" delay_us=")); Serial.print(fbConfig.delayUs);
+  Serial.print(F(" cell_us=122 order=MSB payload="));
+  fbPrintHex(fbConfig.payload, fbConfig.payloadLen); Serial.println();
+}
+void fbCommandTick() {
+  while (Serial.available()) {
+    FeedbackConfig parsed = {};
+    uint32_t id = 0;
+    char ch = (char)Serial.read();
+    // Starting any new command cancels an outstanding optical stimulus.
+    // Even an incomplete line must not leave an old trial armed.
+    if (ch != '\r' && !fbParser.pending() && fbState != FB_IDLE && fbState != FB_DESYNC) {
+      fbQuiet(); fbState = FB_DESYNC; fbReady = false;
+    }
+    FeedbackCommand command = fbParser.feed(ch, &parsed, &id);
+    if (fbParser.pending()) fbSerialAt = micros();
+    if (command == FB_NONE) continue;
+    if (command == FB_RESYNC) {
+      fbQuiet(); fbResetUart(); fbHaveSequence = false; fbExpectedSequence = 0;
+      fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+      Serial.println(F("SYNC")); continue;
+    }
+    if (command == FB_CANCEL) { fbError(F("cancel")); continue; }
+    if (command == FB_BLACK_RELEASE && fbManualLow) {
+      fbQuiet(); fbState = FB_DESYNC;
+      Serial.println(F("BLACK released; send R to resynchronise")); continue;
+    }
+    if (command == FB_BLACK_LOW && fbState == FB_IDLE && fbReady && id > fbLastId) {
+      fbConfig.trialId = id; fbLastId = id; fbManualLow = true;
+      fbReady = false; fbStateAt = micros(); fbBlackLow();
+      Serial.println(F("BLACK low (1000 ms maximum)")); continue;
+    }
+    if (command != FB_TRIAL || fbState != FB_IDLE || !fbReady || fbManualLow || parsed.trialId <= fbLastId ||
+        (parsed.holdKind == 'P' && parsed.mode != FB_SILENT)) { fbError(F("command")); continue; }
+    fbConfig = parsed; fbLastId = parsed.trialId;
+    fbResetUart(); fbBuildStimulus();
+    fbAckAt = fbReleaseAt = fbStartAt = fbEmitStart = fbEmitEnd = 0;
+    txMaxLatenessUs = 0; fbEmitPending = false; fbRequestLow = false;
+    fbLogTrial(); fbState = FB_WAIT_ACK; fbStateAt = micros();
+    fbReady = false; fbHighTracking = false;
+  }
+  if (fbParser.pending() && fbElapsed((uint32_t)micros(), fbSerialAt, 1000000UL)) {
+    fbParser.timeout(); fbError(F("serial_timeout"));
+  }
+}
+void feedbackTick() {
+  fbCommandTick();
+  uint32_t now = micros();
+  bool high = fbYellowHigh();
+  if (fbState == FB_IDLE) {
+    if (fbManualLow) {
+      if (fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("black_hold"));
+      return;
+    }
+    if (!high) { fbReady = false; fbHighTracking = false; }
+    else if (!fbHighTracking) { fbHighAt = now; fbHighTracking = true; }
+    else if (!fbReady && fbElapsed(now, fbHighAt, 100000UL)) {
+      fbReady = true; Serial.println(F("READY"));
+    }
+  } else if (fbState == FB_WAIT_ACK) {
+    if (!fbRequestLow) {
+      if (!high) fbHighTracking = false;
+      else if (!fbHighTracking) { fbHighTracking = true; fbHighAt = now; }
+      else if (fbElapsed(now, fbHighAt, 100000UL)) {
+        fbBlackLow(); fbRequestLow = true; fbStateAt = now;
+      }
+    } else if (!high) { fbState = FB_HOLD; fbStateAt = fbAckAt = now; }
+    if (fbState == FB_WAIT_ACK && fbElapsed(now, fbStateAt, 1500000UL)) fbError(F("ack"));
+  } else if (fbState == FB_HOLD) {
+    if (high) { fbError(F("ack_lost")); return; }
+    if (fbElapsed(now, fbStateAt, fbHoldUs())) {
+      fbBlackRelease(); fbState = FB_WAIT_START; fbStateAt = fbReleaseAt = now;
+      fbHighTracking = false; fbResetUart();
+    }
+  } else if (fbState == FB_WAIT_START) {
+    if (high) {
+      if (!fbHighTracking) { fbHighTracking = true; fbHighAt = now; }
+    } else {
+      bool start = fbHighTracking && fbElapsed(now, fbHighAt, 40000UL);
+      fbHighTracking = false;
+      if (start && !fbResultLen) {
+        fbStartAt = now; fbState = FB_WAIT_RESULT; fbResetUart();
+        fbEmitPending = fbConfig.mode == FB_STIMULUS;
+      }
+    }
+    if (fbState == FB_WAIT_START) {
+      fbUartTick(now);
+      if (fbState == FB_WAIT_START && fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("start"));
+    }
+  } else if (fbState == FB_WAIT_RESULT) {
+    // Schedule against the earliest physical edge, which can precede the
+    // cell origin for a negative data phase with no lead clock cells.
+    sweepInvert = fbConfig.polarity; txPhaseEighths = fbConfig.phaseEighths;
+    if (fbEmitPending && txTimeDiff(now, txFirstEventTime(
+        fbStartAt + fbConfig.delayUs, fbConfig.leadCells)) >= 0) {
+      // All serial parsing and cancellation remain live during the delay.
+      // Once emitting, service resumes within 24 ms. No serial prints occur
+      // inside sendFrame; its deadline lateness is reported with the result.
+      fbEmitPending = false; sweepClock = 0;
+      sweepSwap = fbConfig.swapRoles; sweepInvert = fbConfig.polarity;
+      txPhaseEighths = fbConfig.phaseEighths; txPre = fbConfig.leadCells; txPost = 0;
+      fbEmitStart = micros(); sendFrame(fbStartAt + fbConfig.delayUs); fbEmitEnd = micros();
+      fbResetUart();
+    }
+    fbUartTick((uint32_t)micros());
+    if (fbState == FB_WAIT_RESULT && fbElapsed((uint32_t)micros(), fbStartAt, 6000000UL)) fbError(F("result_timeout"));
+  }
+}
+#endif
+
 #if FREERUN_TEST
 // ------------------------------------------------- free-running clock ------
 // Timer2 CTC, prescaler 1, OCR2A=243 -> an interrupt every 244/16e6 = 15.25 us,
@@ -1101,20 +1385,37 @@ void setup() {
   pinMode(DAT_IN, INPUT);
   pinMode(CLK_OUT, OUTPUT);
   pinMode(DAT_OUT, OUTPUT);
+#if FEEDBACK_HARNESS
+  digitalWrite(BLACK_OUT, 0);  // latch low before enabling the NPN driver
+  pinMode(BLACK_OUT, OUTPUT);
+  pinMode(YELLOW_IN, INPUT);
+#endif
   clkReg = portOutputRegister(digitalPinToPort(CLK_OUT));
   datReg = portOutputRegister(digitalPinToPort(DAT_OUT));
   clkMask = digitalPinToBitMask(CLK_OUT);
   datMask = digitalPinToBitMask(DAT_OUT);
   clkLow(); datLow();
+#if FEEDBACK_HARNESS
+  fbBlackRelease();
+#endif
+#if !FEEDBACK_HARNESS
   attachInterrupt(digitalPinToInterrupt(CLK_IN), onClockEdge, RISING);
+#endif
 #if FREERUN_TEST
   // Enable Timer2 only after the ISR's GPIO pointers and masks are valid.
   freerunBegin();
 #endif
   // State the build in the log.  The IDE will happily flash a stale sketch, so
   // the run must say which one it actually is.
+#if FEEDBACK_HARNESS
+  fbHighAt = micros();
+  Serial.println(F("BOOT"));
+#else
   Serial.println(F("M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."));
-#if LOOPBACK_TEST
+#endif
+#if FEEDBACK_HARNESS
+  Serial.println(F("MODE: FEEDBACK v1, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input"));
+#elif LOOPBACK_TEST
   Serial.println(F("MODE: LOOPBACK -- transmitting to my own detectors."));
   Serial.println(F("  pass = 10000001000001011 comes back"));
 #elif LISTEN_ONLY
@@ -1165,6 +1466,10 @@ void setup() {
 }
 
 void loop() {
+#if FEEDBACK_HARNESS
+  feedbackTick();
+  return;
+#endif
   // lastEdgeUs is four bytes on an 8-bit core, so reading it while the ISR may
   // be writing it can tear: catch it mid-update and the high bytes come from
   // the old value, "micros() - lastEdgeUs" goes huge, and the burst is falsely
