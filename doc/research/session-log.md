@@ -1,5 +1,13 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — black contact pull-down result
+
+* Owner reports black at 0.9 V through 10 kΩ to ground, with `2D=23h`;
+  removing the resistor restores 5.1 V. No port-`2Dh` response was observed.
+* Next repeat with 1 kΩ and measure voltage/readout; unknown input threshold
+  prevents treating the 0.9 V result alone as proof of no input connection.
+  No ROM changes.
+
 ## 2026-09-22 — connector input baseline and voltage observations
 
 * Owner reports `2D=OR=AND=23h` after R and after the B/SPACE comparison:

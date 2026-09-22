@@ -31,10 +31,12 @@ the [connector guide](../re-notes/connector-experiment.md#hardware-observations-
 Owner clarifies the other candidates have no detectable effect at the
 connector. Follow-up confirms red follows E's L/H states without inversion
 and R returns it low; LCD `2A` follows `20h/30h`. The B-high/A-pulse gating
-test also produces no activity change on the other contacts. Next perform
-the black-to-ground 10 kΩ test, recording contact voltage and raw input.
+test also produces no activity change on the other contacts. Black through
+10 kΩ to ground measures 0.9 V with `2D=23h`; disconnected it returns to
+5.1 V. Next repeat with 1 kΩ and measure voltage/readout before excluding
+an input response.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
-5.6 V, black high (voltage unspecified), and yellow apparently floating.
+5.6 V, black resting at 5.1 V, and yellow apparently floating.
 
 **Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
 The owner identifies eight contacts, power/ground known, six unknown. The

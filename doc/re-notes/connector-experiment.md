@@ -210,18 +210,22 @@ was previously available.
 | Single YES/NO presses adjust contrast | CONFIRMED by owner observation. |
 | **R, E, P** toggles pin 1 / red | CONFIRMED observed correlation with candidate E, `CTL_LATCH_2A` bit 4. Follow-up **R, E, L**, then **H** confirms red follows L=0/H=1 without inversion, and LCD `2A=20h/30h` respectively. **R** returns red low. Owner measured red at **5.6 V** with **R, E, H**; numeric low voltage remains unreported. |
 | Pin 3 / orange connects directly to Vcc, with high current | Owner-reported power connection; no numeric current measurement supplied. Treat it as power, not a signal candidate. |
-| Black has ESD-diode paths to Vss and Vcc, both about 0.6 V Vf | Owner-reported diode measurements; black rests high (numeric voltage not supplied). They do not yet establish input/output direction. |
+| Black has ESD-diode paths to Vss and Vcc, both about 0.6 V Vf | Owner-reported diode measurements; black returns to 5.1 V when the test resistor is disconnected. They do not yet establish input/output direction. |
 | Yellow has an ESD-diode path to Vss, about 0.4 V Vf | Owner-reported diode measurement. Yellow appears high impedance with no defined pull-up/down state; direction and any Vcc-side diode remain unresolved. |
 | Other candidates produce no detectable connector change | Owner clarified that the negative result concerns the connector, not the LCD controls. No A/B/C/D contact mapping is established. |
 | **R, B, SPACE, A, P** produces no activity change on other contacts | Owner-reported negative result with `CTL_LATCH_2C` bit 1 retained high while its bit 0 pulses. This configuration did not expose another output; it does not establish that those latch bits have no internal function. |
 | Input baseline after **R** and the **B, SPACE** comparison | Owner reports `2D=23h`, `OR=23h`, `AND=23h` in both configurations. Port `2Dh` bits 0, 1 and 5 are high; no changes were sampled in the reported display windows. |
 
-**Next measurement:** with **R, B, SPACE** (`2C=22h`), connect black to known
-ground through **10 kΩ**, observe `2D` and measure black's voltage while the
-resistor is connected. Remove it and confirm the starting state returns.
-Use the resistor for this first input experiment, before connecting an Arduino
-output. A null result is meaningful only alongside the measured contact
-voltage: the resistor may fail to pull a driven/pulled-up line low.
+**Black pull-down result:** owner reports **0.9 V** with **10 kΩ to ground**,
+while LCD `2D` remains **23h**. Removing the resistor restores black to
+**5.1 V**. This demonstrates a loaded voltage change without a corresponding
+port-`2Dh` change in the tested state; it does not establish black's direction
+or the threshold of any connected input.
+
+**Next measurement:** repeat black-to-ground with **1 kΩ**, retaining
+**R, B, SPACE** (`2C=22h`), and record contact voltage and `2D`. This checks a
+lower level before interpreting the absent input response. Remove the
+resistor afterwards and check recovery. Yellow stimulation is still pending.
 
 From baseline `23h`, a change to `22h` means port `2Dh` bit 0 cleared; `21h`
 means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete
