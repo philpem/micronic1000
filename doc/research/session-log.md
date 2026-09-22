@@ -1,5 +1,16 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow waveform with red held high
+
+* CONFIRMED (owner observation): following an accidental reset, the owner
+  used R/F/SPACE/C/SPACE/E/SPACE/D/P with the 10 kΩ yellow pull-up restored
+  and confirms the waveform in the requested 2A=32h/33h, 2C=00h test.
+  Yellow pulses with red retained high as well as in the prior red-low test.
+* Next compare black released/grounded during yellow pulsing; previous
+  input/output comparisons pulsed red, not yellow. No general independence
+  or scanner-side purpose is inferred. Recorded in docs and Ghidra;
+  no firmware changes.
+
 ## 2026-09-22 — yellow pull-down comparison
 
 * CONFIRMED (owner measurements): with 10 kΩ from yellow to ground,

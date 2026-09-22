@@ -445,9 +445,18 @@ output behaviour.
    **near 0 V in both D/L and D/H**. This supports release rather than
    high drive in L under this load. Exact voltages were not supplied;
    no transistor topology is established.
-4. **Other red baseline, still untested:** restore the 10 kΩ pull-up,
-   then **E, SPACE, D, P** retains E high and pulses D;
-   expect `2A=32h/33h`, `2C=00h`. Record whether yellow still responds.
+4. **Other red baseline completed (CONFIRMED: owner observation):**
+   after an accidental reset, the owner restored the 10 kΩ pull-up and
+   used **R, F, SPACE, C, SPACE, E, SPACE, D, P**. In response to the
+   requested `2A=32h/33h`, `2C=00h` test, the owner confirms yellow again
+   produces the approximately 400 ms waveform with red held high.
+   Yellow therefore pulses with red retained either low or high in the
+   tested configurations; general independence is not established.
+5. **Next, black input during yellow output:** leave that waveform running
+   and compare black released versus grounded. Check whether `2D` stays
+   `23h` released and `22h` grounded across yellow's pulse cycle. These
+   are expected values from earlier black tests, not yet a result with
+   yellow pulsing.
 
 The pull-up tests a specific blind spot: an open-drain output can release
 its pin instead of driving high, so an external resistor supplies the high

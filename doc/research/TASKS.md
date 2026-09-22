@@ -65,8 +65,10 @@ bit 0 as a sink/release output in this configuration (CONFIRMED: owner
 measurements)**. Internal topology and scanner-side purpose remain unknown.
 The 10 kΩ pull-down follow-up gives yellow near 0 V in both D/L and D/H
 (CONFIRMED: owner measurements), supporting release rather than high drive
-in L under this load. Next restore the pull-up and compare E retained high
-with D/P (2A=32h/33h, 2C=00h). No new ROM is required.
+in L under this load. After a reset and full setup sequence, owner also
+confirms yellow's waveform with E retained high (requested D/P test at
+2A=32h/33h, 2C=00h). Next compare black released/grounded while yellow
+pulses. No new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
 5.6 V, black resting at 5.1 V, and yellow apparently floating.
