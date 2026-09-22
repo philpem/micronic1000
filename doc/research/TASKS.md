@@ -68,8 +68,10 @@ The 10 kΩ pull-down follow-up gives yellow near 0 V in both D/L and D/H
 in L under this load. After a reset and full setup sequence, owner also
 confirms yellow's waveform with E retained high (requested D/P test at
 2A=32h/33h, 2C=00h). During yellow pulsing, owner reports black floats
-high when released and gives steady `2D=22h` when grounded. Released-state
-`2D=23h` confirmation is pending; contact voltage is not readback.
+high when released and gives steady `2D=22h` when grounded. Owner then
+confirms steady `2D=23h` released: both held input states are readable
+throughout yellow pulsing with red held high (CONFIRMED: owner observations).
+This does not establish short-pulse capture or coexistence with IR.
 No new ROM is required.
 V1 remains preserved.
 Owner reports `2D=OR=AND=23h` after R and with B held high, red high at

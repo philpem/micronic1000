@@ -455,10 +455,11 @@ output behaviour.
 5. **Black input during yellow output (CONFIRMED: owner observations):**
    during the requested yellow-pulsing test with red retained high, black
    floats high when released; grounded black gives **`2D=22h` steadily**.
-   The released black voltage was reported without a numeric measurement
-   or explicit `2D` reading. Confirmation of steady `2D=23h` when released
-   has been requested; a high contact voltage alone does not establish
-   that readback. The grounded input is readable during yellow pulsing.
+   The owner subsequently confirms **`2D=23h` steadily when black is
+   released**. Both held input states therefore remain distinguishable
+   throughout yellow pulsing with red retained high. Numeric released
+   voltage was not supplied for this run. Short-pulse capture and combined
+   IR operation remain untested.
 
 The pull-up tests a specific blind spot: an open-drain output can release
 its pin instead of driving high, so an external resistor supplies the high

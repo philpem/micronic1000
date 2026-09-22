@@ -1,5 +1,15 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — both black input states during yellow waveform
+
+* CONFIRMED (owner observation): with black released and yellow still
+  pulsing, `2D=23h` steadily. Combined with the preceding grounded `22h`
+  result, both held input states remain readable while yellow pulses and
+  red is retained high in the tested configuration.
+* Updated the guide, task list and Ghidra observation bookmark. The
+  held-level comparison is complete; short-pulse capture, Arduino
+  interfacing and combined IR operation remain untested. No firmware change.
+
 ## 2026-09-22 — black grounded during yellow waveform
 
 * CONFIRMED (owner observations): during the requested yellow-pulsing
