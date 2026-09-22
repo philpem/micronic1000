@@ -31,15 +31,18 @@ the [connector guide](../re-notes/connector-experiment.md#hardware-observations-
 Owner clarifies the other candidates have no detectable effect at the
 connector. Follow-up confirms red follows E's L/H states without inversion
 and R returns it low; LCD `2A` follows `20h/30h`. The B-high/A-pulse gating
-test also produces no activity change on the other contacts. Next collect
-raw input baseline and numeric pin voltages before stimulating inputs.
+test also produces no activity change on the other contacts. Next perform
+the black-to-ground 10 kΩ test, recording contact voltage and raw input.
+Owner reports `2D=OR=AND=23h` after R and with B held high, red high at
+5.6 V, black high (voltage unspecified), and yellow apparently floating.
 
 **Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
 The owner identifies eight contacts, power/ground known, six unknown. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
 inputs at measured electrical levels. Red/pin 1 is now mapped to candidate E;
-the remaining signal contacts and an independent debug channel are unresolved. Afterwards verify the corrected Arduino waveform
+the remaining signal contacts and an independent debug channel are unresolved.
+Afterwards verify the corrected Arduino waveform
 on the scope (including `emit_late_max`), then use the repaired stock hooks
 to distinguish readiness, receive and frame-validation failures. Physical
 return framing/controller check bytes remain OPEN; emulator byte queues do

@@ -1,5 +1,18 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — connector input baseline and voltage observations
+
+* Owner reports `2D=OR=AND=23h` after R and after the B/SPACE comparison:
+  port `2Dh` bits 0, 1 and 5 are high, without sampled changes in those
+  windows. Black rests high (numeric voltage not supplied); yellow appears
+  high impedance with no defined pull-up/down state.
+* R/E/H puts red/pin 1 at 5.6 V. This adds a measured electrical level to
+  the established candidate-E output correlation; black/yellow directions
+  remain unresolved.
+* Next proposed test: black to ground through 10 kΩ with B retained high,
+  measuring actual contact voltage and `2D`, then release and verify return.
+  No resistor-test result or Arduino electrical compatibility is claimed.
+
 ## 2026-09-22 — red output polarity and negative gating test
 
 * Owner confirms R/E/L then H: red/pin 1 follows L=0/H=1, LCD `2A` reads
