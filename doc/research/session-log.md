@@ -1,5 +1,14 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — C-high input readback
+
+* Owner reports R/C/SPACE gives `2D=OR=AND=20h`; R/B/SPACE/C/SPACE gives
+  `2A=22h`, `2C=22h`, `2D=20h`. Port `2Dh` bits 0 and 1 are low in these
+  readings, compared with the earlier 23h results. Owner confirms black
+  was released for both: 20h is the C-high idle baseline.
+* No black-contact mapping is inferred. Requested a 500 Ω pull-down and
+  release with 2A/2C held at 22/22, recording readback and contact voltage.
+
 ## 2026-09-22 — strong pull-down and missing barcode latch state
 
 * Owner reports black at 0.056 V through 500 Ω to ground, still `2D=23h`.

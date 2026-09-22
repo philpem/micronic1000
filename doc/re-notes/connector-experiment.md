@@ -253,10 +253,18 @@ claim that candidate C is an input enable.
 | **R, C, SPACE** | `22` | `20` |
 | **R, B, SPACE, C, SPACE** | `22` | `22` |
 
-For each state, compare `2D` with black released and then through the same
-500 Ω resistor to ground; record the contact voltage too. Disconnect the
-resistor between setups. Negative results still cannot exclude the untested
-`CTL_LATCH_2C`-bit-5-clear configuration. Yellow stimulation remains pending.
+**Owner's C-high results:** **R, C, SPACE** gives `2D=OR=AND=20h`.
+**R, B, SPACE, C, SPACE** gives `2A=22h`, `2C=22h`, `2D=20h`. The owner confirms
+black was **released** for both readings, making `20h` the C-high idle
+baseline. Port `2Dh` bits 0 and 1 are low; this does not yet establish a
+black-contact input response.
+
+**Next measurement:** leave `2A=22h`, `2C=22h`, connect black to ground
+through 500 Ω, and report `2D` and the contact voltage. Then disconnect the
+resistor and check that `2D` returns to the released baseline `20h`. This separates configuration-dependent
+readback from a response to the contact voltage. The untested
+`CTL_LATCH_2C`-bit-5-clear configuration remains a limitation; yellow
+stimulation remains pending.
 
 From baseline `23h`, a change to `22h` means port `2Dh` bit 0 cleared; `21h`
 means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete
