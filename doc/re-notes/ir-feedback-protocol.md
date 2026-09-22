@@ -451,16 +451,61 @@ and ordered teardown path. Error 6 is a measured controller-wait outcome,
 not a feedback transport failure. No wire-level meaning is assigned to the
 raw status values or the bit-6 wait by this result.
 
-Next is the matched stimulus trial, changing S to X and host ID to 3 while
-keeping optical placement and the candidate settings fixed:
+## First stimulus, host ID 3 — 2026-09-23
+
+**CONFIRMED (owner bench report):** matched W/X trial, swap 0, candidate
+7Eh, phase -2, five lead cells, requested delay 7000 us:
 
 ```text
 T 3 W X 0 7E 1 0 0 -2 5 7000 -
+TRIAL id=3 mode=W kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=3 rom_seq=3 mode=1 err=6 ack_us=520435732 release_us=520535736 start_us=520620640 emit_start_us=520627684 emit_end_us=520629540 emit_late_max=110 raw=A55A0101030006A0C0C81000010000000000000000000000000022002378
+READY
 ```
 
-Wait for its complete RESULT and fresh READY before any other command.
-A changed poll result would be evidence of a controller reaction; it would
-not by itself confirm the LED roles or acceptance of 7Eh as a receive flag.
+LCD:
+
+```text
+M1 S0003 E06 BC0AC8
+Q=A0100000000000
+D00=0000000000000000
+A22C00I23
+```
+
+Independent decode verifies all 30 bytes/checksum and LCD agreement. Like
+silent trial 2, the LINK_STATUS bit-4 wait passed, the TX arm executed, and
+the LINK_STATUS bit-6 wait timed out (error 6). Probe/after status remain
+A0h/C8h; before status is C0h rather than trial 2's 80h. The before sample
+precedes the scheduled stimulus; do not attribute that difference to the
+emission. Final gate/sample are again 22h/00h/23h; RX was not attempted.
+
+The Uno reports an emission dispatch 7044 us after its START observation,
+with 1856 us between its emission start/end timestamps (including the
+emitter's 300 us post-burst delay). Those timestamps do not themselves mark
+physical LED edges. The reported maximum event lateness is **110 us**, close
+to a 122 us cell. This is a stimulus timing concern, not a yellow-result
+checksum failure. A maximum alone does not identify the affected edge(s).
+
+**OPEN:** verify the actual D5/D6 waveform before interpreting this as a
+negative framing/LED-assignment result. The host emitter tests verify event
+ordering with a simulated clock; they do not model AVR execution costs. In
+this sketch, queue setup begins after `sendFrame` has waited for the first
+edge deadline. Whether setup cost explains the observed maximum, and how
+much later cells are affected, requires edge timing evidence.
+
+Next repeat the same stimulus as host ID 4, capturing D5 and D6:
+
+```text
+T 4 W X 0 7E 1 0 0 -2 5 7000 -
+```
+
+For this software configuration, the intended GPIO waveform is 13 proposed
+clock pulses on D5 (five lead cells plus eight candidate-byte cells), at
+122 us period and 61 us high time; six data pulses on D6 for the six one bits
+of 7Eh, each 76 us high and rising 30 us before its corresponding clock.
+These are requested timings, not yet measured outputs or confirmed handheld
+receive conventions. Record first and later pulse spacing/widths separately,
+plus the full serial result. Keep placement/settings fixed for this repeat.
 
 ## Validation and limits
 
@@ -475,8 +520,9 @@ also passes at receiver clock offsets of plus/minus 2 percent.
 The feedback build and all 13 legacy configurations compile for the Uno.
 The first direct-TTL silent probe passed on hardware as recorded above.
 A silent W witness also returned valid feedback after reaching its arm and
-bit-6 timeout. Stimulated comparisons, waveform correlation and actual IR
-reception remain untested. `7Eh` and the physical
+bit-6 timeout. The first stimulated W trial retained the bit-6 timeout but reported
+110 us maximum emitter lateness. Waveform correlation is now the next check;
+actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make
 this a diagnostic environment, not an exact replay of the running OS.

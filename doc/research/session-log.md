@@ -7515,3 +7515,18 @@ names renamed, 144 unplated functions plated)
 * Next is the paired X trial, ID 3, retaining swap=0/candidate 7E/7 ms delay
   and optical placement. No interpretation of bit 6 as wire ACK, nor any
   confirmation of receive framing/LED roles. Saved a Ghidra bench bookmark.
+
+### 2026-09-23 — First W/X stimulus, timing concern
+
+* CONFIRMED (owner report): host/ROM sequence 3, valid 30-byte checksum and
+  LCD agreement. Bit-4 poll passed, TX arm executed, bit-6 wait timed out;
+  probe/before/after A0h/C0h/C8h. Final 2Ah/2Ch/2Dh are 22h/00h/23h.
+  Preserved original serial/LCD records in the feedback guide.
+* Emission dispatch timestamp is START+7044 us; emission interval 1856 us
+  includes the 300 us post-burst delay. Reported event lateness 110 us is
+  substantial relative to the 122 us cell. These are software timestamps,
+  not a captured optical waveform. No receive/framing rejection concluded.
+* Next: identical X trial ID 4 with D5/D6 capture to check first/later edge
+  timing before changing assignments. Source review identifies post-deadline
+  queue setup as a possible contributor; actual AVR costs are not modelled
+  by the host scheduler tests. Saved the observation as an open Ghidra item.
