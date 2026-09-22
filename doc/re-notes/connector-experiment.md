@@ -1,4 +1,4 @@
-# Connector experiment — one ROM, outputs and input together
+# Connector experiment — outputs and input together
 
 The target is the owner's eight-contact right-side scanner connector. Power
 and ground are already known; six contacts remain to be mapped. This image
@@ -6,29 +6,34 @@ provides manual port control without the barcode API or background OS code.
 It continuously samples `EXTBUS_EDGE` (port `2Dh`) while generating selected
 output patterns and showing raw input bytes on the LCD.
 
-**Hardware status:** emulator-tested and first owner hardware trial recorded
-2026-09-22: boot, heartbeat, single-press contrast adjustment and an E-selected
-waveform on red/pin 1 work. The contact map and input path remain incomplete.
-Its power/LCD startup reuses the previously working exerciser sequence. Only ROM00 (`micron1.bin`, DIP1) is replaced; leave ROM01
-(`micron2.bin`, DIP2) unchanged. This is a dedicated diagnostic, so the normal
-menus do not run. It writes scratch RAM and the RAM NMI vector; retain your
-normal procedure for restoring the stock ROM and restarting afterward.
+**Current image: connector v2.** It adds **F** to control `CTL_LATCH_2C`
+bit 5, a state that v1 held high even though stock barcode setup clears it.
+All other controls and reset baselines are retained. V1 is preserved for
+reproducing the measurements below.
+
+**Hardware status:** v1 boots on the owner's handheld, with heartbeat,
+contrast and a non-inverted output on red/pin 1 established. V2 uses the same
+startup and has not yet run on the physical handheld. Only ROM00
+(`micron1.bin`, DIP1) is replaced; leave ROM01 (`micron2.bin`, DIP2)
+unchanged. This dedicated diagnostic does not run normal menus. It writes
+scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
+and restart procedure afterwards.
 
 ## Image and transfer checks
 
 File:
 
 ```text
-/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/connector-v1/micron1_connector_v1.bin
+/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/connector-v2/micron1_connector_v2.bin
 ```
 
 | Check | Value |
 |---|---|
 | Size | 32768 bytes |
-| MD5 | `261e828ef2008264e58d8d3db08fb86a` |
-| Additive 16-bit | `9568` |
-| Additive 24-bit | `379568` |
-| SHA-256 | `b435f3bc2c6e14e55ed04579063a22231581c22426fd5ed19aba35647fb42f77` |
+| MD5 | `68f303e274b7d7d80e43b7e07c5b1176` |
+| Additive 16-bit | `9429` |
+| Additive 24-bit | `379429` |
+| SHA-256 | `db5be1c812865b63e23071ff614870045134148bec3abe9ffcaa02351e38af30` |
 
 Both additive checksums mean **sum every unsigned byte**, then mask with
 `FFFFh` or `FFFFFFh`. They are not word sums or complemented checksums.
@@ -37,7 +42,7 @@ The adjacent JSON manifest records the source and original-ROM hashes too.
 Rebuild from the repository root:
 
 ```sh
-analysis/venv/bin/python analysis/rom_exerciser/connector.py
+analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 2
 analysis/venv/bin/python -m pytest -q analysis/test_connector_probe.py
 ```
 
@@ -46,6 +51,44 @@ It redirects the cold-boot entry before OS initialisation and reclaims a
 bounded part of the now-unreachable session code. The release regression
 compares the exact burn file, manifest and fresh build, so stale artifacts
 cannot pass the release check.
+
+### V1 archive
+
+The existing v1 file remains at
+`analysis/rom_exerciser/releases/connector-v1/micron1_connector_v1.bin`:
+MD5 `261e828ef2008264e58d8d3db08fb86a`, sum16 `9568`, sum24 `379568`.
+`connector.py` without `--version 2` still builds v1 for reproducibility.
+V1's assembly and published binary/manifest are unchanged.
+
+## V2: test the missing barcode configuration
+
+1. After burning v2, check the banner says **CONNECTOR PROBE 2**.
+2. Press and release **R, F, SPACE, B, SPACE**. Check **`2A=20`, `2C=02`**.
+   This retains `CTL_LATCH_2C` bit 5 low and its bit 1 high, matching those
+   two stock presence-probe control bits. It does not reproduce the whole
+   stock API or establish either bit's electrical gating function.
+3. Record idle `2D`/`OR`/`AND`. Repeat the black released / 500 Ω-to-ground
+   comparison, checking actual contact voltage and the complete input byte.
+4. Release black. Repeat yellow through 10 kΩ to ground and then separately
+   through 10 kΩ to orange/Vcc, recording contact voltage and input byte.
+5. To compare C high, press **C, SPACE** without resetting. The bytes should
+   now be **`2A=22`, `2C=02`**. Repeat the same input comparisons.
+
+**R restores `2C=20`, including bit 5 high.** After any R, repeat the full
+F/SPACE/B/SPACE setup before interpreting a bit-5-low test. Use **F, SPACE**
+to retain the low baseline: **F, L** only forces it low temporarily and
+switching candidates restores its saved baseline.
+
+Additional comparisons in the same burn:
+
+| Sequence | `2A` | `2C` | Purpose |
+|---|---|---|---|
+| **R, F, SPACE** | `20` | `00` | `2Ch` bit 5 low, `2Ch` bit 1 low |
+| **R, F, SPACE, B, SPACE** | `20` | `02` | `2Ch` bit 5 low, `2Ch` bit 1 high |
+| **R, F, SPACE, B, SPACE, C, SPACE** | `22` | `02` | Also set `2Ah` bit 1 |
+
+These are controlled comparisons. Even negative results do not establish
+that a contact is unconnected or that the connector carries no other input.
 
 ## First bench run
 
@@ -56,7 +99,7 @@ respond to the ROM's output controls.
 1. Validate the copied image against the checksums above, fit ROM00/DIP1,
    and start the handheld. It enters the diagnostic directly; no ENTER or
    menu selection is needed.
-2. Check for `CONNECTOR PROBE 1`, `2A=20 2C=20`, and
+2. Check for `CONNECTOR PROBE 2`, `2A=20 2C=20`, and
    `SEL=2C/01 MODE=S`. The two-digit heartbeat should keep changing.
    Use **NO / YES** for contrast if necessary. The example `2D=FF` below is
    illustrative: the actual resting input byte is a measurement to record.
@@ -124,6 +167,7 @@ Selection initially is A (`2Ch` mask `01h`), **stopped**.
 | **C** | Select `CTL_LATCH_2A` bit 1 (`2Ah/02h`) |
 | **D** | Select `CTL_LATCH_2A` bit 0 (`2Ah/01h`), additional candidate |
 | **E** | Select `CTL_LATCH_2A` bit 4 (`2Ah/10h`), additional candidate |
+| **F** | Select `CTL_LATCH_2C` bit 5 (`2Ch/20h`), v2 only |
 | **P** | Slow square-wave test, approximately 2 Hz |
 | **T** | Faster square-wave test, approximately 25 Hz |
 | **L / H** | Hold the selected bit low / high |
@@ -148,11 +192,11 @@ other latch bits retain their baseline values.
 The eight rows are:
 
 ```text
-CONNECTOR PROBE 1
+CONNECTOR PROBE 2
 2A=20 2C=20 2D=FF 01
 SEL=2C/01 MODE=S
 IN OR=FF AND=FF
-A-E:PIN P/T:PULSE
+A-F:PIN P/T:PULSE
 L/H:HOLD S:STOP
 SPACE:BASE R:RESET
 NO/YES:CONTRAST
@@ -241,10 +285,10 @@ Connector v1 resets `2Ch=20h` and exposes only `2Ch` masks `01h/02h`, so
 high. The diagnostic deliberately preserved the IR-selection state, but that
 also prevents reproducing this part of the stock barcode configuration.
 Whether that bit gates this connector input is **SUSPECTED**: the decisive
-comparison requires its low state. No existing key sequence produces it;
-a revised diagnostic would be needed to test that state directly.
+comparison requires its low state. No v1 key sequence produces it. V2 now
+adds that control as candidate F; the comparison remains to be performed.
 
-**Next comparisons available in this burn:** change `CTL_LATCH_2A` bit 1,
+**V1 comparisons performed:** change `CTL_LATCH_2A` bit 1,
 with `CTL_LATCH_2C` bit 1 low and high. This is a mode comparison, not a
 claim that candidate C is an input enable.
 
@@ -266,18 +310,22 @@ C-high released and grounded results agree in both B states. C changes the
 idle readback, but these tests have not shown a black-contact response.
 The untested `CTL_LATCH_2C`-bit-5-clear state remains a limitation.
 
-**Next measurement:** release black and select **R, B, SPACE**
-(`2A=20h`, `2C=22h`). Connect yellow through **10 kΩ to ground**, recording
-its actual voltage and `2D`. Disconnect that path, then connect yellow
-through **10 kΩ to known Vcc (orange)** and record voltage/readout again.
-Use only one resistor path at a time. This establishes two controlled levels
-on the apparently floating contact; its input/output direction remains open.
+**Owner's yellow result:** after **R, B, SPACE**, yellow connected to
+blue/ground measures **0 V**, and yellow connected to orange/Vcc measures
+**5.3 V**. `2D=23h` in both cases. Blue is the owner's identified ground
+contact. This test was requested with 10 kΩ, one resistor path at a time;
+no yellow input response was observed under the v1 baseline.
+
+**Next comparison:** clear `CTL_LATCH_2C` bit 5 and repeat the held-level
+input tests. V1 cannot do this. V2 adds candidate F for that
+specific bit; the previous results remain valid observations of v1's
+bit-5-high configurations, not a complete test of the barcode input path.
 
 From baseline `23h`, a change to `22h` means port `2Dh` bit 0 cleared; `21h`
 means its bit 1 cleared; `03h` means its bit 5 cleared. Record the complete
 byte even if it differs from these examples. `OR`/`AND` can differ briefly
 while a display window includes the transition; steady held levels should
-subsequently be visible in `2D`. Yellow stimulation is now the next controlled comparison.
+subsequently be visible in `2D`. The next comparison changes the previously fixed control state.
 
 ## Scope of the image
 
@@ -312,7 +360,8 @@ received bytes; physical receive framing remains unresolved.
 
 ## Reading the assembly
 
-The diagnostic source is `analysis/rom_exerciser/connector.asm`. Its routine
+The current source is `analysis/rom_exerciser/connector_v2.asm`;
+`connector.asm` preserves v1. Their routine
 comments describe the intended caller contracts and state transitions:
 
 - `start` bypasses the normal OS, establishes scratch state and initialises

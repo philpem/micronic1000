@@ -19,21 +19,31 @@ sys.path.insert(0, str(HERE.parent))
 from micronic.z80asm import assemble
 
 DEFAULT_ROM = HERE.parent.parent / 'micronic' / 'micron1.bin'
-SOURCE = HERE / 'connector.asm'
+SOURCE = HERE / 'connector.asm'  # v1 compatibility alias
+SOURCES = {1: SOURCE, 2: HERE / 'connector_v2.asm'}
 ORIGIN, LIMIT = 0x6000, 0x6A00
 STOCK_SHA256 = '6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f'
 BOOT = 0x014B
 BOOT_BYTES = bytes.fromhex('f3 2a d0 fb f9 ed 56')
 DEFAULT_OUT = HERE / 'releases' / 'connector-v1' / 'micron1_connector_v1.bin'
+DEFAULT_OUT_V2 = HERE / 'releases' / 'connector-v2' / 'micron1_connector_v2.bin'
 
 
-def build_image(rom_path=DEFAULT_ROM):
+def _source_and_output(version):
+    try:
+        return SOURCES[version], (DEFAULT_OUT if version == 1 else DEFAULT_OUT_V2)
+    except KeyError as exc:
+        raise ValueError('connector version must be 1 or 2') from exc
+
+
+def build_image(rom_path=DEFAULT_ROM, version=1):
+    source, _ = _source_and_output(version)
     original = Path(rom_path).read_bytes()
     if len(original) != 32768 or hashlib.sha256(original).hexdigest() != STOCK_SHA256:
         raise ValueError('input is not the verified stock 32K micron1.bin')
     if original[BOOT:BOOT + len(BOOT_BYTES)] != BOOT_BYTES:
         raise ValueError('cold-boot guard mismatch')
-    code, symbols = assemble(SOURCE.read_text(), origin=ORIGIN)
+    code, symbols = assemble(source.read_text(), origin=ORIGIN)
     if symbols['start'] != ORIGIN or symbols['end'] > LIMIT:
         raise ValueError('connector program exceeds reclaimed session region')
     image = bytearray(original)
@@ -55,9 +65,13 @@ def fingerprint(image):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--rom', type=Path, default=DEFAULT_ROM)
-    parser.add_argument('-o', '--out', type=Path, default=DEFAULT_OUT)
+    parser.add_argument('--version', type=int, choices=(1, 2), default=1)
+    parser.add_argument('-o', '--out', type=Path)
     args = parser.parse_args(argv)
-    image, symbols, original = build_image(args.rom)
+    source, default_out = _source_and_output(args.version)
+    if args.out is None:
+        args.out = default_out
+    image, symbols, original = build_image(args.rom, version=args.version)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     manifest = {
         'image': args.out.name,
@@ -65,12 +79,17 @@ def main(argv=None):
         'checksums': fingerprint(image),
         'checksum_definition': 'unsigned byte sum modulo 2^16 or 2^24; no complement',
         'stock_sha256': STOCK_SHA256,
-        'assembly_sha256': hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
+        'assembly_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
         'changed_bytes': sum(a != b for a, b in zip(original, image)),
         'entry': f'ROM00:{symbols["start"]:04X}',
         'end_exclusive': f'ROM00:{symbols["end"]:04X}',
         'hardware_validation': 'not yet run on the physical handheld',
     }
+    # Keep v1's published manifest byte-for-byte reproducible. v2 records the
+    # explicit source/version needed to distinguish its added PORT2C bit-5 key.
+    if args.version == 2:
+        manifest['version'] = 2
+        manifest['assembly_source'] = source.name
     # Stage on the same filesystem; never expose a partially written image.
     # Pair equality is additionally checked by the release regression test.
     def publish(path, data):

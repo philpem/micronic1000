@@ -6,7 +6,7 @@
 > descriptor destination and reports raw `Link_BlockRx` status, but does not
 > validate a frame header. Arduino phase generation is corrected and all 13
 > actual-Uno configurations compile. The current requested hardware burn is
-> the connector probe, sum16 `9568`; follow
+> the connector probe v2, sum16 `9429`; follow
 > [connector experiment](connector-experiment.md). The current bit-6 hook
 > preserves the stock loop body but shifts its first sample by 10 T and adds
 > 107 T after exit.

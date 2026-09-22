@@ -7,7 +7,7 @@ Everything for reverse-engineering and emulating the Micronic 1000.
 The [connector experiment](../doc/re-notes/connector-experiment.md) provides
 one ROM00 image with selected output patterns and live hexadecimal input
 monitoring, plus release checksums and operating instructions.
-Build with `analysis/venv/bin/python analysis/rom_exerciser/connector.py` from
+Build v2 with `analysis/venv/bin/python analysis/rom_exerciser/connector.py --version 2` from
 the repository root. The release lives under `rom_exerciser/releases/`.
 
 The Uno sketch and its self-contained rsync directory are

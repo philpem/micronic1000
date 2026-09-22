@@ -8,7 +8,7 @@
 > 620-iteration poll body but delays its first sample by 10 T and returns 107 T
 > after exit. Arduino phase generation is corrected and all 13 actual-Uno
 > configurations compile. The current requested hardware burn is the connector
-> probe, sum16 `9568`; follow [connector experiment](../../doc/re-notes/connector-experiment.md).
+> probe v2, sum16 `9429`; follow [connector experiment](../../doc/re-notes/connector-experiment.md).
 
 > **DO NOT REBURN `1225`, `2692` OR `1E3E`.** The verified `1225` image produced a
 > constant buzz and uniformly black LCD. The verified `2692` image reduced

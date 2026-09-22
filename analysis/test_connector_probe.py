@@ -10,8 +10,8 @@ from rom_exerciser import connector
 
 
 class Probe:
-    def __init__(self, dirty=0xA5, edge=lambda: 0xFF):
-        self.image, self.sym, _ = connector.build_image()
+    def __init__(self, dirty=0xA5, edge=lambda: 0xFF, version=1):
+        self.image, self.sym, _ = connector.build_image(version=version)
         self.mem = bytearray([dirty] * 65536)
         self.mem[:32768] = self.image
         self.cpu = z80.Z80Machine()
@@ -223,3 +223,74 @@ def test_published_release_matches_source_and_manifest():
     assert release.read_bytes() == image
     assert manifest['checksums'] == connector.fingerprint(image)
     assert manifest['assembly_sha256'] == hashlib.sha256(connector.SOURCE.read_bytes()).hexdigest()
+
+
+def test_v2_f_selects_port2c_bit5_and_low_baseline_survives_selection_changes():
+    p = Probe(version=2)
+    rows = [bytes(p.screen[i:i + 20]).decode() for i in range(0, 160, 20)]
+    assert rows[0] == 'CONNECTOR PROBE 2   '
+    assert rows[4] == 'A-F:PIN P/T:PULSE   '
+
+    p.command('R'); p.command('F'); p.command(' ')
+    assert (p.value('BASE2A'), p.value('BASE2C')) == (0x20, 0x00)
+    assert (p.value('SHADOW2A'), p.value('SHADOW2C')) == (0x20, 0x00)
+
+    # The requested R,F,SPACE,B,SPACE,C,SPACE sequence keeps F's released-low
+    # bit 5 while B and C independently retain their selected baseline bits.
+    p.command('B'); p.command(' ')
+    assert (p.value('BASE2A'), p.value('BASE2C')) == (0x20, 0x02)
+    assert (p.value('SHADOW2A'), p.value('SHADOW2C')) == (0x20, 0x02)
+    p.command('C'); p.command(' ')
+    assert (p.value('BASE2A'), p.value('BASE2C')) == (0x22, 0x02)
+    assert (p.value('SHADOW2A'), p.value('SHADOW2C')) == (0x22, 0x02)
+
+    p.command('R')
+    assert (p.value('BASE2A'), p.value('BASE2C')) == (0x20, 0x20)
+    assert (p.value('SHADOW2A'), p.value('SHADOW2C')) == (0x20, 0x20)
+
+    # F's default is high; its temporary L/H modes leave the retained baseline
+    # unchanged, and STOP restores that high baseline.
+    p.command('F'); p.command('L')
+    assert p.value('SHADOW2C') == 0x00 and p.value('BASE2C') == 0x20
+    p.command('H')
+    assert p.value('SHADOW2C') == 0x20 and p.value('BASE2C') == 0x20
+    p.command('S')
+    assert p.value('SHADOW2C') == p.value('BASE2C') == 0x20
+
+    # F is reachable through the stock keyboard scan, not only direct calls.
+    p.key = 9
+    p.call('key_scan')
+    assert p.cpu.a == ord('F')
+
+
+def test_v2_diff_is_limited_to_its_candidate_limit_and_data_region():
+    v1, s1, _ = connector.build_image()
+    v2, s2, _ = connector.build_image(version=2)
+    changed = [i for i, (a, b) in enumerate(zip(v1, v2)) if a != b]
+    assert changed
+    # The A-F comparison and the absolute references relocated by the added
+    # candidate are the only changed instructions. Remaining bytes are the
+    # candidate table and v2's banner/help data; no stock or unrelated region
+    # is touched.
+    assert [i for i in changed if i < s2['candidates']] == [
+        0x605B, 0x6066, 0x6140, 0x61E3, 0x61EF, 0x61FB,
+        0x6216, 0x622D, 0x6239, 0x6245, 0x6251,
+    ]
+    assert v1[s2['key_candidate_limit'] + 1] == ord('F')
+    assert v2[s2['key_candidate_limit'] + 1] == ord('G')
+    assert all(s2['candidates'] <= i < s2['end'] for i in changed
+               if i >= s2['candidates'])
+    assert v1[connector.BOOT:connector.BOOT + 3] == v2[connector.BOOT:connector.BOOT + 3]
+
+
+def test_v2_published_release_matches_source_version_and_manifest():
+    import json
+    image, _, _ = connector.build_image(version=2)
+    release = connector.DEFAULT_OUT_V2
+    manifest = json.loads(release.with_suffix('.json').read_text())
+    assert release.read_bytes() == image
+    assert manifest['version'] == 2
+    assert manifest['assembly_source'] == 'connector_v2.asm'
+    assert manifest['checksums'] == connector.fingerprint(image)
+    assert manifest['assembly_sha256'] == hashlib.sha256(
+        connector.SOURCES[2].read_bytes()).hexdigest()

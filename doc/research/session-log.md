@@ -1,5 +1,27 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — yellow result and connector v2 control-state repair
+
+* Owner reports yellow at 0 V to blue/GND and 5.3 V to orange/Vcc after
+  R/B/SPACE, with `2D=23h` in both cases. No input response is established;
+  the owner's ground-wire colour is blue. C-high yellow testing remains
+  available in v1 while the missing control-state comparison is prepared.
+* Added connector v2 with candidate F for `CTL_LATCH_2C` bit 5. R/F/SPACE
+  gives 2A/2C=20/00; B/SPACE then gives 20/02; C/SPACE then gives 22/02.
+  R restores 20/20. This exposes the bit-5-low state used by stock barcode
+  setup; it does not establish a gating function or change any pin identity.
+* V1 source, binary and manifest remain unchanged and reproducible. V2 has
+  its own assembly and release directory; `connector.py --version 2` selects
+  it explicitly. Startup/stock helper paths are unchanged; payload ends at
+  ROM00:633B within the guarded region.
+* Independently reviewed and checked source/release equality; 23 connector
+  tests pass, including retained F-low baseline, F's physical key code,
+  reset and hold behaviour, source/binary manifests and permitted byte diffs.
+  Strict documentation build and rendered-page checks pass.
+* V2 ROM00: 32768 bytes, MD5 `68f303e274b7d7d80e43b7e07c5b1176`, unsigned-byte
+  sum16 `9429`, sum24 `379429`. Instructions and full path are in the
+  connector guide. V2 has not yet been tested on the physical handheld.
+
 ## 2026-09-22 — grounded-black C-high comparisons
 
 * Owner reports black grounded: R/C/SPACE gives 2A/2C/2D=22/20/20;

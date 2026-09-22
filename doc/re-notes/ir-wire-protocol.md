@@ -4,7 +4,7 @@
 > Current Arduino phase generation is corrected; `rxb2` now follows the RX
 > descriptor destination and reports raw `Link_BlockRx` status, without frame
 > header validation. The current requested physical burn is the eight-contact
-> connector probe, sum16 `9568`; see [connector experiment](connector-experiment.md).
+> connector probe v2, sum16 `9429`; see [connector experiment](connector-experiment.md).
 > See the [review](../research/reviews/ir-protocol-audit-2026-09-22.md) before
 > treating historical receive-convention claims or recipes as settled.
 
