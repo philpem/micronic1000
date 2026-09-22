@@ -6,9 +6,10 @@ provides manual port control without the barcode API or background OS code.
 It continuously samples `EXTBUS_EDGE` (port `2Dh`) while generating selected
 output patterns and showing raw input bytes on the LCD.
 
-**Hardware status:** emulator-tested; this particular image has not yet run
-on the physical handheld. Its power/LCD startup reuses the previously working
-exerciser sequence. Only ROM00 (`micron1.bin`, DIP1) is replaced; leave ROM01
+**Hardware status:** emulator-tested and first owner hardware trial recorded
+2026-09-22: boot, heartbeat, single-press contrast adjustment and an E-selected
+waveform on red/pin 1 work. The contact map and input path remain incomplete.
+Its power/LCD startup reuses the previously working exerciser sequence. Only ROM00 (`micron1.bin`, DIP1) is replaced; leave ROM01
 (`micron2.bin`, DIP2) unchanged. This is a dedicated diagnostic, so the normal
 menus do not run. It writes scratch RAM and the RAM NMI vector; retain your
 normal procedure for restoring the stock ROM and restarting afterward.
@@ -195,6 +196,31 @@ Keep the input stimulus slow initially so both states are visible. A wire
 that mirrors an output is a useful correlation, but confirm direction and
 conditioning before making it an Arduino command or feedback channel.
 There is no automatic decision that an unknown contact is safe to drive.
+
+## Hardware observations — 2026-09-22
+
+Owner-reported results using connector v1, sum24 `379568`. Contact numbers
+and wire colours below are the owner's labels, not an assumed standard DIN
+pinout. These are the first physical observations; emulator coverage alone
+was previously available.
+
+| Observation | Evidence and interpretation |
+|---|---|
+| Diagnostic boots; heartbeat advances | CONFIRMED by owner observation. |
+| Single YES/NO presses adjust contrast | CONFIRMED by owner observation. |
+| **R, E, P** toggles pin 1 / red | CONFIRMED observed correlation with candidate E, `CTL_LATCH_2A` bit 4. The reset-baseline software output is `2Ah=20h/30h`; physical voltage and inversion are still to be measured. |
+| Pin 3 / orange connects directly to Vcc, with high current | Owner-reported power connection; no numeric current measurement supplied. Treat it as power, not a signal candidate. |
+| Black has ESD-diode paths to Vss and Vcc, both about 0.6 V Vf | Owner-reported diode measurements. They do not yet establish input/output direction. |
+| Yellow has an ESD-diode path to Vss, about 0.4 V Vf | Owner-reported diode measurement. No Vcc-side result or signal direction established. |
+| Other candidates produce no detectable connector change | Owner clarified that the negative result concerns the connector, not the LCD controls. No A/B/C/D contact mapping is established; test gating separately. |
+
+**Next measurement:** press **R, E, L**, then **H**; record red/pin-1 voltage
+and LCD `2A` in each state. The expected software bytes are `20` and `30`.
+Then return to **P** and check the waveform, using the held levels to identify
+polarity. Since the other candidates showed no detectable connector change,
+try **R, B, SPACE, A, P**: `2C` should alternate `22/23`, testing whether
+`CTL_LATCH_2C` bit 1 enables a path driven by its bit 0. This is a gating
+hypothesis, not an established pin function. Record a negative result too.
 
 ## Scope of the image
 

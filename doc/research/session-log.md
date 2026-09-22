@@ -1,5 +1,19 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — connector v1 first physical results
+
+* Owner reports diagnostic boot and advancing heartbeat; single YES/NO
+  presses adjust contrast. R/E/P toggles red/pin 1, correlating candidate E
+  with `CTL_LATCH_2A` bit 4. Held output voltages and polarity are pending.
+* Owner reports orange/pin 3 directly connected to Vcc with high current;
+  black has Vss/Vcc diode paths of about 0.6 V Vf; yellow has a Vss diode
+  path of about 0.4 V Vf. These observations do not assign black/yellow
+  input/output directions. Owner clarifies the other candidates show no
+  detectable change at the connector. Full details and the proposed gating
+  comparison are in the connector guide.
+* Rechecked ROM file: MD5 `261e828ef2008264e58d8d3db08fb86a`, unsigned-byte
+  sum16 `9568`, sum24 `379568`. No ROM/source changes in this pass.
+
 ## 2026-09-22 — connector bench guide and assembly comments
 
 * Added a first-run checklist, reset-baseline output worksheet and input

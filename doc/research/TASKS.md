@@ -23,7 +23,16 @@ complete on `ir/instrumentation-fixes-connector-probe`:
 The recorded LCD observations remain; the `06 00 E4` payload/framing
 interpretation is withdrawn. `1Fh` contains five consecutive ones.
 
-**Next hardware work:** run the [connector experiment](../re-notes/connector-experiment.md).
+**Hardware trial started (2026-09-22):** owner confirms connector-v1 boot,
+heartbeat and single-press contrast controls. R/E/P toggles red/pin 1, an
+observed correlation with `CTL_LATCH_2A` bit 4. Orange/pin 3 is reported
+connected directly to Vcc; black/yellow diode measurements are recorded in
+the [connector guide](../re-notes/connector-experiment.md#hardware-observations-2026-09-22).
+Owner clarifies the other candidates have no detectable effect at the
+connector. Next establish red's held-level voltages/polarity and test whether
+holding `CTL_LATCH_2C` bit 1 high enables its bit-0 path.
+
+**Next hardware work:** continue the [connector experiment](../re-notes/connector-experiment.md).
 The owner identifies eight contacts, power/ground known, six unknown. The
 single ROM directly controls selected latch bits while showing raw `2Dh`,
 window OR/AND and output shadows. Map outputs first, then slowly stimulate
