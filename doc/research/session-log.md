@@ -7501,3 +7501,17 @@ names renamed, 144 unplated functions plated)
 * One command/result round trip is established; active IR coexistence,
   physical LED roles and receive framing remain unproven. Next test is the
   silent W witness, ID 2. Recorded the owner result in Ghidra and saved.
+
+### 2026-09-23 — Silent W witness baseline, host ID 2
+
+* CONFIRMED (owner report, independently decoded): 30-byte result checksum
+  valid; ROM sequence 2/mode 1/error 6. LINK_STATUS bit-4 poll passed (10h),
+  arm flag 1, bit-6 poll timed out (00h). Probe/before/after status is
+  A0h/80h/C8h. No RX attempt; final 2Ah=22h, 2Ch=00h, 2Dh=23h match LCD.
+* Preserved full serial and LCD records in the feedback guide. Logged black
+  hold is 100 ms and release/START interval 84.904 ms; no Arduino optical
+  emission was scheduled. Valid feedback/READY after this witness is
+  established; error 6 is the diagnostic outcome, not a transport failure.
+* Next is the paired X trial, ID 3, retaining swap=0/candidate 7E/7 ms delay
+  and optical placement. No interpretation of bit 6 as wire ACK, nor any
+  confirmation of receive framing/LED roles. Saved a Ghidra bench bookmark.

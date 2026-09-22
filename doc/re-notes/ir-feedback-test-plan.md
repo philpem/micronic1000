@@ -71,8 +71,9 @@ grammar. The host checks currently cover the ROM (32 tests) and result UART
 timing/decoding (2 tests). The owner completed the first hardware boot and
 direct-TTL silent P transaction on 2026-09-23; its valid result and LCD agree.
 See the [raw bench record](ir-feedback-protocol.md#first-hardware-result-2026-09-23).
-Active IR trials, scope correlation and receive protocol conclusions remain
-pending.
+The subsequent silent W witness returned valid feedback after its arm and
+bit-6 timeout. Stimulated trials, scope correlation and receive protocol
+conclusions remain pending.
 
 ## Original design, superseded by feedback-v1
 

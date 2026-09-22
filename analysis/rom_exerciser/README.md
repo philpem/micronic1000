@@ -17,8 +17,9 @@ grammar, timings and electrical boundaries are in the
 [IR feedback harness interface](../../doc/re-notes/ir-feedback-protocol.md),
 not in historical `RX_NARROW` recipe text below. Host validation is 32 ROM and
 2 UART tests. The owner completed the first direct-TTL silent P probe on
-2026-09-23: valid result, LCD agreement and READY. Active IR testing remains
-pending; see the raw bench record in the linked interface guide. The final
+2026-09-23: valid result, LCD agreement and READY. The silent W witness
+also returned valid feedback with its arm executed and bit-6 timeout.
+Stimulated IR testing remains pending; see the linked raw bench records. The final
 feedback-v1 checksum manifest is generated per burn and is not a substitute
 for scope or electrical validation.
 

@@ -416,15 +416,51 @@ This demonstrates one successful direct-TTL command and yellow result
 transaction through the probe/reset/select path. It does not establish IR
 receive framing, LED roles, or coexistence with active TX/RX trials.
 
-Next run the silent W witness, host ID 2, before its paired stimulus:
+## Silent witness, host ID 2 — 2026-09-23
+
+**CONFIRMED (owner bench report):** the silent W trial returned a valid
+result and READY. The following record preserves the original serial output:
 
 ```text
 T 2 W S 0 7E 1 0 0 -2 5 7000 -
+TRIAL id=2 mode=W kind=S swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=2 rom_seq=2 mode=1 err=6 ack_us=325261964 release_us=325361964 start_us=325446868 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0101020006A080C810000100000000000000000000000000220023B9
+READY
 ```
 
-Retain the full result even if it reports a ROM witness timeout. W performs
-the handheld's transmit-opening sequence; `S` means the Arduino sends no
-optical response. It is not a promise that the handheld emits no IR.
+LCD:
+
+```text
+M1 S0002 E06 B80AC8
+Q=A0100000000000
+D00=0000000000000000
+A22C00I23
+```
+
+Independent decode: 30 bytes with sum modulo 256 zero; sequence 2, mode 1,
+diagnostic error 6. Probe status A0h, before status 80h, after status C8h.
+The bit-4 poll result is 10h (LINK_STATUS bit 4 cleared); the arm flag is 1;
+the bit-6 poll result is 00h (LINK_STATUS bit 6 did not clear within the
+bounded wait). No RX was attempted. The final gate/sample remain 22h/00h/23h,
+and every displayed field agrees with the serial record.
+
+ACK-to-release is 100,000 us; release-to-START is 84,904 us. The logged
+emission timestamps remain zero as selected by S. This establishes a valid
+feedback transaction after a silent stock-order witness, including the arm
+and ordered teardown path. Error 6 is a measured controller-wait outcome,
+not a feedback transport failure. No wire-level meaning is assigned to the
+raw status values or the bit-6 wait by this result.
+
+Next is the matched stimulus trial, changing S to X and host ID to 3 while
+keeping optical placement and the candidate settings fixed:
+
+```text
+T 3 W X 0 7E 1 0 0 -2 5 7000 -
+```
+
+Wait for its complete RESULT and fresh READY before any other command.
+A changed poll result would be evidence of a controller reaction; it would
+not by itself confirm the LED roles or acceptance of 7Eh as a receive flag.
 
 ## Validation and limits
 
@@ -438,7 +474,9 @@ also passes at receiver clock offsets of plus/minus 2 percent.
 
 The feedback build and all 13 legacy configurations compile for the Uno.
 The first direct-TTL silent probe passed on hardware as recorded above.
-Feedback during active IR trials and actual IR reception remain untested. `7Eh` and the physical
+A silent W witness also returned valid feedback after reaching its arm and
+bit-6 timeout. Stimulated comparisons, waveform correlation and actual IR
+reception remain untested. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make
 this a diagnostic environment, not an exact replay of the running OS.

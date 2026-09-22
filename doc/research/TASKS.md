@@ -52,9 +52,11 @@ Host validation includes 32 ROM tests and 2 UART tests. **CONFIRMED (owner
 bench report, 2026-09-23):** feedback-v1 boot and the first direct-TTL silent
 P request passed: sequence 1/error 0, valid 30-byte result checksum, status
 C0h, LCD agreement, and return to READY. See the [raw bench record](../re-notes/ir-feedback-protocol.md#first-hardware-result-2026-09-23).
-Next: silent W witness (host ID 2), then paired stimulus trials. Active IR
-coexistence and scope correlation remain pending; raw status is not protocol
-acceptance.
+The silent W witness (host ID 2) also returned valid feedback: error 6,
+LINK_STATUS bit-4 poll passed, arm executed, bit-6 poll timed out. Raw
+probe/before/after status is A0h/80h/C8h; LCD agrees. Next: matched X stimulus
+(host ID 3), same placement/settings. Stimulus coexistence and scope
+correlation remain pending; raw status is not protocol acceptance.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
