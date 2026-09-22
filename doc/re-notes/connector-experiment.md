@@ -396,9 +396,9 @@ pulse timing and check coexistence with IR operation. The standalone test
 does not establish short-pulse capture, arbitrary-state independence or
 compatibility with the latch states used by the IR controller.
 
-Yellow is mapped below; the other three signal contacts remain unmapped.
-Their identities and any existing measurements have been requested. Only red, orange, blue,
-black and yellow are currently described in the hardware record.
+Yellow is mapped below. The remaining contacts are owner-identified as
+**pin 2 brown, pin 4 violet and pin 7 green**; their functions and electrical
+measurements remain unknown.
 
 ## Yellow: sink/release output and remaining tests
 
@@ -476,6 +476,51 @@ of these bytes identifies yellow or establishes a scanner-side purpose.
 Tracing yellow's PCB connection or observing a working scanner would help
 establish the electrical circuit or scanner-side purpose; neither follows
 from the output-bit mapping alone.
+
+## Remaining contacts: brown 2, violet 4, green 7
+
+**CONFIRMED (owner-supplied numbering/colours):** the three remaining
+contacts are pin 2 brown, pin 4 violet and pin 7 green. These are the
+owner's connector labels, not an assumed standard mini-DIN pinout. No
+physical contact can yet be assigned to the candidates below.
+
+| Register candidate | CONFIRMED ROM mechanics, freshly checked | Physical interpretation |
+|---|---|---|
+| `EXTBUS_EDGE` / `2Dh` bit 1 | ROM00:1299–12A9 first tests `2Dh` bit 0. If clear, it tests `2Dh` bit 1 and selects software class 1 when set or class 2 when clear. | Strongest remaining input candidate; a connector presence/type signal is SUSPECTED. It could instead be internal status. |
+| `CTL_LATCH_2C` / `2Ch` bit 0, key A | ROM00:1511–1528 sets then clears this bit around a delay, after setting `2Ch` bit 1. | A further connector output is SUSPECTED; the register pulse does not establish physical routing. |
+| `CTL_LATCH_2C` / `2Ch` bit 1, key B | ROM00:127B–1292 clears then sets it before the input probe; ROM00:1507–150F sets it before the bit-0 pulse. | Another output/control candidate, but an internal enable is equally unresolved. |
+
+The probe and `2Ch` pulse are on the route where the saved selector is
+not `2Ah`. ROM00:1233–124A leaves `CTL_LATCH_2A` bit 1 clear on that route;
+the selector-`2Ah` route sets it and bypasses the two-input classification
+at ROM00:1269–1278. This argues for testing both control states, not for
+assuming another contact must follow black's observed gate conditions.
+The inspected capture loop uses only `2Dh` bit 0 (ROM00:13CB–13CD and
+13ED–13EF); it supplies no evidence for a separate barcode clock pin.
+The displayed `2Dh` bit 5 being high is not a physical pin assignment.
+
+Suggested tests, one contact at a time:
+
+1. Measure unloaded voltage, then compare the contact through 10 kΩ to
+   ground and separately through 10 kΩ to Vcc. Begin at **R, F, SPACE,
+   C, SPACE** (`2A=22h`, `2C=00h`), with black released and yellow stopped.
+   Record voltage and full `2D`/OR/AND. If only `2Dh` bit 1 clears from
+   `23h`, the result is `21h`; do not require that particular result.
+2. If no response, repeat at **R, F, SPACE, B, SPACE** (`2A=20h`,
+   `2C=02h`), which matches the inspected probe's relevant control bits.
+   The diagnostic continuously reads the full `2Dh` byte, so the stock
+   code's bit-0 test does not prevent observing bit 1 here.
+3. For output candidates, scope each contact with a 10 kΩ pull-up, then
+   if necessary a pull-down. **R, F, SPACE, B, SPACE, A, P** gives
+   `2A=20h`, `2C=02h/03h` (A pulses with B retained high).
+   **R, F, SPACE, B, P** gives `2A=20h`, `2C=00h/02h` (B pulses).
+   Repeat with C/SPACE included before selecting the pulsed candidate
+   to compare `2A=22h`. Record complete output bytes for every run.
+
+These are **SUSPECTED contact links**, not a three-pin/three-bit mapping.
+A negative result could reflect internal routing, different gating or an
+unused contact. Firmware alone cannot choose among brown, violet and green;
+held-level or waveform correlation, or PCB continuity, is required.
 
 ## Scope of the image
 

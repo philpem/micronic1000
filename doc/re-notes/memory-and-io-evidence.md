@@ -280,8 +280,8 @@ at the zero `Link_Probe` establishes at `ROM00:34B5` (`XOR A`).
 
 | bit | evidence in the ROM | reading |
 |---|---|---|
-| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **an output strobe on the external port.** Width and placement are CONFIRMED; what it strobes is **OPEN** |
-| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **an enable asserted around reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is a drive enable, a wand power line or a direction control is **OPEN** |
+| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **a programmed output pulse.** Pulse sequence and placement are CONFIRMED; physical routing and electrical function are **OPEN** |
+| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **a control switched before reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is an internal enable or an external signal is **OPEN** |
 | 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
 | 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **LIKELY the LCD backlight.** A user-toggleable output that is switched off on power-down fits nothing else here, and MAME's `port_2c_w` keeps exactly `BIT(data, 4)` as `m_lcd_backlight` — corroborating, but itself an inference from this same ROM, not independent measurement. *Confirmed by:* pressing the toggling key and watching the panel |
 | 5 | `Link_PortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](commstar-evidence.md#device-table-ports) |

@@ -1,5 +1,23 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — remaining scanner contacts and register candidates
+
+* Owner identifies pin 2 brown, pin 4 violet and pin 7 green as the
+  remaining contacts. No direction, voltage or physical register mapping
+  has been established for them.
+* Fresh ROM00:1221 and 14FF listings confirm the non-2Ah selector route
+  tests `2Dh` bit 1 after finding bit 0 clear, and switches `2Ch` bit 1
+  and pulses `2Ch` bit 0. These are candidates for bench correlation,
+  not proof of three additional connector signals. The 2Ah route bypasses
+  that classification; input tests should compare both control states.
+* Fresh ROM00:13B8 listing confirms the capture polls mask to `2Dh` bit 0;
+  no separate barcode clock contact is established by that loop. Documented
+  held-level and waveform tests using the existing v2 burn.
+* Narrowed the I/O evidence table: the `2Ch` bit-0 programmed pulse does
+  not establish routing to an external pin, and the bit-1 write sequence
+  does not establish an electrical enable. Preserved the byte facts and
+  left both physical functions open.
+
 ## 2026-09-22 — both black input states during yellow waveform
 
 * CONFIRMED (owner observation): with black released and yellow still

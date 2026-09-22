@@ -55,7 +55,11 @@ Owner then confirms C/SPACE restores 22/00. E/P pulses red at roughly
 E/H. Released black reads `2D=23h` throughout those same three modes
 (CONFIRMED: owner measurements), completing the held-level simultaneous
 input/output comparison.
-The other three contacts' identities/measurements have also been requested.
+Owner identifies the remaining contacts as pin 2 brown, pin 4 violet and
+pin 7 green; functions remain unknown. Fresh ROM review prioritises `2Dh`
+bit 1 (input classification) and `2Ch` bits 0/1 (programmed pulse/control)
+as unassigned candidates, not physical mappings. The connector guide lists
+both 22/00 and 20/02 input comparisons and F-low A/B output tests.
 Yellow held-level test at 22/00 is complete: through 10 kΩ, yellow reaches
 0 V to ground and 5.22 V to Vcc, with `2D=OR=AND=23h` in both cases
 (CONFIRMED: owner measurements). With that pull-up, D/P then produces a
