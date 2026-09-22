@@ -577,6 +577,53 @@ increase the capture span. Keep the waveform and full serial result.
 T 5 W X 0 7E 1 0 0 -2 5 7000 -
 ```
 
+## Stimulus and scope capture, host ID 5 — 2026-09-23
+
+**CONFIRMED (owner serial report):** trial 5 completed with valid feedback;
+ROM mode 1/error 6 again means the LINK_STATUS bit-4 poll passed, TX arm
+executed, and LINK_STATUS bit-6 wait timed out. The owner supplied this
+Agilent/Keysight MSO-X3054A digital CSV as `/tmp/IR`:
+
+```text
+TRIAL id=5 mode=W kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=5 rom_seq=5 mode=1 err=6 ack_us=1438882328 release_us=1438982336 start_us=1439067220 emit_start_us=1439074288 emit_end_us=1439076116 emit_late_max=138 raw=A55A0101050006A0C0C81000010000000000000000000000000022002376
+READY
+```
+
+**CONFIRMED (CSV, 2.5 us/sample):** `analysis/feedback_scope.py` finds 13
+pulses on scope D2 and six on scope D3. These are scope pod labels; D2/D3
+are treated as the Uno's proposed clock/data lines using the earlier capture
+wiring, pending confirmation that the probes were unchanged for this trial.
+The scope window contains all 13 pulses. Sampling D3 at the eight candidate
+D2 clock rises yields `7Eh`, the requested candidate byte. This verifies the
+digital stimulus at the probes, not that `7Eh` is the handheld's receive flag
+or that the optical LED channels have the intended roles.
+
+| Scope measurement | Requested | Observed |
+|---|---:|---:|
+| Initial lead clock rise spacing | 122 us | 90, 90, 90, 92.5 us (median 90) |
+| Later clock rise spacing | 122 us | mostly 130 us; 137.5 and final 80 us also occur |
+| Typical clock high width | 61 us | mostly 45–47.5 us |
+| Data high width | 76 us | 55–57.5 us |
+| Data rise before paired clock | 30.5 us | 30–32.5 us |
+
+**CONFIRMED:** the emitted clock period and pulse widths differ materially
+from the requested settings. The previous suggestion that only the first
+lead pulse might be clipped is withdrawn: all four initial lead intervals
+are about 90 us, and later spacing varies. The reported maximum software
+event lateness is 138 us; that number alone does not locate its affected
+edge. The CSV cannot establish what reached the handheld's photoreceiver.
+
+**LIKELY:** constructing and sorting a lazy event queue after the scheduled
+first-edge deadline contributes to the timing distortion (see `sendFrame`
+and `emitCells` in the Uno sketch), but the scope trace does not isolate AVR
+runtime costs from other scheduling effects. Correct the USB-loadable Uno
+emitter and re-scope the same candidate before treating another error 6 as
+evidence against framing, LED assignment, or receive polarity. The one-burn
+feedback ROM remains suitable for this repeat. The on-disk copy of this
+capture is `.cache/ir-arduino/trial5-keysight.csv` (ignored by Git); its
+SHA-256 is `16baa457c5cd74cbdf5650839d931b251db12785ee3e8f4954465748b6507e50`.
+
 ## Validation and limits
 
 Automated checks execute the assembled ROM with simulated port reads,

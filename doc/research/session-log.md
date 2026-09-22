@@ -7558,3 +7558,20 @@ names renamed, 144 unplated functions plated)
   data lead is 30 us, while the D5 train starts about 702 us before D6.
   Next repeat ID 5 captures both with corrected labels, single-shot D6
   trigger and pre-trigger. No code change.
+
+### 2026-09-23 — Trial 5 Keysight digital scope capture
+
+* CONFIRMED (owner serial report): ID 5 repeated mode 1/error 6; valid
+  feedback reports 138 us maximum event lateness. Recorded exact lines in
+  `doc/re-notes/ir-feedback-protocol.md`.
+* CONFIRMED (2.5 us/sample scope CSV): scope D2 has 13 pulses, D3 six;
+  candidate clock-edge sampling recovers 7Eh. Initial lead spacing is about
+  90 us, later spacing mostly 130 us rather than requested 122 us; high
+  widths are also short. These are pod labels; Uno pin correspondence for
+  this capture awaits owner confirmation. Withdrew the earlier single-clipped
+  lead-pulse explanation.
+* Added `analysis/feedback_scope.py` and synthetic CSV tests so future
+  captures can be measured reproducibly. Copied the 31 KB CSV to ignored
+  disk-backed `.cache/ir-arduino/` and recorded its SHA-256 in the guide.
+  Next: correct the Uno emitter via USB and re-scope using host ID 6; no
+  additional EPROM burn indicated by this timing observation.

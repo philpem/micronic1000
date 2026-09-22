@@ -35,6 +35,12 @@ not feedback-v1's default procedure.
   scope D2/D3 are Arduino clock/data; these are scope pod channel numbers,
   not Arduino pin numbers. Use `--groups`, `--addresses`, or `--segments` for
   progressively more detail.
+* `feedback_scope.py` measures a Keysight `x-axis,D0-D7` CSV from one feedback
+  trial. It reports pulse counts, widths, spacing, data-to-clock offset, and
+  the byte sampled at the candidate clock edges. For trial 5, run
+  `python3 analysis/feedback_scope.py /tmp/IR`. Defaults are scope D2/D3,
+  five lead cells and candidate `7E`; use `--clock-bit`/`--data-bit` if the
+  scope pod wiring differs, and `--json-out` for machine-readable results.
 
 ## Reusable firmware models — `micronic/`
 

@@ -59,11 +59,15 @@ probe/before/after status is A0h/80h/C8h; LCD agrees. Matched X stimulus
 probe/before/after A0h/C0h/C8h. **OPEN timing concern:** Uno reports maximum
 event lateness 110 us against a 122 us cell, repeated in successful ID 4.
 The owner corrected wrongly labelled scope channels; the apparent
-D6-before-D5 onset is withdrawn. Pulse timing remains OPEN. Next ID 5:
-same settings, single-shot D6
-trigger with pre-trigger covering the expected earlier D5 lead clocks.
-Do not interpret this as a clean negative framing/LED-role result until the
-emitted waveform is checked. R preserves the last accepted host ID.
+D6-before-D5 onset is withdrawn. **CONFIRMED (trial 5 scope CSV):** all 13
+candidate clock and six data pulses are present, and sampled bits read 7Eh,
+but early lead-clock intervals are about 90 us, later ones mostly 130 us,
+and pulse widths are shorter than requested. This withdraws the earlier
+"only first lead pulse clipped" possibility. Physical scope-pod D2/D3 to
+Uno D5/D6 correspondence is inherited from earlier captures and needs
+confirmation for this setup. Fix the USB-loadable Uno emitter, then re-scope
+the same trial with next host ID 6 before interpreting error 6 as a clean
+negative framing/LED-role result. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
