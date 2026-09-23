@@ -56,8 +56,9 @@ The silent W witness (host ID 2) also returned valid feedback: error 6,
 LINK_STATUS bit-4 poll passed, arm executed, bit-6 poll timed out. Raw
 probe/before/after status is A0h/80h/C8h; LCD agrees. Matched X stimulus
 (host ID 3) returned valid feedback with the same poll/arm/timeout outcome;
-probe/before/after A0h/C0h/C8h. **OPEN timing concern:** Uno reports maximum
-event lateness 110 us against a 122 us cell, repeated in successful ID 4.
+probe/before/after A0h/C0h/C8h. **Historical timing concern (resolved for
+the tested waveform in trial 6):** Uno reported maximum event lateness
+110 us against a 122 us cell, repeated in successful ID 4.
 The owner corrected wrongly labelled scope channels; the apparent
 D6-before-D5 onset is withdrawn. **CONFIRMED (trial 5 scope CSV):** all 13
 candidate clock and six data pulses are present, and sampled bits read 7Eh,
@@ -68,11 +69,15 @@ Uno D5/D6 correspondence is inherited from earlier captures and needs
 confirmation for this setup. The USB-loadable Uno emitter now dispatches
 256 us before the first edge and has a queue-free path for the current phase.
 Host tests and direct-TTL Uno build pass; **physical waveform remeasurement
-remains OPEN.** Trial-5 source CSV is tracked at
-`analysis/captures/feedback-trial5-keysight.csv`. Re-scope the same trial
-with next host ID 6 using the exact handoff procedure at the top of the
-[canonical interface](../re-notes/ir-feedback-protocol.md) before interpreting
-error 6 as a framing/LED-role result. R preserves the last accepted host ID.
+was completed with trial 6.** Scope D2/D3 produced 13/6 pulses, sampled 7Eh,
+clock periods 117.5–127.5 us and widths within the stated targets;
+`emit_late_max=7`. Trial-5 and trial-6 source CSVs are tracked at
+`analysis/captures/feedback-trial{5,6}-keysight.csv`. W still returned
+error 6 after arm; W did not attempt RX, so framing and physical LED roles
+remain OPEN. Next: swapped-role W silent/stimulated control IDs 7/8 using
+the exact handoff at the top of the
+[canonical interface](../re-notes/ir-feedback-protocol.md), then direct RX
+comparisons if W status stays unchanged. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

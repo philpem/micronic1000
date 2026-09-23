@@ -7592,3 +7592,20 @@ names renamed, 144 unplated functions plated)
   and wrote an explicit next-trial handoff in the canonical interface:
   upload sketch with `BLACK_USE_NPN=0`, confirm probe mapping, use ID 6,
   collect complete serial/CSV, and measure against bounded timing targets.
+
+### 2026-09-23 — Trial 6 validates repaired digital stimulus
+
+* CONFIRMED (owner serial report): W/X host ID 6, ROM sequence 7, valid
+  30-byte checksum, probe/before/after A0h/80h/C8h. `LINK_STATUS` bit-4
+  poll passed, arm executed, bit-6 poll timed out/error 6; W mode did not
+  attempt RX. Uno reported 7 us maximum scheduling lateness.
+* CONFIRMED (Keysight CSV, 2.5 us/sample): scope D2/D3 show 13/6 pulses;
+  candidate sampling yields 7Eh. Clock periods span 117.5–127.5 us,
+  clock widths 60–67.5 us, data widths 77.5 us, all within the handoff
+  targets. Pod-to-Uno header assignment needs owner confirmation; optical
+  delivery and physical LED roles remain open.
+* Copied the source CSV into tracked
+  `analysis/captures/feedback-trial6-keysight.csv`, SHA-256 recorded in the
+  canonical guide, and added a fixture regression. Replaced stale ID-6
+  instructions with swapped-role W silent/stimulated IDs 7/8. No further
+  ROM burn or Uno firmware change is indicated before those tests.

@@ -75,8 +75,11 @@ The subsequent silent W witness returned valid feedback after its arm and
 bit-6 timeout. Stimulated W/X trials 3–5 produced the same timeout; trial 5
 has a tracked digital scope capture. That capture exposed significant Uno
 emitter timing distortion, so protocol conclusions remain pending. The
-emitter has now been revised, with physical remeasurement as the next test.
-The exact next command and capture acceptance targets are at the top of the
+emitter has now been revised. Trial 6's physical scope capture meets all
+stated digital timing targets, but W still returns bit-6 timeout/error 6 and
+does not attempt RX. The next controlled comparison is the swapped LED-role
+silent/stimulated pair, followed by direct RX if witness status stays unchanged.
+The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 
 ## Original design, superseded by feedback-v1

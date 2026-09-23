@@ -37,9 +37,9 @@ not feedback-v1's default procedure.
   progressively more detail.
 * `feedback_scope.py` measures a Keysight `x-axis,D0-D7` CSV from one feedback
   trial. It reports pulse counts, widths, spacing, data-to-clock offset, and
-  the byte sampled at the candidate clock edges. The trial-5 source capture
-  is tracked at `analysis/captures/feedback-trial5-keysight.csv`; run
-  `python3 analysis/feedback_scope.py analysis/captures/feedback-trial5-keysight.csv`.
+  the byte sampled at the candidate clock edges. Trial-5 and trial-6 source
+  captures are tracked at `analysis/captures/feedback-trial{5,6}-keysight.csv`;
+  run `python3 analysis/feedback_scope.py analysis/captures/feedback-trial6-keysight.csv`.
   Defaults are scope D2/D3,
   five lead cells and candidate `7E`; use `--clock-bit`/`--data-bit` if the
   scope pod wiring differs, and `--json-out` for machine-readable results.

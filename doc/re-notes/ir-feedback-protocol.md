@@ -6,47 +6,48 @@ is new test firmware, not a discovered Micronic protocol.
 
 ## Current handoff: next physical trial
 
-**Status 2026-09-23:** feedback-v1 ROM00 is already installed; trial 5
-returned mode 1/error 6, and its tracked Keysight capture at
-`analysis/captures/feedback-trial5-keysight.csv`
-showed distorted Uno timing. The sketch now enters its emitter 256 us before
-the first edge and uses a direct, preordered schedule for the current phase.
-Host tests and an Elegoo Uno R3 direct-TTL build pass. **OPEN:** the repaired
-waveform has not yet been measured on the actual Uno; no receive-convention
-conclusion follows from trial 5. The one-burn feedback ROM remains in place.
-After this change `emit_start_us` marks scheduler entry about 256 us before
-the requested first edge, not the edge itself; compare edge times in CSV,
-not the before/after software interval from older trials.
+**Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trial 6
+validated the repaired Uno timing at the scope probes: 13 clock and six data
+pulses, sampled candidate `7Eh`, and every measured period/width inside the
+targets below. The source CSV is tracked at
+`analysis/captures/feedback-trial6-keysight.csv`. The ROM still returned
+mode 1/error 6 after the stock-order witness arm. **OPEN:** physical optical
+delivery, D5/D6 LED roles and receive framing remain unproved. The one-burn
+ROM stays in place. `emit_start_us` now marks scheduler entry about 256 us
+before the requested first edge; compare actual edges in CSV.
 
-1. From branch `ir/automated-feedback-tests`, copy the **whole**
-   `analysis/arduino/m1000_ir_probe/` directory to the Arduino PC and upload
-   `m1000_ir_probe.ino` for `arduino:avr:uno` (Elegoo Uno R3, 16 MHz). The
-   current bench uses direct TTL: set `BLACK_USE_NPN=0` before upload, or
-   build with `--build-property compiler.cpp.extra_flags=-DBLACK_USE_NPN=0`.
-   Keep blue/black/yellow and LED-driver wiring as below. Confirm the boot
-   banner says `BLACK: DIRECT_TTL` and LCD says `IR FEEDBACK/W/R/P/G`.
-2. Scope **Uno header D5 and D6**, with ground on Uno GND. If using a digital
-   pod, write down which pod bits actually contact D5 and D6; the prior
-   D2/D3 mapping is not confirmed for every capture. Capture at least 2 ms
-   around the candidate burst (D6 rising trigger, enough pre-trigger to
-   include the five earlier D5 lead pulses). Export Keysight
-   `x-axis,D0-D7` CSV with 2.5 us/sample or finer.
-3. Open serial at 115200 baud; send `R`, wait for `READY`, then send exactly
-   `T 6 W X 0 7E 1 0 0 -2 5 7000 -`. Wait for the full `TRIAL`, `RESULT`,
-   and subsequent `READY`. `R` does **not** reset the strictly increasing
-   host ID; if ID 6 was accepted already, use the next unused ID. Repeating
-   an accepted ID yields `ERROR reason=command`. Keep optical geometry fixed.
-4. Run `python3 analysis/feedback_scope.py path/to/new.csv` from the repo
-   root (specify `--clock-bit`/`--data-bit` if the pod mapping differs).
-   Check for 13 proposed clock and six data pulses, sampled candidate `7E`,
-   all clock rise intervals near 122 us (target within 8 us), clock high
-   near 61 us and data high near 76 us (both within 8 us), and
-   `emit_late_max` below about 15 us. These are acceptance targets, not
-   claims about unmeasured AVR output. If timing still fails, preserve the
-   full trace and repair the Uno scheduler before comparing protocol choices.
-   If timing passes but error 6 remains, record that exact stimulus and
-   timeout without inferring a rejected flag or LED role; optical delivery
-   to the handheld remains unmeasured.
+1. Keep the tested sketch from branch `ir/automated-feedback-tests` and the
+   present geometry/wiring. It is the direct-TTL `BLACK_USE_NPN=0` build for
+   `arduino:avr:uno` (Elegoo Uno R3, 16 MHz). Confirm `BLACK: DIRECT_TTL`
+   and LCD `IR FEEDBACK/W/R/P/G` if restarting. No EPROM or Uno code change
+   is needed for the next comparison.
+2. Scope **Uno header D5 and D6** with ground on Uno GND. Record the actual
+   pod-bit-to-header-pin map; earlier D2/D3 mapping remains to be confirmed
+   for these captures. For `swap=1`, D6 is the proposed clock and D5 the
+   proposed data, so trigger on **D5 data rising** with enough pre-trigger
+   for the five earlier D6 lead clocks. Capture at least 2 ms around the
+   burst, export Keysight `x-axis,D0-D7` CSV at 2.5 us/sample or finer.
+3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the swapped
+   **silent control first**, wait for `RESULT` and a fresh `READY`, then the
+   swapped stimulus, keeping every other setting and optical placement fixed:
+
+   ```text
+   T 7 W S 1 7E 1 0 0 -2 5 7000 -
+   T 8 W X 1 7E 1 0 0 -2 5 7000 -
+   ```
+
+   IDs must strictly increase: if 7 or 8 was already accepted, substitute
+   the next unused IDs. `R` does not reset host ID. ROM sequence is an
+   independent counter; trial 6 had host ID 6 but ROM sequence 7.
+4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 3
+   --data-bit 2` if pod D3 is physically on Uno D6 and D2 on Uno D5; adjust
+   those two arguments to the actual pod wiring. Check 13 proposed clock and
+   six data pulses, sampled candidate `7E`, every clock rise interval within
+   8 us of 122 us, clock high within 8 us of 61 us, data high within 8 us of
+   76 us, and `emit_late_max` below about 15 us. Compare the swapped X result
+   with its silent control and the earlier unswapped W results. A repeated
+   error 6 alone does not reject `7Eh` or either physical LED role; optical
+   delivery to the handheld remains unmeasured.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -675,6 +676,55 @@ evidence against framing, LED assignment, or receive polarity. The one-burn
 feedback ROM remains suitable for this repeat. The source capture is tracked
 at `analysis/captures/feedback-trial5-keysight.csv`; its
 SHA-256 is `16baa457c5cd74cbdf5650839d931b251db12785ee3e8f4954465748b6507e50`.
+
+## Repaired stimulus and scope capture, host ID 6 — 2026-09-23
+
+**CONFIRMED (owner serial report):** the repaired direct-TTL Uno sketch
+booted and completed the same W/X stimulus:
+
+```text
+BOOT
+MODE: FEEDBACK v1, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input
+BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command
+READY
+SYNC
+BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command
+READY
+TRIAL id=6 mode=W kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=6 rom_seq=7 mode=1 err=6 ack_us=15928724 release_us=16028724 start_us=16113620 emit_start_us=16120424 emit_end_us=16122516 emit_late_max=7 raw=A55A0101070006A080C810000100000000000000000000000000220023B4
+READY
+```
+
+The 30-byte result sums to zero modulo 256. Its probe/before/after status
+is A0h/80h/C8h; `LINK_STATUS` bit-4 poll returned 10h, arm executed, and
+`LINK_STATUS` bit-6 poll returned 00h with error 6. RX was not attempted in
+mode W. ROM sequence 7 is not a host-ID mismatch: host ID and ROM sequence
+are independent, and the ROM also counts accepted keypad trials.
+
+**CONFIRMED (owner Keysight CSV):** the new `/tmp/IR` was copied to tracked
+`analysis/captures/feedback-trial6-keysight.csv` (SHA-256
+`baf9c8437e93a9ec39642f62a925e5664707ebd554b0b04e4675dc449051751f`).
+At 2.5 us/sample the decoder finds 13 pulses on scope D2 and six on D3,
+with `7Eh` sampled on the eight candidate clock rises. D2/D3 are pod labels;
+the exact pod-to-Uno header map for this capture awaits owner confirmation.
+Under the earlier D2=proposed-clock, D3=proposed-data map:
+
+| Measurement | Trial 5 | Trial 6 | Requested |
+|---|---:|---:|---:|
+| Clock rise intervals | 90 us first lead; mostly 130 us later | 117.5–127.5 us, median 121.25 us | 122 us |
+| Clock high width | mostly 45–47.5 us | 60–67.5 us | 61 us |
+| Data high width | 55–57.5 us | 77.5 us | 76 us |
+| Data rise before paired clock | 30–32.5 us | 27.5–35 us | 30 us |
+| Uno `emit_late_max` | 138 us | 7 us | below about 15 us |
+
+**CONFIRMED:** the repaired sketch meets every stated digital timing target
+at the scope probes, so the trial-5 emitter defect is resolved for this
+candidate. **SUSPECTED, still open:** optical channel assignment and `7Eh`
+as a receive flag. Error 6 is the stock-order witness's bit-6 timeout; it
+does not report a rejected receive frame. The next controlled comparison
+uses swapped proposed LED roles with its own silent control (IDs 7 and 8 in
+the current handoff), then moves to direct RX trials if no witness status
+change is seen. No further ROM burn is indicated.
 
 ## Validation and limits
 
