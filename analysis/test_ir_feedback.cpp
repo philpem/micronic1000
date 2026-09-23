@@ -391,6 +391,14 @@ static std::string command(uint32_t id, char hold, char kind, int swap,
   return text.str();
 }
 
+static std::string repeatCommand(uint32_t id, uint8_t count, uint8_t gapMs,
+                                 uint16_t delayUs = 1000) {
+  std::ostringstream text;
+  text << "T " << id << " G X 0 7E 0 0 0 -2 3 " << delayUs
+       << " 03 0 0 " << (unsigned)count << ' ' << (unsigned)gapMs;
+  return text.str();
+}
+
 static void opticalInversionTrials() {
   for (int swap = 0; swap < 2; ++swap) {
     for (int clkInv = 0; clkInv < 2; ++clkInv) {
@@ -508,6 +516,61 @@ static void successfulTrials() {
   waitReady();
 }
 
+static void repeatedBurstTrials() {
+  const uint32_t id = nextId++;
+  TrialObservation trial = beginTrial(repeatCommand(id, 3, 23), 700000);
+  CHECK(fbConfig.repeatCount == 3 && fbConfig.repeatGapMs == 23);
+  spinUntil([] { return !fbEmitPending; }, 90000);
+  CHECK(irEvents.size() > trial.firstIrEvent);
+  std::vector<std::vector<uint8_t> > bursts;
+  std::vector<uint8_t> current;
+  uint32_t previousAt = 0;
+  for (size_t i = trial.firstIrEvent; i < irEvents.size(); ++i) {
+    const IrEvent &event = irEvents[i];
+    if (!current.empty() && event.actual - previousAt > 1000U) {
+      bursts.push_back(current); current.clear();
+    }
+    current.push_back(event.type);
+    previousAt = event.actual;
+  }
+  if (!current.empty()) bursts.push_back(current);
+  CHECK(bursts.size() == 3);
+  CHECK(bursts[0] == bursts[1] && bursts[1] == bursts[2]);
+  CHECK((uint32_t)(irEvents.back().actual - trial.startAt) < 80000U);
+  for (size_t i = 1; i < bursts.size(); ++i) {
+    const uint32_t firstAt = irEvents[trial.firstIrEvent].actual;
+    size_t index = trial.firstIrEvent;
+    for (size_t n = 0; n < i; ++n) index += bursts[n].size();
+    const uint32_t delta = irEvents[index].actual - firstAt;
+    CHECK(delta >= i * 23000U && delta <= i * 23000U + 1000U);
+  }
+  CHECK((uint32_t)(hostNow - trial.startAt) < 80000U);
+  expectSuccessfulResult(4, fbExpectedSequence);
+  waitReady();
+}
+
+static void repeatCommandRejections() {
+  const char *suffixes[] = {" 1 10", " 4 10", " 2 0", " 2 61", " 3 30"};
+  const char *bases[] = {
+      "T %u G X 0 7E 0 0 0 -2 3 1000 03 0 0",
+      "T %u G X 0 7E 0 0 0 -2 3 1000 03 0 0",
+      "T %u G X 0 7E 0 0 0 -2 3 1000 03 0 0",
+      "T %u G X 0 7E 0 0 0 -2 3 1000 03 0 0",
+      "T %u G S 0 7E 0 0 0 -2 3 1000 03 0 0"};
+  for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
+    char prefix[96];
+    snprintf(prefix, sizeof(prefix), bases[i], (unsigned)nextId++);
+    send(std::string(prefix) + suffixes[i] + "\n");
+    CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
+  }
+  // 60 ms delay + two 10 ms gaps + 26 ms worst-case frame exceeds 80 ms.
+  char prefix[96];
+  snprintf(prefix, sizeof(prefix), "T %u G X 0 7E 0 0 0 -2 3 60000 03 0 0",
+           (unsigned)nextId++);
+  send(std::string(prefix) + " 3 10\n");
+  CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
+}
+
 static void preStartErrorNeverEmits() {
   Serial.clearOutput();
   setYellow(true);
@@ -520,7 +583,7 @@ static void preStartErrorNeverEmits() {
 
   setYellow(true);
   advanceUs(20000);
-  startUart(resultRecord(0, 1, 1));
+  startUart(resultRecord(0, (uint16_t)(fbExpectedSequence - 1), 1));
   spinUntil([] { return fbState == FB_IDLE || fbState == FB_DESYNC; }, 400000);
   uartWave.active = false;
   hostYellow = true;
@@ -744,11 +807,13 @@ int main() {
   resyncAndReady();
 
   successfulTrials();
+  repeatedBurstTrials();
   preStartErrorNeverEmits();
   malformedResultCases();
   commandFailureCases();
   payloadAndEarlyEdgeCases();
   inversionParserRejections();
+  repeatCommandRejections();
   opticalInversionTrials();
   cameraVisibleLedCheck();
 

@@ -177,6 +177,19 @@ first serial-open attempt had malformed `REASYNC` and sent no trial;
 the 4-s-startup retry succeeded. Both logs are archived. Further G
 variation has diminishing value until stock-vs-feedback receive setup
 and pending-bit lifetime are resolved.
+The connected Uno was then updated with bounded repeat bursts (no handheld
+EPROM change). Matched G/S, single-X, and three-X trials IDs 55–60 used
+the explicit `7Eh 1Fh` candidate in both role assignments; repeats were
+scheduled at START+5/28/51 ms. All six valid raw records were mode 4/error
+8, ROM sequences 58–63. The two repeated stimuli spanned about 48.6 ms
+from first software dispatch to last completion. Trial 58's human-readable
+`release_us` text was garbled, but the raw record checksummed. This weakens
+a single unlucky 5-ms polling phase as an explanation, without proving
+that G's idle/finished controller state can detect the optical burst.
+**Next discriminating ROM work:** compare `LINK_CTRL` finished bits 6/7
+high against the stock IRQ watcher's cleared-bit state under matched
+stimulus, with a faster bounded `LINK_STATUS` history. Avoid further broad
+USB-only G waveform sweeps before that comparison.
 The updated Uno sketch provides a sustained low-duty output self-test:
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
 released and ROM trial IDs unchanged. Repeating `V 1` after completion is

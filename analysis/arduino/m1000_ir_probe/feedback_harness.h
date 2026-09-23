@@ -32,6 +32,8 @@ struct FeedbackConfig {
   uint16_t delayUs;
   uint8_t clockInvert;    // optional physical level inversion (X only)
   uint8_t dataInvert;
+  uint8_t repeatCount;    // total X bursts; 1 preserves single-burst default
+  uint8_t repeatGapMs;    // scheduled-start spacing, repeated X only
 };
 
 inline bool fbUnsigned(const char *text, uint32_t limit, uint32_t *out) {
@@ -89,7 +91,7 @@ inline bool fbHex(const char *text, uint8_t *dst, uint8_t *length) {
 
 // Commands (ASCII, LF terminated, max 95 chars):
 //   T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload
-//     [clk_inv dat_inv]
+//     [clk_inv dat_inv [repeat_count repeat_gap_ms]]
 //   C id
 //   R
 //   B id L|R
@@ -127,10 +129,10 @@ class FeedbackLineParser {
   bool discard_;
 
   FeedbackCommand parse(FeedbackConfig *cfg, uint32_t *id) {
-    char *parts[15];
+    char *parts[17];
     uint8_t count = 0;
     char *token = strtok(line_, " ");
-    while (token && count < 15) { parts[count++] = token; token = strtok(0, " "); }
+    while (token && count < 17) { parts[count++] = token; token = strtok(0, " "); }
     if (token || !count) return FB_BAD;
     uint32_t parsedId = 0;
     if (count == 1 && !strcmp(parts[0], "R")) return FB_RESYNC;
@@ -146,7 +148,7 @@ class FeedbackLineParser {
       if (!strcmp(parts[2], "R")) return FB_BLACK_RELEASE;
       return FB_BAD;
     }
-    if ((count != 13 && count != 15) || strcmp(parts[0], "T") ||
+    if ((count != 13 && count != 15 && count != 17) || strcmp(parts[0], "T") ||
         !fbUnsigned(parts[1], 0xFFFFFFFFUL, &parsedId)) return FB_BAD;
     uint32_t value = 0;
     FeedbackConfig next = {};
@@ -179,6 +181,19 @@ class FeedbackLineParser {
       next.clockInvert = (uint8_t)value;
       if (!fbUnsigned(parts[14], 1, &value)) return FB_BAD;
       next.dataInvert = (uint8_t)value;
+    }
+    next.repeatCount = 1;
+    if (count == 17) {
+      if (next.mode != FB_STIMULUS ||
+          !fbUnsigned(parts[15], 3, &value) || value < 2) return FB_BAD;
+      next.repeatCount = (uint8_t)value;
+      if (!fbUnsigned(parts[16], 60, &value) || value < 1) return FB_BAD;
+      next.repeatGapMs = (uint8_t)value;
+      // Keep the last full frame inside the ROM's ~100 ms pending poll.
+      // 192 encoded cells plus 16 lead cells fit in 26 ms at 122 us/cell.
+      if ((uint32_t)next.delayUs +
+          (uint32_t)(next.repeatCount - 1) * next.repeatGapMs * 1000UL +
+          26000UL > 80000UL) return FB_BAD;
     }
     *cfg = next; *id = parsedId; return FB_TRIAL;
   }

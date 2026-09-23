@@ -7922,3 +7922,28 @@ names renamed, 144 unplated functions plated)
   attempt returned malformed `REASYNC` and timed out before any T line;
   a retry with `--startup-wait 4` succeeded. Both logs are archived as
   `analysis/captures/feedback-poll-phase-*.jsonl`.
+
+### 2026-09-23 — Bounded Uno repeat-window trial
+
+* Read-only source/disassembly comparison found a concrete receive-context
+  difference: feedback G uses `DI`, reset/select, `LinkFinish` (setting
+  `LINK_CTRL` bits 6/7), and roughly 5-ms direct polls of `LINK_STATUS`
+  bit 4. The earlier positive stock hook ran in the active V24 interrupt
+  path, whose status watcher first clears `LINK_CTRL` bits 6/7. The bytes
+  confirm the differing setup, not that G's setup suppresses reception.
+* Added a USB-only bounded repeat option after the two optional optical
+  inversion fields. Existing T syntax retains one burst; a repeat is
+  limited to 2–3 starts, 1–60 ms spacing, and an end before START+80 ms.
+  Focused feedback and emitter host tests (16 passed), Uno R3 compile,
+  and verified upload passed. The broader host run exposed an old emitter
+  fixture missing the physical GPIO observation hook; the fixture now
+  checks each scheduled write and final dark-idle outputs.
+* IDs 55–60 compared silent, one-burst, and three-burst G trials for both
+  role assignments using explicit `7Eh` + zero-stuffed `1Fh`. Repeats
+  started at START+5/28/51 ms. All six raw 30-byte zero-sum records were
+  mode 4/error 8, sequences 58–63. Repeated emission spanned about
+  48.6 ms with at most 3 us scheduler lateness. A readable timing field
+  in trial 58 was garbled on USB serial, but its raw record remained valid.
+  Trial commands and the timestamped log are under `analysis/trials/` and
+  `analysis/captures/`. A negative result does not distinguish idle link
+  state from insufficient optical/framing acceptance.

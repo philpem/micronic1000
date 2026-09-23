@@ -228,6 +228,15 @@
 #define RX_NARROW_AXIS 2
 #endif
 
+// Feedback command syntax keeps its historical T fields and defaults. After
+// payload, optional fields are `clk_inv dat_inv`; an additional trailing
+// `repeat_count repeat_gap_ms` enables repeats only for `T ... X ...` trials.
+// repeat_count is 2..3 total identical bursts; repeat_gap_ms is 1..60 ms
+// between scheduled starts. delay_us + (count-1)*gap + 26 ms must be <=80 ms,
+// reserving 192 encoded cells plus the maximum lead inside the ROM's ~100 ms
+// pending poll. The runtime also checks the actual scheduled frame end.
+// Older commands (omitting both pairs) retain one burst, or remain silent.
+
 // Reply lead-in: the handheld's own bursts carry 4-5 clock-only cells before
 // the flag (its framer's pipeline flush); a faithful reply should too.
 #define RX_LEAD_CELLS 5
@@ -1053,6 +1062,7 @@ FbRunState fbState = FB_IDLE;
 uint32_t fbLastId = 0, fbStateAt = 0, fbHighAt = 0, fbStartAt = 0;
 uint32_t fbSerialAt = 0, fbAckAt = 0, fbReleaseAt = 0;
 uint32_t fbEmitStart = 0, fbEmitEnd = 0;
+uint8_t fbRepeatIndex = 0;
 uint32_t fbVisualAt = 0;
 uint8_t fbVisualPhase = 0;
 uint8_t fbResult[30], fbResultLen = 0;
@@ -1215,6 +1225,8 @@ void fbLogTrial() {
   Serial.print(F(" pol=")); Serial.print(fbConfig.polarity);
   Serial.print(F(" clk_inv=")); Serial.print(fbConfig.clockInvert);
   Serial.print(F(" dat_inv=")); Serial.print(fbConfig.dataInvert);
+  Serial.print(F(" repeat_count=")); Serial.print(fbConfig.repeatCount);
+  Serial.print(F(" repeat_gap_ms=")); Serial.print(fbConfig.repeatGapMs);
   Serial.print(F(" phase=")); Serial.print(fbConfig.phaseEighths);
   Serial.print(F(" lead=")); Serial.print(fbConfig.leadCells);
   Serial.print(F(" delay_us=")); Serial.print(fbConfig.delayUs);
@@ -1271,6 +1283,7 @@ void fbCommandTick() {
     fbConfig = parsed; fbLastId = parsed.trialId;
     fbResetUart(); fbBuildStimulus();
     fbAckAt = fbReleaseAt = fbStartAt = fbEmitStart = fbEmitEnd = 0;
+    fbRepeatIndex = 0;
     txMaxLatenessUs = 0; fbEmitPending = false; fbRequestLow = false;
     fbLogTrial(); fbState = FB_WAIT_ACK; fbStateAt = micros();
     fbReady = false; fbHighTracking = false;
@@ -1343,17 +1356,33 @@ void feedbackTick() {
     // Keep cancellation/serial handling live until this bounded setup window.
     const uint32_t setupAheadUs = 256;
     sweepInvert = fbConfig.polarity; txPhaseEighths = fbConfig.phaseEighths;
+    const uint32_t scheduled = fbStartAt + fbConfig.delayUs +
+        (uint32_t)fbRepeatIndex * fbConfig.repeatGapMs * 1000UL;
     if (fbEmitPending && txTimeDiff(now, txFirstEventTime(
-        fbStartAt + fbConfig.delayUs, fbConfig.leadCells) - setupAheadUs) >= 0) {
+        scheduled, fbConfig.leadCells) - setupAheadUs) >= 0) {
       // All serial parsing and cancellation remain live during the delay.
-      // Once emitting, service resumes within 24 ms. No serial prints occur
+      // A maximum frame plus lead takes under 26 ms. No serial prints occur
       // inside sendFrame; its deadline lateness is reported with the result.
       fbEmitPending = false; sweepClock = 0;
       sweepSwap = fbConfig.swapRoles; sweepInvert = fbConfig.polarity;
       txClockLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.clockInvert : 0;
       txDataLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.dataInvert : 0;
       txPhaseEighths = fbConfig.phaseEighths; txPre = fbConfig.leadCells; txPost = 0;
-      fbEmitStart = micros(); sendFrame(fbStartAt + fbConfig.delayUs); fbEmitEnd = micros();
+      // Hard end guard: repeated stimuli must finish within 80 ms of START.
+      // Keep existing single-burst scheduling behavior unchanged.
+      const uint32_t frameUs = (uint32_t)(txPre + frameLen) * 122UL + 100UL;
+      const uint32_t repeatDeadline = fbStartAt + 80000UL;
+      const bool repeatInWindow = fbConfig.repeatCount == 1 ||
+          (txTimeDiff(scheduled + frameUs, repeatDeadline) <= 0 &&
+           txTimeDiff(micros() + frameUs, repeatDeadline) <= 0);
+      if (repeatInWindow) {
+        if (!fbRepeatIndex) fbEmitStart = micros();
+        sendFrame(scheduled); fbEmitEnd = micros();
+        ++fbRepeatIndex;
+        fbEmitPending = fbRepeatIndex < fbConfig.repeatCount;
+      } else {
+        fbEmitPending = false;
+      }
       txClockLevelInvert = txDataLevelInvert = 0;
       fbResetUart();
     }

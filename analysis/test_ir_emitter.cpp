@@ -51,6 +51,7 @@ void noInterrupts() {}
 void interrupts() {}
 void pinMode(uint8_t, uint8_t) {}
 void digitalWrite(uint8_t, uint8_t) {}
+void analogWrite(uint8_t, int) {}
 void attachInterrupt(int, void (*)(), int) {}
 int digitalPinToInterrupt(uint8_t p) { return p; }
 int digitalPinToPort(uint8_t p) { return p < 8 ? 0 : 1; }
@@ -64,6 +65,11 @@ struct TraceEvent {
   uint8_t type;
 };
 std::vector<TraceEvent> trace;
+struct GpioTraceEvent { uint8_t pin; bool high; };
+std::vector<GpioTraceEvent> gpioTrace;
+void irHostGpio(uint8_t pin, bool high) {
+  gpioTrace.push_back({pin, high});
+}
 void irHostEvent(uint32_t intended, uint32_t actual, uint8_t type) {
   // The sketch passes the timestamp observed by its AVR-style wait loop.
   trace.push_back({actual, intended, type});
@@ -108,6 +114,22 @@ static std::vector<uint8_t> sampled(const std::vector<TraceEvent> &events) {
   return result;
 }
 
+static void checkGpioTrace() {
+  // Every scheduled event reaches its physical output, followed by the two
+  // writes that leave the emitter dark after the frame.
+  assert(gpioTrace.size() == trace.size() + 2);
+  for (size_t i = 0; i < trace.size(); ++i) {
+    const uint8_t expectedPin =
+        (trace[i].type == 1 || trace[i].type == 2) ? 5 : 6;
+    const bool expectedHigh = trace[i].type == 0 || trace[i].type == 1;
+    assert(gpioTrace[i].pin == expectedPin);
+    assert(gpioTrace[i].high == expectedHigh);
+  }
+  assert(gpioTrace[trace.size()].pin == 5 && !gpioTrace[trace.size()].high);
+  assert(gpioTrace[trace.size() + 1].pin == 6 &&
+         !gpioTrace[trace.size() + 1].high);
+}
+
 static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
                     int phase) {
   frameLen = (uint8_t)bits.size();
@@ -117,6 +139,7 @@ static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
   sweepSwap = 0;
   std::vector<ExpectedEvent> want = expected(start, bits, phase);
   trace.clear();
+  gpioTrace.clear();
   // Reset the simulated 32-bit AVR clock for every call, beginning at the
   // earliest event so negative phase offsets are physically representable.
   fakeNow = want.front().at;
@@ -129,6 +152,7 @@ static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
     assert(trace[i].actual == want[i].at);
     assert(trace[i].type == want[i].type);
   }
+  checkGpioTrace();
 }
 
 int main() {
@@ -158,9 +182,11 @@ int main() {
   fakeNow = want.front().at;
   fakeReads = 0;
   trace.clear();
+  gpioTrace.clear();
   emitCells(100, 0, 0);
   assert(txMaxLatenessUs == 0);
   assert(sampled(trace) == (std::vector<uint8_t>{0, 1}));
+  checkGpioTrace();
 
   // Exercise both sides of the explicit 32-bit micros() wrap.
   for (uint32_t start : {0x7fffff00u, 0xffffff00u})
@@ -177,6 +203,7 @@ int main() {
   fakeNow = feedbackStart;
   fakeReads = 0;
   trace.clear();
+  gpioTrace.clear();
   emitCells(feedbackStart, 5, 0);
   assert(txMaxLatenessUs == 0);
   const std::vector<uint8_t> feedbackSampled = sampled(trace);
@@ -185,6 +212,7 @@ int main() {
                               feedbackSampled.end()) == flagBits);
   assert(std::count_if(trace.begin(), trace.end(),
                        [](const TraceEvent &e) { return e.type == 0; }) == 6);
+  checkGpioTrace();
 
   buildReply(5);
   std::string wire;

@@ -73,6 +73,9 @@ them. A targeted 5/6-ms delay test, IDs 49–54, also returned error 8
 in both assignments. Stop broad G candidate sweeps until the receive
 context difference is understood. Raw timestamped logs are archived in
 `analysis/captures/`.
+The USB-only repeat-window test, IDs 55–60, emitted the same candidate
+three times at START+5/28/51 ms for both role assignments, with silent
+and single-burst controls. All six G trials still returned error 8.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -354,7 +357,7 @@ idle leaves the handheld and ROM sequence unchanged; correct the input and
 continue without `R`.
 
 ```text
-T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload [clk_inv dat_inv]
+T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload [clk_inv dat_inv [repeat_count repeat_gap_ms]]
 C id
 R
 B id L|R
@@ -364,7 +367,8 @@ V visual_id
 `id` for `T` is a strictly increasing decimal host ID, starting at 1;
 `visual_id` may be reused and does not consume trial IDs. Trial modes are witness `W`,
 forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
-`X` sends one stimulus. Probe mode requires `S`.
+`X` sends one stimulus unless the optional repeat pair is supplied. Probe
+mode requires `S`.
 
 | Parameter | Values |
 |---|---|
@@ -374,6 +378,7 @@ forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
 | `close` | 0 none; 1 append the selected unstuffed candidate flag |
 | `pol` | 0 normal serialized data bits; 1 complement those bits, including the candidate flag; clock pulses unchanged |
 | `clk_inv`, `dat_inv` | Optional pair of 0/1 fields after payload; complement each Uno LED-drive GPIO level during the bounded X burst, after role swap; defaults 0/0 |
+| `repeat_count`, `repeat_gap_ms` | Optional pair after both inversion fields, X only: 2–3 identical bursts separated by 1–60 ms between scheduled starts; must satisfy `delay_us + (repeat_count-1)*repeat_gap_ms*1000 + 26000 <= 80000` us; omitted means one burst |
 | `phase` | Decimal -4..4, data rise minus clock rise in eighths of a cell |
 | `lead` | 0..16 proposed-clock-only cells before the stimulus |
 | `delay_us` | 0..60000 from observed yellow START; log actual scheduling lateness |
@@ -1235,6 +1240,42 @@ before any trial; a clean retry with a 4-s startup wait produced IDs
 49–54. Both timestamped logs are retained as
 `analysis/captures/feedback-poll-phase-startup-error.jsonl` and
 `analysis/captures/feedback-poll-phase-49-54.jsonl`.
+
+### Repeat-window test, IDs 55–60
+
+**CONFIRMED (sketch source and live serial log):** the Uno sketch now accepts
+optional `repeat_count repeat_gap_ms` fields after `clk_inv dat_inv` for an
+X trial. Count is 2–3; scheduled starts are separated by 1–60 ms. The
+parser and runtime bound repeated emission to within 80 ms of yellow
+START. Earlier 13- and 15-field T commands still request one burst.
+`emit_start_us` records the first scheduler dispatch and `emit_end_us`
+the last completion for repeated trials. These are software timestamps,
+not measurements of light at the detector.
+
+The six commands in `analysis/trials/feedback-repeat-pending-55-60.txt`
+compare S, one X burst, and three X bursts under each role assignment.
+All use the explicit `7Eh` + zero-stuffed `1Fh` candidate, no lead cells,
+and the first burst at START+5 ms. The repeat bursts are scheduled at
+START+5, +28, and +51 ms. Every result was a valid 30-byte zero-sum ROM
+record, with consecutive sequences 58–63, mode G/error 8, and no stock
+RX call. The two repeated trials reported first-to-last software emission
+spans of about 48.6 ms and at most 3 us scheduler lateness. The text of
+trial 58's `release_us` field was corrupted on the USB serial line; its
+`raw=` record is intact and checksums correctly. Source log:
+`analysis/captures/feedback-repeat-pending-55-60.jsonl`.
+
+**CONFIRMED (ROM bytes):** feedback G uses `DI`, resets/selects the top
+link, calls `LinkFinish` (setting `LINK_CTRL` bits 6 and 7), then polls
+`LINK_STATUS` bit 4 at about 5-ms intervals. The old positive stock hook
+ran in the active V24 interrupt path: its status watcher clears the
+finished control state before testing `LINK_STATUS` bit 4 and dispatching
+receive. These are different receive contexts. **SUSPECTED:** that state
+difference, the polling cadence, or short-burst behavior may explain why
+G never observes pending. The repeat-window negative result does not
+discriminate controller state from optical/framing acceptance. A revised
+diagnostic should compare the two control states with otherwise matched
+stimuli and record a faster pending-status history before another broad
+waveform sweep.
 
 ## Validation and limits
 
