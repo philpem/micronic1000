@@ -7882,3 +7882,43 @@ names renamed, 144 unplated functions plated)
 * Focused feedback/runner tests: 12 passed. Cached Uno R3 compile: 11,472
   flash bytes, 856 static SRAM bytes. No Micronic bench result yet for
   the new optical-level modes.
+
+### 2026-09-23 — Connected Uno, optical-level and reference-like G trials
+
+* Temporary ACL allowed upload to the attached Elegoo Uno R3 on
+  `/dev/ttyACM0`. `arduino-cli upload --verify` succeeded. Boot reported
+  feedback-v1/direct-TTL; exact uppercase `V 1` returned labeled A and B
+  intervals, `VISUAL_DONE` and `READY`, resolving the earlier report of
+  idle command errors for this exact input on the uploaded sketch.
+* CONFIRMED (live yellow feedback): IDs 29–44 covered both `swap` states
+  and all four physical GPIO-level inversion combinations, matched S/X.
+  All 16 returned mode 4/error 8. ROM sequence advanced 32–47; each
+  30-byte record has zero byte-sum. Every X trial emitted with reported
+  maximum scheduler lateness at most 8 us; all S trials had no emission.
+  `LINK_STATUS` probe/before/after was either A0h/80h/80h or
+  E0h/C0h/C0h, with some S/X pairs already different before the X burst.
+  No pending-bit transition or stock RX call was observed. Logs:
+  `analysis/captures/feedback-optical-levels-29-36.jsonl` and
+  `analysis/captures/feedback-optical-levels-swap0-37-44.jsonl`.
+* Targeted G approximation of the older stock-ROM positive candidate,
+  IDs 45–48, sent `7Eh` + zero-stuffed `1Fh`, no lead, phase -2/8,
+  START+3 ms, normal GPIO levels, with matched S/X in both assignments.
+  All four were mode 4/error 8; sequences 48–51. Log:
+  `analysis/captures/feedback-historical-candidate-45-48.jsonl`.
+  This does not refute the old stock-ROM `I 98`/`I 90` bit-4 observations,
+  which occurred with stock receive/session setup and burst-relative
+  timing. Stop broad G sweeps; compare those contexts before more trials.
+* Corrected an investigator's timing error by returning to the installed
+  ROM source/manifest: the approximately 50-ms guard ends before yellow
+  START. `accepted_trial` then calls `tick2` and G reset/select/poll;
+  START+7-ms emission was not 45 ms before the receive window. G samples
+  bit 4 at approximately 5-ms intervals, so a brief nonlatched pending
+  signal between polls remains SUSPECTED. Do not claim this explains the
+  negative results without measuring its lifetime.
+* A targeted candidate/poll-phase set (IDs 49–54) used `7Eh` +
+  zero-stuffed `1Fh`, no lead, 5/6-ms delay, both role assignments and
+  silent controls. All six valid 30-byte results were mode 4/error 8,
+  ROM sequences 52–57; X lateness at most 10 us. An initial serial-open
+  attempt returned malformed `REASYNC` and timed out before any T line;
+  a retry with `--startup-wait 4` succeeded. Both logs are archived as
+  `analysis/captures/feedback-poll-phase-*.jsonl`.

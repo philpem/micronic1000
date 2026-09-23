@@ -1,0 +1,27 @@
+{"utc": "2026-09-23T11:24:06.968234+00:00", "monotonic_s": 879304.000648826, "direction": "tx", "line": "R"}
+{"utc": "2026-09-23T11:24:06.973401+00:00", "monotonic_s": 879304.005797463, "direction": "rx", "line": "SYNC"}
+{"utc": "2026-09-23T11:24:06.977608+00:00", "monotonic_s": 879304.010018568, "direction": "rx", "line": "BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"}
+{"utc": "2026-09-23T11:24:07.072073+00:00", "monotonic_s": 879304.104468451, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:07.072175+00:00", "monotonic_s": 879304.104554508, "direction": "tx", "line": "T 49 G S 0 7E 1 0 0 -2 0 5000 1F 0 0"}
+{"utc": "2026-09-23T11:24:07.092897+00:00", "monotonic_s": 879304.125292611, "direction": "rx", "line": "TRIAL id=49 mode=G kind=S swap=0 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=5000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:08.459880+00:00", "monotonic_s": 879305.492294464, "direction": "rx", "line": "RESULT id=49 rom_seq=52 mode=4 err=8 ack_us=493178608 release_us=493878616 start_us=493958700 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0104340008A08080FFFF0000000000000000000000000000220023DD"}
+{"utc": "2026-09-23T11:24:08.550305+00:00", "monotonic_s": 879305.582708842, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:08.550425+00:00", "monotonic_s": 879305.58280474, "direction": "tx", "line": "T 50 G X 0 7E 1 0 0 -2 0 5000 1F 0 0"}
+{"utc": "2026-09-23T11:24:08.570994+00:00", "monotonic_s": 879305.603388225, "direction": "rx", "line": "TRIAL id=50 mode=G kind=X swap=0 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=5000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:09.935890+00:00", "monotonic_s": 879306.968292965, "direction": "rx", "line": "RESULT id=50 rom_seq=53 mode=4 err=8 ack_us=494656740 release_us=495356744 start_us=495436832 emit_start_us=495441628 emit_end_us=495444220 emit_late_max=3 raw=A55A0104350008E0C0C0FFFF00000000000000000000000000002200231C"}
+{"utc": "2026-09-23T11:24:10.033436+00:00", "monotonic_s": 879307.065833979, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:10.033571+00:00", "monotonic_s": 879307.065953525, "direction": "tx", "line": "T 51 G X 0 7E 1 0 0 -2 0 6000 1F 0 0"}
+{"utc": "2026-09-23T11:24:10.054735+00:00", "monotonic_s": 879307.087148111, "direction": "rx", "line": "TRIAL id=51 mode=G kind=X swap=0 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=6000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:11.422015+00:00", "monotonic_s": 879308.454411278, "direction": "rx", "line": "RESULT id=51 rom_seq=54 mode=4 err=8 ack_us=496139780 release_us=496839788 start_us=496919872 emit_start_us=496925680 emit_end_us=496928256 emit_late_max=3 raw=A55A0104360008E0C0C0FFFF00000000000000000000000000002200231B"}
+{"utc": "2026-09-23T11:24:11.515415+00:00", "monotonic_s": 879308.547815389, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:11.515546+00:00", "monotonic_s": 879308.547927988, "direction": "tx", "line": "T 52 G S 1 7E 1 0 0 -2 0 5000 1F 0 0"}
+{"utc": "2026-09-23T11:24:11.536298+00:00", "monotonic_s": 879308.568696659, "direction": "rx", "line": "TRIAL id=52 mode=G kind=S swap=1 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=5000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:12.902414+00:00", "monotonic_s": 879309.934811084, "direction": "rx", "line": "RESULT id=52 rom_seq=55 mode=4 err=8 ack_us=497621448 release_us=498321456 start_us=498401536 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0104370008A08080FFFF0000000000000000000000000000220023DA"}
+{"utc": "2026-09-23T11:24:12.994140+00:00", "monotonic_s": 879310.026536983, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:12.994246+00:00", "monotonic_s": 879310.026625196, "direction": "tx", "line": "T 53 G X 1 7E 1 0 0 -2 0 5000 1F 0 0"}
+{"utc": "2026-09-23T11:24:13.015556+00:00", "monotonic_s": 879310.047951934, "direction": "rx", "line": "TRIAL id=53 mode=G kind=X swap=1 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=5000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:14.378858+00:00", "monotonic_s": 879311.41125297, "direction": "rx", "line": "RESULT id=53 rom_seq=56 mode=4 err=8 ack_us=499099852 release_us=499799852 start_us=499879932 emit_start_us=499884736 emit_end_us=499887320 emit_late_max=10 raw=A55A0104380008E0C0C0FFFF000000000000000000000000000022002319"}
+{"utc": "2026-09-23T11:24:14.473145+00:00", "monotonic_s": 879311.50553909, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T11:24:14.473242+00:00", "monotonic_s": 879311.505621252, "direction": "tx", "line": "T 54 G X 1 7E 1 0 0 -2 0 6000 1F 0 0"}
+{"utc": "2026-09-23T11:24:14.493876+00:00", "monotonic_s": 879311.52627049, "direction": "rx", "line": "TRIAL id=54 mode=G kind=X swap=1 flag=7E stuff=1 close=0 pol=0 clk_inv=0 dat_inv=0 phase=-2 lead=0 delay_us=6000 cell_us=122 order=MSB payload=1F"}
+{"utc": "2026-09-23T11:24:15.857763+00:00", "monotonic_s": 879312.890165083, "direction": "rx", "line": "RESULT id=54 rom_seq=57 mode=4 err=8 ack_us=500579076 release_us=501279084 start_us=501359164 emit_start_us=501364976 emit_end_us=501367544 emit_late_max=3 raw=A55A0104390008E0C0C0FFFF000000000000000000000000000022002318"}

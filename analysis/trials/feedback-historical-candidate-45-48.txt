@@ -1,0 +1,8 @@
+# G-mode approximation of old RX_SWEEP candidate, not a stock-session replay.
+# Flag 7E, zero-stuffed 1F, no clock lead, phase -2/8, START+3 ms.
+# Old positive bit-4 reports used stock ROM receive context and burst-relative
+# timing, so a negative result here cannot refute them.
+T 45 G S 0 7E 1 0 0 -2 0 3000 1F 0 0
+T 46 G X 0 7E 1 0 0 -2 0 3000 1F 0 0
+T 47 G S 1 7E 1 0 0 -2 0 3000 1F 0 0
+T 48 G X 1 7E 1 0 0 -2 0 3000 1F 0 0

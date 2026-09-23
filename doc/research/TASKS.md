@@ -151,24 +151,39 @@ burst is difficult; no new scope trace accompanied resistor-limited G/S
 ID 27 and G/X ID 28. Both valid records had error 8 and identical
 `LINK_STATUS` probe/before/after A0h/80h/80h; ID 28 scheduled emission
 with at most 3 us lateness. The direct short-burst waveform remains open.
-Next: test independently USB-selectable physical clock/data level inversion
-within the bounded stimulus, preserving dark idle, using matched
-silent/stimulated ROM feedback under fixed resistor-limited placement.
 The Uno sketch now implements optional `clk_inv dat_inv` trailing `T` fields
-(old syntax defaults 0/0) and keeps both LEDs dark before/after each X
-burst. The planned IDs 29–36 in
-`analysis/trials/feedback-optical-levels-29-36.txt` compare all four level
-combinations, each against a silent control. This is a USB-only upload; no
-EPROM burn is needed. The matrix tests a physical-level hypothesis, not a
-confirmed receiver convention. G error 8 for all variants would still
-leave routing, analog threshold and framing unresolved.
+(old syntax defaults 0/0) and drives both outputs low before/after each X
+burst. The connected Uno was uploaded and verified; exact uppercase `V 1`
+completed normally. Resistor-limited G/S and G/X IDs 29–44 covered both
+`swap` assignments and all four LED-drive-level combinations, each
+against a silent control. All 16 returned error 8. ROM counters advanced
+32–47, and stimulated trials reported at most 8 us scheduler lateness.
+The historical-like `7Eh` + zero-stuffed `1Fh`, no-lead, START+3-ms
+candidate in both assignments (IDs 45–48) also returned error 8, ROM
+counters 48–51. These G results do not reproduce the old stock-ROM
+positive `LINK_STATUS` bit-4 observation. The old tests used stock
+receive/session context and burst-relative reply timing; negative G
+results do not refute them. **Stop broad G sweeps** until that context
+difference is understood. Timestamped logs are in `analysis/captures/`;
+no new Micronic amplifier scope trace exists. No new EPROM burn was used.
+**Timing audit:** the feedback ROM's 50-ms guard precedes yellow START;
+G begins reset/select and polling about 2 ms after START, not 52 ms
+after it. Discard the contrary early-stimulus explanation. G polls bit 4
+only about every 5 ms; a brief, nonlatched indication could fall between
+samples (SUSPECTED, latch behaviour unknown). A targeted 5/6-ms delay
+test with explicit `7Eh 1Fh`, no lead (IDs 49–54, both `swap` roles) still
+returned error 8 in all six valid records, ROM sequences 52–57. The
+first serial-open attempt had malformed `REASYNC` and sent no trial;
+the 4-s-startup retry succeeded. Both logs are archived. Further G
+variation has diminishing value until stock-vs-feedback receive setup
+and pending-bit lifetime are resolved.
 The updated Uno sketch provides a sustained low-duty output self-test:
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
 released and ROM trial IDs unchanged. Repeating `V 1` after completion is
 allowed. A rejected idle command, including a repeated trial ID, no longer
 desynchronises the updated sketch; send the next higher trial ID directly.
 An in-flight error still requires `R`. Direct TTL is now the sketch source
-default for the owner's installed wiring. This needs a USB upload but no
+default for the owner's installed wiring. This needed a USB upload but no
 EPROM burn. Earlier conn10 role-dependent retries did not prove physical
 LED mapping or framing. R
 preserves the last accepted host ID.

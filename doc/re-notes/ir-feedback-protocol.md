@@ -59,8 +59,20 @@ With the limiting resistors fitted, G/S ID 27 and G/X ID 28 both returned
 error 8 and identical A0h/80h/80h status triplets. ID 28 scheduled its
 stimulus within 3 us; no receiver waveform capture accompanied the report.
 The owner says probing the Micronic photodiode amplifier is difficult; the
-next test should use Arduino-controlled optical-level alternatives and ROM
+subsequent tests used Arduino-controlled LED-drive alternatives and ROM
 feedback rather than require that probe.
+The connected Uno was uploaded and verified on `/dev/ttyACM0`; exact
+uppercase `V 1` completed normally. Live IDs 29–44 covered both `swap`
+assignments and all four `clk_inv`/`dat_inv` combinations with matched
+silent controls. Every result had error 8 and no pending-bit indication.
+IDs 45–48 approximated the old `7Eh` + zero-stuffed `1Fh`, no-lead,
+3-ms candidate in both assignments; all again returned error 8. The old
+positive `LINK_STATUS` bit-4 observations used stock receive/session
+context and burst-relative timing; this G-mode failure does not refute
+them. A targeted 5/6-ms delay test, IDs 49–54, also returned error 8
+in both assignments. Stop broad G candidate sweeps until the receive
+context difference is understood. Raw timestamped logs are archived in
+`analysis/captures/`.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -89,21 +101,26 @@ compare physical edges in CSV rather than software interval length.
    emission with 3 us maximum software lateness. Neither entered stock
    RX; the serial record does not measure the receiver's short-burst
    waveform. No fresh scope CSV was supplied with these results.
-4. Rsync and upload the updated Uno sketch; the ROM remains installed. Keep
-   the same resistor-limited LED placement. The two optional fields after
-   payload, `clk_inv dat_inv`, invert the Uno clock and data LED-drive GPIO
+4. Completed on the connected Uno: the updated sketch was uploaded and
+   verified; the ROM remains installed. With the same resistor-limited
+   LED placement, the two optional fields after payload, `clk_inv dat_inv`,
+   invert the Uno clock and data LED-drive GPIO
    levels independently **only inside the brief X burst**. Both GPIOs are
    driven low before and after the T burst; the separate `V` visual test
    still pulses them on request. This differs from `pol`, which complements
-   encoded data bits but leaves the clock pulse sense unchanged. Run the eight lines in
-   `analysis/trials/feedback-optical-levels-29-36.txt`,
-   waiting for `RESULT` and fresh `READY` between lines. The matched S/X
-   pairs test default `0 0`, clock-only `1 0`, data-only `0 1`, and both
-   `1 1` under the same `swap=1` and `7Eh 03h` candidate. Preserve every
-   serial line, especially `LINK_STATUS` probe/before/after bytes and
-   `err`. An error-8 result means the pending gate still did not open;
-   even a changed result would require follow-up controls before claiming
-   framing. An amplifier trace would help but is not required.
+   encoded data bits but leaves the clock pulse sense unchanged. The
+   matched S/X matrix in `analysis/trials/feedback-optical-levels-29-36.txt`
+   tested all four level settings at `swap=1`; IDs 37–44 repeated it at
+   `swap=0`. All sixteen results were error 8, including stimulated
+   trials with measured Uno scheduler lateness of at most 8 us. The
+   earlier stock-ROM positive receive-pending observation is not
+   reproduced by this feedback-v1 G setup. No scope trace or probing of
+   the Micronic amplifier was required for these tests.
+5. Stop broad G-mode stimulus sweeps for now. Review the stock receive
+   context and feedback-v1 `G` setup, then choose a test that isolates
+   the missing condition. The installed ROM and uploaded Uno sketch remain
+   suitable for further USB-only experiments, but an error-8 G result
+   alone does not rank optical polarity or framing hypotheses.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -1157,6 +1174,67 @@ prepared so the output remains visible for a camera exposure without
 another ROM burn. Camera visibility can show that an LED emits light;
 it cannot establish its intensity at the handheld detector or decoded
 framing.
+
+## Connected-Uno optical-level and timing trials, IDs 29–54 — 2026-09-23
+
+**CONFIRMED (live serial logs):** the Elegoo Uno R3 at `/dev/ttyACM0`
+accepted the verified feedback sketch. An exact uppercase `V 1` returned
+the A/B visual intervals and `VISUAL_DONE`. Host IDs 29–48 advanced the
+ROM counter consecutively from 32 to 51; all 20 result records were 30
+bytes with zero byte-sum. Each G trial returned error 8 before stock RX.
+All X trials emitted, with maximum reported software lateness 8 us; all
+S trials reported no emission. These are scheduler and UART facts, not
+receiver-waveform measurements. The source logs are:
+
+* `analysis/captures/feedback-optical-levels-29-36.jsonl`
+* `analysis/captures/feedback-optical-levels-swap0-37-44.jsonl`
+* `analysis/captures/feedback-historical-candidate-45-48.jsonl`
+
+IDs 29–36 used `swap=1`; IDs 37–44 repeated the four drive-level
+combinations at `swap=0`. Each `clk_inv/dat_inv` setting had a silent
+control immediately before its X trial. The measured
+`LINK_STATUS` probe/before/after triplets were either A0h/80h/80h or
+E0h/C0h/C0h. Some adjacent S/X trials started with different probe and
+before values, so their after-value differences cannot be assigned to
+the optical stimulus. `LINK_STATUS` bit 4 was clear in every recorded
+sample and the 100-ms pending wait expired every time. Thus the matrix
+does not identify the controller's optical clock/data polarity.
+
+IDs 45–48 used an approximation of the earlier stock-ROM positive
+candidate: `7Eh` + zero-stuffed `1Fh`, no lead cells, phase -2/8 cell,
+START+3 ms, `pol=0`, ordinary drive levels, with a matched S/X pair
+for each `swap`. All four were error 8. The earlier stock-ROM hook saw
+`LINK_STATUS` bit 4 set with Arduino stimulation and not with its
+LISTEN_ONLY control, but it ran inside a stock V24 transaction with
+different timing. The historical `content=2` label also maps to
+different payloads in different sweep modes; these four trials explicitly
+sent `1Fh`. A negative G-mode approximation cannot overturn the earlier
+stock-context observation or prove any frame convention wrong.
+
+**Timing correction (source-pinned to the installed ROM):**
+`accepted_trial` in `analysis/rom_exerciser/feedback.asm` performs its
+approximately 50-ms guard **before** sinking yellow for START. It then
+waits about 2 ms and calls `run_pending_rx`, which resets/selects the
+link, calls `LinkFinish`, and polls `LINK_STATUS` bit 4 about every 5 ms
+for 20 iterations. The source SHA-256 and image MD5 match the published
+feedback-v1 manifest. Thus START+7-ms bursts were *not* 45 ms old when
+G began; that mistaken inference is discarded. G may still miss a
+short-lived pending level between polls, but the controller's latch
+duration is unknown. The stock IRQ sees bit 4 immediately in its own
+receive context, which is another difference the current G probe does
+not resolve.
+
+To test one polling phase, IDs 49–54 kept the explicit `7Eh 1Fh`
+candidate, no lead, and ordinary drive levels, with 5- and 6-ms
+START delays in both role assignments and a silent control per role.
+All six valid records returned error 8, ROM sequences 52–57, and no RX
+call. X scheduler lateness was at most 10 us. This does not prove the
+pending indication is latched or absent between samples. An initial
+serial-open attempt produced a malformed `REASYNC` line and stopped
+before any trial; a clean retry with a 4-s startup wait produced IDs
+49–54. Both timestamped logs are retained as
+`analysis/captures/feedback-poll-phase-startup-error.jsonl` and
+`analysis/captures/feedback-poll-phase-49-54.jsonl`.
 
 ## Validation and limits
 

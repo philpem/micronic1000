@@ -1,0 +1,10 @@
+# SUSPECTED: G's ~5 ms LINK_STATUS polling may miss a brief pending level.
+# Keep 7E + zero-stuffed 1F, no lead, phase -2, ordinary GPIO levels.
+# Vary only START delay (5 vs 6 ms) within each role assignment.
+# Prior matching delay 3 ms IDs 45-48 all returned error 8.
+T 49 G S 0 7E 1 0 0 -2 0 5000 1F 0 0
+T 50 G X 0 7E 1 0 0 -2 0 5000 1F 0 0
+T 51 G X 0 7E 1 0 0 -2 0 6000 1F 0 0
+T 52 G S 1 7E 1 0 0 -2 0 5000 1F 0 0
+T 53 G X 1 7E 1 0 0 -2 0 5000 1F 0 0
+T 54 G X 1 7E 1 0 0 -2 0 6000 1F 0 0

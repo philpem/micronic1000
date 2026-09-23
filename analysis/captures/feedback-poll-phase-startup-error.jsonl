@@ -1,0 +1,4 @@
+{"utc": "2026-09-23T11:23:41.570829+00:00", "monotonic_s": 879278.603242844, "direction": "tx", "line": "R"}
+{"utc": "2026-09-23T11:23:41.575339+00:00", "monotonic_s": 879278.60773289, "direction": "rx", "line": "REASYNC"}
+{"utc": "2026-09-23T11:23:41.579560+00:00", "monotonic_s": 879278.611953793, "direction": "rx", "line": "BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"}
+{"utc": "2026-09-23T11:23:41.677194+00:00", "monotonic_s": 879278.709594941, "direction": "rx", "line": "READY"}
