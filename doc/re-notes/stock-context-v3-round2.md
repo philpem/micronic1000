@@ -27,6 +27,7 @@ trigger and 128-segment configuration for these handheld runs.
 | C0c | Exact F7 binary; PLINTH selected; LEDs adjusted near the top V24 window | 100 full bursts, 34 replies | 100 handheld, 34 Uno | 8 |
 | C0d | Exact F7 binary; LEDs adjusted, series resistors bypassed, lab 5 V connected to USB-connected Uno before run; port choice unconfirmed | 100 full bursts, 33 replies | 100 handheld, 33 Uno | 0 |
 | C0e | Exact F7 binary; owner restored series resistors and removed lab +5 V, confirmed V24 ADAPTOR | 100 full bursts, 34 replies | 100 handheld; D2/D3 output trace abnormal | 0 |
+| C0f | Exact F7 binary; owner swept optical alignment during a V24 attempt | 100 full bursts, 34 replies | 100 handheld, 34 complete Uno output segments | 0 |
 
 The first four runs requested and achieved 33-ms replies after every third
 full handheld burst. The Arduino reported no yellow event or event
@@ -109,20 +110,36 @@ alignment changes within only a few millimetres. The Arduino logged
 `8000` then `8040`. The scope shows all 100 handheld triggers, but
 the expected Uno D2/D3 waveform is abnormal: no D3 data rises and
 only 1–4 D2 clock rises in 31 segments, rather than the earlier
-93 D2 rises per complete reply. This does not prove missing light;
-it leaves the scope lead/threshold, wiring and output voltage open.
+93 D2 rises per complete reply. The owner explains the missing digital
+highs as the LED forward voltage holding the MSO digital inputs below
+their threshold when the series resistors were bypassed. This is an
+owner-supplied explanation for the scope symptom. The recorded C0e
+sequence places resistor restoration before this capture, so the exact
+transition that produced its trace remains unclear; no protocol or
+optical conclusion follows from the missing digital highs.
 
 An Arduino-only free-running output check was then run with the
 restored current-limited wiring and no handheld action. Each of four
 scope segments has 88 D2 clock rises and 16 D3 data rises, at a
 measured 5 MSa/s acquisition rate and 25-us CSV spacing. That
-argues against a permanently failed D5/D6 output or permanently
-disconnected scope leads, but it does not explain C0e's transient
-scope trace. The Uno was restored to LISTEN_ONLY afterward.
+argues against a permanently failed D5/D6 output. The Uno was restored
+to LISTEN_ONLY afterward.
 
-Before another content trial, keep the restored current-limited
-wiring, explicitly select V24 ADAPTOR and hold LED alignment fixed.
-Reproduce both the full D2/D3 waveform and a positive type-2 yellow
-return in the same run, then interleave a content variant. If the
-control is negative, diagnose optical geometry and the transient
-electrical capture before attributing the result to payload bytes.
+Before another content trial, explicitly select V24 ADAPTOR and sweep
+the LED alignment over the owner's reported few-millimetre range.
+Reproduce a positive type-2 yellow return, then hold that position
+fixed and interleave a content variant. If the control stays negative,
+do not attribute the result to payload bytes.
+
+C0f performed that sweep. The archived F7 binary logged 100 handheld
+bursts, 34 replies and no yellow event. The 100-segment scope export
+independently shows 34 output segments with D2 and D3 activity and no
+D4 low sample. The acquisition reported 97.7 kSa/s and exported at
+40 us/row, sufficient to distinguish the earlier roughly 920-us
+yellow lows. The owner again saw `8000` then `8040`. Optical reception
+has therefore not been re-established, and content inference remains
+suspended. The owner then requested a continuous two-channel IR output
+to check the handheld's receiver. A verified FREE_TX build was uploaded;
+its USB reports show a repeated type-2 candidate burst every 250 ms on
+D5 clock and D6 data. Its free-running phase setting is -2/8 cell,
+distinct from F7's paced +2/8 cell. The receiver check is in progress.

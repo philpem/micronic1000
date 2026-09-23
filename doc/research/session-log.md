@@ -8440,12 +8440,28 @@ names renamed, 144 unplated functions plated)
   that useful optical alignment changes within a few millimetres.
 * C0e's 100-segment scope export has no D3 data rises and only 1–4
   D2 clock rises in 31 segments, unlike 93 D2 rises per reply in
-  prior complete captures. This is an unresolved electrical/capture
-  anomaly; the Arduino serial report is not independent proof of
-  voltage at D5/D6 or optical emission.
+  prior complete captures. The owner attributes the missing MSO
+  digital highs to LED forward voltage below the input threshold
+  when the series resistors were bypassed. The recorded restoration
+  precedes C0e; the exact transition behind that trace is unclear.
 * A verified free-running output-check build then emitted four
   complete scope segments without handheld action. Each has 88 D2
   clock rises and 16 D3 data rises; acquisition was 5 MSa/s, export
-  grid 25 us. This rejects a simple permanent D5/D6 or scope-lead
-  failure, but does not explain C0e. Restored LISTEN_ONLY and stopped
-  the scope. Protocol content inference remains suspended.
+  grid 25 us. This rejects a simple permanent D5/D6 failure. Restored
+  LISTEN_ONLY and stopped the scope. Protocol content inference
+  remains suspended; the next run will sweep optical alignment with
+  V24 ADAPTOR selected.
+
+## 2026-09-23 — alignment sweep and receiver check
+
+* C0f used the exact archived F7 binary while the owner swept optical
+  alignment during a V24 attempt. The handheld again showed `8000`
+  then `8040`. Arduino logged 100 full bursts, 34 replies and no
+  yellow low; the 100-segment scope export independently showed 34
+  complete D2/D3 output segments and no D4 low sample. The scope
+  reported 97.7 kSa/s and exported at 40 us/row.
+* Uploaded the verified FREE_TX build at the owner's request. USB
+  reports show type-2 candidate bursts every 250 ms on D5 clock and
+  D6 data. It uses phase -2/8 cell, whereas the paced F7 used +2/8.
+  Left it transmitting while the owner checks the handheld receiver.
+  No conclusion about reception yet; content inference is suspended.

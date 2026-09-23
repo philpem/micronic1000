@@ -167,13 +167,21 @@ lab +5 V. A later
 exact F7 run with V24 ADAPTOR confirmed had 34 Arduino replies and
 zero yellow lows, but the matching scope capture had no D3 rises and
 only 1–4 D2 rises in 31 segments instead of the expected 93 per
-reply. An Arduino-only free-running check immediately afterward had
-four complete output segments (88 D2 and 16 D3 rises each), so a
-permanent output or scope-lead failure is not established. The owner
-reports alignment sensitivity within a few millimetres. Establish
-both a complete output waveform and positive yellow control in the
-same V24 run before resuming protocol comparisons. See the
+reply. The owner explains the digital-input symptom as the LED forward
+voltage staying below the MSO digital threshold while the series
+resistors were bypassed. The recorded restoration precedes C0e, so
+the precise transition responsible for that capture is unclear.
+An Arduino-only free-running check immediately afterward had four
+complete output segments (88 D2 and 16 D3 rises each). The owner
+reports alignment sensitivity within a few millimetres. Sweep the
+alignment in a V24 run and establish a positive yellow control before
+resuming protocol comparisons. See the
 [round-two worksheet](../re-notes/stock-context-v3-round2.md).
+C0f swept alignment during a V24 attempt: 100 handheld bursts,
+34 complete Arduino output segments, no yellow low on Arduino D8 or
+scope D4, and the same `8000`/`8040` errors. The owner is checking
+the handheld receiver while a FREE_TX build repeats clock/data bursts
+every 250 ms. Content inference remains suspended pending that check.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event
