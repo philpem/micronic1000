@@ -308,7 +308,11 @@ explicit host resynchronisation before another stimulus trial.
 ## USB commands and first bench sequence
 
 The Uno runs at 115200 baud with newline-terminated ASCII commands. The
-feedback build powers up silent. `R` releases black, turns both LEDs off,
+command letters are case-sensitive: `R` and `V 1` are accepted, while `r`
+and `v 1` are rejected. LF or CRLF line endings work; CR alone does not
+complete a command. An idle `ERROR id=26 reason=command` identifies the
+last accepted trial ID, not the attempted visual ID. The feedback build
+powers up silent. `R` releases black, turns both LEDs off,
 prints `SYNC`, and reports `READY` after a fresh 100 ms yellow-high interval.
 After a transport error, resynchronise explicitly. A command rejected while
 idle leaves the handheld and ROM sequence unchanged; correct the input and
