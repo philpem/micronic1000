@@ -4,7 +4,185 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
-## Current handoff: feedback-v2 bench trial
+## Current handoff: stock-context v3 bench trial
+
+**CONFIRMED (stock ROM bytes):** the V24 link worker at `ROM00:31B6`
+clears `LINK_CTRL` bits 6/7, calls `ROM00:34E7` for its one
+`LINK_STATUS` read and bit-4 test, and enters `LinkRxDispatcher` only
+when `LINK_STATUS` bit 4 is set. The earlier stock `I 98 00` / `I 90 00`
+hook stopped at the dispatcher entry, before stock `Link_BlockRx` ran.
+Those readings establish receive-pending status in the live transaction,
+not an accepted frame. The feedback-v2 H/J/K and corrected optical-level
+matrix stayed bit-4-clear in their standalone, interrupt-disabled context.
+
+The stock-context v3 ROM keeps stock boot, the V24 Load/Run transaction,
+the link worker, the `ROM00:34E7` status helper, and the stock receive
+routine. Revision 2 changes the dispatcher call at `ROM00:2FC1`, the
+shared initialization latch write at `ROM00:0252`, and an unused upper-ROM
+cave. The initialization hook reproduces the stock shadow/latch write
+before emitting a distinct positive-control pulse. The dispatcher call at
+`ROM00:2FC1` is reached only after the worker's original
+`LINK_STATUS` bit-4 test chose the pending branch. The wrapper invokes
+stock `Link_BlockRx` once and gives yellow/pin 6 a short low pulse
+**after** the receive routine returns. Its pulse width distinguishes the
+routine's carry return; the pulse alone cannot establish a valid frame or
+session. It saves working state on the stack, avoiding writes into the
+loaded program's RAM. The bounded post-receive delay means this is still
+an instrumented run, not an entirely unmodified machine.
+The stock loader permits COM/DIP data through `D080h`, so the old proposed
+scratch at `C7E0h` was not proven free during an active Load/Run attempt.
+
+Burn ROM00 from
+`/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3_r2.bin`
+(32,768 bytes): MD5 `bf518ce09083d420332fd02748f6bbef`, additive
+16-bit sum `076F`, additive 24-bit sum `38076F`. The original
+`37D9B7` image is superseded; do not burn it for this revised test. These
+are unsigned byte
+sums without complement; the guarded builder and pinned JSON manifest live
+beside the ignored `.bin`. Leave ROM01 stock. The expected boot is the normal
+Micronic Load/Run UI, **not** `IR FEEDBACK V2 W..K`. The old black-pin
+command protocol and Uno `T`/`R` commands do not apply. The exact v3 burn
+path and sums above are the copy-validation values for the EPROM programmer.
+
+Keep the tested optical layout: Uno D5/D6 drive the two resistor-limited IR
+LED channels aimed at the top V24 window; the physical clock/data role is
+still unconfirmed. The owner confirms that the handheld's outgoing optical
+channels remain connected to Uno D2/D4. Connect handheld blue/pin 8 to Uno
+GND, yellow/pin 6 to Uno D8 with a 10 kOhm pull-up to Uno 5 V. Disconnect
+black/pin 5 from Uno D7 for this stock-ROM experiment; D7 stays input.
+Leave handheld orange/Vcc disconnected from Uno 5 V. Do not bypass LED
+ballast resistors. Use `STOCK_CONTEXT_EVENTS=1` with one Uno mode at a time;
+`analysis/arduino/m1000_ir_probe/README.md` gives the exact build flags
+and passive logger commands.
+
+Run a **LISTEN_ONLY** control first. Start the passive serial log and
+reset the Uno so its `STOCK_CONTEXT_V3 width_us=32 drops=16` banner is
+captured. Then perform the handheld cold restart needed after replacing
+the standalone v2 ROM (ordinary retained-RAM resume is insufficient).
+Require a roughly **3.637-ms yellow low pulse** during initialization
+and the normal stock UI before proceeding. The marker also occurs on warm
+restart, so it does not independently prove the RAM was cold-initialized.
+If it is absent, stop and check ROM execution and the yellow/GND/pull-up
+path; no negative optical trial is interpretable yet. Once this positive
+control passes, select the normal V24 ADAPTOR Load/Run choice and record
+the complete screen and serial output. Then upload **FREE_TX** without changing
+the ROM or wiring and repeat the same handheld choice; this best reproduces
+the earlier positive stock hook stimulus. If needed, upload **RX_NARROW**
+for a handheld-paced reply, using the already connected Uno D2/D4 inputs.
+Keep separate JSONL logs and note the exact Uno mode, LED role/swap, and
+handheld screen for each attempt. `# STOCK_YELLOW rise_us=... low_us=...`
+reports a completed low interval. A receive-class short pulse indicates the stock
+receive returned carry set (~0.918 ms); a longer receive pulse indicates
+carry clear (~1.828 ms). The ~3.637-ms initialization pulse is never RX
+evidence. Both receive marker release guards last about 0.46 ms, including
+instruction overhead, before and after the low interval. No pulse
+does not by itself prove no pending status: check the Uno boot banner,
+yellow pull-up, stock UI path, event-drop count and optical activity. Any
+`# STOCK_YELLOW_DROPS` value above zero makes that capture incomplete.
+If port `2Ah` bit 0 was already set before the wrapper, its forced release
+can first close and log a long pre-existing low interval. The bounded
+~0.918/1.828 ms pulse follows it, then the wrapper restores the prior low
+state; identify the bounded pulse by width and sequence.
+The raw status and AF bytes are not reported; the marker is the observable
+channel for this one-burn test. Correlation with a preceding `# TX` or
+`burst` line is timing evidence only, not proof
+that those bits formed an accepted frame.
+
+Test both `STOCK_TX_SWAP=0/1` and, if needed, all combinations of
+`STOCK_CLOCK_INVERT`/`STOCK_DATA_INVERT`. These affect physical output
+levels; `pol` only complements serialized data. Use
+`STOCK_FIXED_CANDIDATE=1` for repeatable matched attempts, starting with
+`7Eh`, phase `-2/8`, `pol=0`, content index 2 (the old pending-observation
+candidate). The sketch README lists the indices and replay flags. FREE_TX
+has 60 swept rows at 250 ms each: a single roughly five-second handheld
+retry batch does not cover the 15-second cycle. Record multiple attempts
+covering the relevant rows, or use a fixed candidate. Interleave a fresh
+LISTEN_ONLY control before promoting a stimulus correlation.
+
+### Discriminating the receive convention
+
+The next cycle targets the optical/controller/stock-firmware gates, not a
+complete Commstar session. **SUSPECTED:** `7Eh`/`81h`, receive clock edge,
+LED assignment and stuffing sense. The outgoing handheld capture does not
+establish the incoming convention. A carry-clear marker is progress through
+the stock byte reader, not proof of a valid session or a unique framing rule.
+
+Use fixed candidates and change one setting at a time:
+
+1. Verify the initialization marker and take a LISTEN_ONLY control. Replay
+   the earlier pending candidate first, retaining its exact waveform.
+2. Test both LED assignments and physical clock/data levels. Keep deliberate
+   data setup/hold around the candidate sampling edge; see the timing table
+   below. Repeat any response with the same settings and a silent control.
+3. With a repeatable response, compare `STOCK_FLAG_IDX=0/1` while holding
+   `STOCK_STUFFING_MODE` explicit and constant. Then compare stuffing modes
+   `0` (off), `1` (zero after five ones), and `2` (one after five zeros).
+   `-1` is historical automatic selection by flag and must not be used to
+   claim independent flag/stuffing discrimination.
+4. Use fixed `STOCK_CONTENT_IDX=3` for a diagnostic pattern with runs of both
+   zeros and ones. Compare the exact same payload with each stuffing mode;
+   flag-only trials do not exercise stuffing. Compare `STOCK_CLOSE_FLAG=0/1`
+   separately. Diagnostic content is not asserted to be a valid Commstar
+   message, so a failure may reflect content validation rather than stuffing.
+5. If these do not discriminate, vary reply delay and clock lead-in, then
+   assess cell rate, pulse width, bit order and required address/length/check
+   bytes. These are still open questions, not all axes in the default sweep.
+
+`STOCK_POL_IDX=1` complements the serialized stream, including the flag.
+Explicit stuffing modes describe the resulting emitted bits; the builder
+adjusts its internal run counter so changing `pol` does not silently swap
+the selected stuffing rule. Automatic mode retains the old behavior. Thus
+configured `7Eh` becomes emitted `81h`; equivalent
+complemented descriptions must not be counted as distinct protocol findings.
+Physical data inversion also changes the between-pulse baseline, so it is
+not interchangeable with complementing which cells contain a data pulse.
+
+**CONFIRMED (emitter arithmetic, not handheld requirements):** with the
+122-us cell, clock transitions are at 30 and 91 us; a data pulse is 76 us
+wide. Nominal margins for a pulse-bearing cell are:
+
+| Candidate logical sampling edge | Phase index / eighths | Data transition times | Setup / hold |
+|---|---|---|---|
+| First clock edge, 30 us | 1 / -2 | 0, 76 us | 30 / 46 us |
+| Second clock edge, 91 us | 3 / +2 | 60, 136 us | 31 / 45 us |
+
+Clock level inversion exchanges physical rising/falling edges without
+moving these logical event times. Test both phase candidates for each clock
+level sense. Neither row promises data stability around both clock edges.
+Phase zero has zero nominal setup at the first edge and is a boundary test,
+not the starting candidate. Interrupt lateness and analog propagation can
+reduce margins; inspect the reported lateness and scope the output when
+possible. Data is intentionally scheduled ahead of the candidate edge,
+not merely written immediately before it.
+
+**Boundary qualification:** both LEDs are dark between bursts. Inverted
+clock drive therefore introduces an extra transition when its active
+baseline is established, and another when it returns to dark. These are
+not payload clocks. A negative inverted-clock trial cannot exclude that
+sense unless the receiver tolerates those boundary transitions. Scope them
+alongside the payload clocks; steady-idle versus burst-gated clock drive
+remains a separate hypothesis if the first matrix is inconclusive.
+
+Keep each build's complete startup banner, candidate/TX lines, yellow
+records and screen outcome. FREE_TX and RX_NARROW differ in cadence and
+clock lead-in; changing modes is not a timing-only controlled comparison.
+No receive marker leaves multiple explanations open, including optical
+coupling, controller enable, sampling convention, timing and framing. V3
+cannot isolate the stock TX bit-6 versus bit-7 wait with its RX marker.
+
+Interrupts stay enabled during emission. INT0 samples D4 through `PIND`
+before debounce/timekeeping; D8 uses a separate pin-change ISR. Yellow
+logging does not wait for serial-buffer space, and RX buffer copying runs
+with interrupts enabled. Keep serial input quiet during capture. Record
+both `emit_late_max` (pre-write scheduler value) and
+`emit_applied_late_max` (post-write software upper bound). Neither measures
+light. A representative scope capture should include D8 and Uno D5/D6;
+D2/D4 together resolve receive sample timing. The audit explains the
+[remaining real-time limitations](../research/reviews/feedback-v3-audit-2026-09-23.md#arduino-uno-real-time-audit).
+
+<a id="current-handoff-feedback-v2-bench-trial"></a>
+
+## Previous handoff: feedback-v2 bench trial
 
 Feedback-v2 was burned and cold-booted on 2026-09-23. Its silent P probe,
 H/J/K matrix and corrected physical-level follow-up completed; see the

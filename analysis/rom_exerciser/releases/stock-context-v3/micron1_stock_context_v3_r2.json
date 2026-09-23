@@ -1,0 +1,64 @@
+{
+  "image": "micron1_stock_context_v3_r2.bin",
+  "revision": 2,
+  "purpose": "stock-context receive diagnostic; guarded ROM00 wrapper",
+  "patch": {
+    "address": "ROM00:2FC1",
+    "original_bytes": "cd 78 33",
+    "replacement": "CALL ROM00:7E96"
+  },
+  "init_patch": {
+    "address": "ROM00:0252",
+    "original_bytes": "32 8b f7 d3 2a",
+    "replacement": "CALL ROM00:7EE7; NOP; NOP",
+    "scope": "common cold/warm restart after LD SP,F81Ah"
+  },
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "assembly_sha256": "eab9d67f6211c1523480a6d8c0523beaec72ca4aecd438b40c7decc4d88aca08",
+  "changed_bytes": 143,
+  "entry": "ROM00:7E96",
+  "end_exclusive": "ROM00:7F1E",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "bf518ce09083d420332fd02748f6bbef",
+    "sum16": "076F",
+    "sum24": "38076F",
+    "sha256": "06b70d1eb17e6a5920c809fe7845d9abaf6efaecac4bb47be515ff2147383523"
+  },
+  "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
+  "marker": {
+    "pin": "yellow/pin 6",
+    "port": "2Ah bit 0",
+    "sink_value": 1,
+    "error_dwell_tstates": 3327,
+    "success_dwell_tstates": 6654,
+    "release_guard_tstates": 1663,
+    "release_guards": 2,
+    "clock_hz": 3686400,
+    "timing_note": "subroutine times include RET; CALL and wrapper instructions add time",
+    "tested_out_intervals_tstates": {
+      "carry_set": [
+        1719,
+        3383,
+        1701
+      ],
+      "carry_clear": [
+        1719,
+        6739,
+        1701
+      ]
+    },
+    "order": "after stock Link_BlockRx returns: release, guard, sink, dwell, release, guard, restore shadow"
+  },
+  "init_marker": {
+    "pin": "yellow/pin 6",
+    "sink_value": 1,
+    "dwell_tstates": 13308,
+    "release_guard_tstates": 1663,
+    "release_guards": 2,
+    "clock_hz": 3686400,
+    "timing_note": "four dwell subroutines including RET; CALL and wrapper add time",
+    "tested_low_tstates": 13407,
+    "scope": "common cold/warm restart, distinct from RX result marker"
+  }
+}

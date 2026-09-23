@@ -159,3 +159,180 @@ the actual waveform and electrical levels with an independent scope.
 The host-only emitter harness is outside this directory at
 `analysis/test_ir_emitter.cpp`; keeping it outside the sketch directory avoids
 Arduino builders compiling its mock API and `main()` as sketch sources.
+
+## Stock-ROM context capture
+
+This mode observes the stock receive path through handheld yellow / pin 6. It
+uses the legacy optical connections, so connect the handheld clock and data
+detector outputs to **D2 and D4** (each through its own **10 kOhm series
+resistor**), and retain the existing separately driven optical LEDs on **D5
+and D6**. Keep those LED channels optically separated and their current
+limiting resistors fitted. Connect handheld **blue / pin 8** to Uno GND.
+Connect handheld **yellow / pin 6** to **D8**, with a **10 kOhm pull-up from
+D8/yellow to Uno 5 V**. Leave handheld **black / pin 5** and Uno **D7**
+disconnected in these modes. Leave orange / pin 3 (handheld Vcc) disconnected:
+share ground only, and do not join handheld Vcc to Uno 5 V.
+
+First run a silent control with the stock-context event capture enabled. Build
+from the repository root:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=1 -DRX_NARROW=0 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+Upload it and confirm `MODE: LISTEN ONLY` and
+`STOCK_CONTEXT_V3 width_us=32 drops=16`. Start logging, reset the Uno to
+capture that banner, then cold-restart the handheld with the **v3 revision 2**
+ROM. Require the initialization pulse near **3637 us** before interpreting
+any absent receive marker. The pulse also occurs on a stock warm restart;
+it does not prove a complete battery-RAM reset.
+Run the same handheld operation that will be used for the transmitting
+captures and record its yellow events. This is the control for yellow pulses
+that occur without an Uno optical reply.
+
+Then build and capture the free-running TX condition. It emits one swept
+optical burst every 250 ms by default, independently of handheld traffic; it
+is intended to exercise the stock instrument's idle receiver during its
+connect attempt:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DRX_NARROW=0 -DFREE_TX=1 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+For the handheld-paced condition, build RX_NARROW with its default content
+axis (axis 2):
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DRX_NARROW_AXIS=2 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+RX_NARROW replies after each handheld burst and varies the selected content
+axis. `RX_NARROW_AXIS=3` alternates LED role assignments instead. FREE_TX
+and RX_NARROW are separate builds; do not enable them together.
+For a fixed repeat of the old pending-observation candidate, append
+`-DSTOCK_FIXED_CANDIDATE=1` to either transmitting build's flags. The
+fixed defaults are `7E`, phase `-2/8`, serialized polarity 0, content index
+2, and a 4000-us RX_NARROW reply delay. Each startup and TX report states
+the physical role/inversion configuration; verify those echoes.
+
+These additional build flags allow exact replay without changing ROM:
+
+| Flag | Values / meaning |
+|---|---|
+| `STOCK_TX_SWAP` | 0 or 1; exchanges physical D5/D6 roles (default 0) |
+| `STOCK_CLOCK_INVERT`, `STOCK_DATA_INVERT` | 0 or 1; invert the corresponding LED level during emission; idle stays dark |
+| `STOCK_FLAG_IDX` | 0 = `81h`, 1 = `7Eh` |
+| `STOCK_PHASE_IDX` | 0..4 = -4, -2, 0, 2, 4 eighths of a cell |
+| `STOCK_POL_IDX` | 0 or 1; complements serialized bits, not clock electrical level |
+| `STOCK_CONTENT_IDX` | 0 = flag only, 1 = flag + `03h`, 2 = type-2 control acknowledgement, 3 = diagnostic `00 00 FF FF 96` (fixed mode only) |
+| `STOCK_STUFFING_MODE` | -1 = historical flag-dependent choice (default); 0 = off; 1 = insert zero after five ones; 2 = insert one after five zeros; explicit modes describe emitted serialized bits |
+| `STOCK_CLOSE_FLAG` | 0 = open (default), 1 = append a raw closing flag after terminal stuffing |
+| `STOCK_REPLY_DELAY_US` | 500..60000; fixed RX_NARROW delay from last observed outbound clock edge |
+
+For independent framing tests, always specify `STOCK_STUFFING_MODE=0`, `1`
+or `2`: the compatibility default `-1` couples stuffing to flag choice.
+Explicit stuffing mode describes the emitted serialized stream after `pol`;
+the builder compensates its internal run counter for complement. `pol=1`
+complements the emitted flag too (`7E` becomes `81`); the configured flag
+alone is not the emitted value. Content 3 exercises both run senses across
+byte boundaries and includes an asymmetric byte; it is a diagnostic pattern,
+not a valid Commstar message. It is excluded from the legacy 60-row sweep.
+
+Start with phase index 1 (-2/8): data pulses lead the first logical clock
+edge by 30 us and hold for 46 us. To test the second logical clock edge,
+use index 3 (+2/8), with 31-us setup and 45-us hold. Clock inversion swaps
+physical rising/falling meanings; it does not shift the events. These are
+nominal software timings, not established handheld requirements. Inverted
+clock drive adds boundary transitions when leaving/returning to dark idle;
+these are not payload clocks and can affect acquisition. Phase 0
+has no setup margin at the first edge. See the
+[staged discrimination plan](../../../doc/re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention)
+for controls and limits.
+
+For example, append these flags to the FREE_TX build above for one fixed,
+open diagnostic candidate (repeat with stuffing 0 and 2, changing nothing
+else):
+
+```text
+-DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_FLAG_IDX=1 -DSTOCK_PHASE_IDX=1 -DSTOCK_POL_IDX=0 -DSTOCK_CONTENT_IDX=3 -DSTOCK_STUFFING_MODE=1 -DSTOCK_CLOSE_FLAG=0 -DSTOCK_TX_SWAP=0 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_DATA_INVERT=0
+```
+
+Candidate indices and reply delay apply with `STOCK_FIXED_CANDIDATE=1`.
+Test both physical role assignments and record actual drive levels; defaults
+alone do not cover these unknowns. A full FREE_TX sweep has 60 rows and takes
+15 seconds, longer than one roughly five-second handheld retry batch.
+Use repeated V24 attempts overlapping the desired rows, or fixed candidates
+for matched repetitions. Repeat a positive candidate and an interleaved
+silent control before assigning cause.
+For each build, run the passive logger before the handheld operation so its
+startup and event lines are retained. It sends no commands, defaults to
+`/dev/ttyACM0`, and refuses to overwrite an existing log:
+
+```sh
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-control.jsonl --duration 60
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-free-tx.jsonl --duration 60
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-rx-narrow.jsonl --duration 60
+```
+
+Change `--port` if the Uno is not `/dev/ttyACM0`. Analyze each capture after
+the run; the 250 ms default association window can be changed if needed:
+
+```sh
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-control.jsonl --analyze
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-free-tx.jsonl --analyze
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-rx-narrow.jsonl --analyze \
+  --association-window-ms 250
+```
+
+With `STOCK_CONTEXT_EVENTS=1`, the Uno timestamps D8 low-pulse starts and
+records the pulse width when D8 rises. It prints events outside the pin-change
+interrupt as `# STOCK_YELLOW rise_us=N low_us=W`; RX_NARROW reply reports and
+FREE_TX reports also include their `tx_start_us=` and `swap=` fields for
+timestamp correlation. The logger may therefore show an event line after a
+later TX report even when the event's pulse started earlier. Analysis
+correlates to the closest TX preceding the pulse fall using Uno's wrapping
+32-bit microsecond clock, not line order. Events with no TX in the configured
+window are reported as unmatched; missing TX evidence does not establish a
+silent control. Startup banners separate Uno clock epochs. Initialization
+pulse candidates are excluded from IR TX association. Malformed JSON records
+make analysis fail explicitly rather than silently losing evidence.
+
+The event ring holds seven pending pulses. If it fills while the Uno is busy,
+some events are dropped and reported as `# STOCK_YELLOW_DROPS N`; a capture
+with drops is incomplete. New captures retain 32-bit widths and use a
+saturating 16-bit drop count. The initial rise from a pin already low when
+capture starts is ignored because its falling edge was not observed.
+Legacy captures with capped 65535-us widths are flagged and not correlated.
+This marker records timing at the Uno input pin. It does not decode a yellow
+serial record, identify which stock-ROM routine caused the pulse, or prove
+that the optical signal reached the handheld receiver. Confirm optical
+waveforms independently when interpreting a negative result.
+
+Expected revision-2 low pulses are about 918 us (stock RX carry set),
+1828 us (carry clear), and 3637 us (initialization). Width classification
+is a candidate interpretation; later frame validation is not instrumented.
+The ROM holds high guards about 460 us on each side of an RX pulse, including
+instruction overhead, even if yellow originally was held low.
+
+INT0 still triggers on D2 rising edges; its callback samples D4 directly
+from `PIND` before calling `micros()` or applying debounce. D8 PCINT,
+Timer0 and UART interrupts remain enabled during optical emission. Do not
+wrap the emitter in `noInterrupts()`: that can lose D8 edges and Timer0
+overflow counts. Yellow records are queued by the ISR and written one
+complete line at a time only when the UART buffer has room. Both optical
+timing metrics are software observations: `emit_late_max` is sampled before
+GPIO and `emit_applied_late_max` after GPIO (a conservative upper bound
+subject to 4-us resolution and intervening interrupts). Check D5/D6 and D8
+together on the scope. Ring drops cannot reveal interrupt-flag coalescing.

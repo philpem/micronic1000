@@ -8021,3 +8021,85 @@ names renamed, 144 unplated functions plated)
   no bit-4/bit-0 sample or K watcher hit. The `TRIAL` echoes confirm the
   requested levels were parsed. Further standalone 7Eh sweeps cannot
   distinguish wrong framing from the missing stock transaction context.
+
+### 2026-09-23 — Stock-context v3 preparation
+
+* Rechecked the stock worker: `ROM00:31B6` clears `LINK_CTRL` bits 6/7,
+  tests `LINK_STATUS` bit 4 via the single read at `ROM00:34E7`, and calls
+  `LinkRxDispatcher` at `ROM00:2FBD` only on a pending result. The older
+  `I 98 00` / `I 90 00` hook stopped before `Link_BlockRx`, so it did not
+  demonstrate a decoded frame. The v2 H/J/K negative observations remain
+  specific to their standalone context.
+* Prepared a guarded stock-context ROM00 wrapper at the original
+  `ROM00:2FC1` call site. It calls stock `Link_BlockRx` once, restores its
+  return registers/flags, and emits a yellow/pin-6 low pulse only after RX
+  returns; carry selects the pulse duration. The stock status decision and
+  boot path remain unchanged. An initial release makes the marker visible
+  even if the port-2A shadow bit 0 was already set.
+* Discarded the proposed status-tap scratch at `C7E0`–`C7E3`: the Load/Run
+  loader permits program data through `D080h`, and the stored status/AF
+  bytes had no bench readout. A stack-only single-site patch avoids that
+  collision and the extra status-helper latency. It reports RX entry and
+  carry class, not the raw status byte or later frame validation.
+* Added Uno D8 pin-change capture for yellow pulse widths and passive JSONL
+  correlation with free-running or handheld-paced optical TX. The owner
+  confirms that the existing outgoing-optical detector lines remain on Uno
+  D2/D4. Prepared a silent control, FREE_TX and RX_NARROW sequence for the
+  next ROM burn; no v3 handheld result exists yet.
+
+### 2026-09-23 — V3 experiment and Uno real-time review
+
+* Reviewed the complete test with lower-cost implementation/review workers.
+  The original ROM had no positive control and microsecond release gaps
+  that could disappear before Uno PCINT servicing. Revision 2 adds a
+  guarded shared cold/warm initialization marker at `ROM00:0252`, after
+  reproducing the original shadow/latch write. Its low time is 3.637 ms.
+  Unmocked emulator output intervals verify RX low times 0.918/1.828 ms
+  and release guards about 0.46 ms. The stock decision and receive code
+  remain intact; marker delays still perturb subsequent stock work.
+* Audited installed Arduino AVR core 1.8.8 and primary sources. Whole-burst
+  interrupt masking would lose Timer0 overflow accounting and pin-change
+  events. INT0 now samples D4 directly from PIND before micros/debounce.
+  RX buffer copying moved outside the critical section. D8 ignores an
+  incomplete startup low, retains 32-bit widths, and saturates loss counts.
+  Yellow output checks UART space and drains at most one complete record;
+  post-GPIO lateness is reported separately from scheduler lateness.
+* Fixed a coverage gap: stock sweeps had never changed the LED roles and
+  lacked physical-level inversion controls. Explicit build settings and
+  fixed-candidate replay now cover those hypotheses with the same EPROM.
+  The plan requires logged candidate coverage rather than assuming one
+  five-second attempt covers the 15-second FREE_TX sweep.
+* Host analysis separates Uno epochs, marks loss/incomplete records,
+  handles delayed TX reports, and excludes initialization/capped legacy
+  pulses from IR correlation. Missing TX evidence stays unmatched.
+  The full findings and limits are in the v3 audit. Sixty-four focused tests
+  passed; real optical acceptance and physical ISR timing remain bench work.
+* New image `micron1_stock_context_v3_r2.bin`: 32,768 bytes, MD5
+  `bf518ce09083d420332fd02748f6bbef`, additive byte sums `076F`/`38076F`.
+  Supersedes `37D9B7`; no revised image has been burned or hardware-tested
+  during this review.
+
+
+## 2026-09-23 — Separate receive framing hypotheses and sampling timing
+
+* Removed flag-dependent stuffing as a compulsory stock-build behavior.
+  Explicit modes select no stuffing, zero insertion after five ones, or
+  one insertion after five zeros in the emitted serialized stream; automatic
+  mode retains historical replay. Reports distinguish configured and emitted
+  flag, stuffing, and closing-flag choices.
+* Added fixed diagnostic content `00 00 FF FF 96`, exercising long runs in
+  both senses and an asymmetric byte. It is not asserted to be valid
+  Commstar content. The original 60-row sweep remains unchanged.
+* Reviewed pulse timing: phase -2/8 gives 30/46-us setup/hold around the
+  first logical clock edge; +2/8 gives 31/45 us around the second. Physical
+  inversion exchanges edge directions. Dark-idle boundary transitions in
+  inverted-clock trials remain explicitly documented acquisition confounds.
+* Updated the operator sequence, current task handoff and v3 audit. No ROM
+  bytes, Ghidra annotations or hardware firmware were changed by this pass;
+  v3 revision 2 remains the next image to burn. Hardware acceptance remains
+  untested; byte-reader carry is not full Commstar validation.
+* Validation: all 70 focused ROM/logger/emitter/feedback tests passed; strict
+  documentation build and rendered checks passed. Ghidra was saved unchanged.
+* Isolated event-enabled Uno builds passed: FREE_TX 9,708/918 bytes
+  flash/SRAM, RX_NARROW 9,616/909. ELF banners verified; stale shared-cache
+  output was discarded. Neither verification image was uploaded.

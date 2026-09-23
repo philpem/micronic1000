@@ -1,4 +1,5 @@
 // M1000 IR link probe and responder.
+#include <stdio.h>
 // Default: combined feedback harness, silent until a USB T or V command. See
 // doc/re-notes/ir-feedback-protocol.md. FEEDBACK_HARNESS=0 enables the
 // historical optical monitor/sweep modes described below.
@@ -10,10 +11,10 @@
 //
 // The handheld retries a connect 50 times at 93.75 ms (ROM00:2F58 sets the
 // 32h count), so one operator keypress yields ~50 free trials.  The sketch
-// changes one sweep parameter per burst and scores itself.  Any burst longer
-// than SUCCESS_CELLS proves that LinkBlockTx passed both its LINK_STATUS
-// bit-6-clear wait and its per-byte LINK_STATUS bit-7-set wait and began the
-// payload.  A short burst does not identify which wait failed.
+// changes one sweep parameter per burst. A burst longer than SUCCESS_CELLS
+// is a candidate for progress into payload TX, requiring scope/ROM evidence:
+// noise or merged bursts can also increase the count. A short burst does not
+// identify which controller wait failed.
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
 // Select BLACK_USE_NPN just below this wiring section before uploading:
@@ -185,11 +186,10 @@
 
 // Stage 8: free-running receive-convention sweep, for the stock-ROM receive
 // hook (micron1_stockhook_rx.bin).  RX_SWEEP above answers the handheld's own
-// bursts, but the stock instrument watches the IDLE receiver, and during a
-// connect attempt the handheld holds LINK_CTRL 6/7 clear for the ~10-12 ms
-// transaction, so a burst-timed reply lands in the disabled window.  This mode
+// bursts. During the stock TX wait LINK_CTRL bits 6/7 are clear; their
+// electrical effect on reception is unconfirmed. This mode
 // transmits one swept burst every FREE_TX_PERIOD_MS with no handheld burst at
-// all, so the idle (6/7-raised) receiver can be probed directly.  Axes are the
+// all, sampling different transaction phases. Axes are the
 // same as RX_SWEEP: flag sense, data polarity, phase and content, one
 // combination per burst, parameters printed.
 #ifndef FREE_TX
@@ -197,6 +197,79 @@
 #endif
 #ifndef FREE_TX_PERIOD_MS
 #define FREE_TX_PERIOD_MS 250
+#endif
+
+// Stock-ROM receive-hook feedback on scanner yellow / Uno D8. Enable with a
+// legacy optical mode (including LISTEN_ONLY silent control); it is separate
+// from the black-command feedback harness used by the v1/v2 diagnostic ROMs.
+#ifndef STOCK_CONTEXT_EVENTS
+#define STOCK_CONTEXT_EVENTS 0
+#endif
+// Physical LED assignment and active level for stock optical trials. Values
+// are fixed for a build; RX_NARROW_AXIS=3 alternates around STOCK_TX_SWAP.
+#ifndef STOCK_TX_SWAP
+#define STOCK_TX_SWAP 0
+#endif
+#ifndef STOCK_CLOCK_INVERT
+#define STOCK_CLOCK_INVERT 0
+#endif
+#ifndef STOCK_DATA_INVERT
+#define STOCK_DATA_INVERT 0
+#endif
+// Freeze the candidate axes for repeated attempts with the same waveform.
+#ifndef STOCK_FIXED_CANDIDATE
+#define STOCK_FIXED_CANDIDATE 0
+#endif
+#ifndef STOCK_FLAG_IDX
+#define STOCK_FLAG_IDX 1       // 7E
+#endif
+#ifndef STOCK_PHASE_IDX
+#define STOCK_PHASE_IDX 1      // -2/8 cell
+#endif
+#ifndef STOCK_POL_IDX
+#define STOCK_POL_IDX 0
+#endif
+#ifndef STOCK_CONTENT_IDX
+#define STOCK_CONTENT_IDX 2    // type-2 control ack
+#endif
+// Stock optical framing: -1 retains the historical flag-dependent choice;
+// 0 disables stuffing, 1 inserts 0 after five 1s, 2 inserts 1 after five 0s
+// on the emitted wire, after the data-polarity axis is applied.
+#ifndef STOCK_STUFFING_MODE
+#define STOCK_STUFFING_MODE -1
+#endif
+#ifndef STOCK_CLOSE_FLAG
+#define STOCK_CLOSE_FLAG 0
+#endif
+#ifndef STOCK_REPLY_DELAY_US
+#define STOCK_REPLY_DELAY_US 4000
+#endif
+#if (STOCK_TX_SWAP != 0 && STOCK_TX_SWAP != 1) || \
+    (STOCK_CLOCK_INVERT != 0 && STOCK_CLOCK_INVERT != 1) || \
+    (STOCK_DATA_INVERT != 0 && STOCK_DATA_INVERT != 1)
+#error "STOCK_TX_SWAP, STOCK_CLOCK_INVERT, STOCK_DATA_INVERT must be 0 or 1"
+#endif
+#if STOCK_FIXED_CANDIDATE != 0 && STOCK_FIXED_CANDIDATE != 1
+#error "STOCK_FIXED_CANDIDATE must be 0 or 1"
+#endif
+#if STOCK_FIXED_CANDIDATE && !(FREE_TX || RX_NARROW)
+#error "STOCK_FIXED_CANDIDATE requires FREE_TX or RX_NARROW"
+#endif
+#if STOCK_FLAG_IDX < 0 || STOCK_FLAG_IDX > 1 || \
+    STOCK_PHASE_IDX < 0 || STOCK_PHASE_IDX > 4 || \
+    STOCK_POL_IDX < 0 || STOCK_POL_IDX > 1 || \
+    STOCK_CONTENT_IDX < 0 || STOCK_CONTENT_IDX > 3
+#error "STOCK candidate indices out of range"
+#endif
+#if STOCK_STUFFING_MODE < -1 || STOCK_STUFFING_MODE > 2 || \
+    (STOCK_CLOSE_FLAG != 0 && STOCK_CLOSE_FLAG != 1)
+#error "STOCK_STUFFING_MODE must be -1..2; STOCK_CLOSE_FLAG must be 0 or 1"
+#endif
+#if STOCK_FIXED_CANDIDATE == 0 && STOCK_CONTENT_IDX == 3
+#error "STOCK_CONTENT_IDX=3 requires STOCK_FIXED_CANDIDATE=1"
+#endif
+#if STOCK_REPLY_DELAY_US < 500 || STOCK_REPLY_DELAY_US > 60000
+#error "STOCK_REPLY_DELAY_US must be 500..60000"
 #endif
 
 // Stage 9: narrowed receive sweep.  The first handheld-paced RX_SWEEP run
@@ -207,6 +280,7 @@
 //   RX_NARROW_AXIS 0 = phase (-4,-2,0,2,4 eighths of a cell)
 //                  1 = data polarity (normal / complemented)
 //                  2 = content (flag / flag+03h / open type-2 control ack)
+//                  3 = optical clock/data assignment (normal / swapped)
 // Flag is fixed to 7E (the current trial baseline); the data lead and the
 // other axes stay at the handheld's own TX convention unless selected here. Reply
 // to each handheld burst, handheld-paced.
@@ -226,6 +300,9 @@
 #endif
 #ifndef RX_NARROW_AXIS
 #define RX_NARROW_AXIS 2
+#endif
+#if RX_NARROW_AXIS < 0 || RX_NARROW_AXIS > 3
+#error "RX_NARROW_AXIS must be 0 (phase), 1 (polarity), 2 (content), or 3 (swap)"
 #endif
 
 // Feedback command syntax keeps its historical T fields and defaults. After
@@ -288,6 +365,9 @@
 #if FEEDBACK_HARNESS && (LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW)
 #error "FEEDBACK_HARNESS needs every legacy mode 0"
 #endif
+#if STOCK_CONTEXT_EVENTS && (FEEDBACK_HARNESS || !(FREE_TX || RX_NARROW || RX_SWEEP || LISTEN_ONLY))
+#error "STOCK_CONTEXT_EVENTS needs a stock optical mode"
+#endif
 
 // ---------------------------------------------------------------- timing --
 // True values, not raw measurements.  The handheld's drive is slew-limited
@@ -322,7 +402,13 @@ const uint8_t BLACK_OUT = 7, YELLOW_IN = 8;
 #endif
 
 // ------------------------------------------------------------- reception --
-volatile uint8_t  rxBits[160];  // a 12-byte payload frame is ~120 cells
+const uint8_t RX_BITS_CAPACITY = 160;
+#if STOCK_CONTEXT_EVENTS
+volatile uint8_t rxBitsA[RX_BITS_CAPACITY], rxBitsB[RX_BITS_CAPACITY];
+volatile uint8_t *rxBits = rxBitsA;  // switch buffers before printing
+#else
+volatile uint8_t rxBits[RX_BITS_CAPACITY];  // a 12-byte frame is ~120 cells
+#endif
 volatile uint8_t  rxCount = 0;
 volatile unsigned long lastEdgeUs = 0;
 volatile bool     txActive = false;   // ignore our own crosstalk
@@ -405,19 +491,87 @@ void drainRing() {
 
 void onClockEdge() {
   if (txActive) return;
+  // INT0 latches the clock edge, but D4 data must be sampled immediately on
+  // ISR entry; digitalRead() and micros() each add avoidable sample latency.
+  uint8_t b = (PIND & _BV(PD4)) != 0;
   unsigned long now = micros();
   // Reject chatter.  A plain CMOS inverter on the photodiode node crosses its
   // threshold over tens of ns of ambiguity, and one double-counted clock edge
   // fabricates a bit cell.  Real edges are a whole cell apart, so this costs
   // nothing and removes the need for a Schmitt-trigger part.
   if (rxCount && now - lastEdgeUs < MIN_EDGE_US) return;
-  uint8_t b = digitalRead(DAT_IN);
-  if (rxCount < sizeof(rxBits)) rxBits[rxCount++] = b;
+  if (rxCount < RX_BITS_CAPACITY) rxBits[rxCount++] = b;
   lastEdgeUs = now;
 #if RECORD_READOUT
   destuffBit(b);
 #endif
 }
+
+#if STOCK_CONTEXT_EVENTS
+// Uno D8 is PB0/PCINT0. Capture narrow yellow pulses even while sendFrame()
+// is busy scheduling optical edges; printing stays outside the interrupt.
+struct StockYellowEvent { uint32_t riseUs; uint32_t lowUs; };
+const uint8_t STOCK_EVENT_RING = 8;
+volatile StockYellowEvent stockEvents[STOCK_EVENT_RING];
+volatile uint8_t stockEventHead = 0, stockEventTail = 0;
+volatile uint16_t stockEventDrops = 0;
+volatile uint32_t stockYellowLowAt = 0;
+volatile bool stockYellowWasHigh = true;
+volatile bool stockYellowHaveFall = false;
+unsigned long stockLastReplyStartUs = 0;
+
+ISR(PCINT0_vect) {
+  bool high = (PINB & _BV(PB0)) != 0;
+  if (high == stockYellowWasHigh) return;
+  uint32_t at = micros();
+  stockYellowWasHigh = high;
+  if (!high) { stockYellowLowAt = at; stockYellowHaveFall = true; return; }
+  // A low input at startup has no observed falling edge or known onset.
+  if (!stockYellowHaveFall) return;
+  stockYellowHaveFall = false;
+  uint8_t next = (uint8_t)((stockEventHead + 1) & (STOCK_EVENT_RING - 1));
+  if (next == stockEventTail) {
+    if (stockEventDrops != 0xFFFFU) ++stockEventDrops;
+    return;
+  }
+  stockEvents[stockEventHead].riseUs = at;
+  stockEvents[stockEventHead].lowUs = at - stockYellowLowAt;
+  stockEventHead = next;
+}
+
+void stockDrainYellowEvents() {
+  // Format one complete line, then commit its dequeue only when the UART
+  // ring can take it without blocking an incoming optical reply.
+  char line[64];
+  noInterrupts();
+  bool haveEvent = stockEventTail != stockEventHead;
+  StockYellowEvent event = {0, 0};
+  if (haveEvent) {
+    event.riseUs = stockEvents[stockEventTail].riseUs;
+    event.lowUs = stockEvents[stockEventTail].lowUs;
+  }
+  uint16_t drops = stockEventDrops;
+  interrupts();
+  int len;
+  if (haveEvent) {
+    len = snprintf(line, sizeof(line), "# STOCK_YELLOW rise_us=%lu low_us=%lu\n",
+                   (unsigned long)event.riseUs, (unsigned long)event.lowUs);
+  } else if (drops) {
+    len = snprintf(line, sizeof(line), "# STOCK_YELLOW_DROPS %u\n", drops);
+  } else return;
+  if (len <= 0 || len >= (int)sizeof(line) ||
+      Serial.availableForWrite() < len) return;
+  Serial.write((const uint8_t *)line, (size_t)len);
+  noInterrupts();
+  if (haveEvent) {
+    stockEventTail = (uint8_t)((stockEventTail + 1) & (STOCK_EVENT_RING - 1));
+  } else {
+    // Drops may have accumulated while the line was sent; retain those.
+    stockEventDrops -= drops;
+  }
+  interrupts();
+}
+#endif
 
 // ------------------------------------------------------------ the framer --
 // Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
@@ -440,7 +594,7 @@ const int8_t  RX_N_PHASE = 5;
 const int8_t  rxPhaseTab[RX_N_PHASE] = { -4, -2, 0, 2, 4 };  // eighths of a cell
 const uint8_t RX_N_POL = 2;            // data polarity: normal / complemented
 const uint8_t RX_N_CONTENT = 3;        // flag / flag+03h / type-2 ack (open)
-const uint8_t rxContentMap[RX_N_CONTENT] = { 0, 1, 7 };
+const uint8_t rxContentMap[RX_N_CONTENT + 1] = { 0, 1, 7, 9 };
 uint8_t rxFlagIdx = 0, rxPhaseIdx = 1, rxPolIdx = 0, rxContentIdx = 1;
 #endif
 
@@ -455,18 +609,34 @@ void putFlag() {
   for (int8_t i = 7; i >= 0; i--) putBit((f >> i) & 1);
 }
 
-// Stuffing sense follows the flag sense.  The Micronic's own (inverted) HDLC
-// uses flag 81h and inserts a 1 after five 0s; normal HDLC uses flag 7Eh and
-// inserts a 0 after five 1s.  The return path uses the normal flag 7Eh, so it
-// must ZERO-stuff.  `zeroRun` is a run counter for whichever bit is being
-// counted (0s in the inverted sense, 1s in the normal sense).
-bool stuffNormal = false;   // true = normal HDLC: insert a 0 after five 1s
+// Count the selected data-bit run only; flags are always sent raw. The stock
+// setting can override the historical flag-dependent convention.
+uint8_t stuffingMode = 2;
+#if RX_SWEEP || FREE_TX || RX_NARROW
+void selectStockStuffing() {
+#if STOCK_STUFFING_MODE == -1
+  stuffingMode = rxFlagTab[rxFlagIdx] == 0x7E ? 1 : 2;
+#else
+  stuffingMode = STOCK_STUFFING_MODE;
+  if (rxPolIdx && stuffingMode) stuffingMode = 3 - stuffingMode;
+#endif
+}
+uint8_t wireStuffingMode() {
+  return rxPolIdx && stuffingMode ? 3 - stuffingMode : stuffingMode;
+}
+uint8_t wireFlagByte() {
+  return rxFlagTab[rxFlagIdx] ^ (rxPolIdx ? 0xFF : 0);
+}
+#endif
 void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
   for (int8_t i = 7; i >= 0; i--) {
-    if (*zeroRun == 5) { putBit(stuffNormal ? 0 : 1); *zeroRun = 0; }
+    if (stuffingMode && *zeroRun == 5) {
+      putBit(stuffingMode == 1 ? 0 : 1); *zeroRun = 0;
+    }
     uint8_t b = (v >> i) & 1;
     putBit(b);
-    *zeroRun = stuffNormal ? (b ? *zeroRun + 1 : 0) : (b ? 0 : *zeroRun + 1);
+    if (stuffingMode)
+      *zeroRun = (stuffingMode == 1 ? b : !b) ? *zeroRun + 1 : 0;
   }
 }
 
@@ -475,8 +645,8 @@ void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
 // this bit, the first one of the closing flag is consumed as the supposed
 // stuff bit and the receiver sees a malformed frame.
 void finishStuffing(uint8_t *zeroRun) {
-  if (*zeroRun == 5) {
-    putBit(stuffNormal ? 0 : 1);
+  if (stuffingMode && *zeroRun == 5) {
+    putBit(stuffingMode == 1 ? 0 : 1);
     *zeroRun = 0;
   }
 }
@@ -632,6 +802,7 @@ const char *contentName(uint8_t c) {
     case 5: return "flag+frame+flag";
     case 6: return "flag+03h+frame+flag";
     case 7: return "type-2 control ack";
+    case 9: return "00 00 FF FF 96 run probe";
     default: return "flag x4 (fill)";
   }
 }
@@ -722,8 +893,18 @@ void buildReply(uint8_t content) {
       for (uint8_t i = 0; i < sizeof(ack); i++) putStuffedByte(ack[i], &zeroRun);
       break;
     }
+    case 9: { const uint8_t p[] = { 0x00, 0x00, 0xFF, 0xFF, 0x96 };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag();
+      for (uint8_t i = 0; i < sizeof(p); i++) putStuffedByte(p[i], &zeroRun);
+      break;
+    }
     default: for (uint8_t i = 0; i < 4; i++) putFlag(); break;
   }
+#if (FREE_TX || RX_NARROW || RX_SWEEP) && STOCK_CLOSE_FLAG
+  if (content <= 4 || content == 7 || content == 9)
+    putClosingFlag(&zeroRun);
+#endif
 }
 
 // Clock modes.  The first version of this axis wasted itself: "data only" has
@@ -736,12 +917,15 @@ void buildReply(uint8_t content) {
 //   2  frame wrapped in clock-only preamble and postamble
 //   3  both: phase-locked and wrapped
 uint8_t sweepContent = 1, sweepDelay = 0, sweepClock = 0, sweepInvert = 0;
-uint8_t sweepSwap = 0;   // 1 = our clock drives their data detector and vice versa
+uint8_t sweepSwap = 0;   // 1 exchanges physical D5/D6; receiver roles unconfirmed
 unsigned long achievedUs = 0;   // reply delay actually achieved, us
 int8_t  txPhaseEighths = -2;    // data-rise minus clock-rise, in 1/8 cells
                                 // (-2 is the nominal 30 us data lead)
 
 void advanceSweep() {
+#if STOCK_FIXED_CANDIDATE && (FREE_TX || RX_NARROW)
+  return;
+#endif
 #if LADDER_TEST
   if (++pulseStim < LD_N_STIM) return;
   pulseStim = 0;
@@ -772,9 +956,11 @@ void advanceSweep() {
   rxPhaseIdx = 0;
 #elif RX_NARROW_AXIS == 1
   rxPolIdx ^= 1;
-#else
+#elif RX_NARROW_AXIS == 2
   if (++rxContentIdx < RX_N_CONTENT) return;
   rxContentIdx = 0;
+#else
+  sweepSwap ^= 1;
 #endif
   return;
 #elif RX_SWEEP || FREE_TX || RX_NARROW
@@ -864,6 +1050,7 @@ inline bool txEventBefore(const TxEvent &a, const TxEvent &b);
 TxEvent txEvents[8];
 uint8_t txEventCount = 0;
 uint32_t txMaxLatenessUs = 0;
+uint32_t txAppliedMaxLatenessUs = 0;  // post-write software upper bound
 
 inline uint32_t txEventTime(uint32_t cell, int32_t offset) {
   return cell + (uint32_t)offset;
@@ -937,6 +1124,11 @@ void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
   else if (type == 1) clkHigh();
   else if (type == 2) clkLow();
   else datLow();
+  // Includes the GPIO write and micros() read. An ISR after the write can
+  // inflate it; a scope is still needed for physical edge timing.
+  int32_t appliedLate = txTimeDiff((uint32_t)micros(), at);
+  if (appliedLate > (int32_t)txAppliedMaxLatenessUs)
+    txAppliedMaxLatenessUs = (uint32_t)appliedLate;
 }
 
 inline void dispatchTxEvent(uint32_t cell, int32_t offset, uint8_t type) {
@@ -979,6 +1171,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
   uint8_t nextCell = 0;
   txEventCount = 0;
   txMaxLatenessUs = 0;
+  txAppliedMaxLatenessUs = 0;
 
   // Establish the complemented baseline before the first scheduled edge.
   // With no lead cells and a negative data phase, that edge can precede
@@ -987,7 +1180,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
     uint32_t first = txFirstEventTime(startUs, pre);
     uint32_t baselineAt = txTimeDiff(first, startUs) < 0 ? first - 16U : startUs;
     waitUntil(baselineAt);
-    clkLow(); datLow();
+    datLow(); clkLow();
   }
 
   int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
@@ -1200,6 +1393,7 @@ void fbStoreResultByte(uint8_t value) {
   Serial.print(F(" emit_start_us=")); Serial.print(fbEmitStart);
   Serial.print(F(" emit_end_us=")); Serial.print(fbEmitEnd);
   Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
   Serial.print(F(" raw=")); fbPrintHex(fbResult, sizeof(fbResult)); Serial.println();
   fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
 }
@@ -1293,7 +1487,8 @@ void fbCommandTick() {
     fbResetUart(); fbBuildStimulus();
     fbAckAt = fbReleaseAt = fbStartAt = fbEmitStart = fbEmitEnd = 0;
     fbRepeatIndex = 0;
-    txMaxLatenessUs = 0; fbEmitPending = false; fbRequestLow = false;
+    txMaxLatenessUs = txAppliedMaxLatenessUs = 0;
+    fbEmitPending = false; fbRequestLow = false;
     fbLogTrial(); fbState = FB_WAIT_ACK; fbStateAt = micros();
     fbReady = false; fbHighTracking = false;
   }
@@ -1459,6 +1654,7 @@ void steadyFor(unsigned long from, unsigned long len, bool useClk, bool useDat) 
 
 void sendPulse(unsigned long startUs, uint8_t stim) {
   txMaxLatenessUs = 0;
+  txAppliedMaxLatenessUs = 0;
   if (stim == 0) return;                       // the control: emit nothing
   // Non-framed stimuli must drive the pins they name, so the emitter swap is
   // only ever applied to a framed variant that asks for it.
@@ -1522,16 +1718,25 @@ void freeTxTick() {
   nextTx = now + (unsigned long)FREE_TX_PERIOD_MS * 1000UL;
   sweepInvert = rxPolIdx;                       // data polarity axis
   txPhaseEighths = rxPhaseTab[rxPhaseIdx];      // data-to-clock phase axis
-  stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E); // 7E -> normal zero-stuffing
+  selectStockStuffing();
   buildReply(rxContentMap[rxContentIdx]);       // content axis (flag via putFlag)
   sendFrame(now + 1000);
   Serial.print(F("# TX flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" wire_flag=")); Serial.print(wireFlagByte(), HEX);
   Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  Serial.print(F(" stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff=")); Serial.print(wireStuffingMode());
+  Serial.print(F(" close=")); Serial.print(STOCK_CLOSE_FLAG);
   printReplyPayload();
-  Serial.print(F(" start=1000us"));
+  Serial.print(F(" tx_start_us=")); Serial.print(now + 1000UL);
+  Serial.print(F(" swap=")); Serial.print(sweepSwap);
+  Serial.print(F(" fixed=")); Serial.print(STOCK_FIXED_CANDIDATE);
+  Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
+  Serial.print(F(" dat_inv=")); Serial.print(txDataLevelInvert);
   Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
   Serial.println();
   advanceSweep();
 }
@@ -1556,15 +1761,35 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us dur=")); Serial.print(PULSE_US);
   Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
 #elif RX_SWEEP || RX_NARROW
   Serial.print(F("  [flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" wire_flag=")); Serial.print(wireFlagByte(), HEX);
   Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  Serial.print(F(" stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff=")); Serial.print(wireStuffingMode());
+  Serial.print(F(" close=")); Serial.print(STOCK_CLOSE_FLAG);
   printReplyPayload();
-  Serial.print(F(" delay_req=")); Serial.print(delayUs[sweepDelay]);
+  Serial.print(F(" delay_req="));
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+  Serial.print(STOCK_REPLY_DELAY_US);
+#else
+  Serial.print(delayUs[sweepDelay]);
+#endif
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
+  Serial.print(F(" swap=")); Serial.print(sweepSwap);
+  Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
+  Serial.print(F(" dat_inv=")); Serial.print(txDataLevelInvert);
+  Serial.print(F(" fixed=")); Serial.print(STOCK_FIXED_CANDIDATE);
+#if STOCK_CONTEXT_EVENTS
+  if (stockLastReplyStartUs) {
+    Serial.print(F(" tx_start_us=")); Serial.print(stockLastReplyStartUs);
+  }
+#endif
 #else
   Serial.print(F("  [content_idx=")); Serial.print(sweepContent);
   Serial.print(F(" name=")); Serial.print(contentName(sweepContent));
@@ -1576,12 +1801,12 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F(" invert=")); Serial.print(sweepInvert);
   Serial.print(F(" swap=")); Serial.print(sweepSwap);
 #endif
-  if (datRises == 0) Serial.print(F("]  NO DATA-LINE ACTIVITY"));
+  if (datRises == 0) Serial.print(F("]  NO DATA-LINE ACTIVITY OBSERVED"));
   else Serial.print(']');
   Serial.println();
   datRises = 0;
   if (n > SUCCESS_CELLS) {
-    Serial.println(F("*** HANDSHAKE CLEARED - stop and capture this on the scope ***"));
+    Serial.println(F("*** LONGER BURST - possible progress; verify on the scope ***"));
   }
 }
 
@@ -1596,11 +1821,23 @@ void setup() {
   pinMode(BLACK_OUT, OUTPUT);
   pinMode(YELLOW_IN, INPUT);
 #endif
+#if STOCK_CONTEXT_EVENTS
+  pinMode(YELLOW_IN, INPUT);  // external 10 kOhm pull-up is required
+  PCIFR |= _BV(PCIF0);
+  stockYellowWasHigh = (PINB & _BV(PB0)) != 0;
+  PCMSK0 |= _BV(PCINT0);
+  PCICR |= _BV(PCIE0);
+#endif
   clkReg = portOutputRegister(digitalPinToPort(CLK_OUT));
   datReg = portOutputRegister(digitalPinToPort(DAT_OUT));
   clkMask = digitalPinToBitMask(CLK_OUT);
   datMask = digitalPinToBitMask(DAT_OUT);
   clkLow(); datLow();
+#if !FEEDBACK_HARNESS && (FREE_TX || RX_NARROW || RX_SWEEP)
+  sweepSwap = STOCK_TX_SWAP;
+  txClockLevelInvert = STOCK_CLOCK_INVERT;
+  txDataLevelInvert = STOCK_DATA_INVERT;
+#endif
 #if FEEDBACK_HARNESS
   fbBlackRelease();
 #endif
@@ -1627,6 +1864,9 @@ void setup() {
   Serial.println(F("  pass = 10000001000001011 comes back"));
 #elif LISTEN_ONLY
   Serial.println(F("MODE: LISTEN ONLY -- not transmitting, sweep frozen."));
+#if STOCK_CONTEXT_EVENTS
+  Serial.println(F("  stock-context silent control: D8 yellow event capture"));
+#endif
 #if RECORD_READOUT
   Serial.println(F("  RECORD_READOUT: de-stuffed hex, one frame per line"));
 #endif
@@ -1648,13 +1888,16 @@ void setup() {
   Serial.println(F("  axis = phase (-4,-2,0,2,4 eighths of a cell)"));
 #elif RX_NARROW_AXIS == 1
   Serial.println(F("  axis = data polarity (normal / complemented)"));
-#else
+#elif RX_NARROW_AXIS == 2
   Serial.println(F("  axis = content (flag / flag+03h / open type-2 ack)"));
+#else
+  Serial.println(F("  axis = optical clock/data assignment (normal / swapped)"));
 #endif
   rxFlagIdx = 1;                  // 7E: current trial baseline
   rxPolIdx = 0;                   // baseline polarity, fixed unless swept
   rxContentIdx = 2;               // content index 2 -> map 7 = type-2 control ack
   rxPhaseIdx = 1;                 // -2/8: nominal data lead baseline
+  sweepSwap = STOCK_TX_SWAP;      // baseline assignment, fixed unless swept
   txPre = RX_LEAD_CELLS;          // Micronic-style clock-only lead-in
   sweepDelay = 3;                 // 4 ms; hold the timing, vary only the axis
 #elif RX_SWEEP
@@ -1666,9 +1909,45 @@ void setup() {
 #elif FREE_TX
   Serial.print(F("MODE: FREE TX -- one swept burst every "));
   Serial.print(FREE_TX_PERIOD_MS); Serial.println(F(" ms, no handheld burst."));
+#if STOCK_CONTEXT_EVENTS
+  Serial.println(F("  stock-context hook: D8 yellow pulse widths; D7 unused"));
+#else
   Serial.println(F("  pair with micron1_stockhook_rx.bin; watch its `I ss rr` row"));
+#endif
 #else
   Serial.println(F("MODE: SWEEP -- delay x content x clock x invert x swap."));
+#endif
+#if STOCK_CONTEXT_EVENTS && !FREE_TX && !LISTEN_ONLY
+  Serial.println(F("STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"));
+#endif
+#if STOCK_CONTEXT_EVENTS
+  Serial.println(F("STOCK_CONTEXT_V3 width_us=32 drops=16"));
+#endif
+#if STOCK_FIXED_CANDIDATE
+  rxFlagIdx = STOCK_FLAG_IDX;
+  rxPhaseIdx = STOCK_PHASE_IDX;
+  rxPolIdx = STOCK_POL_IDX;
+  rxContentIdx = STOCK_CONTENT_IDX;
+#endif
+#if !FEEDBACK_HARNESS && (FREE_TX || RX_NARROW || RX_SWEEP)
+  Serial.print(F("STOCK_TX swap=")); Serial.print(sweepSwap);
+  Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
+  Serial.print(F(" dat_inv=")); Serial.println(txDataLevelInvert);
+  Serial.print(F("STOCK_FRAMING stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff="));
+#if STOCK_STUFFING_MODE < 0
+  Serial.print(F("auto"));
+#else
+  Serial.print(STOCK_STUFFING_MODE);
+#endif
+  Serial.print(F(" close=")); Serial.println(STOCK_CLOSE_FLAG);
+#if STOCK_FIXED_CANDIDATE
+  Serial.print(F("STOCK_FIXED flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" phase=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
+  Serial.print(F(" pol=")); Serial.print(rxPolIdx);
+  Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  Serial.print(F(" delay_us=")); Serial.println(STOCK_REPLY_DELAY_US);
+#endif
 #endif
 }
 
@@ -1686,18 +1965,17 @@ void loop() {
   unsigned long last = lastEdgeUs;
   interrupts();
 
-  // Poll the data line every pass.  loop() spins in a few us when idle, so a
-  // 76 us pulse cannot be missed, and the phase tells us where it sits: the
-  // data rises a quarter cell BEFORE a clock edge, so ~91 us after the
-  // previous one.
+  // Poll D4 for best-effort activity/phase context. Serial output and frame
+  // emission can postpone this poll, so no observed rise does not prove that
+  // the data line stayed low. The data rise is nominally ~91 us after the
+  // previous clock edge.
 #if LOOPBACK_TEST
   loopbackTick();
 #endif
 #if FREE_TX
   freeTxTick();
 #endif
-
-  uint8_t d = digitalRead(DAT_IN);
+  uint8_t d = (PIND & _BV(PD4)) != 0;
   if (d && !datPrev) { datRises++; datPhase = micros() - last; }
   datPrev = d;
 
@@ -1705,7 +1983,12 @@ void loop() {
   drainRing();                                     // stream bytes continuously
 #endif
 
-  if (n == 0) return;
+  if (n == 0) {
+#if STOCK_CONTEXT_EVENTS
+    stockDrainYellowEvents();
+#endif
+    return;
+  }
   if (micros() - last < GAP_US) return;            // burst still in progress
 
 #if RECORD_READOUT
@@ -1715,11 +1998,27 @@ void loop() {
   interrupts();
 #else
   uint8_t snapshot[160];
+#if STOCK_CONTEXT_EVENTS
+  // Swap ownership atomically, then copy with interrupts enabled. This keeps
+  // the D8 interrupt masked for only a pointer/count update, not 160 bytes.
+  noInterrupts();
+  n = rxCount;
+  volatile uint8_t *filled = rxBits;
+  rxBits = (rxBits == rxBitsA) ? rxBitsB : rxBitsA;
+  rxCount = 0;
+  interrupts();
+  for (uint8_t i = 0; i < n; i++) snapshot[i] = filled[i];
+#else
   noInterrupts();
   n = rxCount;                                     // may have grown; re-read
   for (uint8_t i = 0; i < n; i++) snapshot[i] = rxBits[i];
   rxCount = 0;
   interrupts();
+#endif
+#endif
+
+#if STOCK_CONTEXT_EVENTS
+  stockLastReplyStartUs = 0;
 #endif
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
@@ -1772,7 +2071,12 @@ void loop() {
   }
 #else
   if (n <= SUCCESS_CELLS) {
-    unsigned long fire = last + delayUs[sweepDelay];
+    unsigned long fire = last +
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+        STOCK_REPLY_DELAY_US;
+#else
+        delayUs[sweepDelay];
+#endif
     unsigned long now  = micros();
     // Burst-end detection costs GAP_US, so the requested delay may already have
     // passed.  Starting in the past would make every waitUntil() before the
@@ -1793,8 +2097,11 @@ void loop() {
     // and the mapped buildReply() content (the flag sense lives in putFlag()).
     sweepInvert = rxPolIdx;
     txPhaseEighths = rxPhaseTab[rxPhaseIdx];
-    stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E);   // 7E -> zero-stuffing
+    selectStockStuffing();
     buildReply(rxContentMap[rxContentIdx]);
+#if STOCK_CONTEXT_EVENTS
+    stockLastReplyStartUs = fire;
+#endif
 #else
     buildReply(sweepContent);
 #endif
@@ -1815,5 +2122,8 @@ void loop() {
 #endif
 #if !LISTEN_ONLY && !LOOPBACK_TEST && !FREE_TX
   if (n <= SUCCESS_CELLS) advanceSweep();
+#endif
+#if STOCK_CONTEXT_EVENTS
+  stockDrainYellowEvents();
 #endif
 }
