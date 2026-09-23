@@ -803,12 +803,31 @@ void advanceSweep() {
 // edge is instead placed at a fixed offset from the frame's start time.
 volatile uint8_t *clkReg, *datReg;
 uint8_t clkMask, datMask;
+uint8_t txClockLevelInvert = 0, txDataLevelInvert = 0;
 
-// The swap is applied here, so one flag re-points both lines at once.
-inline void clkHigh() { if (sweepSwap) *datReg |=  datMask; else *clkReg |=  clkMask; }
-inline void clkLow()  { if (sweepSwap) *datReg &= ~datMask; else *clkReg &= ~clkMask; }
-inline void datHigh() { if (sweepSwap) *clkReg |=  clkMask; else *datReg |=  datMask; }
-inline void datLow()  { if (sweepSwap) *clkReg &= ~clkMask; else *datReg &= ~datMask; }
+// Swap selects the physical pin; inversion changes its driven level.
+inline void drivePin(volatile uint8_t *reg, uint8_t mask, bool high) {
+  if (high) *reg |= mask; else *reg &= (uint8_t)~mask;
+#ifdef IR_HOST_TEST
+  uint8_t pin = (mask == clkMask ? 5 : 6);
+  bool outputHigh = (*reg & mask) != 0;
+  extern void irHostGpio(uint8_t, bool);
+  irHostGpio(pin, outputHigh);
+#endif
+}
+inline void clkLevel(bool high) {
+  drivePin(sweepSwap ? datReg : clkReg, sweepSwap ? datMask : clkMask,
+           high ^ (txClockLevelInvert != 0));
+}
+inline void datLevel(bool high) {
+  drivePin(sweepSwap ? clkReg : datReg, sweepSwap ? clkMask : datMask,
+           high ^ (txDataLevelInvert != 0));
+}
+inline void clkHigh() { clkLevel(true); }
+inline void clkLow()  { clkLevel(false); }
+inline void datHigh() { datLevel(true); }
+inline void datLow()  { datLevel(false); }
+inline void txPhysicalDark() { drivePin(clkReg, clkMask, false); drivePin(datReg, datMask, false); }
 
 inline int32_t txTimeDiff(uint32_t a, uint32_t b) {
   return (int32_t)(a - b);
@@ -952,6 +971,16 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
   txEventCount = 0;
   txMaxLatenessUs = 0;
 
+  // Establish the complemented baseline before the first scheduled edge.
+  // With no lead cells and a negative data phase, that edge can precede
+  // startUs; 16 us of setup avoids making the edge late.
+  if (txClockLevelInvert || txDataLevelInvert) {
+    uint32_t first = txFirstEventTime(startUs, pre);
+    uint32_t baselineAt = txTimeDiff(first, startUs) < 0 ? first - 16U : startUs;
+    waitUntil(baselineAt);
+    clkLow(); datLow();
+  }
+
   int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
   int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
   if (dataRise >= 0 && dataRise <= (int32_t)DATA_LEAD_US &&
@@ -959,7 +988,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
       DATA_LEAD_US + CLK_HIGH_US < CELL_US) {
     emitSimpleCells(startUs, pre, total, phaseUs);
     waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
-    clkLow(); datLow();
+    txPhysicalDark();
     return;
   }
 
@@ -993,7 +1022,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
     applyTxEvent(event.type, event.at, actual);
   }
   waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
-  clkLow(); datLow();
+  txPhysicalDark();
 }
 
 // Clock-only lead-in / postamble, Micronic-style.  The handheld's own bursts
@@ -1067,7 +1096,8 @@ void fbPrintHex(const uint8_t *bytes, uint8_t n) {
 }
 void fbQuiet() {
   analogWrite(CLK_OUT, 0); analogWrite(DAT_OUT, 0);
-  fbBlackRelease(); clkLow(); datLow(); txActive = false;
+  txClockLevelInvert = txDataLevelInvert = 0;
+  fbBlackRelease(); clkLow(); datLow(); txPhysicalDark(); txActive = false;
   fbEmitPending = false; fbManualLow = false; fbRequestLow = false;
 }
 void fbVisualStop() {
@@ -1183,6 +1213,8 @@ void fbLogTrial() {
   Serial.print(F(" stuff=")); Serial.print(fbConfig.stuffing);
   Serial.print(F(" close=")); Serial.print(fbConfig.closeFlag);
   Serial.print(F(" pol=")); Serial.print(fbConfig.polarity);
+  Serial.print(F(" clk_inv=")); Serial.print(fbConfig.clockInvert);
+  Serial.print(F(" dat_inv=")); Serial.print(fbConfig.dataInvert);
   Serial.print(F(" phase=")); Serial.print(fbConfig.phaseEighths);
   Serial.print(F(" lead=")); Serial.print(fbConfig.leadCells);
   Serial.print(F(" delay_us=")); Serial.print(fbConfig.delayUs);
@@ -1318,8 +1350,11 @@ void feedbackTick() {
       // inside sendFrame; its deadline lateness is reported with the result.
       fbEmitPending = false; sweepClock = 0;
       sweepSwap = fbConfig.swapRoles; sweepInvert = fbConfig.polarity;
+      txClockLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.clockInvert : 0;
+      txDataLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.dataInvert : 0;
       txPhaseEighths = fbConfig.phaseEighths; txPre = fbConfig.leadCells; txPost = 0;
       fbEmitStart = micros(); sendFrame(fbStartAt + fbConfig.delayUs); fbEmitEnd = micros();
+      txClockLevelInvert = txDataLevelInvert = 0;
       fbResetUart();
     }
     fbUartTick((uint32_t)micros());

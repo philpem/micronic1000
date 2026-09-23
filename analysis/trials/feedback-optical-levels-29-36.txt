@@ -1,0 +1,13 @@
+# Feedback-v1 ROM installed; updated Uno optical-level sketch.
+# Preserve LED resistors and top V24 placement. Wait for RESULT and READY.
+# Last accepted host ID before this file: 28. If higher, renumber all IDs.
+# Per T: optional final fields are clk_inv dat_inv (physical LED levels).
+# Silent/stimulated matched pairs: default, clock, data, both.
+T 29 G S 1 7E 1 0 0 -2 5 7000 03 0 0
+T 30 G X 1 7E 1 0 0 -2 5 7000 03 0 0
+T 31 G S 1 7E 1 0 0 -2 5 7000 03 1 0
+T 32 G X 1 7E 1 0 0 -2 5 7000 03 1 0
+T 33 G S 1 7E 1 0 0 -2 5 7000 03 0 1
+T 34 G X 1 7E 1 0 0 -2 5 7000 03 0 1
+T 35 G S 1 7E 1 0 0 -2 5 7000 03 1 1
+T 36 G X 1 7E 1 0 0 -2 5 7000 03 1 1

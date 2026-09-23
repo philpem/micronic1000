@@ -91,6 +91,18 @@ returns to quiet operation and prints `READY` after the normal idle settling
 period when the yellow input is high. Visual IDs do not consume ROM trial IDs.
 This check does not assert BLACK or contact the ROM.
 
+For physical clock/data polarity tests, `T` accepts two optional final
+fields after the payload: `clk_inv dat_inv`, each `0` or `1`. Old commands
+without them remain `0 0`. These invert the **LED output levels during the
+short X burst only**, after `swap` assigns the clock/data roles; both LED
+drive pins return low when the burst ends. The separate `V` command can
+still pulse them on request. These fields are separate from `pol`, which
+complements serialized data bits while leaving clock pulses unchanged.
+`S` trials do not emit even if inversion fields are `1`.
+The next matched test matrix is
+[`analysis/trials/feedback-optical-levels-29-36.txt`](../../trials/feedback-optical-levels-29-36.txt).
+Keep the LED current-limiting resistors fitted.
+
 For reproducible batches and timestamped JSONL logs, use
 `analysis/ir_feedback.py` as documented in the guide. Keep this entire sketch
 directory together when rsyncing; `feedback_harness.h` is part of the build.

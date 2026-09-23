@@ -7856,3 +7856,29 @@ names renamed, 144 unplated functions plated)
   physical clock/data edge polarity and phase at the receiver during a
   short feedback trial. Keep a fresh silent control when comparing ROM
   status across drive changes. No ROM or Arduino source change is needed.
+
+### 2026-09-23 — Resistor-limited G control pair and no amplifier capture
+
+* CONFIRMED (owner serial report; both 30-byte sums zero): G/S ID 27,
+  ROM sequence 30, and G/X ID 28, ROM sequence 31, both returned error 8
+  with identical `LINK_STATUS` probe/before/after A0h/80h/80h. ID 28
+  scheduled emission with 3 us maximum software lateness. Neither
+  reached stock RX; no measured short-burst optical waveform is implied.
+* The existing `/tmp/IR` file predates IDs 27/28; the owner confirms no
+  new scope trace and says the Micronic photodiode amplifier is hard to
+  probe. Supersede the direct-probe prerequisite: USB-selectable physical
+  clock/data level inversion, with drive pins low before/after brief T
+  bursts, can
+  test the polarity hypothesis through matched ROM feedback. This is
+  separate from `pol`, which changes serialized data bits only.
+* Implemented optional `clk_inv dat_inv` after the T payload in the Uno
+  sketch; old 13-field lines default to 0/0. The flags invert physical
+  clock/data levels independently after swap only during X emission.
+  A timed burst baseline and direct physical-dark teardown avoid idle
+  illumination and an end-of-burst glitch. The earliest-edge case with
+  no lead and negative phase is covered by a host test. IDs 29–36 in
+  `analysis/trials/feedback-optical-levels-29-36.txt` are the next matched
+  S/X matrix, with all four level combinations and no ROM change.
+* Focused feedback/runner tests: 12 passed. Cached Uno R3 compile: 11,472
+  flash bytes, 856 static SRAM bytes. No Micronic bench result yet for
+  the new optical-level modes.

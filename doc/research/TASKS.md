@@ -143,10 +143,25 @@ does not establish earlier short-burst delivery or the polarity/threshold
 at the controller input. The owner's polarity
 question concerns physical IR clock/data levels. Sketch `pol=1`
 complements serialized data bits but leaves clock pulses unchanged, so it
-does not answer that question. Next: retain deliberate LED current
-limiting and simultaneously scope D5, D6, the amplifier output, and any
-accessible downstream logic node during a short stimulus; establish dark
-level, edge polarity and phase before another candidate-frame sweep.
+does not answer that question. Retain deliberate LED current limiting.
+A simultaneous D5/D6 and amplifier capture would directly establish
+physical edge level and phase if practical.
+Owner reports that probing the Micronic photodiode amplifier for the short
+burst is difficult; no new scope trace accompanied resistor-limited G/S
+ID 27 and G/X ID 28. Both valid records had error 8 and identical
+`LINK_STATUS` probe/before/after A0h/80h/80h; ID 28 scheduled emission
+with at most 3 us lateness. The direct short-burst waveform remains open.
+Next: test independently USB-selectable physical clock/data level inversion
+within the bounded stimulus, preserving dark idle, using matched
+silent/stimulated ROM feedback under fixed resistor-limited placement.
+The Uno sketch now implements optional `clk_inv dat_inv` trailing `T` fields
+(old syntax defaults 0/0) and keeps both LEDs dark before/after each X
+burst. The planned IDs 29–36 in
+`analysis/trials/feedback-optical-levels-29-36.txt` compare all four level
+combinations, each against a silent control. This is a USB-only upload; no
+EPROM burn is needed. The matrix tests a physical-level hypothesis, not a
+confirmed receiver convention. G error 8 for all variants would still
+leave routing, analog threshold and framing unresolved.
 The updated Uno sketch provides a sustained low-duty output self-test:
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
 released and ROM trial IDs unchanged. Repeating `V 1` after completion is

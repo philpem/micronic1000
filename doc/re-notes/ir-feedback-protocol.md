@@ -55,6 +55,12 @@ polarity, not a complement of framed data bits. Trials 25/26, silent/X with
 `swap=1` and `7Eh 03h`, both returned error 8 and did not enter stock RX;
 their probe/before/after statuses were A0h/C0h/C0h and E0h/C0h/C0h.
 The differing probe samples precede the burst and do not show reception.
+With the limiting resistors fitted, G/S ID 27 and G/X ID 28 both returned
+error 8 and identical A0h/80h/80h status triplets. ID 28 scheduled its
+stimulus within 3 us; no receiver waveform capture accompanied the report.
+The owner says probing the Micronic photodiode amplifier is difficult; the
+next test should use Arduino-controlled optical-level alternatives and ROM
+feedback rather than require that probe.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -70,21 +76,34 @@ compare physical edges in CSV rather than software interval length.
    node goes high or low during light. Capture the other channel's amplifier
    output and a downstream logic/comparator output too if accessible. The
    reported 10%-low/90%-high waveform alone cannot locate the inversion.
-3. If both IR paths still reach their amplifier nodes with safe drive, hold
-   geometry fixed and run a fresh G silent/stimulated pair, waiting for
-   `RESULT` and `READY` between lines:
+3. Completed with the limiting resistors fitted: G silent/stimulated IDs
+   27/28 held the `swap=1`, `7Eh 03h` settings and placement fixed:
 
    ```text
    T 27 G S 1 7E 1 0 0 -2 5 7000 03
    T 28 G X 1 7E 1 0 0 -2 5 7000 03
    ```
 
-   On trial 28, trigger the scope on proposed-clock D6 and capture at
-   least 5 ms around the approximately 3 ms burst, with D5, D6 and the
-   Micronic amplifier output simultaneous. Compare rise/fall polarity,
-   width and data-to-clock phase at the receiver. Retain full serial text
-   and scope CSV. A difference in status or error is interpretable only
-   against the fresh silent control, because the LED drive changed.
+   Both valid 30-byte records returned error 8 and identical
+   `LINK_STATUS` probe/before/after A0h/80h/80h. Trial 28 reported an
+   emission with 3 us maximum software lateness. Neither entered stock
+   RX; the serial record does not measure the receiver's short-burst
+   waveform. No fresh scope CSV was supplied with these results.
+4. Rsync and upload the updated Uno sketch; the ROM remains installed. Keep
+   the same resistor-limited LED placement. The two optional fields after
+   payload, `clk_inv dat_inv`, invert the Uno clock and data LED-drive GPIO
+   levels independently **only inside the brief X burst**. Both GPIOs are
+   driven low before and after the T burst; the separate `V` visual test
+   still pulses them on request. This differs from `pol`, which complements
+   encoded data bits but leaves the clock pulse sense unchanged. Run the eight lines in
+   `analysis/trials/feedback-optical-levels-29-36.txt`,
+   waiting for `RESULT` and fresh `READY` between lines. The matched S/X
+   pairs test default `0 0`, clock-only `1 0`, data-only `0 1`, and both
+   `1 1` under the same `swap=1` and `7Eh 03h` candidate. Preserve every
+   serial line, especially `LINK_STATUS` probe/before/after bytes and
+   `err`. An error-8 result means the pending gate still did not open;
+   even a changed result would require follow-up controls before claiming
+   framing. An amplifier trace would help but is not required.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -318,7 +337,7 @@ idle leaves the handheld and ROM sequence unchanged; correct the input and
 continue without `R`.
 
 ```text
-T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload
+T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload [clk_inv dat_inv]
 C id
 R
 B id L|R
@@ -337,6 +356,7 @@ forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
 | `stuff` | 0 none; 1 insert zero after five ones; 2 insert one after five zeros |
 | `close` | 0 none; 1 append the selected unstuffed candidate flag |
 | `pol` | 0 normal serialized data bits; 1 complement those bits, including the candidate flag; clock pulses unchanged |
+| `clk_inv`, `dat_inv` | Optional pair of 0/1 fields after payload; complement each Uno LED-drive GPIO level during the bounded X burst, after role swap; defaults 0/0 |
 | `phase` | Decimal -4..4, data rise minus clock rise in eighths of a cell |
 | `lead` | 0..16 proposed-clock-only cells before the stimulus |
 | `delay_us` | 0..60000 from observed yellow START; log actual scheduling lateness |
@@ -346,7 +366,10 @@ The initial implementation uses 122 us cells, 61 us proposed clock pulses,
 and 76 us proposed data pulses, MSB-first bytes. These are trial settings,
 not established receive requirements. `pol` is a serialized-data-bit test,
 not an independent inversion of the optical clock and data line levels or
-the Micronic receiver amplifier. Changes beyond the current USB ranges
+the Micronic receiver amplifier. Inverted physical levels turn their LED
+on between the ordinary pulse edges **within** the short emission envelope
+for the present active-high LED drive; both GPIOs are forced low at
+completion. Changes beyond the current USB ranges
 require only an Arduino sketch update, within the ROM's documented deadlines.
 With `flag=--`, `stuff` and `close` must both be zero. Neither a software
 `flag` label nor a controller-status change establishes a received flag.

@@ -53,6 +53,9 @@ static std::vector<GpioEvent> gpioEvents;
 static std::vector<IrEvent> irEvents;
 struct PwmEvent { uint32_t at; uint8_t pin; uint8_t duty; };
 static std::vector<PwmEvent> pwmEvents;
+static void irHostGpio(uint8_t pin, bool high) {
+  gpioEvents.push_back(GpioEvent{hostNow, pin, high, true, false});
+}
 
 struct UartWaveform {
   bool active;
@@ -269,6 +272,7 @@ static void resyncAndReady() {
 
 struct TrialObservation {
   size_t firstIrEvent;
+  size_t firstGpioEvent;
   uint32_t ackAt;
   uint32_t releaseAt;
   uint32_t startAt;
@@ -281,6 +285,7 @@ static TrialObservation beginTrial(const std::string &command,
   Serial.clearOutput();
   setYellow(true);
   const size_t firstIrEvent = irEvents.size();
+  const size_t firstGpioEvent = gpioEvents.size();
   send(command + "\n");
   CHECK(fbState == FB_WAIT_ACK);
   CHECK(contains("TRIAL id="));
@@ -302,7 +307,7 @@ static TrialObservation beginTrial(const std::string &command,
   tick();
   CHECK(fbState == FB_WAIT_RESULT);
   CHECK(fbStartAt != 0);
-  return TrialObservation{firstIrEvent, ackAt, fbReleaseAt, fbStartAt};
+  return TrialObservation{firstIrEvent, firstGpioEvent, ackAt, fbReleaseAt, fbStartAt};
 }
 
 static std::vector<uint8_t> resultRecord(uint8_t mode, uint16_t sequence,
@@ -377,11 +382,102 @@ static uint32_t nextId = 1;
 static uint32_t nextVisualId = 1;
 
 static std::string command(uint32_t id, char hold, char kind, int swap,
-                           const char *payload = "03") {
+                           const char *payload = "03", int clkInv = -1,
+                           int datInv = -1) {
   std::ostringstream text;
   text << "T " << id << ' ' << hold << ' ' << kind << ' ' << swap
        << " 7E 0 0 0 -2 3 1000 " << payload;
+  if (clkInv >= 0 && datInv >= 0) text << ' ' << clkInv << ' ' << datInv;
   return text.str();
+}
+
+static void opticalInversionTrials() {
+  for (int swap = 0; swap < 2; ++swap) {
+    for (int clkInv = 0; clkInv < 2; ++clkInv) {
+      for (int datInv = 0; datInv < 2; ++datInv) {
+        TrialObservation trial = beginTrial(
+            command(nextId++, 'W', 'X', swap, "03", clkInv, datInv), 100000);
+        spinUntil([] { return !fbEmitPending; }, 5000);
+        const uint8_t clockPin = swap ? 6 : 5;
+        const uint8_t dataPin = swap ? 5 : 6;
+        assertOneBurst(trial.firstIrEvent, clockPin, dataPin);
+        CHECK(fbConfig.clockInvert == clkInv && fbConfig.dataInvert == datInv);
+        CHECK(contains("clk_inv=" + std::to_string(clkInv)));
+        CHECK(contains("dat_inv=" + std::to_string(datInv)));
+
+        const uint32_t baselineAt = trial.startAt + 1000U;
+        bool sawClockBaseline = false, sawDataBaseline = false;
+        for (size_t i = trial.firstGpioEvent; i < gpioEvents.size(); ++i) {
+          const GpioEvent &gpio = gpioEvents[i];
+          if ((uint32_t)(gpio.at - baselineAt) > 4U) continue;
+          if (gpio.pin == clockPin) {
+            CHECK(gpio.latch == (clkInv != 0)); sawClockBaseline = true;
+          } else if (gpio.pin == dataPin) {
+            CHECK(gpio.latch == (datInv != 0)); sawDataBaseline = true;
+          }
+        }
+        if (clkInv || datInv) CHECK(sawClockBaseline && sawDataBaseline);
+
+        bool clockLevel = clkInv != 0, dataLevel = datInv != 0;
+        for (size_t i = trial.firstIrEvent; i < irEvents.size(); ++i) {
+          const IrEvent &event = irEvents[i];
+          if (event.type == 1) clockLevel = !clkInv;
+          else if (event.type == 2) clockLevel = clkInv;
+          else if (event.type == 0) dataLevel = !datInv;
+          else dataLevel = datInv;
+          bool found = false, levelAtEvent = false;
+          for (size_t gpioIndex = 0; gpioIndex < gpioEvents.size(); ++gpioIndex) {
+            const GpioEvent &gpio = gpioEvents[gpioIndex];
+            if (gpio.pin == event.physicalPin &&
+                (uint32_t)(gpio.at - event.actual) <= 3U) {
+              found = true; levelAtEvent = gpio.latch;
+            }
+          }
+          CHECK(found);
+          CHECK(levelAtEvent == (event.physicalPin == clockPin
+                                     ? clockLevel : dataLevel));
+        }
+        CHECK((PORTD & (1U << 5)) == 0 && (PORTD & (1U << 6)) == 0);
+        expectSuccessfulResult(1, fbExpectedSequence);
+        waitReady();
+      }
+    }
+  }
+
+  // With no lead and phase=-4, the first data edge precedes startUs.
+  // Inversion must establish its baseline before that edge, not delay it.
+  const uint32_t earlyId = nextId++;
+  TrialObservation early = beginTrial(
+      "T " + std::to_string(earlyId) +
+      " W X 0 -- 0 0 0 -4 0 1000 80 1 1", 100000);
+  spinUntil([] { return !fbEmitPending; }, 5000);
+  CHECK(irEvents.size() > early.firstIrEvent);
+  CHECK(irEvents[early.firstIrEvent].type == 0);
+  CHECK(irEvents[early.firstIrEvent].requested == early.startAt + 1000U - 31U);
+  CHECK((uint32_t)(irEvents[early.firstIrEvent].actual -
+                   irEvents[early.firstIrEvent].requested) <= 16U);
+  CHECK((PORTD & ((1U << 5) | (1U << 6))) == 0);
+  expectSuccessfulResult(1, fbExpectedSequence);
+  waitReady();
+
+  TrialObservation silent = beginTrial(
+      command(nextId++, 'W', 'S', 1, "03", 1, 1), 100000);
+  advanceUs(2000);
+  CHECK(irEvents.size() == silent.firstIrEvent);
+  CHECK((PORTD & ((1U << 5) | (1U << 6))) == 0);
+  expectSuccessfulResult(1, fbExpectedSequence);
+  waitReady();
+}
+
+static void inversionParserRejections() {
+  const uint32_t badIds[] = {nextId++, nextId++, nextId++, nextId++};
+  const std::string base = "T ";
+  const std::string suffixes[] = {" 2 0", " 0 2", " 0", " 0 0 extra"};
+  for (size_t i = 0; i < 4; ++i) {
+    send(base + std::to_string(badIds[i]) + " W S 0 7E 0 0 0 -2 3 1000 03" +
+         suffixes[i] + "\n");
+    CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
+  }
 }
 
 static void successfulTrials() {
@@ -392,6 +488,7 @@ static void successfulTrials() {
   waitReady();
 
   TrialObservation r = beginTrial(command(nextId++, 'R', 'X', 0), 300000);
+  CHECK(fbConfig.clockInvert == 0 && fbConfig.dataInvert == 0);
   spinUntil([] { return !fbEmitPending; }, 5000);
   assertOneBurst(r.firstIrEvent, 5, 6);
   expectSuccessfulResult(2, 0xFFFF);
@@ -651,6 +748,8 @@ int main() {
   malformedResultCases();
   commandFailureCases();
   payloadAndEarlyEdgeCases();
+  inversionParserRejections();
+  opticalInversionTrials();
   cameraVisibleLedCheck();
 
   puts(BLACK_USE_NPN

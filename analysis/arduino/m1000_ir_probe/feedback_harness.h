@@ -30,6 +30,8 @@ struct FeedbackConfig {
   int8_t phaseEighths;
   uint8_t leadCells;
   uint16_t delayUs;
+  uint8_t clockInvert;    // optional physical level inversion (X only)
+  uint8_t dataInvert;
 };
 
 inline bool fbUnsigned(const char *text, uint32_t limit, uint32_t *out) {
@@ -87,6 +89,7 @@ inline bool fbHex(const char *text, uint8_t *dst, uint8_t *length) {
 
 // Commands (ASCII, LF terminated, max 95 chars):
 //   T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload
+//     [clk_inv dat_inv]
 //   C id
 //   R
 //   B id L|R
@@ -124,10 +127,10 @@ class FeedbackLineParser {
   bool discard_;
 
   FeedbackCommand parse(FeedbackConfig *cfg, uint32_t *id) {
-    char *parts[13];
+    char *parts[15];
     uint8_t count = 0;
     char *token = strtok(line_, " ");
-    while (token && count < 13) { parts[count++] = token; token = strtok(0, " "); }
+    while (token && count < 15) { parts[count++] = token; token = strtok(0, " "); }
     if (token || !count) return FB_BAD;
     uint32_t parsedId = 0;
     if (count == 1 && !strcmp(parts[0], "R")) return FB_RESYNC;
@@ -143,7 +146,7 @@ class FeedbackLineParser {
       if (!strcmp(parts[2], "R")) return FB_BLACK_RELEASE;
       return FB_BAD;
     }
-    if (count != 13 || strcmp(parts[0], "T") ||
+    if ((count != 13 && count != 15) || strcmp(parts[0], "T") ||
         !fbUnsigned(parts[1], 0xFFFFFFFFUL, &parsedId)) return FB_BAD;
     uint32_t value = 0;
     FeedbackConfig next = {};
@@ -171,6 +174,12 @@ class FeedbackLineParser {
     next.leadCells = (uint8_t)value;
     if (!fbUnsigned(parts[11], 60000, &value)) return FB_BAD;
     next.delayUs = (uint16_t)value;
+    if (count == 15) {
+      if (!fbUnsigned(parts[13], 1, &value)) return FB_BAD;
+      next.clockInvert = (uint8_t)value;
+      if (!fbUnsigned(parts[14], 1, &value)) return FB_BAD;
+      next.dataInvert = (uint8_t)value;
+    }
     *cfg = next; *id = parsedId; return FB_TRIAL;
   }
 };
