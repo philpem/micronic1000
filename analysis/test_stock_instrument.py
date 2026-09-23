@@ -162,7 +162,7 @@ def _run_rx(status4b, rxd):
         if m.pc == sym["rx_loop"]:
             break
     assert m.pc == sym["rx_loop"], "rx hook never halted"
-    return mem, sym, writes
+    return m.memory, sym, writes
 
 
 def test_rx_hook_patches_dispatcher_entry():

@@ -188,8 +188,12 @@ display during this check remains to be recorded. A 10-second Arduino log
 contains 41 free-running transmissions, 50 handheld bursts and no
 yellow event. The yellow marker reports a `Link_BlockRx` return, so
 its absence does not distinguish a missing receive-dispatch call from
-a receive call that did not return during the attempt. Next: use the
-ROM receive path and existing captures to separate those cases. Content
+a receive call that did not return during the attempt. A guarded
+one-shot receive-dispatch ROM image is prepared at
+`analysis/rom_exerciser/releases/stock-rx-entry/`; it shows `I ss rr`
+at `LinkRxDispatcher` entry. Next compare a silent Uno V24 attempt
+with the archived F7 reply under that ROM, with no further physical
+probing. Content
 inference remains suspended pending evidence of a decoded or accepted
 reply.
 The scope sampling audit qualified the edge-timing claims separately:

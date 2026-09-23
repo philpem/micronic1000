@@ -1,0 +1,18 @@
+{
+  "purpose": "One-shot receive-dispatch witness; display I ss rr and halt when LinkRxDispatcher is entered",
+  "source": "analysis/rom_exerciser/stock_instrument.py --hook rx",
+  "stock_rom_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "image_sha256": "5365bd1127656ae9f7e7f7a8cc7511dd9479f4abb7deee716c638f92a7630010",
+  "image_md5": "e4573f3e2cd9d925e7b64c2700baa7db",
+  "image_sum16": "DAA6",
+  "image_size": 32768,
+  "changed_bytes": 92,
+  "patch": {
+    "address": "ROM00:2FBD",
+    "expected_stock": "2A DC FD",
+    "replacement": "C3 C5 7E",
+    "hook_entry": "ROM00:7EC5"
+  },
+  "display": "I ss rr: ss is LINK_STATUS, rr is LINK_RXD if LINK_STATUS bit 0 was set, otherwise 00; hook halts",
+  "limitation": "A display may result from self-reception or unrelated link IRQ; compare silent and transmitted conditions."
+}

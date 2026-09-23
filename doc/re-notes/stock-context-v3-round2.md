@@ -152,3 +152,35 @@ was removed after this check; no amplifier trace was retained.
 A 10-second USB log during the check contains 41 free-running
 transmit reports, 50 handheld bursts and no yellow event. The owner
 has not yet reported what the handheld displayed during this check.
+
+## Next diagnostic: receive-dispatch witness
+
+The installed v3 ROM marks a `Link_BlockRx` **return** on yellow; no
+yellow pulse cannot show whether `LinkRxDispatcher` was entered. The
+existing `stock_instrument.py --hook rx` diagnostic instead patches
+`ROM00:2FBD` to halt at dispatcher entry and show `I ss rr` on the
+handheld LCD. `ss` is `LINK_STATUS` and `rr` is `LINK_RXD` when
+`LINK_STATUS` bit 0 says a byte was ready. It does not decode a frame
+or prove that the pending receive came from the Arduino.
+
+The guarded 32-KiB image is
+`analysis/rom_exerciser/releases/stock-rx-entry/micron1_stock_rx_entry.bin`:
+MD5 `e4573f3e2cd9d925e7b64c2700baa7db`, sum16 `DAA6`, SHA-256
+`5365bd1127656ae9f7e7f7a8cc7511dd9479f4abb7deee716c638f92a7630010`.
+The patch replaced the verified stock bytes `2A DC FD` at
+`ROM00:2FBD` with `C3 C5 7E`; all other changes are hook code in the
+guarded free ROM area. The targeted hook tests passed, including
+`LINK_STATUS` bit-0-set and bit-0-clear LCD output cases.
+
+Test sequence after the owner installs this ROM: first put the Uno in
+LISTEN_ONLY, then coldstart the handheld with no Arduino transmission.
+An `I ss rr` display at that stage is a receive-dispatch event without
+our return burst and must be recorded before further trials. If the
+normal menu appears, run one V24 Load/Run attempt with the Uno still
+silent to check for self-reception during handheld transmission. If
+that also leaves the normal error flow, upload the archived F7 Arduino
+reply, arm the USB logger and run one V24 Load/Run attempt. Report only
+an `I ss rr` prefix if it appears, plus the final error text otherwise.
+The hook halts when it displays, so a fresh coldstart is needed after
+each displayed result. The owner has confirmed optical arrival at the
+sensor amplifier and does not want further physical probing.

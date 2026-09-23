@@ -8477,3 +8477,16 @@ names renamed, 144 unplated functions plated)
   marker is a `Link_BlockRx` return witness, so no marker alone cannot
   distinguish no receive dispatch from a call that did not return
   during the attempt.
+
+## 2026-09-23 — prepared receive-dispatch ROM diagnostic
+
+* Built the existing guarded `stock_instrument.py --hook rx` ROM as
+  `analysis/rom_exerciser/releases/stock-rx-entry/micron1_stock_rx_entry.bin`.
+  It patches `ROM00:2FBD` from verified `2A DC FD` to `C3 C5 7E` and
+  halts with `I ss rr` when `LinkRxDispatcher` is entered. MD5
+  `e4573f3e2cd9d925e7b64c2700baa7db`, sum16 `DAA6`.
+* Fixed the targeted emulator test helper to inspect the emulator's
+  memory view; all three `rx_hook` tests then passed. This ROM has
+  not yet been installed. The proposed first test is silent Uno at
+  boot and during a V24 attempt, followed by one archived F7 reply
+  attempt if neither silent condition triggers the hook.
