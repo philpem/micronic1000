@@ -4,6 +4,21 @@ State: continuously updated as work progresses.
 
 > Historical session log: see [`session-log.md`](session-log.md).
 
+## IR review follow-up — 2026-09-23
+
+See the [rounds and planned-ROM review](reviews/ir-rounds-review-2026-09-23.md)
+before resuming the proposed receive-dispatch test. Review recommendation:
+revise the diagnostic before another burn. Its forced-coldstart option
+leaves a reset resume branch untouched; its reset-vector test uses inputs
+that already coldstart the stock ROM. Two receive-hook tests fail in
+`analysis/venv` after the recent memory-helper change. Repair those checks,
+add a diagnostic identity/display witness and prioritize raw stock RX
+return A/F after a dispatcher hit. F7's 34 carry-set markers remain useful
+evidence, but later controls failed and no return framing is confirmed.
+The owner has confirmed optical arrival at the internal amplifier; further
+internal probing and alignment sweeps are not requested. Uno remains at
+the last verified LISTEN_ONLY handover state.
+
 ## IR instrumentation and connector handoff — 2026-09-22
 
 [PR #21](https://github.com/philpem/micronic1000/pull/21) is merged and contains the fixes

@@ -5,9 +5,18 @@ Status: **Content inference suspended.** The original F7 build produced
 that binary later produced zero markers. The owner subsequently found
 the handheld set to PLINTH rather than V24 ADAPTOR and cannot date
 the change; the selected port for earlier negative runs is unverified.
-The optical alignment is also owner-reported as critical. Completed
+The owner subsequently confirmed optical arrival by probing the
+handheld sensor amplifier and revised the earlier alignment concern.
+Completed
 attempts ended with `8000`, "Plinth not connected", then `8040`, "line
 failure". No valid frame or successful session has been demonstrated.
+
+**Review handover:** the [results and next-test review](../research/reviews/ir-rounds-review-2026-09-23.md)
+recommends revising the prepared ROM before burning it. The forced
+coldstart patch leaves a reset-time resume branch untouched, its
+reset-vector test also passes on stock firmware, and two receive-hook
+tests fail in the repository emulator environment. The diagnostic
+still needs an explicit installed-image/display witness for negatives.
 
 The [round-one worksheet](stock-context-v3-round1.md) contains the
 ROM identity, wiring and earlier trials. Scope D0/D1 observed handheld
@@ -174,12 +183,16 @@ byte-verified ROM warmstart jumps to cold initialization at
 `ROM00:01A6`: `ROM00:01A3` changes `CA 4D 02` to `C3 A6 01`, and
 `ROM00:3812` changes `C3 4D 02` to `C3 A6 01`. The former bypasses the
 battery-RAM `55h` warmstart gate; the latter redirects a direct ROM
-restart helper. Six targeted emulator tests pass: the reset vector
+restart helper. Six targeted emulator tests passed in the temporary
+PyPI emulator environment: the reset vector
 and two warmstart routes reach `ROM00:01A6`. The hook's LCD cases for
 `LINK_STATUS` bit 0 set and clear work. This forces those ROM routes
 through cold initialization. An uncharacterized RAM-resident restart
 route has not been tested on hardware, so do not infer that every
 possible wake mechanism is cold.
+The subsequent review reproduced a bypass via `ROM00:0172` and
+identified the weak reset-vector test and project-environment failures;
+see the linked review before treating this as a release acceptance result.
 
 Test sequence after the owner installs this ROM: first put the Uno in
 LISTEN_ONLY, then coldstart the handheld with no Arduino transmission.

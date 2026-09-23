@@ -293,7 +293,7 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   33.00–33.04 ms after the last handheld D1 rise. The unusual yellow
   low is about 69.36 ms after its segment trigger; it is preserved as
   an outlier, not assigned to a decoded frame. The owner reported
-  `8000` then `8040`, same as before. This establishes a reproducible
+  `8000` then `8040`, same as before. This records a repeated
   `Link_BlockRx` carry-set return under sparse pacing, without evidence
   of a valid frame or successful session. Raw scope file:
   `analysis/captures/stock-v3-r1-f7-sparse33-handheld-keysight.csv.gz`.

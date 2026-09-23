@@ -123,5 +123,6 @@ nav:
           - Coverage pass history: research/gap-analysis-history.md
           - IR instrumentation audit: research/reviews/ir-protocol-audit-2026-09-22.md
           - Feedback-v3 and Uno real-time audit: research/reviews/feedback-v3-audit-2026-09-23.md
+          - IR bench rounds and planned-ROM review: research/reviews/ir-rounds-review-2026-09-23.md
           - Barcode OS-integration review: research/reviews/barcode-os-integration.md
           - Quality and agents review: research/reviews/quality-and-agents.md

@@ -8501,3 +8501,21 @@ names renamed, 144 unplated functions plated)
   `ram:F81C` warmstart flag set to `55h`. The battery-RAM/NMI wake path
   has not yet been verified on hardware. The next physical boot should
   confirm the `TESTING` screen before interpreting the receive test.
+
+## 2026-09-23 — review of feedback rounds and proposed diagnostic
+
+* Saved the review in `research/reviews/ir-rounds-review-2026-09-23.md`.
+  Recounted F7 and C0f logs/CSV: both have 34 output segments with
+  93 clock rises; yellow appears in 34 and zero segments respectively.
+* Reproduced a forced-coldstart coverage gap: with `BOOTKEYS=03h`,
+  stock and patched images both reach `ROM00:17A5`. With `BOOTKEYS=00h`,
+  both already reach cold entry, so the current reset test does not
+  distinguish them. With `BOOTKEYS=01h`, the patch does change the
+  warm branch to cold entry. These are control-flow tests, not full boots.
+* Project-env tests: 29 passed, 2 failed across stock-v3 and stock-hook
+  suites. The new `_run_rx` return of `m.memory` conflicts with the
+  repository emulator's callback-backed memory; temporary PyPI-emulator
+  success is not equivalent validation. No firmware changes were made.
+* Recommended an explicit diagnostic boot witness, raw receive return
+  A/F after a dispatcher hit, matched silent/F7 trials and archived F7
+  replay artifacts. No hardware interaction or new test was initiated.
