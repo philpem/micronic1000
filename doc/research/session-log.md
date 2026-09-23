@@ -7832,3 +7832,15 @@ names renamed, 144 unplated functions plated)
   polarity, so a `pol=1` trial alone would not answer it. Next, restore
   deliberate current limiting and compare D5/D6 to the receiver-amplifier
   waveform (and downstream logic node if accessible) on one scope capture.
+
+### 2026-09-23 — Visual-command rejection triage
+
+* Owner reported three idle `ERROR id=26 reason=command` lines when trying
+  `V 1`, and observed lowercase `r` differs from uppercase `R`. Current
+  parser source and host test confirm command letters are case-sensitive:
+  exact ASCII `V 1` plus LF works from idle; `v 1` and `r` are rejected.
+  CRLF is accepted, while CR alone cannot produce these errors. `id=26`
+  is the last accepted trial ID in the error prefix, not the visual ID.
+* The exact bytes sent in the owner's failing attempt remain unconfirmed.
+  Ask for the terminal and line-ending setting if uppercase `V 1` followed
+  by LF still fails. No new ROM or Arduino build was made.
