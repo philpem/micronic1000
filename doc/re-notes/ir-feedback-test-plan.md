@@ -84,6 +84,11 @@ silent/stimulated pair. That pair (IDs 9/10) also returned identical errors:
 stock RX `A=EEh`, `F=6Dh`, wrapper error 7. Because error records do not
 preserve partial bytes, the next controlled comparison is mode G's
 receive-pending gate with the same candidate and its own silent control.
+G/S and G/X trials 11/12 with `swap=1` both timed out waiting for
+`LINK_STATUS` bit 4. The next comparison changes only to `swap=0`, again
+with G silent/stimulated controls, because earlier matched experiments
+showed a strong software-role-dependent reaction without identifying a
+physical LED or accepted frame.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

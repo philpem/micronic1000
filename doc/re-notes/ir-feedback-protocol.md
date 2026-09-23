@@ -13,8 +13,10 @@ expected silent control. Both W stimuli retained the bit-6 timeout; W does
 not attempt RX. Forced-RX silent/stimulated trials 9/10 both returned raw
 `A=EEh`, `F=6Dh`, wrapper error 7. The stock RX byte-ready wait can return
 that error after its 1785-count poll; the record hides partial bytes on
-error. **OPEN:** optical delivery, physical LED roles and receive framing
-remain unproved. The one-burn ROM and USB sketch stay in place.
+error. Matched G trials 11/12 with `swap=1` both timed out waiting for
+`LINK_STATUS` bit 4 (error 8). **OPEN:** optical delivery, physical LED roles
+and receive framing remain unproved. The one-burn ROM and USB sketch stay
+in place.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -25,38 +27,39 @@ compare physical edges in CSV rather than software interval length.
    is needed for the next comparison.
 2. Scope **Uno header D5 and D6** with ground on Uno GND. The owner confirms
    trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
-   mapping again if probes have moved. Keep `swap=1`: D6 is the proposed
-   clock and D5 the proposed data. Trigger on **D5 data rising** with enough
-   pre-trigger for the five earlier D6 lead clocks. Capture at least 2 ms
+   mapping again if probes have moved. For `swap=0`, D5 is the proposed
+   clock and D6 the proposed data. Trigger on **D6 data rising** with enough
+   pre-trigger for the five earlier D5 lead clocks. Capture at least 2 ms
    around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
    2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
 3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the
    receive-pending-gated **silent control first**, wait for `RESULT` and a
    fresh `READY`, then the matched stimulus, keeping every other setting
-   and optical placement fixed:
+   and optical placement fixed. This changes only the proposed role
+   assignment from the ID-11/12 pair:
 
    ```text
-   T 11 G S 1 7E 1 0 0 -2 5 7000 -
-   T 12 G X 1 7E 1 0 0 -2 5 7000 -
+   T 13 G S 0 7E 1 0 0 -2 5 7000 -
+   T 14 G X 0 7E 1 0 0 -2 5 7000 -
    ```
 
-   IDs must strictly increase: if 11 or 12 was already accepted, substitute
+   IDs must strictly increase: if 13 or 14 was already accepted, substitute
    the next unused IDs. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 10 had host ID 10 but ROM sequence 12. Mode G
+   independent counter; trial 12 had host ID 12 but ROM sequence 14. Mode G
    arms the idle receiver and waits up to about 100 ms for `LINK_STATUS`
    bit 4 before invoking stock RX. Compare bit-4 condition, error/status,
    and raw RX A/F/DE/preview with the silent G control. An error or absent
    preview does not establish that no optical bits reached the controller.
-4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 3
-   --data-bit 2` if pod D3 is physically on Uno D6 and D2 on Uno D5; adjust
+4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 2
+   --data-bit 3` if pod D2 is physically on Uno D5 and D3 on Uno D6; adjust
    those two arguments to the actual pod wiring. Check 13 proposed clock and
    six data pulses, sampled candidate `7E`, every clock rise interval within
    8 us of 122 us, clock high within 8 us of 61 us, data high within 8 us of
    76 us, and `emit_late_max` below about 15 us. Compare the G/X result
-   with its G/S control. A change in the pending condition is evidence of a
-   controller-state response, not by itself accepted framing. If both G
-   results match, review the controls before varying one stimulus axis
-   (physical role, complete frame content, polarity or phase).
+   with its G/S control and the prior `swap=1` G pair. A change in the
+   pending condition is evidence of a controller-state response, not by
+   itself accepted framing. If both G results match, review the controls
+   before varying one new stimulus axis (payload, polarity or phase).
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -817,12 +820,47 @@ trial-10 burst near START+7 ms is therefore **LIKELY** inside the receive
 window, but exact RX entry/return times were not instrumented. Do not
 misidentify this `EEh` as the W witness's `LINK_STATUS` bit-6 timeout.
 
-The next test uses mode G's separate receive-pending gate with a matched
-silent/stimulated pair (IDs 11/12 in the current handoff). That can reveal
-whether this same optical candidate changes controller pending status before
-stock byte reads. An unchanged result would still leave flag/role/optical
-delivery questions open; the current candidate has only an opening `7Eh`
-with no payload or closing flag.
+Mode G's separate receive-pending gate was tested next as IDs 11/12 below.
+The current candidate has only an opening `7Eh` with no payload or closing
+flag, so an unchanged RX result does not reject a complete-frame hypothesis.
+
+## Receive-pending-gated silent control and stimulus, IDs 11–12 — 2026-09-23
+
+**CONFIRMED (owner serial report):** the `swap=1` G/S and G/X pair kept
+the same candidate and 7 ms delay. Both 30-byte result records have valid
+zero-sum checksums:
+
+```text
+SYNC
+BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command
+READY
+TRIAL id=11 mode=G kind=S swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=11 rom_seq=13 mode=4 err=8 ack_us=2871452436 release_us=2872152440 start_us=2872232476 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A01040D0008A08080FFFF000000000000000000000000000022002304
+READY
+TRIAL id=12 mode=G kind=X swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=12 rom_seq=14 mode=4 err=8 ack_us=2878292156 release_us=2878992156 start_us=2879072192 emit_start_us=2879079000 emit_end_us=2879081088 emit_late_max=3 raw=A55A01040E0008E0C0C0FFFF000000000000000000000000000022002343
+READY
+```
+
+The silent control's probe/before/after status is A0h/80h/80h; the
+stimulated trial's is E0h/C0h/C0h. Each `before` sample precedes its own
+optical emission, and each `after` equals its `before`: these between-trial
+baseline differences are **not** an observed response to trial 12's burst.
+Both trials timed out waiting up to about 100 ms for `LINK_STATUS` bit 4
+to become set (ROM wrapper error 8), so neither called `Link_BlockRx`.
+The W-only poll fields are FFh/FFh, TX arm field zero, and RX A/F/count/
+preview fields zero because RX was not run. Trial 12 reports 3 us maximum
+software event lateness. No trial-12 scope capture was supplied; the Uno
+output settings match the independently scoped trial-8 swapped burst.
+
+**OPEN:** neither G trial demonstrates controller receive-pending status.
+This does not establish the optical LED roles or whether `7Eh` is the
+return flag. Earlier controlled experiments found a strong response with
+the *unswapped* software-role assignment and little with the swapped one
+(`doc/re-notes/ir-wire-protocol.md`, conn10); that response was a timing/
+retry effect, not decoded RX data. Therefore the next matched G pair changes
+only `swap` to 0 (IDs 13/14 in the current handoff), keeping candidate,
+delay, optical placement and mode fixed.
 
 ## Validation and limits
 
@@ -839,8 +877,9 @@ The direct-TTL silent probe and W witness passed the diagnostic handshake.
 Trial 5 identified the emitter timing defect; trials 6 and 8 verified
 correctly timed digital stimuli for both proposed channel assignments, but
 both W results retained bit-6 timeout. Direct RX controls 9/10 returned the
-same `EEh` byte-wait error. Receive-pending-gated G controls are next;
-actual IR reception remains unproven. `7Eh` and the physical
+same `EEh` byte-wait error. Swapped-role G controls 11/12 both timed out
+waiting for `LINK_STATUS` bit 4; the unswapped-role G pair is next.
+Actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make
 this a diagnostic environment, not an exact replay of the running OS.

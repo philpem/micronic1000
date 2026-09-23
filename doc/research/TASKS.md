@@ -83,10 +83,15 @@ call RX. Forced-RX matched trials 9/10 returned identical valid error
 records: `A=EEh`, `F=6Dh` (carry), wrapper error 7, no saved DE/preview.
 The stock RX byte-ready loop has a roughly 30.0 ms bound and likely overlaps
 the trial-10 burst near START+7 ms; `EEh` can follow a first or later byte
-timeout, while the wrapper hides partial bytes on error. Next: matched
-receive-pending-gated G/S and G/X pair IDs 11/12 at the top of the
-[canonical interface](../re-notes/ir-feedback-protocol.md). R preserves
-the last accepted host ID.
+timeout, while the wrapper hides partial bytes on error. Matched
+receive-pending-gated G/S and G/X pair IDs 11/12 also returned identical
+error 8 (`LINK_STATUS` bit-4 pending timeout); neither called RX. Their
+different probe/before bytes were sampled before optical emission and do
+not demonstrate a stimulus response. Next: G/S and G/X with `swap=0`, IDs
+13/14, at the top of the
+[canonical interface](../re-notes/ir-feedback-protocol.md). Earlier conn10
+evidence favours testing the unswapped software role; it did not prove
+physical LED mapping or framing. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

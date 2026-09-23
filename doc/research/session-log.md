@@ -7650,3 +7650,18 @@ names renamed, 144 unplated functions plated)
 * Next: G/S then G/X IDs 11/12, preserving the same candidate and role,
   to test the separate receive-pending gate. Physical optical delivery,
   LED role and flag identity remain open; no EPROM or Uno change required.
+
+### 2026-09-23 — Receive-pending-gated trials 11 and 12
+
+* CONFIRMED (owner serial report): G/S and G/X with `swap=1`, candidate
+  opening 7Eh and 7 ms delay, both gave valid 30-byte results with wrapper
+  error 8: `LINK_STATUS` bit-4 pending did not appear in the bounded ~100 ms
+  wait, so stock RX was not called. The silent control emitted nothing;
+  stimulated trial reported maximum scheduling lateness 3 us. No new scope
+  capture supplied.
+* Trial 11 probe/before/after was A0h/80h/80h; trial 12 was E0h/C0h/C0h.
+  The before/probe samples precede stimulus; after equals before in each
+  trial. These differences do not demonstrate an optical response.
+* Next: matched G/S and G/X pair IDs 13/14 with only `swap=0` changed.
+  Conn10's earlier software-role-dependent retry reaction makes this the
+  sharper next axis. It does not establish optical LED mapping or framing.
