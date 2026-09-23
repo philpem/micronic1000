@@ -7977,3 +7977,19 @@ names renamed, 144 unplated functions plated)
   Uno R3 compile (12,088 flash bytes, 861 static SRAM bytes), strict docs
   build and rendered-doc checks. The release manifest reproduces the image
   from the verified stock ROM; the binary remains a local ignored artifact.
+
+### 2026-09-23 — First attempted v2 bench handshake
+
+* Owner reports ROM00 replacement and an LCD showing `S003F` after the
+  swap. This is consistent with the last v1 sequence 63 but does not prove
+  that v2 cold boot ran: v2 clears its private counter to zero at entry and
+  initially renders `IR FEEDBACK V2 W..K`. Full LCD state and reset history
+  are pending owner confirmation.
+* Uploaded and verified the matching Elegoo Uno R3 sketch on `/dev/ttyACM0`;
+  its boot output identified `FEEDBACK v1/v2` and direct-TTL black drive.
+  A single silent P command (`T 1 P S 0 -- 0 0 0 -2 0 0 -`) reached
+  `TRIAL` but timed out waiting for yellow ACK after black was commanded.
+  No handheld result, status sample or IR burst was obtained. The timestamped
+  serial log is `analysis/captures/feedback-v2-probe-1.jsonl`. Uno `R` then
+  restored READY. Do not infer v2 boot or a ROM defect from this timeout;
+  confirm the handheld banner and connector continuity before a repeat.

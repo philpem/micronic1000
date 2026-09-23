@@ -49,7 +49,11 @@ See the [v2 bench procedure](../re-notes/ir-feedback-protocol.md#feedback-v2-rec
 the command sheet at `analysis/trials/feedback-v2-state-1-13.txt`, and the
 release manifest at `analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.json`.
 The image MD5 is `a9966a607f672d75031113528b7c6ea3`; byte sums are
-`903E`/`37903E`. No v2 physical result exists yet. The question is whether
+`903E`/`37903E`. The first attempted silent P handshake timed out waiting
+for yellow ACK, before any ROM result or IR emission. Confirm the full LCD
+boot banner/reset state and connector continuity before repeating it; see
+`analysis/captures/feedback-v2-probe-1.jsonl`. No v2 ROM result exists yet.
+The question is whether
 `LINK_STATUS` bit 4 differs across high/low/watcher-like `LINK_CTRL`
 bits-6/7 drive under matched IR stimuli. Even a positive correlation would
 not identify optical LED roles or a complete IR frame by itself.
