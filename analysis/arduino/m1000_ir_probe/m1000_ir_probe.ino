@@ -232,6 +232,15 @@
 #ifndef STOCK_CONTENT_IDX
 #define STOCK_CONTENT_IDX 2    // type-2 control ack
 #endif
+// Stock optical framing: -1 retains the historical flag-dependent choice;
+// 0 disables stuffing, 1 inserts 0 after five 1s, 2 inserts 1 after five 0s
+// on the emitted wire, after the data-polarity axis is applied.
+#ifndef STOCK_STUFFING_MODE
+#define STOCK_STUFFING_MODE -1
+#endif
+#ifndef STOCK_CLOSE_FLAG
+#define STOCK_CLOSE_FLAG 0
+#endif
 #ifndef STOCK_REPLY_DELAY_US
 #define STOCK_REPLY_DELAY_US 4000
 #endif
@@ -249,8 +258,15 @@
 #if STOCK_FLAG_IDX < 0 || STOCK_FLAG_IDX > 1 || \
     STOCK_PHASE_IDX < 0 || STOCK_PHASE_IDX > 4 || \
     STOCK_POL_IDX < 0 || STOCK_POL_IDX > 1 || \
-    STOCK_CONTENT_IDX < 0 || STOCK_CONTENT_IDX > 2
+    STOCK_CONTENT_IDX < 0 || STOCK_CONTENT_IDX > 3
 #error "STOCK candidate indices out of range"
+#endif
+#if STOCK_STUFFING_MODE < -1 || STOCK_STUFFING_MODE > 2 || \
+    (STOCK_CLOSE_FLAG != 0 && STOCK_CLOSE_FLAG != 1)
+#error "STOCK_STUFFING_MODE must be -1..2; STOCK_CLOSE_FLAG must be 0 or 1"
+#endif
+#if STOCK_FIXED_CANDIDATE == 0 && STOCK_CONTENT_IDX == 3
+#error "STOCK_CONTENT_IDX=3 requires STOCK_FIXED_CANDIDATE=1"
 #endif
 #if STOCK_REPLY_DELAY_US < 500 || STOCK_REPLY_DELAY_US > 60000
 #error "STOCK_REPLY_DELAY_US must be 500..60000"
@@ -578,7 +594,7 @@ const int8_t  RX_N_PHASE = 5;
 const int8_t  rxPhaseTab[RX_N_PHASE] = { -4, -2, 0, 2, 4 };  // eighths of a cell
 const uint8_t RX_N_POL = 2;            // data polarity: normal / complemented
 const uint8_t RX_N_CONTENT = 3;        // flag / flag+03h / type-2 ack (open)
-const uint8_t rxContentMap[RX_N_CONTENT] = { 0, 1, 7 };
+const uint8_t rxContentMap[RX_N_CONTENT + 1] = { 0, 1, 7, 9 };
 uint8_t rxFlagIdx = 0, rxPhaseIdx = 1, rxPolIdx = 0, rxContentIdx = 1;
 #endif
 
@@ -593,18 +609,34 @@ void putFlag() {
   for (int8_t i = 7; i >= 0; i--) putBit((f >> i) & 1);
 }
 
-// Stuffing sense follows the flag sense.  The Micronic's own (inverted) HDLC
-// uses flag 81h and inserts a 1 after five 0s; normal HDLC uses flag 7Eh and
-// inserts a 0 after five 1s. A candidate 7Eh frame uses ZERO-stuffing;
-// acceptance by the return receiver remains unconfirmed. `zeroRun` counts
-// counted (0s in the inverted sense, 1s in the normal sense).
-bool stuffNormal = false;   // true = normal HDLC: insert a 0 after five 1s
+// Count the selected data-bit run only; flags are always sent raw. The stock
+// setting can override the historical flag-dependent convention.
+uint8_t stuffingMode = 2;
+#if RX_SWEEP || FREE_TX || RX_NARROW
+void selectStockStuffing() {
+#if STOCK_STUFFING_MODE == -1
+  stuffingMode = rxFlagTab[rxFlagIdx] == 0x7E ? 1 : 2;
+#else
+  stuffingMode = STOCK_STUFFING_MODE;
+  if (rxPolIdx && stuffingMode) stuffingMode = 3 - stuffingMode;
+#endif
+}
+uint8_t wireStuffingMode() {
+  return rxPolIdx && stuffingMode ? 3 - stuffingMode : stuffingMode;
+}
+uint8_t wireFlagByte() {
+  return rxFlagTab[rxFlagIdx] ^ (rxPolIdx ? 0xFF : 0);
+}
+#endif
 void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
   for (int8_t i = 7; i >= 0; i--) {
-    if (*zeroRun == 5) { putBit(stuffNormal ? 0 : 1); *zeroRun = 0; }
+    if (stuffingMode && *zeroRun == 5) {
+      putBit(stuffingMode == 1 ? 0 : 1); *zeroRun = 0;
+    }
     uint8_t b = (v >> i) & 1;
     putBit(b);
-    *zeroRun = stuffNormal ? (b ? *zeroRun + 1 : 0) : (b ? 0 : *zeroRun + 1);
+    if (stuffingMode)
+      *zeroRun = (stuffingMode == 1 ? b : !b) ? *zeroRun + 1 : 0;
   }
 }
 
@@ -613,8 +645,8 @@ void putStuffedByte(uint8_t v, uint8_t *zeroRun) {
 // this bit, the first one of the closing flag is consumed as the supposed
 // stuff bit and the receiver sees a malformed frame.
 void finishStuffing(uint8_t *zeroRun) {
-  if (*zeroRun == 5) {
-    putBit(stuffNormal ? 0 : 1);
+  if (stuffingMode && *zeroRun == 5) {
+    putBit(stuffingMode == 1 ? 0 : 1);
     *zeroRun = 0;
   }
 }
@@ -770,6 +802,7 @@ const char *contentName(uint8_t c) {
     case 5: return "flag+frame+flag";
     case 6: return "flag+03h+frame+flag";
     case 7: return "type-2 control ack";
+    case 9: return "00 00 FF FF 96 run probe";
     default: return "flag x4 (fill)";
   }
 }
@@ -860,8 +893,18 @@ void buildReply(uint8_t content) {
       for (uint8_t i = 0; i < sizeof(ack); i++) putStuffedByte(ack[i], &zeroRun);
       break;
     }
+    case 9: { const uint8_t p[] = { 0x00, 0x00, 0xFF, 0xFF, 0x96 };
+      recordReplyPayload(content, p, sizeof(p));
+      putFlag();
+      for (uint8_t i = 0; i < sizeof(p); i++) putStuffedByte(p[i], &zeroRun);
+      break;
+    }
     default: for (uint8_t i = 0; i < 4; i++) putFlag(); break;
   }
+#if (FREE_TX || RX_NARROW || RX_SWEEP) && STOCK_CLOSE_FLAG
+  if (content <= 4 || content == 7 || content == 9)
+    putClosingFlag(&zeroRun);
+#endif
 }
 
 // Clock modes.  The first version of this axis wasted itself: "data only" has
@@ -1137,7 +1180,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
     uint32_t first = txFirstEventTime(startUs, pre);
     uint32_t baselineAt = txTimeDiff(first, startUs) < 0 ? first - 16U : startUs;
     waitUntil(baselineAt);
-    clkLow(); datLow();
+    datLow(); clkLow();
   }
 
   int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
@@ -1675,13 +1718,17 @@ void freeTxTick() {
   nextTx = now + (unsigned long)FREE_TX_PERIOD_MS * 1000UL;
   sweepInvert = rxPolIdx;                       // data polarity axis
   txPhaseEighths = rxPhaseTab[rxPhaseIdx];      // data-to-clock phase axis
-  stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E); // 7E -> normal zero-stuffing
+  selectStockStuffing();
   buildReply(rxContentMap[rxContentIdx]);       // content axis (flag via putFlag)
   sendFrame(now + 1000);
   Serial.print(F("# TX flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" wire_flag=")); Serial.print(wireFlagByte(), HEX);
   Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  Serial.print(F(" stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff=")); Serial.print(wireStuffingMode());
+  Serial.print(F(" close=")); Serial.print(STOCK_CLOSE_FLAG);
   printReplyPayload();
   Serial.print(F(" tx_start_us=")); Serial.print(now + 1000UL);
   Serial.print(F(" swap=")); Serial.print(sweepSwap);
@@ -1717,9 +1764,13 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
 #elif RX_SWEEP || RX_NARROW
   Serial.print(F("  [flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
+  Serial.print(F(" wire_flag=")); Serial.print(wireFlagByte(), HEX);
   Serial.print(F(" phase(data-clock)=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
+  Serial.print(F(" stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff=")); Serial.print(wireStuffingMode());
+  Serial.print(F(" close=")); Serial.print(STOCK_CLOSE_FLAG);
   printReplyPayload();
   Serial.print(F(" delay_req="));
 #if STOCK_FIXED_CANDIDATE && RX_NARROW
@@ -1882,6 +1933,14 @@ void setup() {
   Serial.print(F("STOCK_TX swap=")); Serial.print(sweepSwap);
   Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
   Serial.print(F(" dat_inv=")); Serial.println(txDataLevelInvert);
+  Serial.print(F("STOCK_FRAMING stuff_cfg=")); Serial.print(STOCK_STUFFING_MODE);
+  Serial.print(F(" wire_stuff="));
+#if STOCK_STUFFING_MODE < 0
+  Serial.print(F("auto"));
+#else
+  Serial.print(STOCK_STUFFING_MODE);
+#endif
+  Serial.print(F(" close=")); Serial.println(STOCK_CLOSE_FLAG);
 #if STOCK_FIXED_CANDIDATE
   Serial.print(F("STOCK_FIXED flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
   Serial.print(F(" phase=")); Serial.print(rxPhaseTab[rxPhaseIdx]);
@@ -2038,7 +2097,7 @@ void loop() {
     // and the mapped buildReply() content (the flag sense lives in putFlag()).
     sweepInvert = rxPolIdx;
     txPhaseEighths = rxPhaseTab[rxPhaseIdx];
-    stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E);   // 7E -> zero-stuffing
+    selectStockStuffing();
     buildReply(rxContentMap[rxContentIdx]);
 #if STOCK_CONTEXT_EVENTS
     stockLastReplyStartUs = fire;

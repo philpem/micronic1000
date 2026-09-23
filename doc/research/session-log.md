@@ -8078,3 +8078,28 @@ names renamed, 144 unplated functions plated)
   `bf518ce09083d420332fd02748f6bbef`, additive byte sums `076F`/`38076F`.
   Supersedes `37D9B7`; no revised image has been burned or hardware-tested
   during this review.
+
+
+## 2026-09-23 — Separate receive framing hypotheses and sampling timing
+
+* Removed flag-dependent stuffing as a compulsory stock-build behavior.
+  Explicit modes select no stuffing, zero insertion after five ones, or
+  one insertion after five zeros in the emitted serialized stream; automatic
+  mode retains historical replay. Reports distinguish configured and emitted
+  flag, stuffing, and closing-flag choices.
+* Added fixed diagnostic content `00 00 FF FF 96`, exercising long runs in
+  both senses and an asymmetric byte. It is not asserted to be valid
+  Commstar content. The original 60-row sweep remains unchanged.
+* Reviewed pulse timing: phase -2/8 gives 30/46-us setup/hold around the
+  first logical clock edge; +2/8 gives 31/45 us around the second. Physical
+  inversion exchanges edge directions. Dark-idle boundary transitions in
+  inverted-clock trials remain explicitly documented acquisition confounds.
+* Updated the operator sequence, current task handoff and v3 audit. No ROM
+  bytes, Ghidra annotations or hardware firmware were changed by this pass;
+  v3 revision 2 remains the next image to burn. Hardware acceptance remains
+  untested; byte-reader carry is not full Commstar validation.
+* Validation: all 70 focused ROM/logger/emitter/feedback tests passed; strict
+  documentation build and rendered checks passed. Ghidra was saved unchanged.
+* Isolated event-enabled Uno builds passed: FREE_TX 9,708/918 bytes
+  flash/SRAM, RX_NARROW 9,616/909. ELF banners verified; stale shared-cache
+  output was discarded. Neither verification image was uploaded.

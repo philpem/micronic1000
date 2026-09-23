@@ -230,8 +230,38 @@ These additional build flags allow exact replay without changing ROM:
 | `STOCK_FLAG_IDX` | 0 = `81h`, 1 = `7Eh` |
 | `STOCK_PHASE_IDX` | 0..4 = -4, -2, 0, 2, 4 eighths of a cell |
 | `STOCK_POL_IDX` | 0 or 1; complements serialized bits, not clock electrical level |
-| `STOCK_CONTENT_IDX` | 0 = flag only, 1 = flag + `03h`, 2 = open type-2 control acknowledgement |
+| `STOCK_CONTENT_IDX` | 0 = flag only, 1 = flag + `03h`, 2 = type-2 control acknowledgement, 3 = diagnostic `00 00 FF FF 96` (fixed mode only) |
+| `STOCK_STUFFING_MODE` | -1 = historical flag-dependent choice (default); 0 = off; 1 = insert zero after five ones; 2 = insert one after five zeros; explicit modes describe emitted serialized bits |
+| `STOCK_CLOSE_FLAG` | 0 = open (default), 1 = append a raw closing flag after terminal stuffing |
 | `STOCK_REPLY_DELAY_US` | 500..60000; fixed RX_NARROW delay from last observed outbound clock edge |
+
+For independent framing tests, always specify `STOCK_STUFFING_MODE=0`, `1`
+or `2`: the compatibility default `-1` couples stuffing to flag choice.
+Explicit stuffing mode describes the emitted serialized stream after `pol`;
+the builder compensates its internal run counter for complement. `pol=1`
+complements the emitted flag too (`7E` becomes `81`); the configured flag
+alone is not the emitted value. Content 3 exercises both run senses across
+byte boundaries and includes an asymmetric byte; it is a diagnostic pattern,
+not a valid Commstar message. It is excluded from the legacy 60-row sweep.
+
+Start with phase index 1 (-2/8): data pulses lead the first logical clock
+edge by 30 us and hold for 46 us. To test the second logical clock edge,
+use index 3 (+2/8), with 31-us setup and 45-us hold. Clock inversion swaps
+physical rising/falling meanings; it does not shift the events. These are
+nominal software timings, not established handheld requirements. Inverted
+clock drive adds boundary transitions when leaving/returning to dark idle;
+these are not payload clocks and can affect acquisition. Phase 0
+has no setup margin at the first edge. See the
+[staged discrimination plan](../../../doc/re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention)
+for controls and limits.
+
+For example, append these flags to the FREE_TX build above for one fixed,
+open diagnostic candidate (repeat with stuffing 0 and 2, changing nothing
+else):
+
+```text
+-DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_FLAG_IDX=1 -DSTOCK_PHASE_IDX=1 -DSTOCK_POL_IDX=0 -DSTOCK_CONTENT_IDX=3 -DSTOCK_STUFFING_MODE=1 -DSTOCK_CLOSE_FLAG=0 -DSTOCK_TX_SWAP=0 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_DATA_INVERT=0
+```
 
 Candidate indices and reply delay apply with `STOCK_FIXED_CANDIDATE=1`.
 Test both physical role assignments and record actual drive levels; defaults

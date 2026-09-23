@@ -48,6 +48,31 @@ optical reception on the handheld.
    verification. The 160-bit input buffer is suitable for the short initial
    exchange; it is not a lossless full-session capture.
 
+## Follow-up: independent framing and setup/hold
+
+The earlier plan coupled stuffing to flag value, so its results could not
+identify those independently. Stock builds now expose explicit stuffing and
+closing-flag controls, plus a fixed diagnostic payload `00 00 FF FF 96`.
+The historical automatic rule remains available for exact replay; it is not
+an independent experiment. The default sweep still has its original 60 rows.
+
+The pulse emitter also needs two distinct timing candidates: phase -2/8
+provides setup/hold about the first logical clock edge, while +2/8 provides
+it about the second. Electrical inversion exchanges rising/falling without
+changing those logical timings. Phase zero is not a safe-margin baseline.
+See the [current test plan](../../re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention).
+Inverted-clock builds also have extra boundary transitions when leaving and
+returning to the dark idle state. These must not be mistaken for data clocks
+or excluded as a cause of acquisition failure. No new receive convention is
+confirmed by these software changes. The expanded focused suite passes 70
+tests, including explicit stuffing/closing combinations, terminal-five-bit
+runs and emitter timing across role/level assignments. Isolated event-enabled
+Uno builds pass: fixed FREE_TX uses 9,708 bytes flash / 918 bytes SRAM;
+fixed RX_NARROW uses 9,616 / 909. ELF strings verify the intended stock mode
+and framing/event banners; an earlier shared-cache size was discarded.
+Build artifacts are retained under `.cache/ir-arduino/build-v3-framing-free`
+and `build-v3-framing-narrow`; these are verification builds, not uploads.
+
 ## Arduino Uno real-time audit
 
 The installed Arduino AVR core is 1.8.8, targeting ATmega328P at 16 MHz.

@@ -76,6 +76,21 @@ def test_stock_capture_and_32_bit_width():
                        text=True, capture_output=True)
 
 
+@pytest.mark.parametrize("stuffing,closing", [(0, 0), (0, 1),
+                                                (1, 0), (1, 1),
+                                                (2, 0), (2, 1)])
+def test_fixed_stock_run_probe_framing(stuffing, closing):
+    with tempfile.TemporaryDirectory(prefix="m1000-stock-frame-") as directory:
+        executable = Path(directory) / "frame"
+        compile_harness(executable, "FEEDBACK_HARNESS=0", "FREE_TX=1",
+                        "RX_NARROW=0", "STOCK_FIXED_CANDIDATE=1",
+                        "STOCK_CONTENT_IDX=3",
+                        f"STOCK_STUFFING_MODE={stuffing}",
+                        f"STOCK_CLOSE_FLAG={closing}")
+        subprocess.run([str(executable)], cwd=ROOT, check=True,
+                       text=True, capture_output=True)
+
+
 @pytest.mark.parametrize(
     "defines",
     [

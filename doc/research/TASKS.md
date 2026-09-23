@@ -57,6 +57,12 @@ Require the new ~3.637-ms initialization pulse in LISTEN_ONLY before
 interpreting absent receive markers. RX pulses are ~0.918/1.828 ms with
 ~0.46-ms release guards. Physical role/drive inversion and fixed candidate
 settings are now available in the stock Uno builds without another burn.
+The follow-up adds independent emitted-bit stuffing modes, optional closing
+flag and fixed `00 00 FF FF 96` diagnostic content. Use explicit stuffing
+rather than the legacy automatic rule to discriminate hypotheses. Start
+with phase -2/8 or +2/8 for setup/hold around the first or second logical
+clock edge respectively; inverted dark-idle boundaries remain a confound.
+See the [discrimination sequence](../re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention).
 **OPEN:** run the silent V24 control and matched stimulated attempts on
 hardware, determine whether stock RX is entered and whether its return has
 carry set, and check any event drops. A post-receive pulse is not a

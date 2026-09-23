@@ -99,6 +99,77 @@ retry batch does not cover the 15-second cycle. Record multiple attempts
 covering the relevant rows, or use a fixed candidate. Interleave a fresh
 LISTEN_ONLY control before promoting a stimulus correlation.
 
+### Discriminating the receive convention
+
+The next cycle targets the optical/controller/stock-firmware gates, not a
+complete Commstar session. **SUSPECTED:** `7Eh`/`81h`, receive clock edge,
+LED assignment and stuffing sense. The outgoing handheld capture does not
+establish the incoming convention. A carry-clear marker is progress through
+the stock byte reader, not proof of a valid session or a unique framing rule.
+
+Use fixed candidates and change one setting at a time:
+
+1. Verify the initialization marker and take a LISTEN_ONLY control. Replay
+   the earlier pending candidate first, retaining its exact waveform.
+2. Test both LED assignments and physical clock/data levels. Keep deliberate
+   data setup/hold around the candidate sampling edge; see the timing table
+   below. Repeat any response with the same settings and a silent control.
+3. With a repeatable response, compare `STOCK_FLAG_IDX=0/1` while holding
+   `STOCK_STUFFING_MODE` explicit and constant. Then compare stuffing modes
+   `0` (off), `1` (zero after five ones), and `2` (one after five zeros).
+   `-1` is historical automatic selection by flag and must not be used to
+   claim independent flag/stuffing discrimination.
+4. Use fixed `STOCK_CONTENT_IDX=3` for a diagnostic pattern with runs of both
+   zeros and ones. Compare the exact same payload with each stuffing mode;
+   flag-only trials do not exercise stuffing. Compare `STOCK_CLOSE_FLAG=0/1`
+   separately. Diagnostic content is not asserted to be a valid Commstar
+   message, so a failure may reflect content validation rather than stuffing.
+5. If these do not discriminate, vary reply delay and clock lead-in, then
+   assess cell rate, pulse width, bit order and required address/length/check
+   bytes. These are still open questions, not all axes in the default sweep.
+
+`STOCK_POL_IDX=1` complements the serialized stream, including the flag.
+Explicit stuffing modes describe the resulting emitted bits; the builder
+adjusts its internal run counter so changing `pol` does not silently swap
+the selected stuffing rule. Automatic mode retains the old behavior. Thus
+configured `7Eh` becomes emitted `81h`; equivalent
+complemented descriptions must not be counted as distinct protocol findings.
+Physical data inversion also changes the between-pulse baseline, so it is
+not interchangeable with complementing which cells contain a data pulse.
+
+**CONFIRMED (emitter arithmetic, not handheld requirements):** with the
+122-us cell, clock transitions are at 30 and 91 us; a data pulse is 76 us
+wide. Nominal margins for a pulse-bearing cell are:
+
+| Candidate logical sampling edge | Phase index / eighths | Data transition times | Setup / hold |
+|---|---|---|---|
+| First clock edge, 30 us | 1 / -2 | 0, 76 us | 30 / 46 us |
+| Second clock edge, 91 us | 3 / +2 | 60, 136 us | 31 / 45 us |
+
+Clock level inversion exchanges physical rising/falling edges without
+moving these logical event times. Test both phase candidates for each clock
+level sense. Neither row promises data stability around both clock edges.
+Phase zero has zero nominal setup at the first edge and is a boundary test,
+not the starting candidate. Interrupt lateness and analog propagation can
+reduce margins; inspect the reported lateness and scope the output when
+possible. Data is intentionally scheduled ahead of the candidate edge,
+not merely written immediately before it.
+
+**Boundary qualification:** both LEDs are dark between bursts. Inverted
+clock drive therefore introduces an extra transition when its active
+baseline is established, and another when it returns to dark. These are
+not payload clocks. A negative inverted-clock trial cannot exclude that
+sense unless the receiver tolerates those boundary transitions. Scope them
+alongside the payload clocks; steady-idle versus burst-gated clock drive
+remains a separate hypothesis if the first matrix is inconclusive.
+
+Keep each build's complete startup banner, candidate/TX lines, yellow
+records and screen outcome. FREE_TX and RX_NARROW differ in cadence and
+clock lead-in; changing modes is not a timing-only controlled comparison.
+No receive marker leaves multiple explanations open, including optical
+coupling, controller enable, sampling convention, timing and framing. V3
+cannot isolate the stock TX bit-6 versus bit-7 wait with its RX marker.
+
 Interrupts stay enabled during emission. INT0 samples D4 through `PIND`
 before debounce/timekeeping; D8 uses a separate pin-change ISR. Yellow
 logging does not wait for serial-buffer space, and RX buffer copying runs
