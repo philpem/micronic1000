@@ -87,11 +87,16 @@ timeout, while the wrapper hides partial bytes on error. Matched
 receive-pending-gated G/S and G/X pair IDs 11/12 also returned identical
 error 8 (`LINK_STATUS` bit-4 pending timeout); neither called RX. Their
 different probe/before bytes were sampled before optical emission and do
-not demonstrate a stimulus response. Next: G/S and G/X with `swap=0`, IDs
-13/14, at the top of the
+not demonstrate a stimulus response. G/S and G/X with `swap=0`, IDs 13/14,
+also returned error 8 with identical A0h/80h/80h probe/before/after bytes.
+Trial 14 reported 10 us maximum lateness, but no new scope capture; the
+flag-only candidate has not raised pending status in either software role.
+Next: keep G, `swap=0`, timing and framing fields fixed and add one `03h`
+payload byte after the opening `7Eh` in a matched silent/stimulated pair,
+IDs 15/16, at the top of the
 [canonical interface](../re-notes/ir-feedback-protocol.md). Earlier conn10
-evidence favours testing the unswapped software role; it did not prove
-physical LED mapping or framing. R preserves the last accepted host ID.
+role-dependent retries did not prove physical LED mapping or framing. R
+preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;

@@ -88,7 +88,10 @@ G/S and G/X trials 11/12 with `swap=1` both timed out waiting for
 `LINK_STATUS` bit 4. The next comparison changes only to `swap=0`, again
 with G silent/stimulated controls, because earlier matched experiments
 showed a strong software-role-dependent reaction without identifying a
-physical LED or accepted frame.
+physical LED or accepted frame. Those unswapped controls (IDs 13/14) also
+timed out with identical probe/before/after status A0h/80h/80h. The next
+axis is one candidate `03h` payload byte after the opening `7Eh`, keeping
+the same G mode, role, timing, stuffing and no closing flag.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

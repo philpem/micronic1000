@@ -73,25 +73,49 @@ def pulses(times: list[float], masks: list[int], bit: int) -> list[Pulse]:
     return result
 
 
+def _stimulus_cells(flag: int, payload: bytes, stuffing: int,
+                    close_flag: bool) -> list[int]:
+    """Return transmitted MSB-first cells; flag bytes are never stuffed."""
+    cells = [(flag >> shift) & 1 for shift in range(7, -1, -1)]
+    run = 0
+    for byte in payload:
+        for shift in range(7, -1, -1):
+            bit = (byte >> shift) & 1
+            if stuffing and run == 5:
+                cells.append(0 if stuffing == 1 else 1)
+                run = 0
+            cells.append(bit)
+            if stuffing:
+                run = run + 1 if (bit if stuffing == 1 else not bit) else 0
+    if stuffing and run == 5:
+        cells.append(0 if stuffing == 1 else 1)
+    if close_flag:
+        cells.extend((flag >> shift) & 1 for shift in range(7, -1, -1))
+    return cells
+
+
 def measure(path: Path, clock_bit: int, data_bit: int, lead: int,
-            flag: int, cell_us: float) -> dict:
+            flag: int, cell_us: float, payload: bytes = b"",
+            stuffing: int = 0, close_flag: bool = False) -> dict:
     if not (0 <= clock_bit <= 7 and 0 <= data_bit <= 7) or clock_bit == data_bit:
         raise ValueError("scope clock/data bits must be distinct D0..D7")
-    if not 0 <= lead <= 32 or not 0 <= flag <= 255 or cell_us <= 0:
-        raise ValueError("invalid lead, flag, or cell duration")
+    if (not 0 <= lead <= 32 or not 0 <= flag <= 255 or cell_us <= 0
+            or stuffing not in (0, 1, 2)):
+        raise ValueError("invalid lead, flag, stuffing mode, or cell duration")
+    if not isinstance(payload, bytes):
+        raise ValueError("payload must be bytes")
     times, masks = read_capture(path)
     clock = pulses(times, masks, clock_bit)
     data = pulses(times, masks, data_bit)
     intervals = [b.rise_us - a.rise_us for a, b in zip(clock, clock[1:])]
-    expected_ones = [lead + index for index in range(8)
-                     if flag & (0x80 >> index)]
+    cells = _stimulus_cells(flag, payload, stuffing, close_flag)
+    expected_ones = [lead + index for index, bit in enumerate(cells) if bit]
     sampled_bits = []
-    for pulse in clock[lead:lead + 8]:
+    for pulse in clock[lead:lead + len(cells)]:
         sample = bisect.bisect_right(times, pulse.rise_us / 1e6) - 1
         sampled_bits.append(int(bool(masks[sample] & (1 << data_bit))))
-    sampled_flag = None
-    if len(sampled_bits) == 8:
-        sampled_flag = int("".join(map(str, sampled_bits)), 2)
+    sampled_flag = (int("".join(map(str, sampled_bits[:8])), 2)
+                    if len(sampled_bits) >= 8 else None)
     pairs = []
     for pulse, clock_index in zip(data, expected_ones):
         if clock_index < len(clock):
@@ -101,9 +125,14 @@ def measure(path: Path, clock_bit: int, data_bit: int, lead: int,
     return {
         "source": str(path), "samples": len(times), "sample_step_us": step_us,
         "scope_clock_bit": clock_bit, "scope_data_bit": data_bit,
-        "lead_cells": lead, "flag_hex": f"{flag:02X}", "requested_cell_us": cell_us,
+        "lead_cells": lead, "flag_hex": f"{flag:02X}",
+        "payload_hex": payload.hex().upper(), "stuffing": stuffing,
+        "close_flag": close_flag, "requested_cell_us": cell_us,
         "sampled_flag_hex": f"{sampled_flag:02X}" if sampled_flag is not None else None,
-        "expected_clock_pulses": lead + 8, "expected_data_pulses": len(expected_ones),
+        "expected_cells": len(cells), "expected_sampled_bits": len(cells),
+        "sampled_bits": "".join(map(str, sampled_bits)),
+        "expected_clock_pulses": lead + len(cells),
+        "expected_data_pulses": len(expected_ones),
         "clock": [asdict(p) for p in clock], "data": [asdict(p) for p in data],
         "clock_intervals_us": intervals, "data_clock_pairs": pairs,
         "lead_interval_median_us": statistics.median(intervals[:lead-1])
@@ -145,6 +174,9 @@ def report(result: dict) -> str:
     lines.append(f"Data at eight candidate clock rises: "
                  f"{result['sampled_flag_hex'] or 'incomplete'} "
                  f"(requested {result['flag_hex']})")
+    lines.append(f"Sampled candidate cells: "
+                 f"{result['sampled_bits'] or 'incomplete'} "
+                 f"({len(result['sampled_bits'])}/{result['expected_sampled_bits']})")
     return "\n".join(lines)
 
 
@@ -157,11 +189,21 @@ def main() -> None:
                         help="scope pod bit for Uno proposed data (default D3)")
     parser.add_argument("--lead", type=int, default=5)
     parser.add_argument("--flag", type=lambda x: int(x, 16), default=0x7E)
+    parser.add_argument("--payload", default="", help="payload bytes as even-length hex")
+    parser.add_argument("--stuff", type=int, choices=(0, 1, 2), default=0,
+                        help="0=none, 1=zero after five ones, 2=one after five zeros")
+    parser.add_argument("--close", type=int, choices=(0, 1), default=0,
+                        help="append an unstuffed closing flag")
     parser.add_argument("--cell-us", type=float, default=122.0)
     parser.add_argument("--json-out", type=Path, help="optional machine-readable measurements")
     args = parser.parse_args()
+    try:
+        payload = bytes.fromhex(args.payload)
+    except ValueError as exc:
+        parser.error(f"--payload must be even-length hexadecimal: {exc}")
     result = measure(args.capture, args.clock_bit, args.data_bit,
-                     args.lead, args.flag, args.cell_us)
+                     args.lead, args.flag, args.cell_us, payload,
+                     args.stuff, bool(args.close))
     print(report(result))
     if args.json_out:
         args.json_out.write_text(json.dumps(result, indent=2) + "\n")

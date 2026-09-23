@@ -13,10 +13,10 @@ expected silent control. Both W stimuli retained the bit-6 timeout; W does
 not attempt RX. Forced-RX silent/stimulated trials 9/10 both returned raw
 `A=EEh`, `F=6Dh`, wrapper error 7. The stock RX byte-ready wait can return
 that error after its 1785-count poll; the record hides partial bytes on
-error. Matched G trials 11/12 with `swap=1` both timed out waiting for
-`LINK_STATUS` bit 4 (error 8). **OPEN:** optical delivery, physical LED roles
-and receive framing remain unproved. The one-burn ROM and USB sketch stay
-in place.
+error. Matched G pairs 11/12 (`swap=1`) and 13/14 (`swap=0`) all timed out
+waiting for `LINK_STATUS` bit 4 (error 8) with an opening `7Eh` alone.
+**OPEN:** optical delivery, physical LED roles and receive framing remain
+unproved. The one-burn ROM and USB sketch stay in place.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -29,32 +29,34 @@ compare physical edges in CSV rather than software interval length.
    trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
    mapping again if probes have moved. For `swap=0`, D5 is the proposed
    clock and D6 the proposed data. Trigger on **D6 data rising** with enough
-   pre-trigger for the five earlier D5 lead clocks. Capture at least 2 ms
+   pre-trigger for the five earlier D5 lead clocks. Capture at least 3 ms
    around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
    2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
 3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the
    receive-pending-gated **silent control first**, wait for `RESULT` and a
    fresh `READY`, then the matched stimulus, keeping every other setting
-   and optical placement fixed. This changes only the proposed role
-   assignment from the ID-11/12 pair:
+   and optical placement fixed. This adds one candidate `03h` payload byte
+   to the ID-13/14 flag-only pair, with no closing flag:
 
    ```text
-   T 13 G S 0 7E 1 0 0 -2 5 7000 -
-   T 14 G X 0 7E 1 0 0 -2 5 7000 -
+   T 15 G S 0 7E 1 0 0 -2 5 7000 03
+   T 16 G X 0 7E 1 0 0 -2 5 7000 03
    ```
 
-   IDs must strictly increase: if 13 or 14 was already accepted, substitute
+   IDs must strictly increase: if 15 or 16 was already accepted, substitute
    the next unused IDs. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 12 had host ID 12 but ROM sequence 14. Mode G
+   independent counter; trial 14 had host ID 14 but ROM sequence 16. Mode G
    arms the idle receiver and waits up to about 100 ms for `LINK_STATUS`
    bit 4 before invoking stock RX. Compare bit-4 condition, error/status,
    and raw RX A/F/DE/preview with the silent G control. An error or absent
    preview does not establish that no optical bits reached the controller.
 4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 2
-   --data-bit 3` if pod D2 is physically on Uno D5 and D3 on Uno D6; adjust
-   those two arguments to the actual pod wiring. Check 13 proposed clock and
-   six data pulses, sampled candidate `7E`, every clock rise interval within
-   8 us of 122 us, clock high within 8 us of 61 us, data high within 8 us of
+   --data-bit 3 --payload 03 --stuff 1` if pod D2 is physically on Uno D5
+   and D3 on Uno D6; adjust the bit arguments to the actual pod wiring.
+   Check **21** proposed clock and **eight** data pulses, sampled candidate
+   cells `0111111000000011` (`7Eh` followed by `03h`). Every clock rise
+   interval should be within 8 us of 122 us, clock high within 8 us of 61 us,
+   data high within 8 us of
    76 us, and `emit_late_max` below about 15 us. Compare the G/X result
    with its G/S control and the prior `swap=1` G pair. A change in the
    pending condition is evidence of a controller-state response, not by
@@ -859,8 +861,42 @@ return flag. Earlier controlled experiments found a strong response with
 the *unswapped* software-role assignment and little with the swapped one
 (`doc/re-notes/ir-wire-protocol.md`, conn10); that response was a timing/
 retry effect, not decoded RX data. Therefore the next matched G pair changes
-only `swap` to 0 (IDs 13/14 in the current handoff), keeping candidate,
-delay, optical placement and mode fixed.
+only `swap` to 0 (IDs 13/14 below), keeping candidate, delay, optical
+placement and mode fixed.
+
+## Unswapped receive-pending controls, IDs 13–14 — 2026-09-23
+
+**CONFIRMED (owner serial report):** the `swap=0` G/S and G/X pair changed
+only the proposed optical channel roles from IDs 11/12. Both 30-byte
+feedback records have valid zero-sum checksums:
+
+```text
+READY
+TRIAL id=13 mode=G kind=S swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=13 rom_seq=15 mode=4 err=8 ack_us=3212521996 release_us=3213222004 start_us=3213302040 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A01040F0008A08080FFFF000000000000000000000000000022002302
+READY
+TRIAL id=14 mode=G kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=14 rom_seq=16 mode=4 err=8 ack_us=3221521628 release_us=3222221628 start_us=3222301664 emit_start_us=3222308468 emit_end_us=3222310560 emit_late_max=10 raw=A55A0104100008A08080FFFF000000000000000000000000000022002301
+READY
+```
+
+Both probe/before/after triples are exactly A0h/80h/80h. Both timed out
+waiting for `LINK_STATUS` bit 4 (wrapper error 8), so neither called
+`Link_BlockRx`. Trial 13 was silent by design; trial 14 reported 10 us
+maximum software event lateness, within the earlier target. No trial-14
+scope capture was supplied, so do not claim its physical waveform was
+remeasured. This matched pair shows no pending-state change for the
+flag-only `7Eh` candidate with `swap=0` either. Earlier conn10 retry
+reactions under a different program and timing do not override this direct
+pending-gate observation.
+
+**OPEN:** flag-only `7Eh` is not a complete candidate frame. The next
+USB-only comparison keeps mode G, `swap=0`, delay, phase, stuffing and
+polarity fixed, and adds one `03h` payload byte, with a matched silent
+control. The byte is a candidate copied from earlier response experiments,
+not a proven return address or acknowledgement. If that also fails to
+raise pending status, vary only one further axis at a time, including
+closing flag, polarity or a longer candidate body.
 
 ## Validation and limits
 

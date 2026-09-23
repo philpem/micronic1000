@@ -7665,3 +7665,17 @@ names renamed, 144 unplated functions plated)
 * Next: matched G/S and G/X pair IDs 13/14 with only `swap=0` changed.
   Conn10's earlier software-role-dependent retry reaction makes this the
   sharper next axis. It does not establish optical LED mapping or framing.
+
+### 2026-09-23 — Unswapped receive-pending controls, IDs 13 and 14
+
+* CONFIRMED (owner serial report): both G/S and G/X with `swap=0` returned
+  valid 30-byte records, mode 4/error 8; probe/before/after exactly
+  A0h/80h/80h in both. Neither entered stock RX because the bounded
+  `LINK_STATUS` bit-4 pending wait expired. Trial 13 emitted nothing by
+  design; trial 14 reported 10 us maximum scheduling lateness. No new
+  scope capture was supplied.
+* Thus a bare opening 7Eh candidate failed to raise pending status with
+  either software-role assignment in the feedback-v1 G mode. This does
+  not establish optical delivery, physical LED roles or flag identity.
+* Next: matched G/S and G/X IDs 15/16, `swap=0`, same timing, add only
+  candidate payload byte 03h. No EPROM or sketch change required.

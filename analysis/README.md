@@ -43,7 +43,9 @@ not feedback-v1's default procedure.
   for the swapped trial-8 stimulus.
   Defaults are scope D2/D3, confirmed by the owner as Uno D5/D6 for trial 6;
   five lead cells and candidate `7E`; use `--clock-bit`/`--data-bit` if the
-  scope pod wiring differs, and `--json-out` for machine-readable results.
+  scope pod wiring differs. For a payload experiment add `--payload 03
+  --stuff 1` (and `--close 1` if a closing candidate flag was requested);
+  `--json-out` writes machine-readable results.
 
 ## Reusable firmware models — `micronic/`
 
