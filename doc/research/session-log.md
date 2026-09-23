@@ -8363,3 +8363,19 @@ names renamed, 144 unplated functions plated)
   configuration; no valid frame or carry-clear return is established.
 * Restored and verified the LISTEN_ONLY Uno build after F8. The scope
   remains stopped.
+
+## 2026-09-23 — F9/F10 stuffing comparison
+
+* Kept F7's `7E` opening flag, 33-ms every-third-burst timing,
+  content and physical settings. F9 disabled stuffing and logged
+  101 handheld burst reports, 34 replies and no yellow low. F10
+  selected stuffing mode 2 and logged 100 bursts, 34 replies and no
+  yellow low. Neither reported event drops. The owner saw `8000`,
+  "Plinth not connected", then `8040`, "line failure", in both runs.
+* Each 100-segment scope capture independently shows 34 Uno output
+  segments and no yellow low. Both acquisitions measured 97.7 kSa/s,
+  exported at 40 us/row, and placed Uno output 33.00–33.04 ms after
+  the last handheld clock rise. F7's carry-set marker appears under
+  the tested `7E`/mode-1 combination; no accepted frame is shown.
+* Restored and verified the LISTEN_ONLY Uno build after F10. The
+  scope remains stopped.

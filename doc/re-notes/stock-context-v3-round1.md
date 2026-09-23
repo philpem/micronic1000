@@ -57,6 +57,8 @@ stock-context sketch.
 | F6 | F4 with a cyclic 30–36-ms delay in 1-ms steps | Test a narrow late receive window in one handheld run | DONE: all seven delays observed 14–15 times; no yellow marker or drop; `8000` then `8040`. |
 | F7 | F2S candidate, fixed 33-ms delay, reply to every third handheld burst | Separate sparse reply cadence from late delay | DONE: 100 handheld bursts, 34 replies, 34 yellow lows; still `8000` then `8040`. |
 | F8 | F7 cadence/content/optical settings, `81` opening flag and explicit stuffing mode 1 | Test flag choice while retaining F7's effective stuffing mode | DONE: 100 handheld bursts, 34 replies, no yellow low; same errors. |
+| F9 | F7 `7E` flag and sparse cadence, explicit stuffing mode 0 | Test unstuffed emitted data | DONE: 101 Arduino burst reports, 34 replies, no yellow low; scope captured 100 handheld bursts and 34 replies. Same errors. |
+| F10 | F7 `7E` flag and sparse cadence, explicit stuffing mode 2 | Test stuffing after five emitted zero bits | DONE: 100 handheld bursts, 34 replies, no yellow low; same errors. |
 
 **Stop at C0** if its boot banner, expected UI, or initialization marker is
 missing: later absent RX markers cannot then distinguish optical failure
@@ -311,6 +313,24 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   sparse pacing, changing the opening flag choice suppresses the
   carry-set return marker. This does not identify accepted bits or
   demonstrate a carry-clear return.
+* F9/F10 stuffing comparison: the `7E` flag, 33-ms every-third-burst
+  timing, content and physical drive settings were held at F7 values.
+  F9 used explicit stuffing mode 0; its serial log contains 101 burst
+  reports, 34 sent replies and no yellow low or drop. F10 used mode 2;
+  its log contains 100 bursts, 34 replies and no yellow low or drop.
+  Each scope capture contains 100 handheld-triggered segments, 34
+  with Uno output and zero yellow lows, with Uno D2 starting
+  33.00–33.04 ms after the last handheld D1 rise. The Arduino
+  startup banners identify `wire_stuff=0` and `wire_stuff=2` respectively.
+  Both scope acquisitions measured 97.7 kSa/s and exported at
+  40 us/row. The owner reported `8000`, "Plinth not connected", then
+  `8040`, "line failure", in both runs. Captures are
+  `analysis/captures/stock-v3-r1-f9-sparse33-stuff0-handheld-*` and
+  `analysis/captures/stock-v3-r1-f10-sparse33-stuff2-handheld-*`, with
+  scope CSVs committed as `.csv.gz`.
+  The F7 marker thus requires this tested `7E`/mode-1 combination;
+  neither the flag nor stuffing mode is proven as a complete protocol
+  requirement, and no run has shown a carry-clear return.
 
 ## Scope sampling audit
 
@@ -350,8 +370,7 @@ rate is higher. Raw captures:
 `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
 SCPI settings and sample-rate readings are preserved in
 `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
-* Next discriminating trial: retain F7's sparse cadence and `7E`
-  opening flag; compare explicit stuffing modes against the F7
-  effective mode 1, one setting per run. Keep content and physical
-  polarity fixed so a changed yellow return can be attributed to
-  serialized framing. A carry-set return remains short of acceptance.
+* Next discriminator: retain F7's sparse cadence, `7E` opening flag,
+  stuffing mode 1 and physical levels while comparing frame closure
+  and then content. The marker is only a carry-set receive return;
+  the target remains a carry-clear return or handheld advancement.

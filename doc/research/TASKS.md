@@ -136,6 +136,14 @@ owner saw the same errors. The `7E`/`81` flag choice therefore
 discriminates the observed carry-set return under this configuration.
 Next hold the `7E` F7 configuration fixed and compare explicit stuffing
 modes; do not infer that either flag yields a valid frame.
+F9 (stuffing mode 0) and F10 (mode 2) each sent 34 sparse replies with
+no yellow low; the scope independently found 34 Uno output segments
+and zero yellow lows in each 100-trigger run. The owner reported the
+same `8000` / `8040` errors. Under these tested settings, only F7's
+`7E` plus effective stuffing mode 1 produces a receive-call return
+marker. Replace the now-completed stuffing comparison with controlled
+frame-closure and content comparisons; retain F7's cadence and
+physical settings. Do not promote this marker to frame acceptance.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event
