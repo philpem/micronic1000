@@ -66,10 +66,58 @@ See the [discrimination sequence](../re-notes/ir-feedback-protocol.md#discrimina
 The [round-one worksheet](../re-notes/stock-context-v3-round1.md)
 is the current capture record; PRs #22–#24 merged the feedback-v1, v2 and
 v3 instrumentation in order.
-**OPEN:** run the silent V24 control and matched stimulated attempts on
-hardware, determine whether stock RX is entered and whether its return has
-carry set, and check any event drops. A post-receive pulse is not a
-validated frame; LED roles, physical polarity and framing remain open.
+**Current bench result:** owner installed revision-2 ROM00. C0 recorded the
+3,636-us initialization marker and a V24 attempt, but its main log missed
+the Uno boot banner. Fixed F0/F1 LED-role trials both captured handheld
+outgoing bursts and no stock-RX return marker; the owner saw
+`8000 (238/001)` / `8040 (238/001)` errors. The +2/8-cell timing path
+was found distorted on the scope before any handheld phase-3 trial;
+its Uno scheduler was repaired, and the replacement GPIO waveform is now
+scope-qualified with yellow on pod D4. Details and raw captures are in
+the [round-one worksheet](../re-notes/stock-context-v3-round1.md).
+The first phase-3 V24 attempt had no RX return marker and ended with
+`8000 (238/001)` / `8040 (238/001)`. The repeated F2S attempt used
+100 handheld-triggered scope segments spanning both groups of about
+50 retries. Uno D2/D3 activity appears in 24 segments; four 916–920-us
+yellow lows follow Uno transmissions and match the instrumented
+`Link_BlockRx` carry-set return path. The owner still saw `8000
+(238/001)` then `8040 (238/001)`, "Line Failure". The scope caught
+one yellow fall after the Uno data emission. This is a receive-call
+return, not proof of a valid frame or session. The [round-one worksheet](../re-notes/stock-context-v3-round1.md)
+has the raw capture filenames and timings.
+**C1 silent control complete:** a verified LISTEN_ONLY build captured
+100 handheld retries in two groups of 50, with no yellow pulse or
+event drop. The matching scope CSV shows all 100 handheld bursts, zero
+Uno D2/D3 rises and no yellow D4 low sample. The owner again saw
+`8000 (238/001)`, "Plinth not connected", then `8040 (238/001)`,
+"Line failure". The four F2S receive-return markers are therefore
+associated with the transmitting condition in this comparison.
+**OPEN:** discriminate optical role/level and return framing. The
+current candidate has no demonstrated accepted frame; the intermittent
+carry-set returns do not identify which bits, if any, were received.
+An F3 trial inverted only the Uno clock output level at phase +2/8-cell.
+The scope verified data setup/hold around the opposite physical clock
+edge, then recorded 100 handheld retry segments with 21 showing Uno
+output and no yellow pulse. The owner saw the same errors. F2S had
+four carry-set markers with 18 complete post-burst Uno transmissions;
+F3 had none with 14. This suggests clock polarity matters but does not
+resolve a sparse, free-running comparison. A handheld-paced fixed
+candidate using the F2S polarity is the next timing discriminator.
+The F4 paced run requested 4 ms after each handheld burst. Its 100
+ordinary replies had no yellow marker. One anomalous reply after a
+short burst fragment started 32.58 ms after the last handheld edge and
+was followed by a 916-us carry-set marker. The scope saw the second
+transmission begin about 36.4 ms after its handheld trigger; the
+predicted yellow return was beyond the 45-ms post-trigger window.
+This suggested a later response window as a testable timing hypothesis,
+without establishing an accepted frame. F5 then gave 100 regular
+30-ms replies and F6 swept 30–36 ms across 100 replies; each requested
+delay was achieved 14–15 times. Neither run produced a yellow marker
+or a change from `8000` / `8040`. Scope captures independently show
+regular late Uno output and no D4 low. **Discard delay alone as the
+explanation** for the F2S/F4 markers. Free-running emission, the
+abnormal F4 transition, and receive state still need discrimination;
+none of these is established as the cause.
 
 **Previous IR round:** feedback-v2 is burned and has completed its first
 P/H/J/K handheld run. It retains v1 W/R/P/G and adds H/J/K controller-state

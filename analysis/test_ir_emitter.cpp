@@ -471,6 +471,12 @@ int main() {
   assert(rxPhaseIdx == STOCK_PHASE_IDX);
   assert(rxPolIdx == STOCK_POL_IDX);
   assert(rxContentIdx == STOCK_CONTENT_IDX);
+#if RX_NARROW && STOCK_REPLY_DELAY_COUNT > 1
+  assert(stockReplyDelayUs() ==
+         STOCK_REPLY_DELAY_US + STOCK_REPLY_DELAY_STEP_US);
+  for (int i = 1; i < STOCK_REPLY_DELAY_COUNT; ++i) advanceSweep();
+  assert(stockReplyDelayUs() == STOCK_REPLY_DELAY_US);
+#endif
 #elif RX_NARROW && RX_NARROW_AXIS == 3
   advanceSweep();
   assert(sweepSwap == (STOCK_TX_SWAP ^ 1));

@@ -1,0 +1,11 @@
+{"utc": "2026-09-23T18:30:36.049574+00:00", "monotonic_s": 904893.081993496, "direction": "rx", "line": "_inv=0"}
+{"utc": "2026-09-23T18:30:36.049735+00:00", "monotonic_s": 904893.082115695, "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=-1 wire_stuff=auto close=0"}
+{"utc": "2026-09-23T18:30:36.049764+00:00", "monotonic_s": 904893.082142159, "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=30000"}
+{"utc": "2026-09-23T18:30:37.640357+00:00", "monotonic_s": 904894.672758499, "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-23T18:30:37.644525+00:00", "monotonic_s": 904894.676922706, "direction": "rx", "line": "MODE: RX NARROW -- flag fixed to 7E, one axis varied."}
+{"utc": "2026-09-23T18:30:37.648704+00:00", "monotonic_s": 904894.681097987, "direction": "rx", "line": "  axis = content (flag / flag+03h / open type-2 ack)"}
+{"utc": "2026-09-23T18:30:37.652850+00:00", "monotonic_s": 904894.68524176, "direction": "rx", "line": "STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"}
+{"utc": "2026-09-23T18:30:37.657164+00:00", "monotonic_s": 904894.689552586, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-23T18:30:37.661238+00:00", "monotonic_s": 904894.693626355, "direction": "rx", "line": "STOCK_TX swap=0 clk_inv=0 dat_inv=0"}
+{"utc": "2026-09-23T18:30:37.665387+00:00", "monotonic_s": 904894.697771481, "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=-1 wire_stuff=auto close=0"}
+{"utc": "2026-09-23T18:30:37.669518+00:00", "monotonic_s": 904894.701902798, "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=30000"}
