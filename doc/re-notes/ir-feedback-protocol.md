@@ -21,10 +21,10 @@ before the requested first edge; compare actual edges in CSV.
    `arduino:avr:uno` (Elegoo Uno R3, 16 MHz). Confirm `BLACK: DIRECT_TTL`
    and LCD `IR FEEDBACK/W/R/P/G` if restarting. No EPROM or Uno code change
    is needed for the next comparison.
-2. Scope **Uno header D5 and D6** with ground on Uno GND. Record the actual
-   pod-bit-to-header-pin map; earlier D2/D3 mapping remains to be confirmed
-   for these captures. For `swap=1`, D6 is the proposed clock and D5 the
-   proposed data, so trigger on **D5 data rising** with enough pre-trigger
+2. Scope **Uno header D5 and D6** with ground on Uno GND. The owner confirms
+   trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
+   mapping again if probes have moved. For `swap=1`, D6 is the proposed clock
+   and D5 the proposed data, so trigger on **D5 data rising** with enough pre-trigger
    for the five earlier D6 lead clocks. Capture at least 2 ms around the
    burst, export Keysight `x-axis,D0-D7` CSV at 2.5 us/sample or finer.
 3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the swapped
@@ -705,9 +705,10 @@ are independent, and the ROM also counts accepted keypad trials.
 `analysis/captures/feedback-trial6-keysight.csv` (SHA-256
 `baf9c8437e93a9ec39642f62a925e5664707ebd554b0b04e4675dc449051751f`).
 At 2.5 us/sample the decoder finds 13 pulses on scope D2 and six on D3,
-with `7Eh` sampled on the eight candidate clock rises. D2/D3 are pod labels;
-the exact pod-to-Uno header map for this capture awaits owner confirmation.
-Under the earlier D2=proposed-clock, D3=proposed-data map:
+with `7Eh` sampled on the eight candidate clock rises. **CONFIRMED (owner
+probe identification):** scope D2 was connected to Uno D5 and scope D3 to
+Uno D6 in trial 6. For `swap=0`, Uno D5 carried the proposed clock and Uno
+D6 the proposed data; the LED optical roles remain unconfirmed.
 
 | Measurement | Trial 5 | Trial 6 | Requested |
 |---|---:|---:|---:|

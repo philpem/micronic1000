@@ -7609,3 +7609,12 @@ names renamed, 144 unplated functions plated)
   canonical guide, and added a fixture regression. Replaced stale ID-6
   instructions with swapped-role W silent/stimulated IDs 7/8. No further
   ROM burn or Uno firmware change is indicated before those tests.
+
+### 2026-09-23 — Trial 6 scope pod mapping confirmed by owner
+
+* CONFIRMED (owner): scope pod D2 was connected to Uno header D5 and scope
+  pod D3 to Uno header D6 during trial 6. This resolves the capture's
+  provisional electrical channel labels. With `swap=0`, D5 was the proposed
+  clock and D6 the proposed data; which LED channel the handheld receives as
+  clock or data remains OPEN. Trial-5 probe wiring was not separately
+  confirmed by this statement.

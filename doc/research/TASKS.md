@@ -69,7 +69,8 @@ Uno D5/D6 correspondence is inherited from earlier captures and needs
 confirmation for this setup. The USB-loadable Uno emitter now dispatches
 256 us before the first edge and has a queue-free path for the current phase.
 Host tests and direct-TTL Uno build pass; **physical waveform remeasurement
-was completed with trial 6.** Scope D2/D3 produced 13/6 pulses, sampled 7Eh,
+was completed with trial 6.** Owner-confirmed scope D2→Uno D5 and
+D3→Uno D6 produced 13/6 pulses, sampled 7Eh,
 clock periods 117.5–127.5 us and widths within the stated targets;
 `emit_late_max=7`. Trial-5 and trial-6 source CSVs are tracked at
 `analysis/captures/feedback-trial{5,6}-keysight.csv`. W still returned

@@ -40,7 +40,7 @@ not feedback-v1's default procedure.
   the byte sampled at the candidate clock edges. Trial-5 and trial-6 source
   captures are tracked at `analysis/captures/feedback-trial{5,6}-keysight.csv`;
   run `python3 analysis/feedback_scope.py analysis/captures/feedback-trial6-keysight.csv`.
-  Defaults are scope D2/D3,
+  Defaults are scope D2/D3, confirmed by the owner as Uno D5/D6 for trial 6;
   five lead cells and candidate `7E`; use `--clock-bit`/`--data-bit` if the
   scope pod wiring differs, and `--json-out` for machine-readable results.
 
