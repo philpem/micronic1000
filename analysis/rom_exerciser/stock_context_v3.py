@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build a guarded stock-ROM diagnostic for live V24 receive context.
 
-The only stock patch wraps LinkRxDispatcher's call to Link_BlockRx. The
-wrapper calls the stock reader once, preserves its return registers, and
-emits a bounded yellow/pin-6 pulse after receive returns.
+One guarded patch wraps LinkRxDispatcher's call to Link_BlockRx. It calls
+the stock reader once, preserves its return registers, and emits a bounded
+yellow/pin-6 pulse after receive returns. Another guarded patch adds a
+distinct logger witness to the shared cold/warm restart latch initialization.
 """
 from __future__ import annotations
 
@@ -25,6 +26,8 @@ CODE_ORG = 0x7E96
 CODE_END = 0x7FF9
 RX_CALL_SITE = 0x2FC1
 RX_CALL_BYTES = bytes.fromhex("cd 78 33")
+INIT_SITE = 0x0252
+INIT_BYTES = bytes.fromhex("32 8b f7 d3 2a")
 LINK_BLOCK_RX = 0x3378
 PORT_2A = 0x2A
 SHADOW_2A = 0xF78B
@@ -38,6 +41,8 @@ LINK_BLOCK_RX   equ 0x3378
 ; Pin 6 sinks when port-2A bit 0 is set. Only after RX returns, emit about
 ; 0.9 ms on carry-set error or 1.8 ms on carry-clear success. Release first
 ; so the pulse has an edge even if the incoming shadow was already set.
+; Hold each release for about 450 us: a shorter transition can be missed
+; by the Uno pin-change interrupt before the sink or shadow restore.
 rx_wrapper:     call LINK_BLOCK_RX
                 push af
                 push bc
@@ -48,6 +53,7 @@ rx_success:     ld a,(SHADOW_2A)
                 push af
                 and 0xFE
                 out (PORT_2A),a
+                call delay_450us
                 pop af
                 push af
                 or 0x01
@@ -59,6 +65,7 @@ rx_error:       ld a,(SHADOW_2A)
                 push af
                 and 0xFE
                 out (PORT_2A),a
+                call delay_450us
                 pop af
                 push af
                 or 0x01
@@ -68,6 +75,7 @@ rx_pulse_end:   pop af
                 push af
                 and 0xFE
                 out (PORT_2A),a
+                call delay_450us
                 pop af
                 out (PORT_2A),a
                 pop hl
@@ -79,6 +87,41 @@ rx_pulse_end:   pop af
 ; The loop is 3327 T-states (~0.9 ms at 3.6864 MHz), plus wrapper overhead.
 delay_1ms:      ld b,0xFF
 delay_loop:     djnz delay_loop
+                ret
+; 1663 T-states (451.1 us at 3.6864 MHz), including RET but excluding CALL.
+delay_450us:    ld b,0x7F
+guard_loop:     djnz guard_loop
+                ret
+
+; Common cold/warm restart at 0252. Reproduce the overwritten shadow store
+; and latch write before emitting a distinct ~3.6 ms boot/logger witness.
+; At the call site A=20h and SP has just been set to F81Ah.
+init_wrapper:   ld (SHADOW_2A),a
+                out (PORT_2A),a
+                push af
+                push bc
+                push de
+                push hl
+                and 0xFE
+                out (PORT_2A),a
+                call delay_450us
+                ld a,(SHADOW_2A)
+                or 0x01
+                out (PORT_2A),a
+                call delay_1ms
+                call delay_1ms
+                call delay_1ms
+                call delay_1ms
+                ld a,(SHADOW_2A)
+                and 0xFE
+                out (PORT_2A),a
+                call delay_450us
+                ld a,(SHADOW_2A)
+                out (PORT_2A),a
+                pop hl
+                pop de
+                pop bc
+                pop af
                 ret
 end:
 """
@@ -93,6 +136,8 @@ def build_image(rom_path: pathlib.Path | str = DEFAULT_ROM):
         raise ValueError("stock hook cave is not all zero")
     if original[RX_CALL_SITE:RX_CALL_SITE + len(RX_CALL_BYTES)] != RX_CALL_BYTES:
         raise ValueError("Link_BlockRx call guard mismatch at ROM00:2FC1")
+    if original[INIT_SITE:INIT_SITE + len(INIT_BYTES)] != INIT_BYTES:
+        raise ValueError("restart latch guard mismatch at ROM00:0252")
 
     code, symbols = assemble(
         f"org 0x{CODE_ORG:04X}\n" + HOOK_SOURCE, origin=CODE_ORG)
@@ -101,7 +146,10 @@ def build_image(rom_path: pathlib.Path | str = DEFAULT_ROM):
 
     image = bytearray(original)
     rx_patch = bytes([0xCD]) + symbols["rx_wrapper"].to_bytes(2, "little")
+    init_patch = (bytes([0xCD]) + symbols["init_wrapper"].to_bytes(2, "little")
+                  + bytes([0x00, 0x00]))
     image[RX_CALL_SITE:RX_CALL_SITE + len(rx_patch)] = rx_patch
+    image[INIT_SITE:INIT_SITE + len(init_patch)] = init_patch
     image[CODE_ORG:CODE_ORG + len(code)] = code
     return bytes(image), symbols, original
 
@@ -119,11 +167,18 @@ def fingerprint(image: bytes):
 def manifest(image: bytes, symbols: dict, original: bytes, image_name: str):
     return {
         "image": image_name,
+        "revision": 2,
         "purpose": "stock-context receive diagnostic; guarded ROM00 wrapper",
         "patch": {
             "address": f"ROM00:{RX_CALL_SITE:04X}",
             "original_bytes": RX_CALL_BYTES.hex(" "),
             "replacement": f"CALL ROM00:{symbols['rx_wrapper']:04X}",
+        },
+        "init_patch": {
+            "address": f"ROM00:{INIT_SITE:04X}",
+            "original_bytes": INIT_BYTES.hex(" "),
+            "replacement": f"CALL ROM00:{symbols['init_wrapper']:04X}; NOP; NOP",
+            "scope": "common cold/warm restart after LD SP,F81Ah",
         },
         "stock_sha256": STOCK_SHA256,
         "assembly_sha256": hashlib.sha256(HOOK_SOURCE.encode("ascii")).hexdigest(),
@@ -138,9 +193,23 @@ def manifest(image: bytes, symbols: dict, original: bytes, image_name: str):
             "sink_value": 1,
             "error_dwell_tstates": 3327,
             "success_dwell_tstates": 6654,
+            "release_guard_tstates": 1663,
+            "release_guards": 2,
             "clock_hz": 3686400,
-            "timing_note": "dwell loop only; wrapper overhead adds a few T-states",
-            "order": "after stock Link_BlockRx returns: release, sink, dwell, release, restore shadow",
+            "timing_note": "subroutine times include RET; CALL and wrapper instructions add time",
+            "tested_out_intervals_tstates": {"carry_set": [1719, 3383, 1701], "carry_clear": [1719, 6739, 1701]},
+            "order": "after stock Link_BlockRx returns: release, guard, sink, dwell, release, guard, restore shadow",
+        },
+        "init_marker": {
+            "pin": "yellow/pin 6",
+            "sink_value": 1,
+            "dwell_tstates": 13308,
+            "release_guard_tstates": 1663,
+            "release_guards": 2,
+            "clock_hz": 3686400,
+            "timing_note": "four dwell subroutines including RET; CALL and wrapper add time",
+            "tested_low_tstates": 13407,
+            "scope": "common cold/warm restart, distinct from RX result marker",
         },
     }
 
@@ -151,6 +220,10 @@ def main(argv=None):
     parser.add_argument("-o", "--out", required=True, type=pathlib.Path)
     parser.add_argument("--manifest-out", type=pathlib.Path)
     args = parser.parse_args(argv)
+    source = args.rom.resolve()
+    if args.out.resolve() == source or (args.manifest_out and
+                                        args.manifest_out.resolve() == source):
+        parser.error("output paths must differ from the source ROM")
     image, symbols, original = build_image(args.rom)
 
     if args.manifest_out and args.manifest_out.resolve() == args.out.resolve():
