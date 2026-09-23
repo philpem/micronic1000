@@ -100,9 +100,14 @@ scope connected. That repeat returned error 8 with `E0h/C0h/C0h`, but its
 tracked Keysight CSV verifies 21/21 clock and 8/8 data pulses on scope
 D2/D3, sampled cells `7Eh 03h`, within digital timing targets. The
 trial-17 pod-to-Uno map still awaits owner confirmation and optical light
-is unmeasured. Next: matched G/S and G/X IDs 18/19 with the full frame
+is unmeasured. Matched G/S and G/X IDs 18/19 then tested the full frame
 complemented (`pol=1`), as specified in the
-[canonical interface](../re-notes/ir-feedback-protocol.md). Earlier conn10
+[canonical interface](../re-notes/ir-feedback-protocol.md). Those trials
+also returned error 8 with identical A0h/80h/80h status; the silent trial
+emitted nothing, the stimulus reported 3 us maximum software lateness,
+and neither entered stock RX. No trial-19 scope capture was supplied.
+Next: mode-R matched silent/stimulated IDs 20/21, preserving the ID-19
+candidate to invoke stock RX directly. Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R
 preserves the last accepted host ID.
 

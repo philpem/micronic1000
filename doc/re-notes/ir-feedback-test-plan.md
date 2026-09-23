@@ -85,7 +85,7 @@ stock RX `A=EEh`, `F=6Dh`, wrapper error 7. Because error records do not
 preserve partial bytes, the next controlled comparison is mode G's
 receive-pending gate with the same candidate and its own silent control.
 G/S and G/X trials 11/12 with `swap=1` both timed out waiting for
-`LINK_STATUS` bit 4. The next comparison changes only to `swap=0`, again
+`LINK_STATUS` bit 4. The subsequent comparison changed only to `swap=0`, again
 with G silent/stimulated controls, because earlier matched experiments
 showed a strong software-role-dependent reaction without identifying a
 physical LED or accepted frame. Those unswapped controls (IDs 13/14) also
@@ -100,8 +100,12 @@ and `E0h/C0h/C0h`; its tracked Keysight
 CSV shows the intended `7Eh 03h` cells at scope D2/D3, 21/21 clock pulses,
 8/8 data pulses, with all digital timing targets met. The pod-to-Uno
 mapping for trial 17 awaits owner confirmation; optical delivery remains
-unmeasured. The next comparison is a matched G/S and G/X pair (IDs 18/19)
+unmeasured. The subsequent comparison was a matched G/S and G/X pair (IDs 18/19)
 with `pol=1`, which complements the full frame after logical stuffing.
+Both returned error 8 with identical `A0h/80h/80h` status and never reached
+stock RX; no trial-19 scope trace was supplied. The next matched pair
+(IDs 20/21) keeps this candidate but uses mode R to call stock RX directly.
+This tests a different receiver path without changing the burned ROM.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

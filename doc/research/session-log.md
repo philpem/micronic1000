@@ -7712,3 +7712,18 @@ names renamed, 144 unplated functions plated)
   connected, then try matched G/S and G/X IDs 18/19 with `pol=1` while
   retaining sketch `stuff=1`. The sketch complements the whole logically
   stuffed frame, including the flag, to test the inverted wire sense.
+
+### 2026-09-23 — Complemented-wire G controls, IDs 18 and 19
+
+* CONFIRMED (owner serial report): matched G/S and G/X kept `swap=0`,
+  logical `7Eh 03h`, `stuff=1`, 7 ms delay and set `pol=1`. Both valid
+  30-byte records returned mode 4/error 8 with identical A0h/80h/80h
+  probe/before/after status. Neither entered stock RX because the
+  `LINK_STATUS` bit-4 pending wait expired. Trial 18 emitted nothing;
+  trial 19 reported 3 us maximum scheduler lateness.
+* No trial-19 scope trace was supplied; `/tmp/IR` still held trial 17.
+  The baseline status changed from IDs 15–17 for both members of this
+  pair, so that across-run difference is not a polarity response.
+* Next: matched direct-stock-RX mode R/S and R/X IDs 20/21, preserving
+  the ID-19 stimulus. This bypasses G's pending gate on the current
+  feedback ROM, though the wrapper still hides partial bytes on carry.
