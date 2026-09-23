@@ -109,8 +109,17 @@ This tests a different receiver path without changing the burned ROM. Both
 returned `A=EEh`, `F=6Dh`, wrapper error 7. Trial 20's probe/before/after
 was `E0h/C0h/C0h`; trial 21's was `A0h/80h/C0h`. Thus `LINK_STATUS` bit 6
 rose during trial 21's RX call, but the before baselines already differed,
-so attribution to optical output remains open. The next matched mode-R
-pair (IDs 22/23) delays emission to START+60 ms as a late-stimulus control.
+so attribution to optical output remains open. The subsequent matched
+mode-R pair (IDs 22/23) delayed emission to START+60 ms as a late-stimulus
+control.
+Both returned the same `A=EEh`, `F=6Dh` error and identical
+`A0h/C0h/C0h` probe/before/after status. Trial 23 scheduled emission at
+START+59,808 us with 9 us maximum lateness; both trials began with
+`LINK_STATUS` bit 6 set, so the pair did not test whether the bit can rise
+without an in-window stimulus. The next useful check is the optical path:
+measure Uno LED light at the top V24 receive window using the owner's
+previously documented SFH213 photodiode probe. This needs no new burn or
+sketch build and precedes more candidate-frame sweeps.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

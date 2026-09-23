@@ -111,9 +111,15 @@ and invoked stock RX directly. Both returned `A=EEh`, `F=6Dh`, wrapper
 error 7. Trial 20 probe/before/after was E0h/C0h/C0h; trial 21 was
 A0h/80h/C0h. Its `LINK_STATUS` bit 6 rose across stock RX, but the
 different pre-stimulus baselines and stock RX timeout prevent attribution
-to optics. No trial-21 scope trace was supplied. Next: matched mode-R
-IDs 22/23 at START+60 ms, normally after the no-byte RX timeout/status
-sample, as a late-stimulus control. Earlier conn10
+to optics. No trial-21 scope trace was supplied. Matched mode-R
+IDs 22/23 then used START+60 ms, normally after the no-byte RX timeout/status
+sample, as a late-stimulus control. Both returned the same `EEh`/carry
+and identical A0h/C0h/C0h probe/before/after status; trial 23 emitted
+with 9 us maximum scheduler lateness. Since bit 6 was already set before
+RX in both, this pair does not explain trial 21's rise. Next: test the
+optical output at the top V24 receive window with the previously documented
+SFH213 photodiode probe before more framing sweeps. This verifies light
+at the target plane, not internal detector receipt. Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R
 preserves the last accepted host ID.
 

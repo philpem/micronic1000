@@ -7744,3 +7744,20 @@ names renamed, 144 unplated functions plated)
   stimulus after the roughly 30 ms first-byte wait if that no-byte path
   was taken. Verify that trial 23 actually emitted; if RX ran longer on a
   partial-byte path, the control's temporal separation is not guaranteed.
+
+### 2026-09-23 — Late direct-RX control, IDs 22 and 23
+
+* CONFIRMED (owner serial report): both 30-byte records passed checksum,
+  returned mode 2/error 7 and stock `A=EEh`, `F=6Dh` (carry), with identical
+  `LINK_STATUS` probe/before/after A0h/C0h/C0h. Trial 22 was silent.
+  Trial 23's scheduler entered at START+59,808 us, about 256 us before
+  the first clock edge, and reported 9 us maximum lateness. No new scope
+  capture was supplied; `/tmp/IR` remained the trial-17 source.
+* Both began with `LINK_STATUS` bit 6 set, so this pair does not show
+  whether bit 6 could rise during RX without an in-window stimulus. The
+  identical return also supplies no frame reception evidence. The wrapper
+  does not timestamp RX return or retain partial bytes on carry.
+* Next: use the owner's documented SFH213 photodiode probe to measure Uno
+  LED light at the top V24 receive window with the existing ROM/sketch.
+  Prove optical delivery at the target plane before more framing/phase
+  permutations; internal detector receipt remains a separate question.
