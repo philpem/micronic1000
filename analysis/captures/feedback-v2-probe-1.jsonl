@@ -1,0 +1,8 @@
+{"utc": "2026-09-23T15:34:00.646596+00:00", "monotonic_s": 894297.679010505, "direction": "tx", "line": "R"}
+{"utc": "2026-09-23T15:34:00.649315+00:00", "monotonic_s": 894297.681707618, "direction": "rx", "line": "SYNC"}
+{"utc": "2026-09-23T15:34:00.653410+00:00", "monotonic_s": 894297.685809559, "direction": "rx", "line": "BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"}
+{"utc": "2026-09-23T15:34:00.751510+00:00", "monotonic_s": 894297.783912169, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T15:34:00.751674+00:00", "monotonic_s": 894297.784057576, "direction": "tx", "line": "T 1 P S 0 -- 0 0 0 -2 0 0 -"}
+{"utc": "2026-09-23T15:34:00.773812+00:00", "monotonic_s": 894297.806215928, "direction": "rx", "line": "TRIAL id=1 mode=P kind=S swap=0 flag=-- stuff=0 close=0 pol=0 clk_inv=0 dat_inv=0 repeat_count=1 repeat_gap_ms=0 phase=-2 lead=0 delay_us=0 cell_us=122 order=MSB payload=-"}
+{"utc": "2026-09-23T15:34:02.370012+00:00", "monotonic_s": 894299.402412553, "direction": "rx", "line": "ERROR id=1 reason=ack; send R to resynchronise"}
+{"utc": "2026-09-23T15:34:02.370248+00:00", "monotonic_s": 894299.40263539, "direction": "tx", "line": "C 1"}

@@ -43,7 +43,38 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Current IR round:** feedback-v1 implements black command handshakes, yellow
+**Current IR round:** feedback-v2 is burned and has completed its first
+P/H/J/K handheld run. It retains v1 W/R/P/G and adds H/J/K controller-state
+capture. See the [v2 bench procedure](../re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-build-and-bench-procedure),
+the command sheet at `analysis/trials/feedback-v2-state-1-13.txt`, and the
+release manifest at `analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.json`.
+The image MD5 is `a9966a607f672d75031113528b7c6ea3`; byte sums are
+`903E`/`37903E`. The first attempted silent P handshake timed out waiting
+for yellow ACK because the handheld had not yet cold-booted. After the
+owner discharged backup power and confirmed the v2 banner, P returned
+ROM sequence 1/error 0. The following H/J/K matrix returned ROM sequences
+2–13/error 0 with no `LINK_STATUS` bit-4 or bit-0 sample in any trial;
+each capture held a constant `80h` or `C0h` status byte. K's watcher-hit
+byte stayed zero. See the [first v2 result](../re-notes/ir-feedback-protocol.md#first-feedback-v2-bench-result-2026-09-23),
+`analysis/captures/feedback-v2-probe-2-clean.jsonl`, and
+`analysis/captures/feedback-v2-state-3-14.jsonl`. The question is whether
+`LINK_STATUS` bit 4 differs across high/low/watcher-like `LINK_CTRL`
+bits-6/7 drive under matched IR stimuli. Even a positive correlation would
+not identify optical LED roles or a complete IR frame by itself.
+
+The corrected v2 physical-level matrix (host IDs 33–50, ROM sequences
+32–49) covered all remaining `clk_inv dat_inv` settings for H/J/K and
+both role assignments; all 18 valid captures again had constant `80h`
+or `C0h` status, no `LINK_STATUS` bit 4/bit 0, and no K watcher hit.
+The first attempt (IDs 15–32) did **not** vary levels because a 17-field
+repeat-command parser branch dropped both inversion fields. This defect is
+fixed and regression-tested; see the [v2 bench result](../re-notes/ir-feedback-protocol.md#first-feedback-v2-bench-result-2026-09-23).
+**Next discriminating question:** can the earlier stock V24 pending-bit
+observation be reproduced with an instrumented live TX/session/IRQ path or
+a byte-verified TX prelude whose state is preserved into capture? Avoid
+further broad standalone 7Eh sweeps until that context is isolated.
+
+**Previous v1 round:** feedback-v1 implements black command handshakes, yellow
 markers, stock-order witness and bounded raw RX in one standalone ROM. Fresh
 `Link_PortSelect` bytes still clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5,
 so the harness restores the known black gate only after teardown. The canonical

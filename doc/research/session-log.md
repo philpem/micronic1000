@@ -7954,3 +7954,70 @@ names renamed, 144 unplated functions plated)
   state, with matched silent/stimulated controls and reversed run order.
   The proposed pulse widths and record layout are in
   `doc/re-notes/ir-feedback-protocol.md`. No v2 image or checksum exists.
+
+### 2026-09-23 — Feedback-v2 receive-state build and Commstar drive audit
+
+* CONFIRMED (fresh ROM bytes at `ROM00:31B6`, `3277`, `3454`, `348A`,
+  `34BD`, `34D2`): v1 G selects the top V24 route, but its `DI`,
+  reset/select, `LinkFinish`, and 5-ms direct poll differ from stock
+  Commstar's active TX/IRQ context. The stock watcher clears `LINK_CTRL`
+  bits 6/7, reads/tests `LINK_STATUS` bit 4, and re-arms if clear. The
+  optical electrical effect of the control pair is not yet established;
+  corrected earlier docs that called its high state physically listening.
+* Built guarded ROM00 feedback-v2 with H/J static control-pair states and
+  K watcher-like clear/read/test/re-arm, full-byte status summaries and
+  START-marker release before capture. Stock live TX/IRQ/session context
+  remains absent. H/J collect 1,000 samples in an audited 321,261 T;
+  K collects 600 in 327,468 T. Conservative bounds are below 100 ms.
+  V1 W/R/P/G remain available. No handheld v2 observation yet.
+* Added Uno H/J/K holds, a v1/v2 raw-record decoder, emulator and host
+  tests, and the 13-command bench sheet. The release image is 32,768 bytes,
+  MD5 `a9966a607f672d75031113528b7c6ea3`, additive 16/24-bit
+  `903E`/`37903E`. Integration checks passed: 71 focused tests, Elegoo
+  Uno R3 compile (12,088 flash bytes, 861 static SRAM bytes), strict docs
+  build and rendered-doc checks. The release manifest reproduces the image
+  from the verified stock ROM; the binary remains a local ignored artifact.
+
+### 2026-09-23 — First attempted v2 bench handshake
+
+* Owner reports ROM00 replacement and an LCD showing `S003F` after the
+  swap. This is consistent with the last v1 sequence 63 but does not prove
+  that v2 cold boot ran: v2 clears its private counter to zero at entry and
+  initially renders `IR FEEDBACK V2 W..K`. Full LCD state and reset history
+  are pending owner confirmation.
+* Uploaded and verified the matching Elegoo Uno R3 sketch on `/dev/ttyACM0`;
+  its boot output identified `FEEDBACK v1/v2` and direct-TTL black drive.
+  A single silent P command (`T 1 P S 0 -- 0 0 0 -2 0 0 -`) reached
+  `TRIAL` but timed out waiting for yellow ACK after black was commanded.
+  No handheld result, status sample or IR burst was obtained. The timestamped
+  serial log is `analysis/captures/feedback-v2-probe-1.jsonl`. Uno `R` then
+  restored READY. Do not infer v2 boot or a ROM defect from this timeout;
+  confirm the handheld banner and connector continuity before a repeat.
+
+### 2026-09-23 — V2 cold boot, first matrix and parser correction
+
+* Owner fully cold-booted by discharging the RAM backup capacitor after
+  battery removal. LCD showed `IR FEEDBACK V2 W..K`; the earlier `S003F`
+  was retained v1 display content. A clean P command used Uno host ID 2,
+  returned ROM sequence 1, mode 3, error 0, record version 2 and no IR
+  emission. A repeated host ID 1 was rejected before a transaction; a
+  separate stale USB line spoiled one `SYNC` response without sending T.
+* H/J/K host IDs 3–14 returned ROM sequences 2–13 and 12 valid records.
+  Six silent/stimulated pairs matched exactly for each mode and proposed
+  LED-role assignment. All full-byte status captures were constant `80h`
+  or `C0h` with no `LINK_STATUS` bit 4/bit 0 and no K watcher hit. Each X
+  command scheduled three `7Eh` + stuffed `1Fh` bursts at +5/28/51 ms;
+  reported Uno scheduler lateness was at most 11 us. No fresh optical
+  receiver waveform was captured.
+* A follow-up exposed that 17-field repeated-burst commands ignored both
+  physical inversion parameters. IDs 15–32 were normal-drive duplicates,
+  despite different requested fields. Fixed the parser to read inversion
+  fields for 15- and 17-field commands, added a host regression, and
+  verified a new Uno upload. The runner now flushes stale USB startup
+  fragments before sending `R`.
+* Corrected IDs 33–50, ROM sequences 32–49, covered H/J/K, both role
+  assignments and the three remaining physical drive-level combinations.
+  All 18 valid error-0 records held `LINK_STATUS` at `80h` or `C0h`, with
+  no bit-4/bit-0 sample or K watcher hit. The `TRIAL` echoes confirm the
+  requested levels were parsed. Further standalone 7Eh sweeps cannot
+  distinguish wrong framing from the missing stock transaction context.

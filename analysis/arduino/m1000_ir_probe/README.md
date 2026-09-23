@@ -12,7 +12,7 @@ arduino-cli compile --fqbn arduino:avr:uno \
 
 Direct TTL is also the source default, so an IDE upload uses the current
 bench wiring. Upload the same build to the Uno. The
-[current physical-test handoff](../../../doc/re-notes/ir-feedback-protocol.md#current-handoff-next-physical-trial)
+[current physical-test handoff](../../../doc/re-notes/ir-feedback-protocol.md#current-handoff-feedback-v2-bench-trial)
 gives the next ID, scope setup, measurements and result fields.
 
 ## Combined feedback harness (default)
@@ -20,7 +20,8 @@ gives the next ID, scope setup, measurements and result fields.
 The default build is now `FEEDBACK_HARNESS=1`. It boots **silent** and accepts
 explicit one-shot USB commands. The matching ROM provides witness (`W`),
 forced receive (`R`), reset/probe (`P`), and receive-pending-gated receive (`G`)
-trials in one burn. See the complete [wiring, command and result guide](../../../doc/re-notes/ir-feedback-protocol.md).
+trials in one burn. Feedback-v2 adds H/J/K receive-state captures; see the
+complete [wiring, command and result guide](../../../doc/re-notes/ir-feedback-protocol.md).
 
 ### Choose black interface before uploading
 

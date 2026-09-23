@@ -1,0 +1,20 @@
+# Feedback-v2 continuation; host ID 14 and ROM sequence 13 completed.
+# Same 7E + stuffed 1F three-burst candidate, only GPIO drive levels varied.
+T 15 H X 0 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 16 J X 0 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 17 K X 0 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 18 H X 0 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 19 J X 0 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 20 K X 0 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 21 H X 0 7E 1 0 0 -2 0 5000 1F 1 1 3 23
+T 22 J X 0 7E 1 0 0 -2 0 5000 1F 1 1 3 23
+T 23 K X 0 7E 1 0 0 -2 0 5000 1F 1 1 3 23
+T 24 K X 1 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 25 J X 1 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 26 H X 1 7E 1 0 0 -2 0 5000 1F 0 1 3 23
+T 27 K X 1 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 28 J X 1 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 29 H X 1 7E 1 0 0 -2 0 5000 1F 1 0 3 23
+T 30 K X 1 7E 1 0 0 -2 0 5000 1F 1 1 3 23
+T 31 J X 1 7E 1 0 0 -2 0 5000 1F 1 1 3 23
+T 32 H X 1 7E 1 0 0 -2 0 5000 1F 1 1 3 23

@@ -311,16 +311,17 @@ static TrialObservation beginTrial(const std::string &command,
 }
 
 static std::vector<uint8_t> resultRecord(uint8_t mode, uint16_t sequence,
-                                         uint8_t error = 0) {
+                                         uint8_t error = 0, uint8_t version = 1) {
   std::vector<uint8_t> result(30, 0);
   result[0] = 0xA5;
   result[1] = 0x5A;
-  result[2] = 1;
+  result[2] = version;
   result[3] = mode;
   result[4] = (uint8_t)sequence;
   result[5] = (uint8_t)(sequence >> 8);
   result[6] = error;
   result[10] = result[11] = 0xFF;
+  if (version == 2 && mode >= 5 && mode <= 7) result[17] = 8;
   result[26] = 0x02;
   uint8_t sum = 0;
   for (size_t i = 0; i < result.size() - 1; ++i) sum += result[i];
@@ -348,8 +349,9 @@ static void deliverResult(const std::vector<uint8_t> &bytes,
   hostYellow = true;
 }
 
-static void expectSuccessfulResult(uint8_t mode, uint16_t sequence) {
-  deliverResult(resultRecord(mode, sequence));
+static void expectSuccessfulResult(uint8_t mode, uint16_t sequence,
+                                   uint8_t version = 1) {
+  deliverResult(resultRecord(mode, sequence, 0, version));
   CHECK(fbState == FB_IDLE);
   CHECK(!hostBlack);
   CHECK(contains("RESULT id="));
@@ -392,10 +394,12 @@ static std::string command(uint32_t id, char hold, char kind, int swap,
 }
 
 static std::string repeatCommand(uint32_t id, uint8_t count, uint8_t gapMs,
-                                 uint16_t delayUs = 1000) {
+                                 uint16_t delayUs = 1000,
+                                 uint8_t clkInv = 0, uint8_t datInv = 0) {
   std::ostringstream text;
   text << "T " << id << " G X 0 7E 0 0 0 -2 3 " << delayUs
-       << " 03 0 0 " << (unsigned)count << ' ' << (unsigned)gapMs;
+       << " 03 " << (unsigned)clkInv << ' ' << (unsigned)datInv
+       << ' ' << (unsigned)count << ' ' << (unsigned)gapMs;
   return text.str();
 }
 
@@ -478,12 +482,16 @@ static void opticalInversionTrials() {
 }
 
 static void inversionParserRejections() {
-  const uint32_t badIds[] = {nextId++, nextId++, nextId++, nextId++};
+  const uint32_t badIds[] = {nextId++, nextId++, nextId++, nextId++, nextId++};
   const std::string base = "T ";
-  const std::string suffixes[] = {" 2 0", " 0 2", " 0", " 0 0 extra"};
-  for (size_t i = 0; i < 4; ++i) {
-    send(base + std::to_string(badIds[i]) + " W S 0 7E 0 0 0 -2 3 1000 03" +
-         suffixes[i] + "\n");
+  const std::string commands[] = {
+      "T " + std::to_string(badIds[0]) + " W S 0 7E 0 0 0 -2 3 1000 03 2 0",
+      "T " + std::to_string(badIds[1]) + " W S 0 7E 0 0 0 -2 3 1000 03 0 2",
+      "T " + std::to_string(badIds[2]) + " W S 0 7E 0 0 0 -2 3 1000 03 0",
+      "T " + std::to_string(badIds[3]) + " W S 0 7E 0 0 0 -2 3 1000 03 0 0 extra",
+      base + std::to_string(badIds[4]) + " Q S 0 7E 0 0 0 -2 3 1000 03"};
+  for (size_t i = 0; i < 5; ++i) {
+    send(commands[i] + "\n");
     CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
   }
 }
@@ -514,12 +522,68 @@ static void successfulTrials() {
   expectSuccessfulResult(4, 0x0001);
   CHECK(fbHaveSequence && fbExpectedSequence == 2);
   waitReady();
+
+  TrialObservation h = beginTrial(command(nextId++, 'H', 'S', 0), 575000);
+  advanceUs(2000);
+  CHECK(irEvents.size() == h.firstIrEvent);
+  expectSuccessfulResult(5, 2, 2);
+  waitReady();
+
+  TrialObservation j = beginTrial(command(nextId++, 'J', 'X', 1), 625000);
+  spinUntil([] { return !fbEmitPending; }, 5000);
+  assertOneBurst(j.firstIrEvent, 6, 5);
+  expectSuccessfulResult(6, 3, 2);
+  CHECK(fbExpectedSequence == 4);
+  waitReady();
+
+  TrialObservation k = beginTrial(command(nextId++, 'K', 'S', 0), 400000);
+  advanceUs(2000);
+  CHECK(irEvents.size() == k.firstIrEvent);
+  expectSuccessfulResult(7, 4, 2);
+  CHECK(fbExpectedSequence == 5);
+  waitReady();
+}
+
+static void v2RecordValidation() {
+  TrialObservation h = beginTrial(command(nextId++, 'H', 'S', 0), 575000);
+  advanceUs(2000);
+  (void)h;
+  // v2 status bytes 18-25 are opaque to the Uno's raw-RX checks.
+  std::vector<uint8_t> record = resultRecord(5, fbExpectedSequence, 0, 2);
+  record[15] = 0xFF; record[16] = 0xFF; record[17] = 8;
+  uint8_t sum = 0;
+  for (size_t i = 0; i < record.size() - 1; ++i) sum += record[i];
+  record[29] = (uint8_t)(0U - sum);
+  deliverResult(record);
+  CHECK(fbState == FB_IDLE && contains("RESULT id="));
+  waitReady();
+
+  TrialObservation badSlot = beginTrial(command(nextId++, 'J', 'S', 0), 625000);
+  advanceUs(2000);
+  (void)badSlot;
+  record = resultRecord(6, fbExpectedSequence, 0, 2);
+  record[17] = 7;
+  sum = 0;
+  for (size_t i = 0; i < record.size() - 1; ++i) sum += record[i];
+  record[29] = (uint8_t)(0U - sum);
+  deliverResult(record);
+  CHECK(fbState == FB_DESYNC && contains("reason=result"));
+  resyncAndReady();
+
+  TrialObservation next = beginTrial(command(nextId++, 'K', 'S', 0), 400000);
+  advanceUs(2000);
+  (void)next;
+  deliverResult(resultRecord(8, fbExpectedSequence, 0, 2));
+  CHECK(fbState == FB_DESYNC && contains("reason=result"));
+  resyncAndReady();
 }
 
 static void repeatedBurstTrials() {
   const uint32_t id = nextId++;
-  TrialObservation trial = beginTrial(repeatCommand(id, 3, 23), 700000);
+  TrialObservation trial = beginTrial(repeatCommand(id, 3, 23, 1000, 1, 0), 700000);
   CHECK(fbConfig.repeatCount == 3 && fbConfig.repeatGapMs == 23);
+  CHECK(fbConfig.clockInvert == 1 && fbConfig.dataInvert == 0);
+  CHECK(contains("clk_inv=1") && contains("dat_inv=0"));
   spinUntil([] { return !fbEmitPending; }, 90000);
   CHECK(irEvents.size() > trial.firstIrEvent);
   std::vector<std::vector<uint8_t> > bursts;
@@ -807,6 +871,7 @@ int main() {
   resyncAndReady();
 
   successfulTrials();
+  v2RecordValidation();
   repeatedBurstTrials();
   preStartErrorNeverEmits();
   malformedResultCases();

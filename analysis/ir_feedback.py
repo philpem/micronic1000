@@ -83,6 +83,11 @@ class SerialLines:
     def close(self):
         os.close(self.fd)
 
+    def discard_startup_input(self):
+        """Drop boot fragments before an explicit R establishes a clean line."""
+        termios.tcflush(self.fd, termios.TCIFLUSH)
+        self.pending.clear()
+
     def send(self, line: str):
         data = memoryview((line + '\n').encode('ascii'))
         deadline = time.monotonic() + 2
@@ -199,6 +204,7 @@ def main(argv=None):
             serial = SerialLines(args.port)
             try:
                 time.sleep(args.startup_wait)
+                serial.discard_startup_input()
                 Runner(serial, log, args.timeout).run(commands)
             finally:
                 serial.close()

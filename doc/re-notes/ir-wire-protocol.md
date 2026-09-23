@@ -599,7 +599,7 @@ There is **no `LINK_STATUS` bit-6 test anywhere in the receive path**. The other
 
 Byte-verified across the image; no indirect `IN` on `4Bh` was found elsewhere.
 
-### Finding 2 — `LINK_CTRL` bits 6/7 are an RX-arm pair — CONFIRMED
+### Finding 2 — `LINK_CTRL` bits 6/7 are driven as a pair — CONFIRMED
 
 `LINK_CTRL` (`4Ah`) bits 6 and 7 are driven as a pair:
 

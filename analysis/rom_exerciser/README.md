@@ -2,7 +2,29 @@
 
 ## Current combined feedback build
 
-**feedback-v1** is the requested standalone combined burn. Build it only to an
+**feedback-v2** is the next ROM00 burn candidate. It adds H/J/K fast
+`LINK_STATUS` captures while retaining v1 W/R/P/G. Build and verify the
+release from the stock ROM with:
+
+```sh
+analysis/venv/bin/python analysis/rom_exerciser/feedback_v2.py \
+  -o analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.bin \
+  --manifest-out analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.json
+analysis/venv/bin/python -m pytest -q analysis/test_feedback_v2_rom.py \
+  analysis/test_feedback_rom.py analysis/test_feedback_uart.py \
+  analysis/test_feedback_record.py
+```
+
+The v2 image's MD5 is `a9966a607f672d75031113528b7c6ea3`;
+unsigned byte-sum checksums are `903E` (16-bit) and `37903E` (24-bit).
+Burn ROM00 only and leave ROM01 stock. The [interface and bench
+procedure](../../doc/re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-build-and-bench-procedure)
+give the connector wiring and 13-command test sheet. The first v2 P/H/J/K
+run and corrected optical-level matrix are recorded there. Keep the
+resistor-limited Uno LEDs in their tested
+placement. The old v1 builder and image below are preserved unchanged.
+
+**feedback-v1** was the first standalone combined burn. Build it only to an
 explicit output path and, if wanted, an explicit manifest path:
 
 ```sh
@@ -52,7 +74,7 @@ physical validation, pin mappings and the handoff to the next IR experiment.
 > 620-iteration poll body but delays its first sample by 10 T and returns 107 T
 > after exit. Arduino phase generation is corrected and all 13 actual-Uno
 > configurations compile. The historical connector probe v2 remains available;
-> the current requested burn is feedback-v1. Follow the
+> the current requested burn is feedback-v2. Follow the
 > [IR feedback harness interface](../../doc/re-notes/ir-feedback-protocol.md).
 
 > **DO NOT REBURN `1225`, `2692` OR `1E3E`.** The verified `1225` image produced a

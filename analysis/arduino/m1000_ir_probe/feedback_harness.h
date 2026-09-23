@@ -17,7 +17,7 @@ enum FeedbackMode : uint8_t { FB_SILENT, FB_STIMULUS };
 
 struct FeedbackConfig {
   uint32_t trialId;
-  uint8_t holdKind;       // W=100 ms, R=300 ms, P=500 ms, G=700 ms
+  uint8_t holdKind;       // W/R/P/G=100/300/500/700; H/J/K=575/625/400 ms
   uint8_t mode;
   uint8_t swapRoles;      // 0: A/D5 clock, B/D6 data; 1: reversed
   uint8_t haveFlag;       // candidate start byte, no protocol meaning implied
@@ -90,7 +90,7 @@ inline bool fbHex(const char *text, uint8_t *dst, uint8_t *length) {
 }
 
 // Commands (ASCII, LF terminated, max 95 chars):
-//   T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload
+//   T id W|R|P|G|H|J|K S|X swap flag|-- stuff close pol phase lead delay_us payload
 //     [clk_inv dat_inv [repeat_count repeat_gap_ms]]
 //   C id
 //   R
@@ -153,7 +153,7 @@ class FeedbackLineParser {
     uint32_t value = 0;
     FeedbackConfig next = {};
     next.trialId = parsedId;
-    if (strlen(parts[2]) != 1 || strchr("WRPG", parts[2][0]) == 0) return FB_BAD;
+    if (strlen(parts[2]) != 1 || strchr("WRPGHJK", parts[2][0]) == 0) return FB_BAD;
     next.holdKind = (uint8_t)parts[2][0];
     if (!strcmp(parts[3], "S")) next.mode = FB_SILENT;
     else if (!strcmp(parts[3], "X")) next.mode = FB_STIMULUS;
@@ -176,7 +176,7 @@ class FeedbackLineParser {
     next.leadCells = (uint8_t)value;
     if (!fbUnsigned(parts[11], 60000, &value)) return FB_BAD;
     next.delayUs = (uint16_t)value;
-    if (count == 15) {
+    if (count >= 15) {
       if (!fbUnsigned(parts[13], 1, &value)) return FB_BAD;
       next.clockInvert = (uint8_t)value;
       if (!fbUnsigned(parts[14], 1, &value)) return FB_BAD;

@@ -138,7 +138,7 @@ from an idle command rejection: after accidentally repeating a trial ID,
 send the next higher ID directly. An error after a transaction starts
 still requires `R`.
 The exact next commands and capture acceptance targets are at the top of the
-[canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
+[canonical handoff](ir-feedback-protocol.md#current-handoff-feedback-v2-bench-trial).
 
 ## Original design, superseded by feedback-v1
 
