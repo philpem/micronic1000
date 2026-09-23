@@ -18,6 +18,7 @@
 #define WGM21 1
 #define CS20 0
 #define OCIE2A 1
+#define PD4 4
 
 #ifndef BLACK_USE_NPN
 #error "host test must select BLACK_USE_NPN explicitly"
@@ -25,7 +26,7 @@
 
 typedef char __FlashStringHelper;
 
-volatile uint8_t PORTD = 0, PORTB = 0;
+volatile uint8_t PORTD = 0, PORTB = 0, PIND = 0;
 volatile uint8_t TCCR2A = 0, TCCR2B = 0, OCR2A = 0, TIMSK2 = 0;
 
 static uint32_t hostNow = 0;
@@ -873,7 +874,10 @@ int main() {
   successfulTrials();
   v2RecordValidation();
   repeatedBurstTrials();
+  txMaxLatenessUs = txAppliedMaxLatenessUs = 123;
   preStartErrorNeverEmits();
+  CHECK(txMaxLatenessUs == 0 && txAppliedMaxLatenessUs == 0);
+  CHECK(contains("emit_applied_late_max=0"));
   malformedResultCases();
   commandFailureCases();
   payloadAndEarlyEdgeCases();

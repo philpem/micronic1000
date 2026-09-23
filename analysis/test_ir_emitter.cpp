@@ -20,11 +20,20 @@
 #define WGM21 1
 #define CS20 0
 #define OCIE2A 1
+#define PD4 4
+#define PB0 0
+#define PCINT0 0
+#define PCIF0 0
+#define PCIE0 0
+#define PCINT0_vect pcint0_vect
 typedef char __FlashStringHelper;
 
-volatile uint8_t PORTD = 0, PORTB = 0;
+volatile uint8_t PORTD = 0, PORTB = 0, PIND = 0, PINB = 0;
+volatile uint8_t PCIFR = 0, PCMSK0 = 0, PCICR = 0;
 volatile uint8_t TCCR2A = 0, TCCR2B = 0, OCR2A = 0, TIMSK2 = 0;
 struct SerialStub {
+  int writable = 64;
+  std::string output;
   void begin(unsigned long) {}
   int available() { return 0; }
   int read() { return -1; }
@@ -34,6 +43,11 @@ struct SerialStub {
   template <typename T> void println(T, int) {}
   void println() {}
   void write(char) {}
+  int availableForWrite() { return writable; }
+  size_t write(const uint8_t *data, size_t len) {
+    output.append((const char *)data, len);
+    return len;
+  }
 } Serial;
 
 uint32_t fakeNow;
@@ -117,17 +131,28 @@ static std::vector<uint8_t> sampled(const std::vector<TraceEvent> &events) {
 static void checkGpioTrace() {
   // Every scheduled event reaches its physical output, followed by the two
   // writes that leave the emitter dark after the frame.
-  assert(gpioTrace.size() == trace.size() + 2);
+  const size_t baseline = (txClockLevelInvert || txDataLevelInvert) ? 2 : 0;
+  assert(gpioTrace.size() == trace.size() + baseline + 2);
+  if (baseline) {
+    assert(gpioTrace[0].pin == (sweepSwap ? 6 : 5));
+    assert(gpioTrace[0].high == (txClockLevelInvert != 0));
+    assert(gpioTrace[1].pin == (sweepSwap ? 5 : 6));
+    assert(gpioTrace[1].high == (txDataLevelInvert != 0));
+  }
   for (size_t i = 0; i < trace.size(); ++i) {
     const uint8_t expectedPin =
-        (trace[i].type == 1 || trace[i].type == 2) ? 5 : 6;
-    const bool expectedHigh = trace[i].type == 0 || trace[i].type == 1;
-    assert(gpioTrace[i].pin == expectedPin);
-    assert(gpioTrace[i].high == expectedHigh);
+        (trace[i].type == 1 || trace[i].type == 2)
+            ? (sweepSwap ? 6 : 5) : (sweepSwap ? 5 : 6);
+    const bool logicalHigh = trace[i].type == 0 || trace[i].type == 1;
+    const bool invert = (trace[i].type == 1 || trace[i].type == 2)
+                            ? txClockLevelInvert : txDataLevelInvert;
+    assert(gpioTrace[i + baseline].pin == expectedPin);
+    assert(gpioTrace[i + baseline].high == (logicalHigh ^ invert));
   }
-  assert(gpioTrace[trace.size()].pin == 5 && !gpioTrace[trace.size()].high);
-  assert(gpioTrace[trace.size() + 1].pin == 6 &&
-         !gpioTrace[trace.size() + 1].high);
+  assert(gpioTrace[trace.size() + baseline].pin == 5 &&
+         !gpioTrace[trace.size() + baseline].high);
+  assert(gpioTrace[trace.size() + baseline + 1].pin == 6 &&
+         !gpioTrace[trace.size() + baseline + 1].high);
 }
 
 static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
@@ -170,6 +195,28 @@ int main() {
       runCase(100, bits, phase);
     }
   }
+
+  // Both optical assignments and all four active-level combinations must
+  // reach the requested physical pins and return both LEDs to dark.
+  for (uint8_t swap = 0; swap < 2; ++swap) {
+    for (uint8_t clockInvert = 0; clockInvert < 2; ++clockInvert) {
+      for (uint8_t dataInvert = 0; dataInvert < 2; ++dataInvert) {
+        runCase(1000, {1, 0, 1}, -2);
+        sweepSwap = swap;
+        txClockLevelInvert = clockInvert;
+        txDataLevelInvert = dataInvert;
+        trace.clear();
+        gpioTrace.clear();
+        fakeNow = 1000;
+        fakeReads = 0;
+        emitCells(1000, 0, 0);
+        assert(txMaxLatenessUs == 0);
+        checkGpioTrace();
+      }
+    }
+  }
+  txClockLevelInvert = txDataLevelInvert = 0;
+  sweepSwap = 0;
 
   // A +4/8 phase intentionally shifts the pulse into the following sample;
   // the test documents that waveform consequence rather than pretending the
@@ -225,6 +272,85 @@ int main() {
   while (trailingZeros < closing &&
          wire[closing - 1 - trailingZeros] == '0') ++trailingZeros;
   assert(trailingZeros < 5);
+
+#if STOCK_CONTEXT_EVENTS
+  // Rising from a low level present at startup has no known pulse onset.
+  stockEventHead = stockEventTail = 0;
+  stockEventDrops = 0;
+  stockYellowWasHigh = false;
+  stockYellowHaveFall = false;
+  PINB = _BV(PB0);
+  fakeNow = 100;
+  PCINT0_vect();
+  assert(stockEventHead == 0);
+  PINB = 0;
+  fakeNow = 200;
+  PCINT0_vect();
+  PINB = _BV(PB0);
+  fakeNow = 70000;
+  PCINT0_vect();
+  assert(stockEventHead == 1);
+  assert(stockEvents[0].riseUs == 70000);
+  assert(stockEvents[0].lowUs == 69800);  // no 16-bit width clamp
+  Serial.writable = 0;
+  stockDrainYellowEvents();
+  assert(stockEventTail == 0);
+  Serial.writable = 64;
+  stockDrainYellowEvents();
+  assert(stockEventTail == 1);
+  assert(Serial.output.find("rise_us=70000 low_us=69800\n") != std::string::npos);
+  stockEventHead = stockEventTail = 0;
+  // A full ring counts losses beyond 255 instead of wrapping to zero.
+  stockEventHead = 7;
+  stockEventTail = 0;
+  stockEventDrops = 255;
+  for (int i = 0; i < 2; ++i) {
+    PINB = 0;
+    PCINT0_vect();
+    PINB = _BV(PB0);
+    PCINT0_vect();
+  }
+  assert(stockEventDrops == 257);
+  stockEventDrops = 0xFFFFU;
+  PINB = 0;
+  PCINT0_vect();
+  PINB = _BV(PB0);
+  PCINT0_vect();
+  assert(stockEventDrops == 0xFFFFU);
+  stockEventTail = stockEventHead;
+  Serial.writable = 0;
+  stockDrainYellowEvents();
+  assert(stockEventDrops == 0xFFFFU);
+  Serial.writable = 64;
+  stockDrainYellowEvents();
+  assert(stockEventDrops == 0);
+  assert(Serial.output.find("# STOCK_YELLOW_DROPS 65535\n") !=
+         std::string::npos);
+#endif
+
+#if STOCK_CONTEXT_EVENTS && (FREE_TX || RX_NARROW)
+  setup();
+  assert(sweepSwap == STOCK_TX_SWAP);
+  assert(txClockLevelInvert == STOCK_CLOCK_INVERT);
+  assert(txDataLevelInvert == STOCK_DATA_INVERT);
+#if STOCK_FIXED_CANDIDATE
+  assert(rxFlagIdx == STOCK_FLAG_IDX);
+  assert(rxPhaseIdx == STOCK_PHASE_IDX);
+  assert(rxPolIdx == STOCK_POL_IDX);
+  assert(rxContentIdx == STOCK_CONTENT_IDX);
+  advanceSweep();
+  assert(sweepSwap == STOCK_TX_SWAP);
+  assert(rxFlagIdx == STOCK_FLAG_IDX);
+  assert(rxPhaseIdx == STOCK_PHASE_IDX);
+  assert(rxPolIdx == STOCK_POL_IDX);
+  assert(rxContentIdx == STOCK_CONTENT_IDX);
+#elif RX_NARROW && RX_NARROW_AXIS == 3
+  advanceSweep();
+  assert(sweepSwap == (STOCK_TX_SWAP ^ 1));
+  advanceSweep();
+  assert(sweepSwap == STOCK_TX_SWAP);
+#endif
+#endif
 
   puts("host emitter chronology/phase/wrap/stuffing: ok");
   return 0;
