@@ -128,6 +128,12 @@ response. The owner reports that the USB-only `V 1` camera check lights
 the IR LEDs (CONFIRMED owner observation); this verifies emission at the
 LEDs, not light at the handheld detector. Next: check alignment and
 optical delivery at the top V24 window before further framing sweeps.
+With geometry fixed, the next ROM-controlled pair is G/S host ID 25 then
+G/X host ID 26, `swap=1`, candidate `7Eh 03h`, using the exact commands
+in `doc/re-notes/ir-feedback-protocol.md`. This is the missing combination:
+earlier `swap=1` G used `7Eh` alone, while the `7Eh 03h` payload was
+tested only with `swap=0`. A negative pair would still leave optical
+delivery and receive framing open.
 The updated Uno sketch provides a sustained low-duty output self-test:
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
 released and ROM trial IDs unchanged. Repeating `V 1` after completion is

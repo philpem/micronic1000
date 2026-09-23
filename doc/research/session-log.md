@@ -7802,3 +7802,12 @@ names renamed, 144 unplated functions plated)
   repeatable and does not consume a trial ID.
 * The feedback-v1 ROM image is unchanged. Focused host tests (12 passing)
   and a cached Elegoo Uno R3 compile pass after this source change.
+
+### 2026-09-23 — Next controlled IR pair
+
+* Selected the missing mode-G `swap=1` + `7Eh 03h` comparison: silent
+  host ID 25 and stimulated host ID 26 at START+7 ms, same placement.
+  Previous `swap=1` G trials used `7Eh` only; the scoped `7Eh 03h`
+  candidate was used with `swap=0`. Exact commands and result
+  interpretation are in `doc/re-notes/ir-feedback-protocol.md`.
+* No new hardware result or ROM change is implied by this test plan.

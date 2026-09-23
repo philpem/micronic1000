@@ -40,7 +40,9 @@ that a repeated trial command trapped the prior sketch in `FB_DESYNC`;
 the updated sketch now recovers from idle command rejections in place.
 **OPEN:** optical delivery at the handheld, physical LED roles and receive
 framing remain unproved. The one-burn ROM stays in place; upload only the
-updated Uno sketch for command-error recovery.
+updated Uno sketch for command-error recovery. The next discriminating ROM
+trial is the missing `swap=1` / `7Eh 03h` receive-pending pair: previous
+`swap=1` G trials used only `7Eh`, while `7Eh 03h` was tested with `swap=0`.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -73,6 +75,21 @@ compare physical edges in CSV rather than software interval length.
    or decoded framing. The trial-17 scope capture already verified
    digital D5/D6 timing and the owner confirmed pod D2→Uno D5,
    D3→Uno D6; its optical output remains unmeasured.
+4. With the LEDs aimed at the top V24 window, keep placement fixed and send
+   this silent/stimulated pair one command at a time. Wait for each `RESULT`
+   and fresh `READY` before the next command:
+
+   ```text
+   T 25 G S 1 7E 1 0 0 -2 5 7000 03
+   T 26 G X 1 7E 1 0 0 -2 5 7000 03
+   ```
+
+   For `swap=1`, D6 is the proposed clock and D5 the proposed data. Capture
+   yellow, D5 and D6, and retain the full serial lines and scope CSV. Compare
+   the raw `LINK_STATUS` probe/before/after bytes as well as `err`: error 8
+   means the pending gate timed out; error 7 means the gate passed and stock
+   RX returned an error. Neither establishes a received frame. If both are
+   error 8, optical delivery and receive framing are still unresolved.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
