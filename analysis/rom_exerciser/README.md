@@ -7,7 +7,8 @@ Its guarded builder is `stock_context_v3.py`; it changes the stock
 `ROM00:2FC1` call to `Link_BlockRx` into a wrapper that calls the original
 routine once and pulses scanner yellow/pin 6 **after** it returns. A short
 low pulse denotes a carry-set return, a longer pulse a carry-clear return.
-The marker says nothing about later frame validation. It uses the stack,
+Revision 2 also adds a distinct 3.637-ms initialization marker and 0.46-ms
+release guards. The marker says nothing about later frame validation. It uses the stack,
 not the loaded application's RAM: the stock loader may occupy `C7E0`.
 The [stock-context bench plan](../../doc/re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial)
 has wiring, Uno mode sequence, logger commands and interpretation limits.
@@ -17,13 +18,13 @@ ROM with the command below. Burn ROM00 only; leave ROM01 stock. The `.bin`
 is intentionally ignored by git while the builder and JSON manifest are
 tracked.
 The verified 32,768-byte v3 image has MD5
-`c3cc1fa00b4573566068ee5f441f89e1` and additive byte sums `D9B7`
-(16-bit) / `37D9B7` (24-bit), without complement.
+`bf518ce09083d420332fd02748f6bbef` and additive byte sums `076F`
+(16-bit) / `38076F` (24-bit), without complement.
 
 ```sh
 analysis/venv/bin/python analysis/rom_exerciser/stock_context_v3.py \
-  -o analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.bin \
-  --manifest-out analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.json
+  -o analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3_r2.bin \
+  --manifest-out analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3_r2.json
 analysis/venv/bin/python -m pytest -q analysis/test_stock_context_v3.py \
   analysis/test_stock_context_log.py
 ```

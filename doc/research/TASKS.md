@@ -43,12 +43,20 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Current IR round:** stock-context v3 is being prepared for the next ROM00
-burn. Its guarded patch wraps the existing `Link_BlockRx` call with a
+**Current IR round:** stock-context v3 **revision 2** is the reviewed next
+ROM00 burn. Its guarded patch wraps the existing `Link_BlockRx` call with a
 post-return yellow pulse. The stock worker's `LINK_STATUS` decision remains
 unchanged. A passive Uno D8 interrupt logger permits
 silent, free-running and handheld-paced comparisons without further ROM
 changes. See the [stock-context test plan](../re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial).
+The [v3 audit](reviews/feedback-v3-audit-2026-09-23.md) records the ROM,
+Arduino real-time and logging defects found and fixed. Use
+`micron1_stock_context_v3_r2.bin`, MD5 `bf518ce09083d420332fd02748f6bbef`,
+byte sums `076F` / `38076F`; the old `37D9B7` image is superseded.
+Require the new ~3.637-ms initialization pulse in LISTEN_ONLY before
+interpreting absent receive markers. RX pulses are ~0.918/1.828 ms with
+~0.46-ms release guards. Physical role/drive inversion and fixed candidate
+settings are now available in the stock Uno builds without another burn.
 **OPEN:** run the silent V24 control and matched stimulated attempts on
 hardware, determine whether stock RX is entered and whether its return has
 carry set, and check any event drops. A post-receive pulse is not a

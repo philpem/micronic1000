@@ -17,8 +17,11 @@ matrix stayed bit-4-clear in their standalone, interrupt-disabled context.
 
 The stock-context v3 ROM keeps stock boot, the V24 Load/Run transaction,
 the link worker, the `ROM00:34E7` status helper, and the stock receive
-routine. It changes only the dispatcher call at `ROM00:2FC1` and an unused
-upper-ROM cave. That call is reached only after the worker's original
+routine. Revision 2 changes the dispatcher call at `ROM00:2FC1`, the
+shared initialization latch write at `ROM00:0252`, and an unused upper-ROM
+cave. The initialization hook reproduces the stock shadow/latch write
+before emitting a distinct positive-control pulse. The dispatcher call at
+`ROM00:2FC1` is reached only after the worker's original
 `LINK_STATUS` bit-4 test chose the pending branch. The wrapper invokes
 stock `Link_BlockRx` once and gives yellow/pin 6 a short low pulse
 **after** the receive routine returns. Its pulse width distinguishes the
@@ -30,9 +33,11 @@ The stock loader permits COM/DIP data through `D080h`, so the old proposed
 scratch at `C7E0h` was not proven free during an active Load/Run attempt.
 
 Burn ROM00 from
-`/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.bin`
-(32,768 bytes): MD5 `c3cc1fa00b4573566068ee5f441f89e1`, additive
-16-bit sum `D9B7`, additive 24-bit sum `37D9B7`. These are unsigned byte
+`/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3_r2.bin`
+(32,768 bytes): MD5 `bf518ce09083d420332fd02748f6bbef`, additive
+16-bit sum `076F`, additive 24-bit sum `38076F`. The original
+`37D9B7` image is superseded; do not burn it for this revised test. These
+are unsigned byte
 sums without complement; the guarded builder and pinned JSON manifest live
 beside the ignored `.bin`. Leave ROM01 stock. The expected boot is the normal
 Micronic Load/Run UI, **not** `IR FEEDBACK V2 W..K`. The old black-pin
@@ -50,27 +55,59 @@ ballast resistors. Use `STOCK_CONTEXT_EVENTS=1` with one Uno mode at a time;
 `analysis/arduino/m1000_ir_probe/README.md` gives the exact build flags
 and passive logger commands.
 
-Run a **LISTEN_ONLY** control first: start the passive serial log, select
-the normal V24 ADAPTOR Load/Run choice on the handheld, and record the
-complete screen and serial output. Then upload **FREE_TX** without changing
+Run a **LISTEN_ONLY** control first. Start the passive serial log and
+reset the Uno so its `STOCK_CONTEXT_V3 width_us=32 drops=16` banner is
+captured. Then perform the handheld cold restart needed after replacing
+the standalone v2 ROM (ordinary retained-RAM resume is insufficient).
+Require a roughly **3.637-ms yellow low pulse** during initialization
+and the normal stock UI before proceeding. The marker also occurs on warm
+restart, so it does not independently prove the RAM was cold-initialized.
+If it is absent, stop and check ROM execution and the yellow/GND/pull-up
+path; no negative optical trial is interpretable yet. Once this positive
+control passes, select the normal V24 ADAPTOR Load/Run choice and record
+the complete screen and serial output. Then upload **FREE_TX** without changing
 the ROM or wiring and repeat the same handheld choice; this best reproduces
 the earlier positive stock hook stimulus. If needed, upload **RX_NARROW**
 for a handheld-paced reply, using the already connected Uno D2/D4 inputs.
 Keep separate JSONL logs and note the exact Uno mode, LED role/swap, and
 handheld screen for each attempt. `# STOCK_YELLOW rise_us=... low_us=...`
-reports a completed post-receive pulse. A short pulse indicates the stock
-receive returned carry set; a long pulse indicates carry clear. No pulse
+reports a completed low interval. A receive-class short pulse indicates the stock
+receive returned carry set (~0.918 ms); a longer receive pulse indicates
+carry clear (~1.828 ms). The ~3.637-ms initialization pulse is never RX
+evidence. Both receive marker release guards last about 0.46 ms, including
+instruction overhead, before and after the low interval. No pulse
 does not by itself prove no pending status: check the Uno boot banner,
 yellow pull-up, stock UI path, event-drop count and optical activity. Any
 `# STOCK_YELLOW_DROPS` value above zero makes that capture incomplete.
 If port `2Ah` bit 0 was already set before the wrapper, its forced release
 can first close and log a long pre-existing low interval. The bounded
-~0.9/1.8 ms pulse follows it, then the wrapper restores the prior low
+~0.918/1.828 ms pulse follows it, then the wrapper restores the prior low
 state; identify the bounded pulse by width and sequence.
 The raw status and AF bytes are not reported; the marker is the observable
 channel for this one-burn test. Correlation with a preceding `# TX` or
 `burst` line is timing evidence only, not proof
 that those bits formed an accepted frame.
+
+Test both `STOCK_TX_SWAP=0/1` and, if needed, all combinations of
+`STOCK_CLOCK_INVERT`/`STOCK_DATA_INVERT`. These affect physical output
+levels; `pol` only complements serialized data. Use
+`STOCK_FIXED_CANDIDATE=1` for repeatable matched attempts, starting with
+`7Eh`, phase `-2/8`, `pol=0`, content index 2 (the old pending-observation
+candidate). The sketch README lists the indices and replay flags. FREE_TX
+has 60 swept rows at 250 ms each: a single roughly five-second handheld
+retry batch does not cover the 15-second cycle. Record multiple attempts
+covering the relevant rows, or use a fixed candidate. Interleave a fresh
+LISTEN_ONLY control before promoting a stimulus correlation.
+
+Interrupts stay enabled during emission. INT0 samples D4 through `PIND`
+before debounce/timekeeping; D8 uses a separate pin-change ISR. Yellow
+logging does not wait for serial-buffer space, and RX buffer copying runs
+with interrupts enabled. Keep serial input quiet during capture. Record
+both `emit_late_max` (pre-write scheduler value) and
+`emit_applied_late_max` (post-write software upper bound). Neither measures
+light. A representative scope capture should include D8 and Uno D5/D6;
+D2/D4 together resolve receive sample timing. The audit explains the
+[remaining real-time limitations](../research/reviews/feedback-v3-audit-2026-09-23.md#arduino-uno-real-time-audit).
 
 <a id="current-handoff-feedback-v2-bench-trial"></a>
 
