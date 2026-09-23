@@ -1277,6 +1277,33 @@ diagnostic should compare the two control states with otherwise matched
 stimuli and record a faster pending-status history before another broad
 waveform sweep.
 
+### Proposed next EPROM diagnostic (not implemented)
+
+The current feedback ROM cannot select the stock IRQ watcher's
+`LINK_CTRL`-bits-6/7-low pre-check state while G waits. A candidate v2
+would keep W/R/P/G intact and add two fast-poll modes: H holds
+`LINK_CTRL` bits 6/7 high via `LinkFinish`, while J clears those bits
+through the byte-verified stock helper at `ROM00:34D2`. Each mode would
+sample the full `LINK_STATUS` byte for the **same cycle-counted, bounded
+window** after yellow START, with interrupts disabled and no stock RX call.
+Separate full-window trials avoid confounding the state with an early or
+late half of one stimulus. H/J silent controls and X trials would use
+the same candidate and optical placement, interleaved in reversed order.
+This would test a control-state correlation; it would not reproduce the
+actual stock interrupt path or establish a decoded IR frame.
+
+The existing command detector has unused width counts 111–129 between P
+and G. Proposed H=111–119 and J=120–129, with Uno black holds near
+575/625 ms, fit below its 160-count stuck-input bound. The current
+assembly ends at `ROM00:6666`, leaving `039Ah` bytes before the guarded
+`ROM00:6A00` limit. A v2 result can retain the 30-byte checksum frame,
+increment its version byte, and use the eight preview bytes for status
+OR/AND, first `LINK_STATUS`-bit-4/bit-0 sample indices, and sample count
+in H/J only. The loop duration and first-sample latency must be measured
+from the assembled Z80 instructions, then checked in the emulator before
+an image or checksum is issued. No v2 image exists yet. The 50-ms guard
+must remain **before** START.
+
 ## Validation and limits
 
 Automated checks execute the assembled ROM with simulated port reads,

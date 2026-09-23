@@ -7947,3 +7947,10 @@ names renamed, 144 unplated functions plated)
   Trial commands and the timestamped log are under `analysis/trials/` and
   `analysis/captures/`. A negative result does not distinguish idle link
   state from insufficient optical/framing acceptance.
+* Reviewed a proposed v2 diagnostic without building or burning it. A
+  sequential high/low capture was rejected because one state's window
+  could miss a short START-relative burst. The retained design uses two
+  separate full-window, fast-poll modes, one per `LINK_CTRL` bits-6/7
+  state, with matched silent/stimulated controls and reversed run order.
+  The proposed pulse widths and record layout are in
+  `doc/re-notes/ir-feedback-protocol.md`. No v2 image or checksum exists.
