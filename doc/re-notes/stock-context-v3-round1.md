@@ -59,6 +59,8 @@ stock-context sketch.
 | F8 | F7 cadence/content/optical settings, `81` opening flag and explicit stuffing mode 1 | Test flag choice while retaining F7's effective stuffing mode | DONE: 100 handheld bursts, 34 replies, no yellow low; same errors. |
 | F9 | F7 `7E` flag and sparse cadence, explicit stuffing mode 0 | Test unstuffed emitted data | DONE: 101 Arduino burst reports, 34 replies, no yellow low; scope captured 100 handheld bursts and 34 replies. Same errors. |
 | F10 | F7 `7E` flag and sparse cadence, explicit stuffing mode 2 | Test stuffing after five emitted zero bits | DONE: 100 handheld bursts, 34 replies, no yellow low; same errors. |
+| F11 | F7 settings plus explicit stuffing mode 1 and a closing `7E` flag | Test frame closure | CONFOUNDED: 100 normal bursts plus 50 one/two-cell fragments advanced the original sparse counter, producing 50 replies; no yellow low. Same errors. |
+| F11b | Repeat F11, counting only bursts of at least 9 cells for sparse pacing | Restore F7's 34-reply cadence despite fragments | DONE: 100 normal bursts plus 33 short fragments, 34 replies, no yellow low. Same errors. |
 
 **Stop at C0** if its boot banner, expected UI, or initialization marker is
 missing: later absent RX markers cannot then distinguish optical failure
@@ -331,6 +333,30 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   The F7 marker thus requires this tested `7E`/mode-1 combination;
   neither the flag nor stuffing mode is proven as a complete protocol
   requirement, and no run has shown a carry-clear return.
+* F11 closure comparison: a verified build retained F7's flag,
+  stuffing mode 1, content, phase, optical levels and 33-ms sparse
+  delay, then added `STOCK_CLOSE_FLAG=1`. The serial log reports
+  100 normal 17–22-cell bursts and 50 extra one/two-cell fragments.
+  The fragments advanced the original every-third counter: it sent
+  50 replies and saw no yellow low. The scope recorded 100 handheld
+  trigger segments, 50 with Uno output and no yellow low. The extra
+  cells appear ahead of some normal bursts within the same scope
+  segment. This run does not match F7's reply cadence.
+* F11b repeated the same closing-flag build after the sparse counter
+  was changed to ignore bursts shorter than 9 cells. Its serial log
+  has 100 normal bursts, 33 one/two-cell fragments, 34 replies, no
+  yellow low and no event drop. The scope independently captured
+  100 handheld-triggered segments, 34 Uno transmissions and no
+  yellow low. Uno D2 starts 33.00–33.04 ms after the last handheld
+  D1 rise; acquisition was 97.7 kSa/s with a 40-us export grid.
+  The owner reported `8000`, "Plinth not connected", then `8040`,
+  "line failure", for both F11 and F11b. Under the restored cadence,
+  adding this closing flag did not preserve F7's carry-set return.
+  The short fragments remain an observed difference, and their
+  origin is unresolved. Captures are
+  `analysis/captures/stock-v3-r1-f11-sparse33-close1-handheld-*` and
+  `analysis/captures/stock-v3-r1-f11b-sparse33-close1-handheld-*`,
+  with scope CSVs committed as `.csv.gz`.
 
 ## Scope sampling audit
 
@@ -370,7 +396,9 @@ rate is higher. Raw captures:
 `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
 SCPI settings and sample-rate readings are preserved in
 `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
-* Next discriminator: retain F7's sparse cadence, `7E` opening flag,
-  stuffing mode 1 and physical levels while comparing frame closure
-  and then content. The marker is only a carry-set receive return;
-  the target remains a carry-clear return or handheld advancement.
+* Next discriminator: retain F7's open frame, sparse cadence, `7E`
+  opening flag, stuffing mode 1 and physical levels while comparing
+  content. The marker is only a carry-set receive return; the target
+  remains a carry-clear return or handheld advancement. Also determine
+  whether the one/two-cell fragments in F11/F11b are handheld output
+  or a capture artefact before using them as protocol evidence.

@@ -144,6 +144,15 @@ same `8000` / `8040` errors. Under these tested settings, only F7's
 marker. Replace the now-completed stuffing comparison with controlled
 frame-closure and content comparisons; retain F7's cadence and
 physical settings. Do not promote this marker to frame acceptance.
+F11 added a closing `7E` flag and saw 50 short one/two-cell fragments
+alongside 100 normal handheld bursts. Those fragments shifted the
+original every-third counter to 50 replies, with no yellow marker.
+F11b ignored fragments shorter than 9 cells, restoring 34 replies
+across 100 normal bursts; the scope also found 34 output segments and
+zero yellow lows. The owner reported the same errors. Under the
+restored cadence, the closing flag does not preserve F7's return
+marker. The origin of the short fragments is unresolved. Next compare
+content while retaining F7's open `7E`/stuffing-mode-1 configuration.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event

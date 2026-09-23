@@ -948,7 +948,11 @@ uint32_t stockReplyDelayUs() {
   return (uint32_t)STOCK_REPLY_DELAY_US +
       (uint32_t)stockReplyDelayIndex * STOCK_REPLY_DELAY_STEP_US;
 }
-bool stockReplyDue() {
+bool stockReplyDue(uint8_t observedCells) {
+  // The handheld's normal retries have 17/22 cells. Ignore the 1/2-cell
+  // fragments observed ahead of some retries so they cannot shift a sparse
+  // cadence or trigger a reply of their own.
+  if (observedCells < 9) return false;
   bool due = stockReplyBurstIndex == 0;
   if (++stockReplyBurstIndex >= STOCK_REPLY_EVERY_N)
     stockReplyBurstIndex = 0;
@@ -2159,7 +2163,7 @@ void loop() {
 #else
   if (n <= SUCCESS_CELLS) {
 #if STOCK_FIXED_CANDIDATE && RX_NARROW
-    stockReplySent = stockReplyDue();
+    stockReplySent = stockReplyDue(n);
     if (stockReplySent) {
 #endif
     unsigned long fire = last +

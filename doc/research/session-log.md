@@ -8379,3 +8379,23 @@ names renamed, 144 unplated functions plated)
   the tested `7E`/mode-1 combination; no accepted frame is shown.
 * Restored and verified the LISTEN_ONLY Uno build after F10. The
   scope remains stopped.
+
+## 2026-09-23 — closing-flag comparison and fragment guard
+
+* F11 added a closing `7E` flag to F7's other frame and optical
+  settings. The Arduino saw 100 normal bursts plus 50 one/two-cell
+  fragments; those fragments advanced the original sparse counter,
+  yielding 50 replies and no yellow return. The scope captured 100
+  handheld-triggered segments, 50 Uno transmissions and no yellow
+  low. The extra clock cells occurred ahead of some normal bursts.
+* Changed the fixed RX_NARROW sparse counter to ignore bursts shorter
+  than 9 cells and added a host regression test. All 27 focused
+  emitter tests passed. F11b then saw 100 normal bursts, 33 short
+  fragments, 34 replies and no yellow return. The scope independently
+  captured 100 segments, 34 Uno transmissions and no yellow low at
+  97.7 kSa/s, 40-us export spacing. The owner reported `8000`,
+  "Plinth not connected", then `8040`, "line failure", in both runs.
+  Closure under the restored cadence did not preserve F7's marker;
+  the fragment origin is still unknown.
+* Restored and verified the LISTEN_ONLY Uno build after F11b. The
+  scope remains stopped.
