@@ -33,11 +33,14 @@ and again returned `EEh`/carry. Trial 23 did schedule its burst at about
 START+60 ms. This does not reproduce or explain trial 21's bit-6 rise.
 Early R/X ID 24 repeated ID 21's `A0h/80h/C0h` status and `EEh`/carry;
 the post-RX byte was `C0h` in every reported R trial, including silent
-controls. The SFH213 is now built into the Arduino transponder, so the
-next check is a camera-visible LED self-test from an updated Uno sketch.
-**OPEN:** optical delivery, physical LED roles and receive framing remain
-unproved. The one-burn ROM stays in place; only the USB sketch needs updating
-for the camera check.
+controls. The SFH213 is now built into the Arduino transponder.
+**CONFIRMED (owner camera report):** `V 1` lit the IR LEDs. This shows
+emission at the LEDs, not at the handheld detector. The owner also found
+that a repeated trial command trapped the prior sketch in `FB_DESYNC`;
+the updated sketch now recovers from idle command rejections in place.
+**OPEN:** optical delivery at the handheld, physical LED roles and receive
+framing remain unproved. The one-burn ROM stays in place; upload only the
+updated Uno sketch for command-error recovery.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -294,16 +297,20 @@ explicit host resynchronisation before another stimulus trial.
 The Uno runs at 115200 baud with newline-terminated ASCII commands. The
 feedback build powers up silent. `R` releases black, turns both LEDs off,
 prints `SYNC`, and reports `READY` after a fresh 100 ms yellow-high interval.
-After any transport error, resynchronise explicitly rather than retrying.
+After a transport error, resynchronise explicitly. A command rejected while
+idle leaves the handheld and ROM sequence unchanged; correct the input and
+continue without `R`.
 
 ```text
 T id W|R|P|G S|X swap flag|-- stuff close pol phase lead delay_us payload
 C id
 R
 B id L|R
+V visual_id
 ```
 
-`id` is a strictly increasing decimal host ID, starting at 1. Trial modes are witness `W`,
+`id` for `T` is a strictly increasing decimal host ID, starting at 1;
+`visual_id` may be reused and does not consume trial IDs. Trial modes are witness `W`,
 forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
 `X` sends one stimulus. Probe mode requires `S`.
 
@@ -387,11 +394,13 @@ A ROM diagnostic timeout is recorded as data and does not abort a batch.
 
 ## Recovering from a serial command rejection
 
-The current sketch uses a generic `ERROR ... reason=command` for malformed
-or empty command lines, non-increasing IDs, and requests made outside READY.
-Its `id` is the last accepted trial ID; any `raw` bytes may be retained from
-that completed trial. They are not a new handheld response and do not reveal
-which input line was rejected. Inspect the preceding TRIAL/READY lines.
+The sketch uses a generic `ERROR ... reason=command` for malformed or empty
+command lines, non-increasing IDs, and requests made outside READY. These
+idle rejections start no handheld transaction and preserve the last
+accepted trial ID and ROM sequence; the corrected command can follow
+without `R`. The error's `id` is the last accepted trial ID, not a new
+result. Inspect the preceding TRIAL/READY lines to identify the rejected
+input. In-flight errors explicitly say `send R to resynchronise`.
 
 On 2026-09-23, after completed trial 3, the owner reported:
 
@@ -402,11 +411,11 @@ ERROR id=3 reason=command raw=A55A0101030006A0C0C8100001000000000000000000000000
 The owner then confirmed resending the same ID-3 command to repeat the
 trial. This explains the rejection: every trial, including an identical
 repeat, needs a strictly greater host ID. The old bytes are not a new result.
-To recover, select Newline in Serial Monitor, send `R` as a separate line,
-wait for SYNC/wiring banner/READY, then send the intended trial 4 command
-once. If it is rejected again, retain the exact transmitted text as well
-as the response. R resets synchronisation, not the host-ID monotonic check.
-The next accepted host ID must still exceed the last accepted ID.
+On the original sketch this error entered `FB_DESYNC`, requiring `R` before
+ID 4. On the updated sketch it is a recoverable idle rejection: send the
+intended ID-4 command directly. `R` remains necessary after an in-flight
+transport error, and never resets the host-ID monotonic check. Retain the
+exact transmitted line and error text if another command is rejected.
 
 ## LCD and keypad
 

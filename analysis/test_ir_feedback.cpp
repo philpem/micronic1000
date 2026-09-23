@@ -474,8 +474,14 @@ static void commandFailureCases() {
 
   Serial.clearOutput();
   send(command(nextId - 1, 'W', 'S', 0) + "\n");
-  CHECK(fbState == FB_DESYNC && contains("reason=command"));
+  CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
   CHECK(!hostBlack);
+  CHECK(!contains("send R"));
+  const uint32_t afterDuplicate = nextId++;
+  send(command(afterDuplicate, 'W', 'S', 0) + "\n");
+  CHECK(fbState == FB_WAIT_ACK && fbLastId == afterDuplicate);
+  send("C " + std::to_string(afterDuplicate) + "\n");
+  CHECK(fbState == FB_DESYNC && contains("reason=cancel") && contains("send R"));
   resyncAndReady();
 
   Serial.clearOutput();
@@ -489,19 +495,29 @@ static void commandFailureCases() {
 
   Serial.clearOutput();
   send(std::string(110, 'X') + "\n");
-  CHECK(fbState == FB_DESYNC && contains("reason=command"));
+  CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
   CHECK(!hostBlack && !fbEmitPending);
+  const uint32_t afterMalformed = nextId++;
+  send(command(afterMalformed, 'W', 'S', 0) + "\n");
+  CHECK(fbState == FB_WAIT_ACK && fbLastId == afterMalformed);
+  send("C " + std::to_string(afterMalformed) + "\n");
+  CHECK(fbState == FB_DESYNC && contains("reason=cancel"));
   resyncAndReady();
 
   Serial.clearOutput();
   send("T 999 W");
   CHECK(fbParser.pending());
   advanceUs(1001000);
-  CHECK(fbState == FB_DESYNC && contains("reason=serial_timeout"));
+  CHECK(fbState == FB_IDLE && fbReady && contains("reason=serial_timeout"));
   CHECK(!hostBlack && !fbEmitPending);
   // The timed-out line remains in discard-through-newline mode; terminate
-  // that physical line before sending the explicit resynchronisation line.
+  // that physical line before sending the next command.
   send("\n");
+  const uint32_t afterTimeout = nextId++;
+  send(command(afterTimeout, 'W', 'S', 0) + "\n");
+  CHECK(fbState == FB_WAIT_ACK && fbLastId == afterTimeout);
+  send("C " + std::to_string(afterTimeout) + "\n");
+  CHECK(fbState == FB_DESYNC && contains("reason=cancel"));
   resyncAndReady();
 }
 
@@ -524,8 +540,13 @@ static void payloadAndEarlyEdgeCases() {
   const size_t before = irEvents.size();
   send("T " + std::to_string(nextId++) +
        " W S 0 -- 0 0 0 -4 0 0 000102030405060708090A0B0C0D0E0F10\n");
-  CHECK(fbState == FB_DESYNC && contains("reason=command"));
+  CHECK(fbState == FB_IDLE && fbReady && contains("reason=command"));
   CHECK(!hostBlack && !fbEmitPending && irEvents.size() == before);
+  const uint32_t afterBadPayload = nextId++;
+  send(command(afterBadPayload, 'W', 'S', 0) + "\n");
+  CHECK(fbState == FB_WAIT_ACK && fbLastId == afterBadPayload);
+  send("C " + std::to_string(afterBadPayload) + "\n");
+  CHECK(fbState == FB_DESYNC && contains("reason=cancel"));
   resyncAndReady();
 
   // With phase=-4, lead=0 and a first data bit of one, the data rise is

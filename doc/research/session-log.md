@@ -7785,3 +7785,20 @@ names renamed, 144 unplated functions plated)
   sketch defaults
   to direct TTL for the owner's installed wiring. Host state-machine tests
   and the Elegoo Uno R3 build pass; the ROM image is unchanged.
+
+### 2026-09-23 — Camera check and idle-command recovery
+
+* CONFIRMED (owner camera report): `V 1` lit the Arduino transponder's IR
+  LEDs. This proves light at the emitters, but not optical delivery to the
+  handheld detector or receive-frame decoding. The SFH213 remains integrated
+  in the transponder; no separate photodiode scope probe is available.
+* CONFIRMED (owner serial experience and sketch source): reusing an accepted
+  trial ID was correctly rejected, but the old error path set `FB_DESYNC`,
+  trapping subsequent commands until `R`. The Arduino-only fix keeps the
+  current idle/READY state and accepted-ID counter on malformed, duplicate,
+  and timed-out idle commands. The next higher trial ID can follow directly.
+  A timed-out serial line must first be ended with Enter. In-flight errors
+  still require `R`; `R` does not reset the accepted-ID counter. `V 1` is
+  repeatable and does not consume a trial ID.
+* The feedback-v1 ROM image is unchanged. Focused host tests (12 passing)
+  and a cached Elegoo Uno R3 compile pass after this source change.

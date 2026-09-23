@@ -74,8 +74,12 @@ T 1 P S 0 -- 0 0 0 -2 0 0 -
 
 This silent probe checks command/result communication before emitting IR.
 Wait for `RESULT` and fresh `READY` before each new trial. `C 1` cancels the
-Arduino side; send `R` to resynchronise after any error. A ROM diagnostic
-error is recorded as data and does not establish an IR framing result.
+Arduino side; send `R` to resynchronise after a transaction error. A ROM
+diagnostic error is recorded as data and does not establish IR framing.
+With the updated sketch, a rejected idle command (including a repeated
+trial ID) starts no handheld transaction and does not require `R`: send
+the next command with a greater trial ID. Errors after a transaction begins
+still say `send R to resynchronise` and require that step.
 
 To check that the IR emitters produce light visible to a camera, send `V <id>`
 (for example, `V 1`). You can repeat the same ID any number of times. It runs

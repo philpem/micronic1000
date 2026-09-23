@@ -131,8 +131,12 @@ at 10% PWM for 1.5 s, then B/D6 for 1.5 s, with black released throughout.
 It can run from idle without the handheld, and visual IDs do not consume
 trial IDs. The same visual ID can be reused after completion. Upload the
 updated sketch, send `V 1` as often as needed, and compare each labeled
-interval with idle through a camera known to see IR. This checks emitter
-light, not optical power at the handheld's internal detector.
+interval with idle through a camera known to see IR. CONFIRMED (owner camera
+report): `V 1` lights the IR LEDs. This checks emitter light, not optical
+power at the handheld's internal detector. The updated sketch recovers
+from an idle command rejection: after accidentally repeating a trial ID,
+send the next higher ID directly. An error after a transaction starts
+still requires `R`.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

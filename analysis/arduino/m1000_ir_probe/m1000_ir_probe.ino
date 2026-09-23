@@ -1079,8 +1079,17 @@ void fbResetUart() {
 void fbError(const __FlashStringHelper *reason) {
   fbQuiet(); fbReady = false; fbState = FB_DESYNC;
   fbPrintPrefix(F("ERROR")); Serial.print(F(" reason=")); Serial.print(reason);
+  Serial.print(F("; send R to resynchronise"));
   if (fbResultLen) { Serial.print(F(" raw=")); fbPrintHex(fbResult, fbResultLen); }
   Serial.println();
+}
+// Rejecting a command while idle cannot have changed the handheld's ROM
+// sequence. Keep the current idle/READY state and trial ID so a corrected
+// command can follow. Errors after a transaction starts still need R.
+void fbCommandError(const __FlashStringHelper *reason) {
+  if (fbState != FB_IDLE || fbManualLow) { fbError(reason); return; }
+  fbPrintPrefix(F("ERROR")); Serial.print(F(" reason=")); Serial.print(reason);
+  Serial.println(F("; no handheld transaction; no R needed"));
 }
 void fbBuildStimulus() {
   frameLen = 0;
@@ -1204,7 +1213,7 @@ void fbCommandTick() {
         fbVisualStop(); fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
         Serial.print(F("VISUAL_CANCELLED visual_id=")); Serial.println(id); continue;
       }
-      fbError(F("cancel")); continue;
+      fbCommandError(F("cancel")); continue;
     }
     if (command == FB_BLACK_RELEASE && fbManualLow) {
       fbQuiet(); fbState = FB_DESYNC;
@@ -1226,7 +1235,7 @@ void fbCommandTick() {
       Serial.println(F(" trial_id=unchanged channel=A pin=D5 duty=10% duration_ms=1500")); continue;
     }
     if (command != FB_TRIAL || fbState != FB_IDLE || !fbReady || fbManualLow || parsed.trialId <= fbLastId ||
-        (parsed.holdKind == 'P' && parsed.mode != FB_SILENT)) { fbError(F("command")); continue; }
+        (parsed.holdKind == 'P' && parsed.mode != FB_SILENT)) { fbCommandError(F("command")); continue; }
     fbConfig = parsed; fbLastId = parsed.trialId;
     fbResetUart(); fbBuildStimulus();
     fbAckAt = fbReleaseAt = fbStartAt = fbEmitStart = fbEmitEnd = 0;
@@ -1235,7 +1244,8 @@ void fbCommandTick() {
     fbReady = false; fbHighTracking = false;
   }
   if (fbParser.pending() && fbElapsed((uint32_t)micros(), fbSerialAt, 1000000UL)) {
-    fbParser.timeout(); fbError(F("serial_timeout"));
+    fbParser.timeout(); fbCommandError(F("serial_timeout"));
+    Serial.println(F("Finish timed-out line with Enter before next command"));
   }
 }
 void feedbackTick() {
