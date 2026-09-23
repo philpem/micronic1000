@@ -8348,3 +8348,18 @@ names renamed, 144 unplated functions plated)
   but frame acceptance remains unproven.
 * Fixed the serial analyzer's `tx_start_us` match for bracket-terminated
   paced `burst` reports; a focused regression test now covers it.
+
+## 2026-09-23 — F8 flag comparison suppresses return marker
+
+* Built and verified F8 with F7's 33-ms every-third-burst cadence,
+  content and optical settings, changing the emitted opening flag
+  from `7E` to `81`. Explicit stuffing mode 1 preserved F7's
+  effective `wire_stuff=1`. The owner again saw `8000` then `8040`.
+* The Arduino logged 100 handheld bursts, 34 replies, no yellow low
+  and no event drop. The 100-segment scope export independently shows
+  34 Uno output segments and no yellow low. At the measured 97.7 kSa/s
+  acquisition rate and 40-us export grid, a roughly 916-us return
+  pulse would be visible. Flag choice affects the marker in this
+  configuration; no valid frame or carry-clear return is established.
+* Restored and verified the LISTEN_ONLY Uno build after F8. The scope
+  remains stopped.

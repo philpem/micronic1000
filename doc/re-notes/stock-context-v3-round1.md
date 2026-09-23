@@ -1,6 +1,6 @@
 # Stock-context v3: first handheld run
 
-Status: **F7 sparse replies produce repeatable receive-return markers;
+Status: **F7 sparse `7E` replies produce repeatable receive-return markers;
 no accepted session yet**. This is the
 worksheet for the first stock-context v3 run; the full electrical setup,
 interpretation limits, and later framing matrix remain in
@@ -56,6 +56,7 @@ stock-context sketch.
 | F5 | F4 with a fixed 30-ms reply delay and a 100-ms scope window | Test whether a regular late reply causes the marker | DONE: 100 replies achieved 30 ms; no yellow marker or drop; `8000` then `8040`. |
 | F6 | F4 with a cyclic 30–36-ms delay in 1-ms steps | Test a narrow late receive window in one handheld run | DONE: all seven delays observed 14–15 times; no yellow marker or drop; `8000` then `8040`. |
 | F7 | F2S candidate, fixed 33-ms delay, reply to every third handheld burst | Separate sparse reply cadence from late delay | DONE: 100 handheld bursts, 34 replies, 34 yellow lows; still `8000` then `8040`. |
+| F8 | F7 cadence/content/optical settings, `81` opening flag and explicit stuffing mode 1 | Test flag choice while retaining F7's effective stuffing mode | DONE: 100 handheld bursts, 34 replies, no yellow low; same errors. |
 
 **Stop at C0** if its boot banner, expected UI, or initialization marker is
 missing: later absent RX markers cannot then distinguish optical failure
@@ -292,6 +293,24 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   `Link_BlockRx` carry-set return under sparse pacing, without evidence
   of a valid frame or successful session. Raw scope file:
   `analysis/captures/stock-v3-r1-f7-sparse33-handheld-keysight.csv.gz`.
+* F8 sparse `81`-flag comparison: retained F7's 33-ms every-third-burst
+  cadence, content, D5/D6 roles, level polarity and phase. It set
+  `STOCK_FLAG_IDX=0` and explicit `STOCK_STUFFING_MODE=1`, matching
+  F7's reported effective `wire_stuff=1`; the emitted flag is `81`
+  instead of `7E`. The startup banner is in
+  `analysis/captures/stock-v3-f8-sparse33-flag81-idle-uno.jsonl`.
+  The live `analysis/captures/stock-v3-r1-f8-sparse33-flag81-handheld-20260923.jsonl`
+  records 100 handheld bursts, 34 replies, 66 skips, no yellow low
+  and no drop. The scope independently records 100 handheld-triggered
+  segments, 34 with Uno output and zero yellow lows; Uno D2 starts
+  33.00–33.04 ms after the last handheld D1 rise. Its 8-ms/div,
+  128-segment acquisition measured 97.7 kSa/s and exported at
+  40 us/row. Raw file:
+  `analysis/captures/stock-v3-r1-f8-sparse33-flag81-handheld-keysight.csv.gz`.
+  The owner reported the same `8000` then `8040` errors. Under this
+  sparse pacing, changing the opening flag choice suppresses the
+  carry-set return marker. This does not identify accepted bits or
+  demonstrate a carry-clear return.
 
 ## Scope sampling audit
 
@@ -331,4 +350,8 @@ rate is higher. Raw captures:
 `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
 SCPI settings and sample-rate readings are preserved in
 `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
-* Next discriminating trial and reason: PENDING
+* Next discriminating trial: retain F7's sparse cadence and `7E`
+  opening flag; compare explicit stuffing modes against the F7
+  effective mode 1, one setting per run. Keep content and physical
+  polarity fixed so a changed yellow return can be attributed to
+  serialized framing. A carry-set return remains short of acceptance.

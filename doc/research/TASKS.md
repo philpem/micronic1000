@@ -129,6 +129,13 @@ question is which electrical/framing condition makes the receive call
 return carry clear and whether the handheld advances. Keep the F7
 cadence fixed when comparing one candidate setting at a time; the
 35-ms outlier pulse requires separate interpretation. See the worksheet.
+F8 retained the sparse cadence and effective stuffing mode 1 while
+changing the opening flag to `81`. It produced 34 timed optical replies
+in 100 handheld-triggered segments but no yellow return marker; the
+owner saw the same errors. The `7E`/`81` flag choice therefore
+discriminates the observed carry-set return under this configuration.
+Next hold the `7E` F7 configuration fixed and compare explicit stuffing
+modes; do not infer that either flag yields a valid frame.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event
