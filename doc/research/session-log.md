@@ -8330,3 +8330,21 @@ names renamed, 144 unplated functions plated)
   `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
 * Stopped the scope and restored the verified LISTEN_ONLY Uno build
   after this rate check. No handheld operation was requested.
+
+## 2026-09-23 — F7 sparse replies reproduce receive return
+
+* Added a guarded `STOCK_REPLY_EVERY_N` option for fixed `RX_NARROW`
+  builds, plus a reported `reply_sent` field. Built and verified F7
+  with F2S optical settings, 33-ms reply delay and every-third-burst
+  pacing. The Arduino logged 100 handheld bursts, 34 replies, 66
+  skips, 34 yellow lows of 916–924 us, and no event drops. The owner
+  saw `8000` then `8040`, same as before.
+* The 100-segment scope export contains 34 Uno transmissions and 34
+  yellow lows in the same segments. The scope acquired at 97.7 kSa/s
+  and exported at 40 us/row; this supports pulse detection and
+  millisecond placement, not bit decoding. One yellow pulse was
+  delayed by about 22.5 ms relative to the other 33 and is retained
+  as an outlier. Sparse pacing reproduces a carry-set receive return,
+  but frame acceptance remains unproven.
+* Fixed the serial analyzer's `tx_start_us` match for bracket-terminated
+  paced `burst` reports; a focused regression test now covers it.

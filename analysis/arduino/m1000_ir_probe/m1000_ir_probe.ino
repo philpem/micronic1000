@@ -250,6 +250,9 @@
 #ifndef STOCK_REPLY_DELAY_COUNT
 #define STOCK_REPLY_DELAY_COUNT 1
 #endif
+#ifndef STOCK_REPLY_EVERY_N
+#define STOCK_REPLY_EVERY_N 1
+#endif
 #if (STOCK_TX_SWAP != 0 && STOCK_TX_SWAP != 1) || \
     (STOCK_CLOCK_INVERT != 0 && STOCK_CLOCK_INVERT != 1) || \
     (STOCK_DATA_INVERT != 0 && STOCK_DATA_INVERT != 1)
@@ -285,6 +288,10 @@
 #endif
 #if STOCK_REPLY_DELAY_COUNT > 1 && !(STOCK_FIXED_CANDIDATE && RX_NARROW)
 #error "STOCK reply delay sweep requires fixed RX_NARROW"
+#endif
+#if STOCK_REPLY_EVERY_N < 1 || STOCK_REPLY_EVERY_N > 32 || \
+    (STOCK_REPLY_EVERY_N > 1 && !(STOCK_FIXED_CANDIDATE && RX_NARROW))
+#error "STOCK_REPLY_EVERY_N must be 1..32 and requires fixed RX_NARROW"
 #endif
 
 // Stage 9: narrowed receive sweep.  The first handheld-paced RX_SWEEP run
@@ -935,9 +942,17 @@ uint8_t sweepContent = 1, sweepDelay = 0, sweepClock = 0, sweepInvert = 0;
 uint8_t sweepSwap = 0;   // 1 exchanges physical D5/D6; receiver roles unconfirmed
 unsigned long achievedUs = 0;   // reply delay actually achieved, us
 uint8_t stockReplyDelayIndex = 0;
+uint8_t stockReplyBurstIndex = 0;
+bool stockReplySent = false;
 uint32_t stockReplyDelayUs() {
   return (uint32_t)STOCK_REPLY_DELAY_US +
       (uint32_t)stockReplyDelayIndex * STOCK_REPLY_DELAY_STEP_US;
+}
+bool stockReplyDue() {
+  bool due = stockReplyBurstIndex == 0;
+  if (++stockReplyBurstIndex >= STOCK_REPLY_EVERY_N)
+    stockReplyBurstIndex = 0;
+  return due;
 }
 int8_t  txPhaseEighths = -2;    // data-rise minus clock-rise, in 1/8 cells
                                 // (-2 is the nominal 30 us data lead)
@@ -1836,6 +1851,9 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
   Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+  Serial.print(F(" reply_sent=")); Serial.print(stockReplySent ? 1 : 0);
+#endif
   Serial.print(F(" swap=")); Serial.print(sweepSwap);
   Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
   Serial.print(F(" dat_inv=")); Serial.print(txDataLevelInvert);
@@ -2007,6 +2025,9 @@ void setup() {
   Serial.print(STOCK_REPLY_DELAY_STEP_US);
   Serial.print(F(" count=")); Serial.println(STOCK_REPLY_DELAY_COUNT);
 #endif
+#if RX_NARROW && STOCK_REPLY_EVERY_N > 1
+  Serial.print(F("STOCK_REPLY_EVERY_N=")); Serial.println(STOCK_REPLY_EVERY_N);
+#endif
 #endif
 #endif
 }
@@ -2080,6 +2101,12 @@ void loop() {
 #if STOCK_CONTEXT_EVENTS
   stockLastReplyStartUs = 0;
 #endif
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+  stockReplySent = false;
+  achievedUs = 0;
+  txMaxLatenessUs = 0;
+  txAppliedMaxLatenessUs = 0;
+#endif
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
   // the LINK_STATUS bit-6-clear wait is about 9.92 ms; printing first would
@@ -2131,6 +2158,10 @@ void loop() {
   }
 #else
   if (n <= SUCCESS_CELLS) {
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+    stockReplySent = stockReplyDue();
+    if (stockReplySent) {
+#endif
     unsigned long fire = last +
 #if STOCK_FIXED_CANDIDATE && RX_NARROW
         stockReplyDelayUs();
@@ -2166,6 +2197,9 @@ void loop() {
     buildReply(sweepContent);
 #endif
     sendFrame(fire);
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+    }
+#endif
   }
 #endif
 #endif

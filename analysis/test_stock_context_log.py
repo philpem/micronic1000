@@ -96,6 +96,15 @@ def test_rx_narrow_burst_report_is_tx_candidate():
     assert events[0]["tx_line"] == burst
 
 
+def test_rx_narrow_tx_at_end_of_bracketed_report():
+    events = correlate_lines([
+        "burst 17 cells [reply_sent=1 swap=0 tx_start_us=4000]",
+        "# STOCK_YELLOW rise_us=6000 low_us=916",
+    ])
+    assert events[0]["tx_start_us"] == 4000
+    assert events[0]["tx_elapsed_us"] == 1084
+
+
 def test_nearest_timestamp_wins_across_free_tx_and_rx_narrow_reports():
     events = correlate_lines([
         "# TX flag=81 tx_start_us=1000 swap=0",

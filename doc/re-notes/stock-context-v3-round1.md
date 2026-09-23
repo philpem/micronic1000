@@ -1,6 +1,7 @@
 # Stock-context v3: first handheld run
 
-Status: **F2S produced receive-return markers; C1 silent control complete**. This is the
+Status: **F7 sparse replies produce repeatable receive-return markers;
+no accepted session yet**. This is the
 worksheet for the first stock-context v3 run; the full electrical setup,
 interpretation limits, and later framing matrix remain in
 [the harness guide](ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial).
@@ -54,6 +55,7 @@ stock-context sketch.
 | F4 | F2S candidate in `RX_NARROW=1`, fixed reply 4 ms after each handheld burst | Test a repeatable early reply without the free-running timing sweep | DONE: 100 regular 4-ms replies gave no yellow marker; one anomalous 32.58-ms reply was followed by a 916-us carry-set marker. Same `8000`/`8040` errors. |
 | F5 | F4 with a fixed 30-ms reply delay and a 100-ms scope window | Test whether a regular late reply causes the marker | DONE: 100 replies achieved 30 ms; no yellow marker or drop; `8000` then `8040`. |
 | F6 | F4 with a cyclic 30–36-ms delay in 1-ms steps | Test a narrow late receive window in one handheld run | DONE: all seven delays observed 14–15 times; no yellow marker or drop; `8000` then `8040`. |
+| F7 | F2S candidate, fixed 33-ms delay, reply to every third handheld burst | Separate sparse reply cadence from late delay | DONE: 100 handheld bursts, 34 replies, 34 yellow lows; still `8000` then `8040`. |
 
 **Stop at C0** if its boot banner, expected UI, or initialization marker is
 missing: later absent RX markers cannot then distinguish optical failure
@@ -271,6 +273,26 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   explanation for the F2S/F4 markers. The effects of free-running
   emission and the abnormal F4 transition remain separate candidates.
 
+* F7 sparse 33-ms paced replies: a verified build used F2S optical
+  settings with `STOCK_REPLY_EVERY_N=3` and requested a 33-ms delay
+  after the last handheld edge on every third burst. Its banner is in
+  `analysis/captures/stock-v3-f7-sparse33-idle-uno.jsonl`. The live
+  `analysis/captures/stock-v3-r1-f7-sparse33-handheld-20260923.jsonl`
+  contains exactly 100 handheld bursts, 34 sent replies, 66 skipped
+  replies, 34 yellow lows of 916–924 us, and no event drops. All sent
+  replies report achieved delay 33 ms. Thirty-three yellow lows begin
+  about 11.9 ms after the corresponding Uno TX start; one begins
+  34.412 ms afterward. The scope's 100 triggered 80-ms segments
+  independently show handheld clocks in all segments, Uno output and
+  yellow lows in exactly the 34 reply segments. Uno D2 starts
+  33.00–33.04 ms after the last handheld D1 rise. The unusual yellow
+  low is about 69.36 ms after its segment trigger; it is preserved as
+  an outlier, not assigned to a decoded frame. The owner reported
+  `8000` then `8040`, same as before. This establishes a reproducible
+  `Link_BlockRx` carry-set return under sparse pacing, without evidence
+  of a valid frame or successful session. Raw scope file:
+  `analysis/captures/stock-v3-r1-f7-sparse33-handheld-keysight.csv.gz`.
+
 ## Scope sampling audit
 
 The owner observed **78.1 kSa/s** during the long segmented run. SCPI
@@ -289,6 +311,11 @@ The same setup with 128 segments at 5 ms/div was re-acquired at
 during** F2S/C1/F3/F4, so their historical CSV rows are not evidence
 of a faster acquisition. Their pulse/burst counts and millisecond
 comparisons stand; fine edge decoding remains out of scope.
+
+F7 used 128 configured segments at 8 ms/div and acquired at 97.7 kSa/s.
+The 2,000-row export is 40 us/row. Its yellow lows span 22–23 rows;
+the segment counts and millisecond placement are reliable at this
+resolution, while bit-edge decoding is not.
 
 For the actual edge setup/hold check, new acquisitions used fewer
 segments. The repeated F2 waveform at 5 ms/div in real-time mode

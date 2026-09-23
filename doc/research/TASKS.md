@@ -118,6 +118,17 @@ regular late Uno output and no D4 low. **Discard delay alone as the
 explanation** for the F2S/F4 markers. Free-running emission, the
 abnormal F4 transition, and receive state still need discrimination;
 none of these is established as the cause.
+F7 tested sparse pacing directly: the Uno replied 33 ms after every
+third handheld burst, sending 34 replies during 100 retries. All 34
+reply segments produced a 916–924-us yellow carry-set marker, while
+the handheld still displayed `8000` then `8040`. The scope independently
+recorded 34 Uno outputs and 34 yellow lows in 100 trigger segments.
+Sparse pacing therefore makes the receive-call return repeatable, but
+does not establish frame or session acceptance. The decisive next
+question is which electrical/framing condition makes the receive call
+return carry clear and whether the handheld advances. Keep the F7
+cadence fixed when comparing one candidate setting at a time; the
+35-ms outlier pulse requires separate interpretation. See the worksheet.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event

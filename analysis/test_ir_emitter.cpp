@@ -477,6 +477,10 @@ int main() {
   for (int i = 1; i < STOCK_REPLY_DELAY_COUNT; ++i) advanceSweep();
   assert(stockReplyDelayUs() == STOCK_REPLY_DELAY_US);
 #endif
+#if RX_NARROW && STOCK_REPLY_EVERY_N > 1
+  for (int i = 0; i < STOCK_REPLY_EVERY_N * 2; ++i)
+    assert(stockReplyDue() == (i % STOCK_REPLY_EVERY_N == 0));
+#endif
 #elif RX_NARROW && RX_NARROW_AXIS == 3
   advanceSweep();
   assert(sweepSwap == (STOCK_TX_SWAP ^ 1));
