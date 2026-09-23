@@ -173,22 +173,25 @@ resistors were bypassed. The recorded restoration precedes C0e, so
 the precise transition responsible for that capture is unclear.
 An Arduino-only free-running check immediately afterward had four
 complete output segments (88 D2 and 16 D3 rises each). The owner
-reports alignment sensitivity within a few millimetres. Sweep the
-alignment in a V24 run and establish a positive yellow control before
-resuming protocol comparisons. See the
+initially reported alignment sensitivity within a few millimetres.
+See the
 [round-two worksheet](../re-notes/stock-context-v3-round2.md).
 C0f swept alignment during a V24 attempt: 100 handheld bursts,
 34 complete Arduino output segments, no yellow low on Arduino D8 or
-scope D4, and the same `8000`/`8040` errors. The owner is checking
-the handheld receiver while a FREE_TX build repeats clock/data bursts
+scope D4, and the same `8000`/`8040` errors. A FREE_TX build repeats clock/data bursts
 every 250 ms. The owner reports that IR reaches the handheld and that
 alignment is less critical than first thought. They confirmed arrival
-by probing the IR sensor amplifier output inside the handheld. That
-does not establish payload decoding or acceptance; the handheld
+by probing the IR sensor amplifier output inside the handheld; the
+probe was then removed. That does not establish payload decoding or
+acceptance; the handheld
 display during this check remains to be recorded. A 10-second Arduino log
 contains 41 free-running transmissions, 50 handheld bursts and no
-yellow event. Content inference remains suspended pending evidence
-of a decoded or accepted reply.
+yellow event. The yellow marker reports a `Link_BlockRx` return, so
+its absence does not distinguish a missing receive-dispatch call from
+a receive call that did not return during the attempt. Next: use the
+ROM receive path and existing captures to separate those cases. Content
+inference remains suspended pending evidence of a decoded or accepted
+reply.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event

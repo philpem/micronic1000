@@ -8471,3 +8471,9 @@ names renamed, 144 unplated functions plated)
   captured 41 free-running TX reports, 50 handheld bursts and no
   yellow event. Optical arrival is owner-observed; payload acceptance
   is unestablished, so content inference remains suspended.
+* The owner removed the amplifier probe after that observation and
+  asked us to stop investigating the physical setup. Subsequent work
+  will use the ROM receive path and existing captures. The yellow
+  marker is a `Link_BlockRx` return witness, so no marker alone cannot
+  distinguish no receive dispatch from a call that did not return
+  during the attempt.
