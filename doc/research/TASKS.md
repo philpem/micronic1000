@@ -128,12 +128,24 @@ response. The owner reports that the USB-only `V 1` camera check lights
 the IR LEDs (CONFIRMED owner observation); this verifies emission at the
 LEDs, not light at the handheld detector. Next: check alignment and
 optical delivery at the top V24 window before further framing sweeps.
-With geometry fixed, the next ROM-controlled pair is G/S host ID 25 then
+With geometry fixed, the next ROM-controlled pair was G/S host ID 25 then
 G/X host ID 26, `swap=1`, candidate `7Eh 03h`, using the exact commands
 in `doc/re-notes/ir-feedback-protocol.md`. This is the missing combination:
 earlier `swap=1` G used `7Eh` alone, while the `7Eh 03h` payload was
-tested only with `swap=0`. A negative pair would still leave optical
-delivery and receive framing open.
+tested only with `swap=0`.
+**Completed (owner report):** both IDs 25/26 returned error 8, with
+`LINK_STATUS` probe/before/after A0h/C0h/C0h and E0h/C0h/C0h respectively;
+neither entered stock RX. With LED ballast resistors bypassed, the owner
+observed `V 1` as low about 10%/high about 90% at a Micronic
+photodiode-amplifier output. This confirms optical modulation at that
+measured node only under the changed drive, not the earlier LED current or
+the polarity/threshold at the controller input. The owner's polarity
+question concerns physical IR clock/data levels. Sketch `pol=1`
+complements serialized data bits but leaves clock pulses unchanged, so it
+does not answer that question. Next: restore deliberate LED current
+limiting and simultaneously scope D5, D6, the amplifier output, and any
+accessible downstream logic node during a short stimulus; establish dark
+level, edge polarity and phase before another candidate-frame sweep.
 The updated Uno sketch provides a sustained low-duty output self-test:
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
 released and ROM trial IDs unchanged. Repeating `V 1` after completion is

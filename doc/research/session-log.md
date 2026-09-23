@@ -7811,3 +7811,24 @@ names renamed, 144 unplated functions plated)
   candidate was used with `swap=0`. Exact commands and result
   interpretation are in `doc/re-notes/ir-feedback-protocol.md`.
 * No new hardware result or ROM change is implied by this test plan.
+
+### 2026-09-23 — Optical receiver observation and trials 25–26
+
+* CONFIRMED (owner serial report; both 30-byte sums zero): G/S host ID 25,
+  ROM sequence 28, returned error 8 and `LINK_STATUS` probe/before/after
+  A0h/C0h/C0h. Matched G/X host ID 26, ROM sequence 29, also returned
+  error 8, with E0h/C0h/C0h. ID 26 reported emission and at most 3 us
+  scheduler lateness. Neither entered stock RX. The differing probe bytes
+  are pre-stimulus and do not establish an optical response.
+* CONFIRMED (owner hardware): after bypassing the Uno LED ballast resistors,
+  the `V 1` PWM appeared at a Micronic photodiode-amplifier output low for
+  about 10% and high for about 90%. The owner cannot establish whether the
+  earlier, current-limited drive was detected. The observation establishes
+  modulation at that measured node, not controller logic level or decoded
+  clock/data polarity.
+* Corrected the interpretation of `pol`: source shows it complements the
+  serialized data-bit pattern, including the flag, while leaving clock
+  pulses unchanged. The owner's question is physical IR clock/data level
+  polarity, so a `pol=1` trial alone would not answer it. Next, restore
+  deliberate current limiting and compare D5/D6 to the receiver-amplifier
+  waveform (and downstream logic node if accessible) on one scope capture.

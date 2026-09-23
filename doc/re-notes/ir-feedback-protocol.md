@@ -38,58 +38,54 @@ controls. The SFH213 is now built into the Arduino transponder.
 emission at the LEDs, not at the handheld detector. The owner also found
 that a repeated trial command trapped the prior sketch in `FB_DESYNC`;
 the updated sketch now recovers from idle command rejections in place.
-**OPEN:** optical delivery at the handheld, physical LED roles and receive
-framing remain unproved. The one-burn ROM stays in place; upload only the
+**OPEN:** usable logic-level delivery beyond the measured amplifier node,
+physical LED roles and receive framing remain unproved. The one-burn ROM
+stays in place; upload only the
 updated Uno sketch for command-error recovery. The next discriminating ROM
-trial is the missing `swap=1` / `7Eh 03h` receive-pending pair: previous
+trial was the missing `swap=1` / `7Eh 03h` receive-pending pair: previous
 `swap=1` G trials used only `7Eh`, while `7Eh 03h` was tested with `swap=0`.
+**CONFIRMED (owner report):** with the Uno LED ballast resistors bypassed,
+the `V 1` 10% PWM appeared at a Micronic photodiode-amplifier output as
+low for about 10% and high for about 90%. This establishes modulation at
+that measured receiver node under the new drive, not prior optical delivery
+or the controller's logic polarity. The owner means physical IR clock/data
+polarity, not a complement of framed data bits. Trials 25/26, silent/X with
+`swap=1` and `7Eh 03h`, both returned error 8 and did not enter stock RX;
+their probe/before/after statuses were A0h/C0h/C0h and E0h/C0h/C0h.
+The differing probe samples precede the burst and do not show reception.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
-1. Rsync the updated `analysis/arduino/m1000_ir_probe/` directory and upload
-   it to the Elegoo Uno R3. Direct TTL (`BLACK_USE_NPN=0`) is now the source
-   default to match the owner's D7→black connection; confirm the boot
-   banner says `BLACK: DIRECT_TTL`. The ROM image stays installed; no EPROM
-   burn is needed. The new visual command requires the Uno upload.
-2. Point a camera at both IR LEDs. With the Uno powered by USB, open serial
-   at 115200 baud and send the **Arduino-only** command:
+1. Keep feedback-v1 ROM00 installed. Use the current Uno sketch in
+   `analysis/arduino/m1000_ir_probe/` and confirm the `BLACK: DIRECT_TTL`
+   banner for the owner's D7-to-black wiring. No new EPROM burn is needed.
+   IDs 25/26 are complete; `V 1` confirmed LED emission and a signal at
+   one measured Micronic photodiode-amplifier output only after the LED
+   ballast resistors were bypassed.
+2. Restore deliberate LED current limiting before more sustained output.
+   Verify the LED current and that the Micronic amplifier still shows a
+   signal. GPIO source resistance is not a controlled current limiter; use
+   a suitable series resistor or current-limited driver. With `V 1`, scope
+   Uno D5, Uno D6 and the amplifier output together. Record the dark level,
+   which labeled A/B interval moves the measured node, and whether that
+   node goes high or low during light. Capture the other channel's amplifier
+   output and a downstream logic/comparator output too if accessible. The
+   reported 10%-low/90%-high waveform alone cannot locate the inversion.
+3. If both IR paths still reach their amplifier nodes with safe drive, hold
+   geometry fixed and run a fresh G silent/stimulated pair, waiting for
+   `RESULT` and `READY` between lines:
 
    ```text
-   V 1
+   T 27 G S 1 7E 1 0 0 -2 5 7000 03
+   T 28 G X 1 7E 1 0 0 -2 5 7000 03
    ```
 
-   It works from idle without a handheld transaction or `READY`. The Uno
-   prints `VISUAL ... channel=A pin=D5`, pulses channel A at 10% PWM for
-   1.5 s, then prints `VISUAL ... channel=B pin=D6` and pulses channel B
-   for 1.5 s, then drives both low and prints `VISUAL_DONE`. Black/D7
-   remains released. Use `C 1` to stop it early. The visual ID is a label
-   for cancellation and may be reused after the check finishes: send
-   `V 1` again as often as needed without rebooting. It does not consume
-   ROM trial IDs; the next physical trial ID after 24 remains 25.
-3. Note whether A alone and B alone appear bright relative to idle,
-   whether the correct LED lights in each labeled interval, and whether
-   light reaches the intended top V24 apertures with the existing masks
-   and alignment. A phone camera may filter IR; check it against a known
-   IR remote or try another camera if both LEDs appear dark. Visible glow
-   proves emission at the LEDs, not optical power at the internal detector
-   or decoded framing. The trial-17 scope capture already verified
-   digital D5/D6 timing and the owner confirmed pod D2→Uno D5,
-   D3→Uno D6; its optical output remains unmeasured.
-4. With the LEDs aimed at the top V24 window, keep placement fixed and send
-   this silent/stimulated pair one command at a time. Wait for each `RESULT`
-   and fresh `READY` before the next command:
-
-   ```text
-   T 25 G S 1 7E 1 0 0 -2 5 7000 03
-   T 26 G X 1 7E 1 0 0 -2 5 7000 03
-   ```
-
-   For `swap=1`, D6 is the proposed clock and D5 the proposed data. Capture
-   yellow, D5 and D6, and retain the full serial lines and scope CSV. Compare
-   the raw `LINK_STATUS` probe/before/after bytes as well as `err`: error 8
-   means the pending gate timed out; error 7 means the gate passed and stock
-   RX returned an error. Neither establishes a received frame. If both are
-   error 8, optical delivery and receive framing are still unresolved.
+   On trial 28, trigger the scope on proposed-clock D6 and capture at
+   least 5 ms around the approximately 3 ms burst, with D5, D6 and the
+   Micronic amplifier output simultaneous. Compare rise/fall polarity,
+   width and data-to-clock phase at the receiver. Retain full serial text
+   and scope CSV. A difference in status or error is interpretable only
+   against the fresh silent control, because the LED drive changed.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -337,7 +333,7 @@ forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
 | `flag` | Exactly two hex digits, or `--` for raw payload without a start byte |
 | `stuff` | 0 none; 1 insert zero after five ones; 2 insert one after five zeros |
 | `close` | 0 none; 1 append the selected unstuffed candidate flag |
-| `pol` | 0 normal candidate data sense; 1 complement it |
+| `pol` | 0 normal serialized data bits; 1 complement those bits, including the candidate flag; clock pulses unchanged |
 | `phase` | Decimal -4..4, data rise minus clock rise in eighths of a cell |
 | `lead` | 0..16 proposed-clock-only cells before the stimulus |
 | `delay_us` | 0..60000 from observed yellow START; log actual scheduling lateness |
@@ -345,7 +341,9 @@ forced RX `R`, reset/probe `P`, and receive-pending-gated RX `G`. `S` is silent;
 
 The initial implementation uses 122 us cells, 61 us proposed clock pulses,
 and 76 us proposed data pulses, MSB-first bytes. These are trial settings,
-not established receive requirements. Changes beyond the current USB ranges
+not established receive requirements. `pol` is a serialized-data-bit test,
+not an independent inversion of the optical clock and data line levels or
+the Micronic receiver amplifier. Changes beyond the current USB ranges
 require only an Arduino sketch update, within the ROM's documented deadlines.
 With `flag=--`, `stuff` and `close` must both be zero. Neither a software
 `flag` label nor a controller-status change establishes a received flag.
