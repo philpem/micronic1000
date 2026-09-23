@@ -6,15 +6,15 @@ is new test firmware, not a discovered Micronic protocol.
 
 ## Current handoff: next physical trial
 
-**Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trial 6
-validated the repaired Uno timing at the scope probes: 13 clock and six data
-pulses, sampled candidate `7Eh`, and every measured period/width inside the
-targets below. The source CSV is tracked at
-`analysis/captures/feedback-trial6-keysight.csv`. The ROM still returned
-mode 1/error 6 after the stock-order witness arm. **OPEN:** physical optical
-delivery, D5/D6 LED roles and receive framing remain unproved. The one-burn
-ROM stays in place. `emit_start_us` now marks scheduler entry about 256 us
-before the requested first edge; compare actual edges in CSV.
+**Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trials 6 and
+8 validated digital timing for both proposed Uno clock/data assignments;
+their source CSVs are tracked in `analysis/captures/`. Trial 7 was the
+expected silent control, so no scope pulse train was expected. Both W
+stimuli still returned mode 1/error 6 after the stock-order arm. W does not
+attempt RX. **OPEN:** optical delivery, physical LED roles and receive
+framing remain unproved. The one-burn ROM and USB sketch stay in place.
+`emit_start_us` marks scheduler entry about 256 us before the first edge;
+compare physical edges in CSV rather than software interval length.
 
 1. Keep the tested sketch from branch `ir/automated-feedback-tests` and the
    present geometry/wiring. It is the direct-TTL `BLACK_USE_NPN=0` build for
@@ -23,31 +23,37 @@ before the requested first edge; compare actual edges in CSV.
    is needed for the next comparison.
 2. Scope **Uno header D5 and D6** with ground on Uno GND. The owner confirms
    trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
-   mapping again if probes have moved. For `swap=1`, D6 is the proposed clock
-   and D5 the proposed data, so trigger on **D5 data rising** with enough pre-trigger
-   for the five earlier D6 lead clocks. Capture at least 2 ms around the
-   burst, export Keysight `x-axis,D0-D7` CSV at 2.5 us/sample or finer.
-3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the swapped
+   mapping again if probes have moved. Keep `swap=1`: D6 is the proposed
+   clock and D5 the proposed data. Trigger on **D5 data rising** with enough
+   pre-trigger for the five earlier D6 lead clocks. Capture at least 2 ms
+   around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
+   2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
+3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the forced-RX
    **silent control first**, wait for `RESULT` and a fresh `READY`, then the
-   swapped stimulus, keeping every other setting and optical placement fixed:
+   matched forced-RX stimulus, keeping every other setting and optical
+   placement fixed:
 
    ```text
-   T 7 W S 1 7E 1 0 0 -2 5 7000 -
-   T 8 W X 1 7E 1 0 0 -2 5 7000 -
+   T 9 R S 1 7E 1 0 0 -2 5 7000 -
+   T 10 R X 1 7E 1 0 0 -2 5 7000 -
    ```
 
-   IDs must strictly increase: if 7 or 8 was already accepted, substitute
+   IDs must strictly increase: if 9 or 10 was already accepted, substitute
    the next unused IDs. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 6 had host ID 6 but ROM sequence 7.
+   independent counter; trial 8 had host ID 8 but ROM sequence 10. Mode R
+   invokes the bounded stock receiver directly; compare raw RX A/F/DE and
+   preview as well as error/status, even if both trials report an error.
 4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 3
    --data-bit 2` if pod D3 is physically on Uno D6 and D2 on Uno D5; adjust
    those two arguments to the actual pod wiring. Check 13 proposed clock and
    six data pulses, sampled candidate `7E`, every clock rise interval within
    8 us of 122 us, clock high within 8 us of 61 us, data high within 8 us of
-   76 us, and `emit_late_max` below about 15 us. Compare the swapped X result
-   with its silent control and the earlier unswapped W results. A repeated
-   error 6 alone does not reject `7Eh` or either physical LED role; optical
-   delivery to the handheld remains unmeasured.
+   76 us, and `emit_late_max` below about 15 us. Compare the R/X result
+   with its R/S control; W results are only a stock-order witness baseline.
+   An unchanged RX result does not reject `7Eh` or either LED role because
+   optical delivery to the handheld remains unmeasured. If RX remains
+   unchanged, repeat with `swap=0` as another matched R/S and R/X pair before
+   varying framing or using the separately gated G mode.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -722,10 +728,52 @@ D6 the proposed data; the LED optical roles remain unconfirmed.
 at the scope probes, so the trial-5 emitter defect is resolved for this
 candidate. **SUSPECTED, still open:** optical channel assignment and `7Eh`
 as a receive flag. Error 6 is the stock-order witness's bit-6 timeout; it
-does not report a rejected receive frame. The next controlled comparison
-uses swapped proposed LED roles with its own silent control (IDs 7 and 8 in
-the current handoff), then moves to direct RX trials if no witness status
-change is seen. No further ROM burn is indicated.
+does not report a rejected receive frame. The planned swapped-role witness
+comparison was subsequently completed as IDs 7 and 8 below; direct RX
+controls are next. No further ROM burn is indicated.
+
+## Swapped-role silent control and stimulus, IDs 7–8 — 2026-09-23
+
+**CONFIRMED (owner serial report):** trial 7 was intentionally silent, so
+the absence of a D5/D6 optical waveform on the scope is expected. Its
+`emit_start_us`, `emit_end_us` and `emit_late_max` were all zero. Trial 8
+used the same candidate timing but `swap=1`:
+
+```text
+SYNC
+BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command
+READY
+TRIAL id=7 mode=W kind=S swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=7 rom_seq=9 mode=1 err=6 ack_us=11406636 release_us=11506644 start_us=11591544 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0101090006A080C810000100000000000000000000000000220023B2
+READY
+TRIAL id=8 mode=W kind=X swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=8 rom_seq=10 mode=1 err=6 ack_us=19929104 release_us=20029112 start_us=20113992 emit_start_us=20120796 emit_end_us=20122892 emit_late_max=3 raw=A55A01010A0006A0C0C81000010000000000000000000000000022002371
+READY
+```
+
+Both 30-byte records have valid zero-sum checksums. Each passed the
+`LINK_STATUS` bit-4 poll, executed the TX arm, then timed out on
+`LINK_STATUS` bit 6 (error 6); W mode did not call RX. Trial 7's
+probe/before/after status was A0h/80h/C8h and trial 8's A0h/C0h/C8h.
+The before sample precedes optical emission; earlier unswapped X trials
+showed both 80h and C0h before values. Thus this difference is not a
+demonstrated response to the swapped stimulus.
+
+**CONFIRMED (Keysight CSV):** trial 8's `/tmp/IR` was copied into tracked
+`analysis/captures/feedback-trial8-keysight.csv` (SHA-256
+`edb99fecab134c998958b1eda6179fce2fbfc79205d1319c0f8aec448f52abae`).
+At 2.5 us/sample, scope D3 carries 13 proposed clock pulses and D2 six
+proposed data pulses. Candidate sampling yields `7Eh`. Clock rise intervals
+are 117.5–125 us, clock widths 60–67.5 us, data widths 75–77.5 us, and
+data rises 27.5–35 us before paired clocks. This meets all digital timing
+targets after `swap=1`. If the scope wiring stayed as owner-confirmed for
+trial 6, D3 is Uno D6 and D2 is Uno D5; optical reception remains unmeasured.
+
+**CONFIRMED:** swapping the proposed LED roles while keeping the W stimulus
+settings produced no change in the witness outcome: bit-4 pass, arm, bit-6
+timeout. This does not select an LED role or reject `7Eh`; the W witness does
+not report received bytes. The next control should use mode R, which invokes
+the bounded stock receive routine and reports its raw A/F/DE and preview.
 
 ## Validation and limits
 
@@ -738,10 +786,10 @@ The ROM UART cell measured 3067 Z80 T-states against nominal 3072; decoding
 also passes at receiver clock offsets of plus/minus 2 percent.
 
 The feedback build and all 13 legacy configurations compile for the Uno.
-The first direct-TTL silent probe passed on hardware as recorded above.
-A silent W witness also returned valid feedback after reaching its arm and
-bit-6 timeout. The first stimulated W trial retained the bit-6 timeout but reported
-110 us maximum emitter lateness. Waveform correlation is now the next check;
+The direct-TTL silent probe and W witness passed the diagnostic handshake.
+Trial 5 identified the emitter timing defect; trials 6 and 8 verified
+correctly timed digital stimuli for both proposed channel assignments, but
+both W results retained bit-6 timeout. Direct RX controls are the next check;
 actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make

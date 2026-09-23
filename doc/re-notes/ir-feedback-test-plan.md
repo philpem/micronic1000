@@ -77,8 +77,10 @@ has a tracked digital scope capture. That capture exposed significant Uno
 emitter timing distortion, so protocol conclusions remain pending. The
 emitter has now been revised. Trial 6's physical scope capture meets all
 stated digital timing targets, but W still returns bit-6 timeout/error 6 and
-does not attempt RX. The next controlled comparison is the swapped LED-role
-silent/stimulated pair, followed by direct RX if witness status stays unchanged.
+does not attempt RX. Trial 7's swapped silent control correctly emitted no
+pulses; trial 8's swapped stimulus met digital timing targets but left the
+same witness timeout. The next controlled comparison is a matched forced-RX
+silent/stimulated pair, then the other role if needed.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

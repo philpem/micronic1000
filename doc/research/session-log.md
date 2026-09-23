@@ -7618,3 +7618,18 @@ names renamed, 144 unplated functions plated)
   clock and D6 the proposed data; which LED channel the handheld receives as
   clock or data remains OPEN. Trial-5 probe wiring was not separately
   confirmed by this statement.
+
+### 2026-09-23 — Swapped W control/stimulus trials 7 and 8
+
+* CONFIRMED (owner serial report): W/S trial 7 emitted nothing, as intended;
+  its emission timestamps and maximum lateness are zero. W/X trial 8 emitted
+  with 3 us maximum lateness. Both returned valid 30-byte feedback: bit-4
+  poll passed, TX arm executed, bit-6 timeout/error 6. W did not invoke RX.
+* CONFIRMED (Keysight CSV): trial 8 scope D3 has 13 proposed clock pulses,
+  D2 six proposed data pulses; candidate byte at the clock rises is 7Eh.
+  All intervals/widths meet the established targets. Archived the raw CSV
+  at `analysis/captures/feedback-trial8-keysight.csv`; SHA-256 is in the
+  canonical guide. This controls the swapped digital stimulus at the Uno,
+  not optical reception by the handheld.
+* Next: matched forced-RX mode R silent/stimulated trials 9/10 with swap=1,
+  then the other role if needed. No code or EPROM change is required.

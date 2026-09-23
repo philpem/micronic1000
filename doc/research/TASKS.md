@@ -75,10 +75,14 @@ clock periods 117.5–127.5 us and widths within the stated targets;
 `emit_late_max=7`. Trial-5 and trial-6 source CSVs are tracked at
 `analysis/captures/feedback-trial{5,6}-keysight.csv`. W still returned
 error 6 after arm; W did not attempt RX, so framing and physical LED roles
-remain OPEN. Next: swapped-role W silent/stimulated control IDs 7/8 using
-the exact handoff at the top of the
-[canonical interface](../re-notes/ir-feedback-protocol.md), then direct RX
-comparisons if W status stays unchanged. R preserves the last accepted host ID.
+remain OPEN. Trial 7's swapped W/S emitted nothing as intended; trial 8's
+swapped W/X was correctly timed (scope D3 proposed clock, D2 proposed data,
+13/6 pulses, sampled 7Eh, Uno max lateness 3 us), but W still returned
+error 6. Both trial-7/8 feedback records have valid checksums; W does not
+call RX. Next: forced-RX silent/stimulated matched pair IDs 9/10 using the
+exact handoff at the top of the
+[canonical interface](../re-notes/ir-feedback-protocol.md), then the other
+role if needed. R preserves the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
