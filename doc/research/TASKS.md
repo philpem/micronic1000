@@ -43,7 +43,18 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Current IR round:** feedback-v2 is burned and has completed its first
+**Current IR round:** stock-context v3 is being prepared for the next ROM00
+burn. Its guarded patch wraps the existing `Link_BlockRx` call with a
+post-return yellow pulse. The stock worker's `LINK_STATUS` decision remains
+unchanged. A passive Uno D8 interrupt logger permits
+silent, free-running and handheld-paced comparisons without further ROM
+changes. See the [stock-context test plan](../re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial).
+**OPEN:** run the silent V24 control and matched stimulated attempts on
+hardware, determine whether stock RX is entered and whether its return has
+carry set, and check any event drops. A post-receive pulse is not a
+validated frame; LED roles, physical polarity and framing remain open.
+
+**Previous IR round:** feedback-v2 is burned and has completed its first
 P/H/J/K handheld run. It retains v1 W/R/P/G and adds H/J/K controller-state
 capture. See the [v2 bench procedure](../re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-build-and-bench-procedure),
 the command sheet at `analysis/trials/feedback-v2-state-1-13.txt`, and the
@@ -69,10 +80,11 @@ or `C0h` status, no `LINK_STATUS` bit 4/bit 0, and no K watcher hit.
 The first attempt (IDs 15–32) did **not** vary levels because a 17-field
 repeat-command parser branch dropped both inversion fields. This defect is
 fixed and regression-tested; see the [v2 bench result](../re-notes/ir-feedback-protocol.md#first-feedback-v2-bench-result-2026-09-23).
-**Next discriminating question:** can the earlier stock V24 pending-bit
-observation be reproduced with an instrumented live TX/session/IRQ path or
-a byte-verified TX prelude whose state is preserved into capture? Avoid
-further broad standalone 7Eh sweeps until that context is isolated.
+**The question now assigned to v3:** can the earlier stock V24 pending-bit
+observation be reproduced with the live TX/session/worker path, and does
+stock `Link_BlockRx` return carry-clear after the selected optical
+stimulus? Avoid further broad standalone 7Eh sweeps until that context is
+isolated.
 
 **Previous v1 round:** feedback-v1 implements black command handshakes, yellow
 markers, stock-order witness and bounded raw RX in one standalone ROM. Fresh

@@ -199,6 +199,13 @@
 #define FREE_TX_PERIOD_MS 250
 #endif
 
+// Stock-ROM receive-hook feedback on scanner yellow / Uno D8. Enable with a
+// legacy optical mode (including LISTEN_ONLY silent control); it is separate
+// from the black-command feedback harness used by the v1/v2 diagnostic ROMs.
+#ifndef STOCK_CONTEXT_EVENTS
+#define STOCK_CONTEXT_EVENTS 0
+#endif
+
 // Stage 9: narrowed receive sweep.  The first handheld-paced RX_SWEEP run
 // halted on flag=7E phase=-2/8 pol=0 content=2 (the controller reported a
 // pending receive), while earlier 7E lines at phase -4 did not -- so the flag
@@ -287,6 +294,9 @@
 #endif
 #if FEEDBACK_HARNESS && (LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW)
 #error "FEEDBACK_HARNESS needs every legacy mode 0"
+#endif
+#if STOCK_CONTEXT_EVENTS && (FEEDBACK_HARNESS || !(FREE_TX || RX_NARROW || RX_SWEEP || LISTEN_ONLY))
+#error "STOCK_CONTEXT_EVENTS needs a stock optical mode"
 #endif
 
 // ---------------------------------------------------------------- timing --
@@ -418,6 +428,49 @@ void onClockEdge() {
   destuffBit(b);
 #endif
 }
+
+#if STOCK_CONTEXT_EVENTS
+// Uno D8 is PB0/PCINT0. Capture narrow yellow pulses even while sendFrame()
+// is busy scheduling optical edges; printing stays outside the interrupt.
+struct StockYellowEvent { uint32_t riseUs; uint16_t lowUs; };
+const uint8_t STOCK_EVENT_RING = 8;
+volatile StockYellowEvent stockEvents[STOCK_EVENT_RING];
+volatile uint8_t stockEventHead = 0, stockEventTail = 0, stockEventDrops = 0;
+volatile uint32_t stockYellowLowAt = 0;
+volatile bool stockYellowWasHigh = true;
+unsigned long stockLastReplyStartUs = 0;
+
+ISR(PCINT0_vect) {
+  bool high = (PINB & _BV(PB0)) != 0;
+  if (high == stockYellowWasHigh) return;
+  uint32_t at = micros();
+  stockYellowWasHigh = high;
+  if (!high) { stockYellowLowAt = at; return; }
+  uint8_t next = (uint8_t)((stockEventHead + 1) & (STOCK_EVENT_RING - 1));
+  if (next == stockEventTail) { ++stockEventDrops; return; }
+  stockEvents[stockEventHead].riseUs = at;
+  uint32_t width = at - stockYellowLowAt;
+  stockEvents[stockEventHead].lowUs = width > 0xFFFFUL ? 0xFFFFU : (uint16_t)width;
+  stockEventHead = next;
+}
+
+void stockDrainYellowEvents() {
+  for (;;) {
+    noInterrupts();
+    if (stockEventTail == stockEventHead) { interrupts(); break; }
+    StockYellowEvent event = {stockEvents[stockEventTail].riseUs,
+                              stockEvents[stockEventTail].lowUs};
+    stockEventTail = (uint8_t)((stockEventTail + 1) & (STOCK_EVENT_RING - 1));
+    interrupts();
+    Serial.print(F("# STOCK_YELLOW rise_us=")); Serial.print(event.riseUs);
+    Serial.print(F(" low_us=")); Serial.println(event.lowUs);
+  }
+  noInterrupts();
+  uint8_t drops = stockEventDrops; stockEventDrops = 0;
+  interrupts();
+  if (drops) { Serial.print(F("# STOCK_YELLOW_DROPS ")); Serial.println(drops); }
+}
+#endif
 
 // ------------------------------------------------------------ the framer --
 // Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
@@ -1530,7 +1583,8 @@ void freeTxTick() {
   Serial.print(F("/8cell pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
   printReplyPayload();
-  Serial.print(F(" start=1000us"));
+  Serial.print(F(" tx_start_us=")); Serial.print(now + 1000UL);
+  Serial.print(F(" swap=")); Serial.print(sweepSwap);
   Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
   Serial.println();
   advanceSweep();
@@ -1565,6 +1619,12 @@ void report(uint8_t n, const uint8_t *bits) {
   Serial.print(F(" delay_req=")); Serial.print(delayUs[sweepDelay]);
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
+#if STOCK_CONTEXT_EVENTS
+  if (stockLastReplyStartUs) {
+    Serial.print(F(" tx_start_us=")); Serial.print(stockLastReplyStartUs);
+    Serial.print(F(" swap=")); Serial.print(sweepSwap);
+  }
+#endif
 #else
   Serial.print(F("  [content_idx=")); Serial.print(sweepContent);
   Serial.print(F(" name=")); Serial.print(contentName(sweepContent));
@@ -1595,6 +1655,13 @@ void setup() {
   fbBlackRelease();  // preload the selected idle level before enabling D7
   pinMode(BLACK_OUT, OUTPUT);
   pinMode(YELLOW_IN, INPUT);
+#endif
+#if STOCK_CONTEXT_EVENTS
+  pinMode(YELLOW_IN, INPUT);  // external 10 kOhm pull-up is required
+  PCIFR |= _BV(PCIF0);
+  stockYellowWasHigh = (PINB & _BV(PB0)) != 0;
+  PCMSK0 |= _BV(PCINT0);
+  PCICR |= _BV(PCIE0);
 #endif
   clkReg = portOutputRegister(digitalPinToPort(CLK_OUT));
   datReg = portOutputRegister(digitalPinToPort(DAT_OUT));
@@ -1627,6 +1694,9 @@ void setup() {
   Serial.println(F("  pass = 10000001000001011 comes back"));
 #elif LISTEN_ONLY
   Serial.println(F("MODE: LISTEN ONLY -- not transmitting, sweep frozen."));
+#if STOCK_CONTEXT_EVENTS
+  Serial.println(F("  stock-context silent control: D8 yellow event capture"));
+#endif
 #if RECORD_READOUT
   Serial.println(F("  RECORD_READOUT: de-stuffed hex, one frame per line"));
 #endif
@@ -1666,9 +1736,16 @@ void setup() {
 #elif FREE_TX
   Serial.print(F("MODE: FREE TX -- one swept burst every "));
   Serial.print(FREE_TX_PERIOD_MS); Serial.println(F(" ms, no handheld burst."));
+#if STOCK_CONTEXT_EVENTS
+  Serial.println(F("  stock-context hook: D8 yellow pulse widths; D7 unused"));
+#else
   Serial.println(F("  pair with micron1_stockhook_rx.bin; watch its `I ss rr` row"));
+#endif
 #else
   Serial.println(F("MODE: SWEEP -- delay x content x clock x invert x swap."));
+#endif
+#if STOCK_CONTEXT_EVENTS && !FREE_TX && !LISTEN_ONLY
+  Serial.println(F("STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"));
 #endif
 }
 
@@ -1696,6 +1773,9 @@ void loop() {
 #if FREE_TX
   freeTxTick();
 #endif
+#if STOCK_CONTEXT_EVENTS
+  stockDrainYellowEvents();
+#endif
 
   uint8_t d = digitalRead(DAT_IN);
   if (d && !datPrev) { datRises++; datPhase = micros() - last; }
@@ -1720,6 +1800,10 @@ void loop() {
   for (uint8_t i = 0; i < n; i++) snapshot[i] = rxBits[i];
   rxCount = 0;
   interrupts();
+#endif
+
+#if STOCK_CONTEXT_EVENTS
+  stockLastReplyStartUs = 0;
 #endif
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
@@ -1795,6 +1879,9 @@ void loop() {
     txPhaseEighths = rxPhaseTab[rxPhaseIdx];
     stuffNormal = (rxFlagTab[rxFlagIdx] == 0x7E);   // 7E -> zero-stuffing
     buildReply(rxContentMap[rxContentIdx]);
+#if STOCK_CONTEXT_EVENTS
+    stockLastReplyStartUs = fire;
+#endif
 #else
     buildReply(sweepContent);
 #endif

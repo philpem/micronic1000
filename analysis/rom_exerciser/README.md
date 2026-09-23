@@ -1,8 +1,36 @@
 # Link-controller exerciser
 
-## Current combined feedback build
+## Stock-context v3 receive marker
 
-**feedback-v2** is the next ROM00 burn candidate. It adds H/J/K fast
+The next ROM00 burn keeps the stock V24 Load/Run and Commstar path active.
+Its guarded builder is `stock_context_v3.py`; it changes the stock
+`ROM00:2FC1` call to `Link_BlockRx` into a wrapper that calls the original
+routine once and pulses scanner yellow/pin 6 **after** it returns. A short
+low pulse denotes a carry-set return, a longer pulse a carry-clear return.
+The marker says nothing about later frame validation. It uses the stack,
+not the loaded application's RAM: the stock loader may occupy `C7E0`.
+The [stock-context bench plan](../../doc/re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial)
+has wiring, Uno mode sequence, logger commands and interpretation limits.
+
+Build the pinned release image and checksum manifest from the verified stock
+ROM with the command below. Burn ROM00 only; leave ROM01 stock. The `.bin`
+is intentionally ignored by git while the builder and JSON manifest are
+tracked.
+The verified 32,768-byte v3 image has MD5
+`c3cc1fa00b4573566068ee5f441f89e1` and additive byte sums `D9B7`
+(16-bit) / `37D9B7` (24-bit), without complement.
+
+```sh
+analysis/venv/bin/python analysis/rom_exerciser/stock_context_v3.py \
+  -o analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.bin \
+  --manifest-out analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.json
+analysis/venv/bin/python -m pytest -q analysis/test_stock_context_v3.py \
+  analysis/test_stock_context_log.py
+```
+
+## Previous combined feedback build
+
+**feedback-v2** was the preceding ROM00 burn. It adds H/J/K fast
 `LINK_STATUS` captures while retaining v1 W/R/P/G. Build and verify the
 release from the stock ROM with:
 

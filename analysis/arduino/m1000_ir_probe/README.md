@@ -159,3 +159,96 @@ the actual waveform and electrical levels with an independent scope.
 The host-only emitter harness is outside this directory at
 `analysis/test_ir_emitter.cpp`; keeping it outside the sketch directory avoids
 Arduino builders compiling its mock API and `main()` as sketch sources.
+
+## Stock-ROM context capture
+
+This mode observes the stock receive path through handheld yellow / pin 6. It
+uses the legacy optical connections, so connect the handheld clock and data
+detector outputs to **D2 and D4** (each through its own **10 kOhm series
+resistor**), and retain the existing separately driven optical LEDs on **D5
+and D6**. Keep those LED channels optically separated and their current
+limiting resistors fitted. Connect handheld **blue / pin 8** to Uno GND.
+Connect handheld **yellow / pin 6** to **D8**, with a **10 kOhm pull-up from
+D8/yellow to Uno 5 V**. Leave handheld **black / pin 5** and Uno **D7**
+disconnected in these modes. Leave orange / pin 3 (handheld Vcc) disconnected:
+share ground only, and do not join handheld Vcc to Uno 5 V.
+
+First run a silent control with the stock-context event capture enabled. Build
+from the repository root:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=1 -DRX_NARROW=0 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+Upload it and confirm `MODE: LISTEN ONLY` and the stock-context D8 banner.
+Run the same handheld operation that will be used for the transmitting
+captures and record its yellow events. This is the control for yellow pulses
+that occur without an Uno optical reply.
+
+Then build and capture the free-running TX condition. It emits one swept
+optical burst every 250 ms by default, independently of handheld traffic; it
+is intended to exercise the stock instrument's idle receiver during its
+connect attempt:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DRX_NARROW=0 -DFREE_TX=1 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+For the handheld-paced condition, build RX_NARROW with its default content
+axis (axis 2):
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property 'compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DRX_NARROW_AXIS=2 -DSTOCK_CONTEXT_EVENTS=1' \
+  analysis/arduino/m1000_ir_probe
+```
+
+RX_NARROW replies after each handheld burst and varies the selected content
+axis. FREE_TX and RX_NARROW are separate builds; do not enable them together.
+For each build, run the passive logger before the handheld operation so its
+startup and event lines are retained. It sends no commands, defaults to
+`/dev/ttyACM0`, and refuses to overwrite an existing log:
+
+```sh
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-control.jsonl --duration 60
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-free-tx.jsonl --duration 60
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-rx-narrow.jsonl --duration 60
+```
+
+Change `--port` if the Uno is not `/dev/ttyACM0`. Analyze each capture after
+the run; the 250 ms default association window can be changed if needed:
+
+```sh
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-control.jsonl --analyze
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-free-tx.jsonl --analyze
+python3 analysis/stock_context_log.py \
+  --log analysis/captures/stock-context-rx-narrow.jsonl --analyze \
+  --association-window-ms 250
+```
+
+With `STOCK_CONTEXT_EVENTS=1`, the Uno timestamps D8 low-pulse starts and
+records the pulse width when D8 rises. It prints events outside the pin-change
+interrupt as `# STOCK_YELLOW rise_us=N low_us=W`; RX_NARROW reply reports and
+FREE_TX reports also include their `tx_start_us=` and `swap=` fields for
+timestamp correlation. The logger may therefore show an event line after a
+later TX report even when the event's pulse started earlier. Analysis
+correlates to the closest TX preceding the pulse fall using Uno's wrapping
+32-bit microsecond clock, not line order. Events with no TX in the configured
+window are reported as silent/control.
+
+The event ring holds seven pending pulses. If it fills while the Uno is busy,
+some events are dropped and reported as `# STOCK_YELLOW_DROPS N`; a capture
+with drops is incomplete. Pulse widths above 65535 us are capped at 65535.
+This marker records timing at the Uno input pin. It does not decode a yellow
+serial record, identify which stock-ROM routine caused the pulse, or prove
+that the optical signal reached the handheld receiver. Confirm optical
+waveforms independently when interpreting a negative result.

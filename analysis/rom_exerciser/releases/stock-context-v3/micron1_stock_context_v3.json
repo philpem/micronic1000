@@ -1,0 +1,32 @@
+{
+  "image": "micron1_stock_context_v3.bin",
+  "purpose": "stock-context receive diagnostic; guarded ROM00 wrapper",
+  "patch": {
+    "address": "ROM00:2FC1",
+    "original_bytes": "cd 78 33",
+    "replacement": "CALL ROM00:7E96"
+  },
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "assembly_sha256": "16ab1afaacef1b674a3e5e9d9ecb8eabe8847d83ce347ad43bf4a90448e6f623",
+  "changed_bytes": 69,
+  "entry": "ROM00:7E96",
+  "end_exclusive": "ROM00:7ED9",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "c3cc1fa00b4573566068ee5f441f89e1",
+    "sum16": "D9B7",
+    "sum24": "37D9B7",
+    "sha256": "8b8ccf2ee50c6aa3f28c5942429e4e99c6dbadd40e892a93e0883653a127174c"
+  },
+  "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
+  "marker": {
+    "pin": "yellow/pin 6",
+    "port": "2Ah bit 0",
+    "sink_value": 1,
+    "error_dwell_tstates": 3327,
+    "success_dwell_tstates": 6654,
+    "clock_hz": 3686400,
+    "timing_note": "dwell loop only; wrapper overhead adds a few T-states",
+    "order": "after stock Link_BlockRx returns: release, sink, dwell, release, restore shadow"
+  }
+}

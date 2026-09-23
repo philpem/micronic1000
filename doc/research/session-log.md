@@ -8021,3 +8021,28 @@ names renamed, 144 unplated functions plated)
   no bit-4/bit-0 sample or K watcher hit. The `TRIAL` echoes confirm the
   requested levels were parsed. Further standalone 7Eh sweeps cannot
   distinguish wrong framing from the missing stock transaction context.
+
+### 2026-09-23 — Stock-context v3 preparation
+
+* Rechecked the stock worker: `ROM00:31B6` clears `LINK_CTRL` bits 6/7,
+  tests `LINK_STATUS` bit 4 via the single read at `ROM00:34E7`, and calls
+  `LinkRxDispatcher` at `ROM00:2FBD` only on a pending result. The older
+  `I 98 00` / `I 90 00` hook stopped before `Link_BlockRx`, so it did not
+  demonstrate a decoded frame. The v2 H/J/K negative observations remain
+  specific to their standalone context.
+* Prepared a guarded stock-context ROM00 wrapper at the original
+  `ROM00:2FC1` call site. It calls stock `Link_BlockRx` once, restores its
+  return registers/flags, and emits a yellow/pin-6 low pulse only after RX
+  returns; carry selects the pulse duration. The stock status decision and
+  boot path remain unchanged. An initial release makes the marker visible
+  even if the port-2A shadow bit 0 was already set.
+* Discarded the proposed status-tap scratch at `C7E0`–`C7E3`: the Load/Run
+  loader permits program data through `D080h`, and the stored status/AF
+  bytes had no bench readout. A stack-only single-site patch avoids that
+  collision and the extra status-helper latency. It reports RX entry and
+  carry class, not the raw status byte or later frame validation.
+* Added Uno D8 pin-change capture for yellow pulse widths and passive JSONL
+  correlation with free-running or handheld-paced optical TX. The owner
+  confirms that the existing outgoing-optical detector lines remain on Uno
+  D2/D4. Prepared a silent control, FREE_TX and RX_NARROW sequence for the
+  next ROM burn; no v3 handheld result exists yet.

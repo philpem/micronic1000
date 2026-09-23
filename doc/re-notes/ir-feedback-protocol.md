@@ -4,7 +4,77 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
-## Current handoff: feedback-v2 bench trial
+## Current handoff: stock-context v3 bench trial
+
+**CONFIRMED (stock ROM bytes):** the V24 link worker at `ROM00:31B6`
+clears `LINK_CTRL` bits 6/7, calls `ROM00:34E7` for its one
+`LINK_STATUS` read and bit-4 test, and enters `LinkRxDispatcher` only
+when `LINK_STATUS` bit 4 is set. The earlier stock `I 98 00` / `I 90 00`
+hook stopped at the dispatcher entry, before stock `Link_BlockRx` ran.
+Those readings establish receive-pending status in the live transaction,
+not an accepted frame. The feedback-v2 H/J/K and corrected optical-level
+matrix stayed bit-4-clear in their standalone, interrupt-disabled context.
+
+The stock-context v3 ROM keeps stock boot, the V24 Load/Run transaction,
+the link worker, the `ROM00:34E7` status helper, and the stock receive
+routine. It changes only the dispatcher call at `ROM00:2FC1` and an unused
+upper-ROM cave. That call is reached only after the worker's original
+`LINK_STATUS` bit-4 test chose the pending branch. The wrapper invokes
+stock `Link_BlockRx` once and gives yellow/pin 6 a short low pulse
+**after** the receive routine returns. Its pulse width distinguishes the
+routine's carry return; the pulse alone cannot establish a valid frame or
+session. It saves working state on the stack, avoiding writes into the
+loaded program's RAM. The bounded post-receive delay means this is still
+an instrumented run, not an entirely unmodified machine.
+The stock loader permits COM/DIP data through `D080h`, so the old proposed
+scratch at `C7E0h` was not proven free during an active Load/Run attempt.
+
+Burn ROM00 from
+`/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/stock-context-v3/micron1_stock_context_v3.bin`
+(32,768 bytes): MD5 `c3cc1fa00b4573566068ee5f441f89e1`, additive
+16-bit sum `D9B7`, additive 24-bit sum `37D9B7`. These are unsigned byte
+sums without complement; the guarded builder and pinned JSON manifest live
+beside the ignored `.bin`. Leave ROM01 stock. The expected boot is the normal
+Micronic Load/Run UI, **not** `IR FEEDBACK V2 W..K`. The old black-pin
+command protocol and Uno `T`/`R` commands do not apply. The exact v3 burn
+path and sums above are the copy-validation values for the EPROM programmer.
+
+Keep the tested optical layout: Uno D5/D6 drive the two resistor-limited IR
+LED channels aimed at the top V24 window; the physical clock/data role is
+still unconfirmed. The owner confirms that the handheld's outgoing optical
+channels remain connected to Uno D2/D4. Connect handheld blue/pin 8 to Uno
+GND, yellow/pin 6 to Uno D8 with a 10 kOhm pull-up to Uno 5 V. Disconnect
+black/pin 5 from Uno D7 for this stock-ROM experiment; D7 stays input.
+Leave handheld orange/Vcc disconnected from Uno 5 V. Do not bypass LED
+ballast resistors. Use `STOCK_CONTEXT_EVENTS=1` with one Uno mode at a time;
+`analysis/arduino/m1000_ir_probe/README.md` gives the exact build flags
+and passive logger commands.
+
+Run a **LISTEN_ONLY** control first: start the passive serial log, select
+the normal V24 ADAPTOR Load/Run choice on the handheld, and record the
+complete screen and serial output. Then upload **FREE_TX** without changing
+the ROM or wiring and repeat the same handheld choice; this best reproduces
+the earlier positive stock hook stimulus. If needed, upload **RX_NARROW**
+for a handheld-paced reply, using the already connected Uno D2/D4 inputs.
+Keep separate JSONL logs and note the exact Uno mode, LED role/swap, and
+handheld screen for each attempt. `# STOCK_YELLOW rise_us=... low_us=...`
+reports a completed post-receive pulse. A short pulse indicates the stock
+receive returned carry set; a long pulse indicates carry clear. No pulse
+does not by itself prove no pending status: check the Uno boot banner,
+yellow pull-up, stock UI path, event-drop count and optical activity. Any
+`# STOCK_YELLOW_DROPS` value above zero makes that capture incomplete.
+If port `2Ah` bit 0 was already set before the wrapper, its forced release
+can first close and log a long pre-existing low interval. The bounded
+~0.9/1.8 ms pulse follows it, then the wrapper restores the prior low
+state; identify the bounded pulse by width and sequence.
+The raw status and AF bytes are not reported; the marker is the observable
+channel for this one-burn test. Correlation with a preceding `# TX` or
+`burst` line is timing evidence only, not proof
+that those bits formed an accepted frame.
+
+<a id="current-handoff-feedback-v2-bench-trial"></a>
+
+## Previous handoff: feedback-v2 bench trial
 
 Feedback-v2 was burned and cold-booted on 2026-09-23. Its silent P probe,
 H/J/K matrix and corrected physical-level follow-up completed; see the
