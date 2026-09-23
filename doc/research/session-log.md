@@ -7844,3 +7844,15 @@ names renamed, 144 unplated functions plated)
 * The exact bytes sent in the owner's failing attempt remain unconfirmed.
   Ask for the terminal and line-ending setting if uppercase `V 1` followed
   by LF still fails. No new ROM or Arduino build was made.
+
+### 2026-09-23 — Resistor-limited optical signal confirmed
+
+* CONFIRMED (owner hardware report): after reinstating the LED limiting
+  resistors, the signal still reaches the Micronic IR receiver. Withdraw
+  the earlier implication that detection required bypassing those
+  resistors. The 10%-low/90%-high waveform was measured with resistors
+  bypassed; its exact shape with resistors fitted was not reported.
+* Proceed with the current-limited drive. The remaining scope question is
+  physical clock/data edge polarity and phase at the receiver during a
+  short feedback trial. Keep a fresh silent control when comparing ROM
+  status across drive changes. No ROM or Arduino source change is needed.

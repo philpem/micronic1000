@@ -47,8 +47,10 @@ trial was the missing `swap=1` / `7Eh 03h` receive-pending pair: previous
 **CONFIRMED (owner report):** with the Uno LED ballast resistors bypassed,
 the `V 1` 10% PWM appeared at a Micronic photodiode-amplifier output as
 low for about 10% and high for about 90%. This establishes modulation at
-that measured receiver node under the new drive, not prior optical delivery
-or the controller's logic polarity. The owner means physical IR clock/data
+that measured receiver node under the changed drive. **CONFIRMED (later
+owner report):** the signal still reaches the Micronic IR receiver with the
+limiting resistors back in place. Whether any earlier trial's short burst
+arrived with usable timing remains open. The owner means physical IR clock/data
 polarity, not a complement of framed data bits. Trials 25/26, silent/X with
 `swap=1` and `7Eh 03h`, both returned error 8 and did not enter stock RX;
 their probe/before/after statuses were A0h/C0h/C0h and E0h/C0h/C0h.
@@ -59,13 +61,10 @@ compare physical edges in CSV rather than software interval length.
 1. Keep feedback-v1 ROM00 installed. Use the current Uno sketch in
    `analysis/arduino/m1000_ir_probe/` and confirm the `BLACK: DIRECT_TTL`
    banner for the owner's D7-to-black wiring. No new EPROM burn is needed.
-   IDs 25/26 are complete; `V 1` confirmed LED emission and a signal at
-   one measured Micronic photodiode-amplifier output only after the LED
-   ballast resistors were bypassed.
-2. Restore deliberate LED current limiting before more sustained output.
-   Verify the LED current and that the Micronic amplifier still shows a
-   signal. GPIO source resistance is not a controlled current limiter; use
-   a suitable series resistor or current-limited driver. With `V 1`, scope
+   IDs 25/26 are complete; `V 1` confirmed LED emission, and the owner
+   reports a signal at the Micronic receiver with the limiting resistors
+   fitted as well as bypassed.
+2. Keep deliberate LED current limiting for further tests. With `V 1`, scope
    Uno D5, Uno D6 and the amplifier output together. Record the dark level,
    which labeled A/B interval moves the measured node, and whether that
    node goes high or low during light. Capture the other channel's amplifier

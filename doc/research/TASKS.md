@@ -137,12 +137,13 @@ tested only with `swap=0`.
 `LINK_STATUS` probe/before/after A0h/C0h/C0h and E0h/C0h/C0h respectively;
 neither entered stock RX. With LED ballast resistors bypassed, the owner
 observed `V 1` as low about 10%/high about 90% at a Micronic
-photodiode-amplifier output. This confirms optical modulation at that
-measured node only under the changed drive, not the earlier LED current or
-the polarity/threshold at the controller input. The owner's polarity
+photodiode-amplifier output. Later owner report confirms the signal still
+reaches the Micronic IR receiver with the limiting resistors fitted. This
+does not establish earlier short-burst delivery or the polarity/threshold
+at the controller input. The owner's polarity
 question concerns physical IR clock/data levels. Sketch `pol=1`
 complements serialized data bits but leaves clock pulses unchanged, so it
-does not answer that question. Next: restore deliberate LED current
+does not answer that question. Next: retain deliberate LED current
 limiting and simultaneously scope D5, D6, the amplifier output, and any
 accessible downstream logic node during a short stimulus; establish dark
 level, edge polarity and phase before another candidate-frame sweep.
