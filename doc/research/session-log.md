@@ -8519,3 +8519,27 @@ names renamed, 144 unplated functions plated)
 * Recommended an explicit diagnostic boot witness, raw receive return
   A/F after a dispatcher hit, matched silent/F7 trials and archived F7
   replay artifacts. No hardware interaction or new test was initiated.
+
+## 2026-09-24 — prepare reviewed stock receive diagnostic and handover
+
+* Fixed the stock-hook test helper to return callback-backed emulator RAM.
+  Added differential reset inputs 00/01/03, copied-kernel warm helper,
+  BDOS function-00 dispatch and NMI-path checks. Forced coldstart now
+  covers the retained-state branch/entry and BDOS reset table, while
+  leaving the common boot continuation intact.
+* Prepared stock-context v4: distinct approximately 5.451-ms boot pulse,
+  scratch dispatch snapshot, stock RX call once, post-return carry pulse,
+  then seven-character R4I + raw A/F display and deliberate stop. No
+  LCD or marker output precedes receive arm. Scope/logger conventions
+  remain compatible; v4 boot pulses are excluded from TX correlation.
+* Archived exact original F7 HEX and cached silent HEX with checksums,
+  build options and compiler commands. No Arduino upload or physical
+  test occurred. The installed ROM is still the previous v3 image;
+  last verified Uno state remains LISTEN_ONLY.
+* 69 targeted tests pass in analysis/venv. New ROM reproduces exactly;
+  canonical harness reaches Main Menu (3/3 expect steps) with its usual
+  RAM-test shortcuts. Raw EE/EC/ED and carry-clear modeled receive
+  results and pre-return I/O match stock. Hardware wake/reset behavior
+  remains a physical acceptance check, not an emulator conclusion.
+* Updated the current test plan/handover, task list and review follow-up.
+  No speculative stock-ROM annotations or hardware identities were added.

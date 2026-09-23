@@ -1,5 +1,10 @@
 # IR bench results and next-test review — 2026-09-23
 
+**Follow-up, 2026-09-24:** implementation and emulator fixes are prepared
+in the [v4 handover](../../re-notes/stock-context-v4-handover.md).
+The original review below is retained as the rationale. The old entry-only
+image is superseded; physical coldstart and receive tests remain pending.
+
 Reviewed branch `ir/stock-context-v3-content` at `4a42dc6`, covering
 the wired feedback-v1/v2 experiments, stock-context v3 rounds one and
 two, and the prepared receive-dispatch ROM. This is a review of the

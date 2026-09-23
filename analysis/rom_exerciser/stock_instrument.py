@@ -56,13 +56,15 @@ DEFAULT_ROM = HERE.parent.parent / "micronic" / "micron1.bin"
 CODE_ORG = 0x7E96
 CODE_END = 0x7FF9
 
-# Both known ROM routes that skip the cold-start body.  The first is the
-# battery-RAM 55h gate on reset; the second is a direct restart helper.
-# Keep the replacement the same size as each guarded JP instruction.
+# Guarded reset/resume entries. Keep common continuation 024D intact.
+# Both retained-state reset classification and entry 17A5 are redirected.
+# Kernel helper/table patches are copied to RAM.
 COLD_ENTRY = 0x01A6
 WARMSTART_JUMPS = (
+    (0x0172, bytes.fromhex("c2 a5 17")),
     (0x01A3, bytes.fromhex("ca 4d 02")),
     (0x3812, bytes.fromhex("c3 4d 02")),
+    (0x17A5, bytes.fromhex("db 05 e6 02")),
 )
 
 # Shared HD61830 helpers.  Register-indexed: port 23h picks the register, port
@@ -431,6 +433,21 @@ HOOKS = {
 # RAM).  Do not re-add without understanding 267a fully.
 
 
+def apply_coldstart_patches(rom, orig):
+    """Apply byte-guarded cold reset routes to a mutable ROM image."""
+    for addr, expect in WARMSTART_JUMPS:
+        if bytes(orig[addr:addr + len(expect)]) != expect:
+            raise SystemExit(
+                f"{addr:04X} does not hold the expected warmstart jump")
+        rom[addr:addr + len(expect)] = (bytes([0xC3]) +
+            COLD_ENTRY.to_bytes(2, "little") + bytes(len(expect) - 3))
+        print(f"patched {addr:04X}: force coldstart -> {COLD_ENTRY:04X}")
+
+    if orig[0x3708:0x370A] != bytes.fromhex("4d 02"):
+        raise SystemExit("BDOS reset table guard mismatch at 3708")
+    rom[0x3708:0x370A] = COLD_ENTRY.to_bytes(2, "little")
+
+
 def build_image(hook="bit6", rom_path=None, force_coldstart=False):
     if hook not in HOOKS:
         raise SystemExit(f"unknown hook {hook!r}; choose from {list(HOOKS)}")
@@ -481,12 +498,7 @@ def build_image(hook="bit6", rom_path=None, force_coldstart=False):
         print(f"patched {addr:04X}: {expr} -> {target:04X} ({len(blob)} bytes)")
 
     if force_coldstart:
-        for addr, expect in WARMSTART_JUMPS:
-            if bytes(orig[addr:addr + len(expect)]) != expect:
-                raise SystemExit(
-                    f"{addr:04X} does not hold the expected warmstart jump")
-            rom[addr:addr + 3] = bytes([0xC3]) + COLD_ENTRY.to_bytes(2, "little")
-            print(f"patched {addr:04X}: force coldstart -> {COLD_ENTRY:04X}")
+        apply_coldstart_patches(rom, orig)
 
     return bytes(rom), sym, orig
 

@@ -4,20 +4,21 @@ State: continuously updated as work progresses.
 
 > Historical session log: see [`session-log.md`](session-log.md).
 
-## IR review follow-up — 2026-09-23
+## IR review follow-up — 2026-09-24
 
-See the [rounds and planned-ROM review](reviews/ir-rounds-review-2026-09-23.md)
-before resuming the proposed receive-dispatch test. Review recommendation:
-revise the diagnostic before another burn. Its forced-coldstart option
-leaves a reset resume branch untouched; its reset-vector test uses inputs
-that already coldstart the stock ROM. Two receive-hook tests fail in
-`analysis/venv` after the recent memory-helper change. Repair those checks,
-add a diagnostic identity/display witness and prioritize raw stock RX
-return A/F after a dispatcher hit. F7's 34 carry-set markers remain useful
-evidence, but later controls failed and no return framing is confirmed.
-The owner has confirmed optical arrival at the internal amplifier; further
-internal probing and alignment sweeps are not requested. Uno remains at
-the last verified LISTEN_ONLY handover state.
+The [v4 handover and test plan](../re-notes/stock-context-v4-handover.md)
+is ready for the next agent. Review fixes: callback-memory regression
+repaired; reset/resume and BDOS reset routes covered; diagnostic boot
+identity added; raw stock receive A/F displayed after the first return;
+exact F7 and silent HEX artifacts archived. 69 project-environment tests
+pass, and the canonical accelerated boot reaches Main Menu.
+
+Pending: owner installs the new ROM, confirms physical coldstart and
+5.45-ms boot witness, then matched silent/F7 V24 trials. No hardware
+interaction occurred during preparation; last verified Uno state remains
+LISTEN_ONLY. F7's earlier 34 carry-set markers are useful evidence, but
+return framing is not confirmed. Optical arrival is owner-confirmed;
+no more internal probing or alignment sweeps are requested.
 
 ## IR instrumentation and connector handoff — 2026-09-22
 

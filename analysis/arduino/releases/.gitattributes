@@ -1,0 +1,2 @@
+# Preserve exact compiler-produced HEX bytes, including CRLF, for replay hashes.
+*.hex binary

@@ -43,6 +43,8 @@ def _pulse_class(width: int) -> str:
         return "carry_clear_candidate"
     if 3000 <= width <= 4200:
         return "boot_signature_candidate"
+    if 5000 <= width <= 5900:
+        return "v4_boot_signature_candidate"
     return "unclassified"
 
 
@@ -116,7 +118,8 @@ def correlate_lines(lines: list[str], association_window_us: int = 250_000) -> l
             event["drop_count_saturated"] = epoch_drops.get(epoch, 0) >= 65535
         candidates = []
         for tx_epoch, tx_line_number, tx_start, tx_line, swap in tx_history:
-            if saturated or event["pulse_class"] == "boot_signature_candidate":
+            if saturated or event["pulse_class"] in (
+                    "boot_signature_candidate", "v4_boot_signature_candidate"):
                 break
             if tx_epoch != epoch:
                 continue
@@ -127,7 +130,8 @@ def correlate_lines(lines: list[str], association_window_us: int = 250_000) -> l
             event["event_start_us"] = None
             event["tx"] = None
             event["classification"] = "unmatched: legacy width capped"
-        elif event["pulse_class"] == "boot_signature_candidate":
+        elif event["pulse_class"] in (
+                "boot_signature_candidate", "v4_boot_signature_candidate"):
             event["tx"] = None
             event["classification"] = "initialization signature candidate; not RX evidence"
         elif not candidates:

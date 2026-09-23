@@ -228,3 +228,13 @@ def test_valid_json_with_missing_line_and_oversized_width_are_rejected(tmp_path)
         analyze(path)
     with pytest.raises(ValueError, match="uint32"):
         correlate_lines(["# STOCK_YELLOW rise_us=10 low_us=4294967296"])
+
+
+def test_v4_boot_signature_is_not_associated_with_transmit():
+    events = correlate_lines([
+        "STOCK_CONTEXT_V3 width_us=32 drops=16",
+        "# TX flag=81 tx_start_us=1000 swap=0",
+        "# STOCK_YELLOW rise_us=10000 low_us=5452",
+    ])
+    assert events[0]["pulse_class"] == "v4_boot_signature_candidate"
+    assert events[0]["tx"] is None

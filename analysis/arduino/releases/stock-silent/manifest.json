@@ -1,0 +1,12 @@
+{
+  "purpose": "Archived LISTEN_ONLY control from round-two build cache; verify startup banner before use",
+  "fqbn": "arduino:avr:uno",
+  "core": "arduino:avr@1.8.8",
+  "compiler": "avr-gcc/7.3.0-atmel3.6.1-arduino7",
+  "flags": "compiler.cpp.extra_flags=-DLISTEN_ONLY=1 -DRX_NARROW=0 -DSTOCK_CONTEXT_EVENTS=1",
+  "sha256": {
+    "m1000_ir_probe.ino.hex": "2648062784ed40549a52bb409687f6afab954447fb08e5a0eb74ec8d3a681357",
+    "build.options.json": "c2720e22ee629944f33559655a92d80ea0c5cd8b953548eac1bb785e87eac5bf",
+    "compile_commands.json": "962f675eee3079dca9b2841cdde9923c111046b5818f3154ad881872a98caa8d"
+  }
+}

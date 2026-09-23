@@ -11,12 +11,10 @@ Completed
 attempts ended with `8000`, "Plinth not connected", then `8040`, "line
 failure". No valid frame or successful session has been demonstrated.
 
-**Review handover:** the [results and next-test review](../research/reviews/ir-rounds-review-2026-09-23.md)
-recommends revising the prepared ROM before burning it. The forced
-coldstart patch leaves a reset-time resume branch untouched, its
-reset-vector test also passes on stock firmware, and two receive-hook
-tests fail in the repository emulator environment. The diagnostic
-still needs an explicit installed-image/display witness for negatives.
+**Current handover (2026-09-24):** the review fixes and replacement ROM are
+prepared in the [v4 handover and test plan](stock-context-v4-handover.md).
+Use that image for the next burn; the entry-only release below is historical.
+No new physical test was performed during preparation.
 
 The [round-one worksheet](stock-context-v3-round1.md) contains the
 ROM identity, wiring and earlier trials. Scope D0/D1 observed handheld
@@ -162,7 +160,7 @@ A 10-second USB log during the check contains 41 free-running
 transmit reports, 50 handheld bursts and no yellow event. The owner
 has not yet reported what the handheld displayed during this check.
 
-## Next diagnostic: receive-dispatch witness
+## Superseded proposal: receive-dispatch witness
 
 The installed v3 ROM marks a `Link_BlockRx` **return** on yellow; no
 yellow pulse cannot show whether `LinkRxDispatcher` was entered. The
@@ -194,7 +192,7 @@ The subsequent review reproduced a bypass via `ROM00:0172` and
 identified the weak reset-vector test and project-environment failures;
 see the linked review before treating this as a release acceptance result.
 
-Test sequence after the owner installs this ROM: first put the Uno in
+**Historical proposed sequence (superseded by v4):** after the owner installs this ROM: first put the Uno in
 LISTEN_ONLY, then coldstart the handheld with no Arduino transmission.
 The LISTEN_ONLY build was uploaded and its USB banner verified before
 handing off this test; the Arduino is currently silent.

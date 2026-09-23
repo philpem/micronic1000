@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "../..,../..",
+  "compiler.optimization_flags": "",
+  "customBuildProperties": "compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_CONTEXT_EVENTS=1 -DSTOCK_PHASE_IDX=3 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_TX_SWAP=0 -DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3",
+  "fqbn": "arduino:avr:uno",
+  "hardwareFolders": "/home/philpem/Micronic-1000/.cache/ir-arduino/m1000-arduino-data/packages/arduino/hardware/avr/1.8.8,/home/philpem/Micronic-1000/.cache/ir-arduino/m1000-arduino-data/packages/arduino/hardware/avr/1.8.8",
+  "otherLibrariesFolders": "/home/philpem/Arduino/libraries",
+  "sketchLocation": "/home/philpem/Micronic-1000/analysis/arduino/m1000_ir_probe"
+}

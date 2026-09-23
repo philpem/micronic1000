@@ -1,0 +1,22 @@
+{
+  "purpose": "Exact original F7 replay; not rebuilt for this release",
+  "fqbn": "arduino:avr:uno",
+  "core": "arduino:avr@1.8.8",
+  "compiler": "avr-gcc/7.3.0-atmel3.6.1-arduino7",
+  "clock_hz": 16000000,
+  "flags": "compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_CONTEXT_EVENTS=1 -DSTOCK_PHASE_IDX=3 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_TX_SWAP=0 -DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3",
+  "candidate": {
+    "opening": "7e",
+    "payload": "00070002014300000201",
+    "stuffing": 1,
+    "phase": "positive 2/8 cell",
+    "delay_us": 33000,
+    "every_n_full_bursts": 3
+  },
+  "sha256": {
+    "m1000_ir_probe.ino.hex": "c25dda43b1d3cf3a78bf0d1dc2e2b43dbdda34138aa996a22d7f8fda67210d8f",
+    "build.options.json": "b11d4a16381ce7dc8245866c4890ba5afb301398b73a3338f85052c7f28287e4",
+    "compile_commands.json": "e62067c1364fda6a56d9a456a421b5614e7ce7a61ca3631615e185d9b11a7986"
+  },
+  "note": "compile_commands records original absolute paths as provenance; replay the HEX, do not use these paths as a portable build recipe."
+}

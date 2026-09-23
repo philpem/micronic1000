@@ -162,7 +162,7 @@ def _run_rx(status4b, rxd):
         if m.pc == sym["rx_loop"]:
             break
     assert m.pc == sym["rx_loop"], "rx hook never halted"
-    return m.memory, sym, writes
+    return mem, sym, writes
 
 
 def test_rx_hook_patches_dispatcher_entry():
@@ -191,12 +191,13 @@ def test_rx_hook_force_coldstart_reaches_cold_body(start):
     assert orig[0x3812:0x3815] == bytes.fromhex("c3 4d 02")
 
 
-def test_rx_hook_force_coldstart_from_reset_vector():
+@pytest.mark.parametrize("bootkeys", [0, 1, 3])
+def test_rx_hook_force_coldstart_from_reset_vector(bootkeys):
     image, _, _ = si.build_image("rx", force_coldstart=True)
     m = z80.Z80Machine()
     m.set_memory_block(0, image)
     m.memory[0xF81C] = 0x55
-    m.set_input_callback(lambda port: 0)
+    m.set_input_callback(lambda port: bootkeys if port & 0xFF == 0x49 else 0)
     m.set_output_callback(lambda port, value: None)
     m.sp = 0xF000
     m.pc = 0x0000
