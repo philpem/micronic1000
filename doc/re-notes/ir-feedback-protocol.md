@@ -6,10 +6,10 @@ is new test firmware, not a discovered Micronic protocol.
 
 ## Current handoff: feedback-v2 bench trial
 
-Feedback-v2 is built but has not been burned or bench-tested. See the
-[v2 procedure](#feedback-v2-receive-state-diagnostic-built-awaiting-bench-test)
-for its image, checksums, wiring and command sheet. The following v1 record
-is retained as the evidence that motivated this change.
+Feedback-v2 was burned and cold-booted on 2026-09-23. Its silent P probe,
+H/J/K matrix and corrected physical-level follow-up completed; see the
+[v2 result](#first-feedback-v2-bench-result-2026-09-23). The following v1
+record is retained as the evidence that motivated this change.
 
 **Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trials 6 and
 8 validated digital timing for both proposed Uno clock/data assignments;
@@ -1282,7 +1282,7 @@ diagnostic should compare the two control states with otherwise matched
 stimuli and record a faster pending-status history before another broad
 waveform sweep.
 
-### Feedback-v2 receive-state diagnostic — built, awaiting bench test
+### Feedback-v2 receive-state diagnostic — build and bench procedure
 
 **CONFIRMED (diagnostic source, build and emulator):** v2 preserves the
 W/R/P/G commands and adds H, J and K. H holds `LINK_CTRL` bits 6/7 high
@@ -1315,14 +1315,15 @@ The burn image is
 16-bit `903E`, additive 24-bit `37903E`; sums are unsigned byte sums
 without complement. Burn **ROM00 only**; leave ROM01 stock. The guarded
 source build and manifest are in the same `feedback-v2` release directory.
-The Micronic should boot with `IR FEEDBACK V2 W..K` on its LCD. Upload the
+The Micronic boots with `IR FEEDBACK V2 W..K` on its LCD. Upload the
 sketch from `analysis/arduino/m1000_ir_probe/` to the Elegoo Uno R3 after
 burning; its boot line says `MODE: FEEDBACK v1/v2`. Use the connector wiring
 table above, direct-TTL black D7 only if the banner matches that physical
 wiring, blue-to-Uno ground, yellow-to-D8, and the two resistor-limited IR
 LED channels on Uno D5/D6. Do not connect handheld Vcc to Uno Vcc.
 
-Start both devices fresh so both sequence counters start at 1, then run
+For a fresh run, start both devices so the ROM sequence begins at 1 and
+the Uno host ID begins at 1, then run
 `analysis/trials/feedback-v2-state-1-13.txt` in order. Its first P/S
 command checks feedback without an IR burst; the remaining H/J/K silent
 controls and stimulated trials compare matched optical candidates with
@@ -1334,6 +1335,74 @@ bit-4-clear, the next discriminating experiment is an instrumented stock
 V24 transaction or a carefully factored post-transmit diagnostic; changing
 7Eh framing on this standalone harness would still confound controller
 context with the waveform.
+
+### First feedback-v2 bench result — 2026-09-23
+
+**CONFIRMED (owner boot report):** after removing the batteries and
+discharging the memory-backup capacitor, the handheld showed
+`IR FEEDBACK V2 W..K`. Before that cold boot its LCD still showed
+`S003F` from the last v1 trial; this was not a v2 sequence value.
+The first P attempt before cold boot timed out waiting for yellow ACK.
+After boot, host ID 1 was rejected by the Uno because that ID had already
+been consumed by the earlier attempt. A serial-open residue then garbled
+one `SYNC` line without starting a trial. The subsequent clean P command
+used host ID 2 and returned valid version-2 ROM sequence 1, mode P, error 0,
+with no emission. These failures are transport/boot history, not IR results.
+
+**CONFIRMED (raw checksummed serial records):** the remaining 12 commands
+used host IDs 3–14, ROM sequences 2–13, and the exact lines in
+`analysis/trials/feedback-v2-state-3-14.txt`. They compare H/J/K silent
+and stimulated runs, both proposed LED-role assignments. Every record had
+version 2, the expected mode, error 0 and a valid 30-byte checksum. H/J
+each reported 1,000 full `LINK_STATUS` samples; K reported 600 and its
+watcher-hit byte remained `00h`. Within each capture, status OR equalled
+status AND, either `80h` or `C0h`. Neither `LINK_STATUS` bit 4 nor bit 0
+was seen in any sample. All six X trials scheduled three bursts of the
+unproven `7Eh` + zero-stuffed `1Fh` candidate at START+5/28/51 ms, with
+software emission starting about 4.8 ms after START and reported maximum
+event lateness at most 11 us. This is Uno scheduler evidence; no fresh
+optical or receiver-node trace accompanies these trials. Source logs:
+`analysis/captures/feedback-v2-probe-2-clean.jsonl` and
+`analysis/captures/feedback-v2-state-3-14.jsonl`.
+
+The H/J control-state change and K watcher-like order produced no pending
+bit under this candidate. That narrows the tested **standalone** contexts;
+it does not refute the earlier stock Commstar hook's pending observations.
+The stock path also performs a live TX prelude, link IRQ and session work
+that none of H/J/K includes. The next discriminating ROM change should
+instrument an active V24 transaction or preserve the state immediately
+after a byte-verified TX prelude before capture. Repeating broad 7Eh
+waveform sweeps in the current standalone context is unlikely to settle
+the missing-context question.
+
+A bounded USB-only level follow-up uncovered an Arduino parser defect:
+17-field repeated-burst commands accepted `clk_inv dat_inv` but discarded
+them, because the parser populated those fields only for 15-field
+single-burst commands. Host IDs 15–32 therefore all emitted the normal
+`0/0` levels despite their requested settings. Their serial `TRIAL` lines
+show that fact; they are duplicate normal-drive controls, **not** optical
+polarity tests. The parser now reads inversion fields for both 15- and
+17-field commands, with a host regression test. A verified Uno re-upload
+preceded the corrected run. The serial runner also now discards partial
+USB boot text before its explicit `R`, after a stale fragment spoiled a
+pre-trial `SYNC` line; no ROM transaction was lost in that incident.
+
+**CONFIRMED (corrected raw records):** host IDs 33–50, ROM sequences
+32–49, covered H/J/K, both role assignments, and `clk_inv dat_inv`
+combinations `0/1`, `1/0` and `1/1`; the earlier matrix covered `0/0`.
+Every corrected Uno `TRIAL` line echoed the requested inversion fields.
+All 18 records passed checksum, version, mode, count and sequence checks,
+with error 0. Each status OR equalled AND (`80h` or `C0h`); neither
+`LINK_STATUS` bit 4 nor bit 0 appeared, and K's watcher-hit byte stayed
+`00h`. Stimuli began about 4.8 ms after START with at most 10 us reported
+scheduler lateness. These are software and controller-register observations,
+not a fresh optical receiver waveform measurement. Exact commands:
+`analysis/trials/feedback-v2-optical-levels-33-50.txt`; logs:
+`analysis/captures/feedback-v2-optical-level-check-33.jsonl` and
+`analysis/captures/feedback-v2-optical-levels-34-50.jsonl`. The flawed
+attempt is preserved at `analysis/trials/feedback-v2-optical-levels-15-32.txt`
+and `analysis/captures/feedback-v2-optical-levels-15-32.jsonl` so its
+actual `0/0` execution cannot be mistaken for valid polarity evidence.
 
 ### Commstar hardware-drive audit for v2
 

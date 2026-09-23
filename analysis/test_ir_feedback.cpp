@@ -394,10 +394,12 @@ static std::string command(uint32_t id, char hold, char kind, int swap,
 }
 
 static std::string repeatCommand(uint32_t id, uint8_t count, uint8_t gapMs,
-                                 uint16_t delayUs = 1000) {
+                                 uint16_t delayUs = 1000,
+                                 uint8_t clkInv = 0, uint8_t datInv = 0) {
   std::ostringstream text;
   text << "T " << id << " G X 0 7E 0 0 0 -2 3 " << delayUs
-       << " 03 0 0 " << (unsigned)count << ' ' << (unsigned)gapMs;
+       << " 03 " << (unsigned)clkInv << ' ' << (unsigned)datInv
+       << ' ' << (unsigned)count << ' ' << (unsigned)gapMs;
   return text.str();
 }
 
@@ -578,8 +580,10 @@ static void v2RecordValidation() {
 
 static void repeatedBurstTrials() {
   const uint32_t id = nextId++;
-  TrialObservation trial = beginTrial(repeatCommand(id, 3, 23), 700000);
+  TrialObservation trial = beginTrial(repeatCommand(id, 3, 23, 1000, 1, 0), 700000);
   CHECK(fbConfig.repeatCount == 3 && fbConfig.repeatGapMs == 23);
+  CHECK(fbConfig.clockInvert == 1 && fbConfig.dataInvert == 0);
+  CHECK(contains("clk_inv=1") && contains("dat_inv=0"));
   spinUntil([] { return !fbEmitPending; }, 90000);
   CHECK(irEvents.size() > trial.firstIrEvent);
   std::vector<std::vector<uint8_t> > bursts;

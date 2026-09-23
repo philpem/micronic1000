@@ -176,7 +176,7 @@ class FeedbackLineParser {
     next.leadCells = (uint8_t)value;
     if (!fbUnsigned(parts[11], 60000, &value)) return FB_BAD;
     next.delayUs = (uint16_t)value;
-    if (count == 15) {
+    if (count >= 15) {
       if (!fbUnsigned(parts[13], 1, &value)) return FB_BAD;
       next.clockInvert = (uint8_t)value;
       if (!fbUnsigned(parts[14], 1, &value)) return FB_BAD;

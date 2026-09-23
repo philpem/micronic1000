@@ -1,0 +1,7 @@
+{"utc": "2026-09-23T15:39:32.124016+00:00", "monotonic_s": 894629.156429132, "direction": "tx", "line": "R"}
+{"utc": "2026-09-23T15:39:32.126554+00:00", "monotonic_s": 894629.15893874, "direction": "rx", "line": "SYNC"}
+{"utc": "2026-09-23T15:39:32.130730+00:00", "monotonic_s": 894629.163116809, "direction": "rx", "line": "BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"}
+{"utc": "2026-09-23T15:39:32.228260+00:00", "monotonic_s": 894629.260653405, "direction": "rx", "line": "READY"}
+{"utc": "2026-09-23T15:39:32.228363+00:00", "monotonic_s": 894629.260742888, "direction": "tx", "line": "T 1 P S 0 -- 0 0 0 -2 0 0 -"}
+{"utc": "2026-09-23T15:39:32.241677+00:00", "monotonic_s": 894629.274070555, "direction": "rx", "line": "ERROR id=1 reason=command; no handheld transaction; no R needed"}
+{"utc": "2026-09-23T15:39:32.241797+00:00", "monotonic_s": 894629.274177334, "direction": "tx", "line": "C 1"}

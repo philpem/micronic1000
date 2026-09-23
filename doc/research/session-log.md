@@ -7993,3 +7993,31 @@ names renamed, 144 unplated functions plated)
   serial log is `analysis/captures/feedback-v2-probe-1.jsonl`. Uno `R` then
   restored READY. Do not infer v2 boot or a ROM defect from this timeout;
   confirm the handheld banner and connector continuity before a repeat.
+
+### 2026-09-23 — V2 cold boot, first matrix and parser correction
+
+* Owner fully cold-booted by discharging the RAM backup capacitor after
+  battery removal. LCD showed `IR FEEDBACK V2 W..K`; the earlier `S003F`
+  was retained v1 display content. A clean P command used Uno host ID 2,
+  returned ROM sequence 1, mode 3, error 0, record version 2 and no IR
+  emission. A repeated host ID 1 was rejected before a transaction; a
+  separate stale USB line spoiled one `SYNC` response without sending T.
+* H/J/K host IDs 3–14 returned ROM sequences 2–13 and 12 valid records.
+  Six silent/stimulated pairs matched exactly for each mode and proposed
+  LED-role assignment. All full-byte status captures were constant `80h`
+  or `C0h` with no `LINK_STATUS` bit 4/bit 0 and no K watcher hit. Each X
+  command scheduled three `7Eh` + stuffed `1Fh` bursts at +5/28/51 ms;
+  reported Uno scheduler lateness was at most 11 us. No fresh optical
+  receiver waveform was captured.
+* A follow-up exposed that 17-field repeated-burst commands ignored both
+  physical inversion parameters. IDs 15–32 were normal-drive duplicates,
+  despite different requested fields. Fixed the parser to read inversion
+  fields for 15- and 17-field commands, added a host regression, and
+  verified a new Uno upload. The runner now flushes stale USB startup
+  fragments before sending `R`.
+* Corrected IDs 33–50, ROM sequences 32–49, covered H/J/K, both role
+  assignments and the three remaining physical drive-level combinations.
+  All 18 valid error-0 records held `LINK_STATUS` at `80h` or `C0h`, with
+  no bit-4/bit-0 sample or K watcher hit. The `TRIAL` echoes confirm the
+  requested levels were parsed. Further standalone 7Eh sweeps cannot
+  distinguish wrong framing from the missing stock transaction context.

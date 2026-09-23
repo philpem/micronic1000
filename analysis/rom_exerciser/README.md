@@ -18,9 +18,10 @@ analysis/venv/bin/python -m pytest -q analysis/test_feedback_v2_rom.py \
 The v2 image's MD5 is `a9966a607f672d75031113528b7c6ea3`;
 unsigned byte-sum checksums are `903E` (16-bit) and `37903E` (24-bit).
 Burn ROM00 only and leave ROM01 stock. The [interface and bench
-procedure](../../doc/re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-built-awaiting-bench-test)
-give the connector wiring and 13-command test sheet. No v2 handheld result
-has been reported yet. Keep the resistor-limited Uno LEDs in their tested
+procedure](../../doc/re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-build-and-bench-procedure)
+give the connector wiring and 13-command test sheet. The first v2 P/H/J/K
+run and corrected optical-level matrix are recorded there. Keep the
+resistor-limited Uno LEDs in their tested
 placement. The old v1 builder and image below are preserved unchanged.
 
 **feedback-v1** was the first standalone combined burn. Build it only to an

@@ -1,0 +1,4 @@
+{"utc": "2026-09-23T15:39:55.784719+00:00", "monotonic_s": 894652.817133527, "direction": "tx", "line": "R"}
+{"utc": "2026-09-23T15:39:55.788242+00:00", "monotonic_s": 894652.820629783, "direction": "rx", "line": "son=cancel; no handheld transaction; no R neededSYNC"}
+{"utc": "2026-09-23T15:39:55.792284+00:00", "monotonic_s": 894652.824670199, "direction": "rx", "line": "BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"}
+{"utc": "2026-09-23T15:39:55.890624+00:00", "monotonic_s": 894652.923018989, "direction": "rx", "line": "READY"}
