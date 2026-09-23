@@ -7633,3 +7633,20 @@ names renamed, 144 unplated functions plated)
   not optical reception by the handheld.
 * Next: matched forced-RX mode R silent/stimulated trials 9/10 with swap=1,
   then the other role if needed. No code or EPROM change is required.
+
+### 2026-09-23 — Forced-RX matched trials 9 and 10
+
+* CONFIRMED (owner serial report): both R/S and R/X with swap=1 produced
+  valid 30-byte feedback, mode 2/error 7, probe/before/after A0h/C0h/C0h,
+  stock raw `A=EEh`, `F=6Dh` (carry set), no saved DE/preview. Trial 9
+  emitted nothing by design; trial 10 dispatched at START+6800 us with
+  3 us reported maximum lateness. No trial-10 scope capture was provided.
+* Byte-checked stock `Link_BlockRx` at ROM00:33CF–33EB: `EEh` here is the
+  `LINK_STATUS` bit-0 byte-ready/bit-1 frame-end wait's `06F9h` timeout,
+  about 30.0 ms at 3.6864 MHz (62 T-state no-byte loop). The 24.69 ms
+  figure belongs to the TX per-byte loop. It is not the W bit-6 wait. The
+  ROM wrapper does not record DE or preview after carry, so zero fields
+  cannot exclude partial byte delivery before a later timeout.
+* Next: G/S then G/X IDs 11/12, preserving the same candidate and role,
+  to test the separate receive-pending gate. Physical optical delivery,
+  LED role and flag identity remain open; no EPROM or Uno change required.

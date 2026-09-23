@@ -8,11 +8,13 @@ is new test firmware, not a discovered Micronic protocol.
 
 **Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trials 6 and
 8 validated digital timing for both proposed Uno clock/data assignments;
-their source CSVs are tracked in `analysis/captures/`. Trial 7 was the
-expected silent control, so no scope pulse train was expected. Both W
-stimuli still returned mode 1/error 6 after the stock-order arm. W does not
-attempt RX. **OPEN:** optical delivery, physical LED roles and receive
-framing remain unproved. The one-burn ROM and USB sketch stay in place.
+their source CSVs are tracked in `analysis/captures/`. Trial 7 was an
+expected silent control. Both W stimuli retained the bit-6 timeout; W does
+not attempt RX. Forced-RX silent/stimulated trials 9/10 both returned raw
+`A=EEh`, `F=6Dh`, wrapper error 7. The stock RX byte-ready wait can return
+that error after its 1785-count poll; the record hides partial bytes on
+error. **OPEN:** optical delivery, physical LED roles and receive framing
+remain unproved. The one-burn ROM and USB sketch stay in place.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
@@ -28,32 +30,33 @@ compare physical edges in CSV rather than software interval length.
    pre-trigger for the five earlier D6 lead clocks. Capture at least 2 ms
    around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
    2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
-3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the forced-RX
-   **silent control first**, wait for `RESULT` and a fresh `READY`, then the
-   matched forced-RX stimulus, keeping every other setting and optical
-   placement fixed:
+3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the
+   receive-pending-gated **silent control first**, wait for `RESULT` and a
+   fresh `READY`, then the matched stimulus, keeping every other setting
+   and optical placement fixed:
 
    ```text
-   T 9 R S 1 7E 1 0 0 -2 5 7000 -
-   T 10 R X 1 7E 1 0 0 -2 5 7000 -
+   T 11 G S 1 7E 1 0 0 -2 5 7000 -
+   T 12 G X 1 7E 1 0 0 -2 5 7000 -
    ```
 
-   IDs must strictly increase: if 9 or 10 was already accepted, substitute
+   IDs must strictly increase: if 11 or 12 was already accepted, substitute
    the next unused IDs. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 8 had host ID 8 but ROM sequence 10. Mode R
-   invokes the bounded stock receiver directly; compare raw RX A/F/DE and
-   preview as well as error/status, even if both trials report an error.
+   independent counter; trial 10 had host ID 10 but ROM sequence 12. Mode G
+   arms the idle receiver and waits up to about 100 ms for `LINK_STATUS`
+   bit 4 before invoking stock RX. Compare bit-4 condition, error/status,
+   and raw RX A/F/DE/preview with the silent G control. An error or absent
+   preview does not establish that no optical bits reached the controller.
 4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 3
    --data-bit 2` if pod D3 is physically on Uno D6 and D2 on Uno D5; adjust
    those two arguments to the actual pod wiring. Check 13 proposed clock and
    six data pulses, sampled candidate `7E`, every clock rise interval within
    8 us of 122 us, clock high within 8 us of 61 us, data high within 8 us of
-   76 us, and `emit_late_max` below about 15 us. Compare the R/X result
-   with its R/S control; W results are only a stock-order witness baseline.
-   An unchanged RX result does not reject `7Eh` or either LED role because
-   optical delivery to the handheld remains unmeasured. If RX remains
-   unchanged, repeat with `swap=0` as another matched R/S and R/X pair before
-   varying framing or using the separately gated G mode.
+   76 us, and `emit_late_max` below about 15 us. Compare the G/X result
+   with its G/S control. A change in the pending condition is evidence of a
+   controller-state response, not by itself accepted framing. If both G
+   results match, review the controls before varying one stimulus axis
+   (physical role, complete frame content, polarity or phase).
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -772,8 +775,54 @@ trial 6, D3 is Uno D6 and D2 is Uno D5; optical reception remains unmeasured.
 **CONFIRMED:** swapping the proposed LED roles while keeping the W stimulus
 settings produced no change in the witness outcome: bit-4 pass, arm, bit-6
 timeout. This does not select an LED role or reject `7Eh`; the W witness does
-not report received bytes. The next control should use mode R, which invokes
-the bounded stock receive routine and reports its raw A/F/DE and preview.
+not report received bytes. The mode-R comparison that followed is recorded
+below.
+
+## Forced-RX silent control and stimulus, IDs 9–10 — 2026-09-23
+
+**CONFIRMED (owner serial report):** the matched R/S and R/X pair used the
+same `swap=1`, candidate `7Eh`, phase and delay as the trial-8 stimulus.
+The silent control correctly has zero emission timestamps. Both 30-byte
+records have valid zero-sum checksums:
+
+```text
+TRIAL id=9 mode=R kind=S swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=9 rom_seq=11 mode=2 err=7 ack_us=2340066216 release_us=2340366224 start_us=2340446156 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A01020B0007A0C0C0FFFF00EE6D00000000000000000000002200232E
+READY
+TRIAL id=10 mode=R kind=X swap=1 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=-
+RESULT id=10 rom_seq=12 mode=2 err=7 ack_us=2348517424 release_us=2348817432 start_us=2348897388 emit_start_us=2348904188 emit_end_us=2348906284 emit_late_max=3 raw=A55A01020C0007A0C0C0FFFF00EE6D00000000000000000000002200232D
+READY
+```
+
+Both have probe/before/after A0h/C0h/C0h, unused W poll fields FFh/FFh,
+TX arm field zero, and stock RX return `A=EEh`, `F=6Dh` (carry set). The ROM
+wrapper reports error 7. The RX count and preview fields are zero because
+`rx_collect` does not save DE or call `preview_rx` on carry; they are **not**
+proof that the controller delivered zero bytes before error. Trial 10's
+emitter was dispatched about 6.8 ms after START and reported maximum software
+lateness 3 us. No trial-10 scope capture was supplied, so its physical
+waveform is inferred from identical settings and the independently scoped
+trial-8 burst, not measured anew.
+
+**CONFIRMED (stock bytes):** `Link_BlockRx` at `ROM00:3378` arms RX, then
+at `ROM00:33CF–33EB` polls `LINK_STATUS` bit 0 for a byte or bit 1 for frame
+end. If neither appears before the `06F9h` decrement bound, it returns
+`A=EEh` with carry set. The no-byte path is 62 Z80 T-states per iteration,
+so 1785 iterations take about 30.0 ms at the owner-stated 3.6864 MHz
+clock when the wait runs to exhaustion. This is distinct from the 24.69 ms
+transmit per-byte wait documented elsewhere. The RX loop resets its bound after
+each byte, so `EEh` alone does not distinguish a first-byte timeout from a
+later timeout. The ROM begins mode R after its 2 ms START marker; the
+trial-10 burst near START+7 ms is therefore **LIKELY** inside the receive
+window, but exact RX entry/return times were not instrumented. Do not
+misidentify this `EEh` as the W witness's `LINK_STATUS` bit-6 timeout.
+
+The next test uses mode G's separate receive-pending gate with a matched
+silent/stimulated pair (IDs 11/12 in the current handoff). That can reveal
+whether this same optical candidate changes controller pending status before
+stock byte reads. An unchanged result would still leave flag/role/optical
+delivery questions open; the current candidate has only an opening `7Eh`
+with no payload or closing flag.
 
 ## Validation and limits
 
@@ -789,7 +838,8 @@ The feedback build and all 13 legacy configurations compile for the Uno.
 The direct-TTL silent probe and W witness passed the diagnostic handshake.
 Trial 5 identified the emitter timing defect; trials 6 and 8 verified
 correctly timed digital stimuli for both proposed channel assignments, but
-both W results retained bit-6 timeout. Direct RX controls are the next check;
+both W results retained bit-6 timeout. Direct RX controls 9/10 returned the
+same `EEh` byte-wait error. Receive-pending-gated G controls are next;
 actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make

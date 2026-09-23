@@ -80,7 +80,10 @@ stated digital timing targets, but W still returns bit-6 timeout/error 6 and
 does not attempt RX. Trial 7's swapped silent control correctly emitted no
 pulses; trial 8's swapped stimulus met digital timing targets but left the
 same witness timeout. The next controlled comparison is a matched forced-RX
-silent/stimulated pair, then the other role if needed.
+silent/stimulated pair. That pair (IDs 9/10) also returned identical errors:
+stock RX `A=EEh`, `F=6Dh`, wrapper error 7. Because error records do not
+preserve partial bytes, the next controlled comparison is mode G's
+receive-pending gate with the same candidate and its own silent control.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

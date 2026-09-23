@@ -79,10 +79,14 @@ remain OPEN. Trial 7's swapped W/S emitted nothing as intended; trial 8's
 swapped W/X was correctly timed (scope D3 proposed clock, D2 proposed data,
 13/6 pulses, sampled 7Eh, Uno max lateness 3 us), but W still returned
 error 6. Both trial-7/8 feedback records have valid checksums; W does not
-call RX. Next: forced-RX silent/stimulated matched pair IDs 9/10 using the
-exact handoff at the top of the
-[canonical interface](../re-notes/ir-feedback-protocol.md), then the other
-role if needed. R preserves the last accepted host ID.
+call RX. Forced-RX matched trials 9/10 returned identical valid error
+records: `A=EEh`, `F=6Dh` (carry), wrapper error 7, no saved DE/preview.
+The stock RX byte-ready loop has a roughly 30.0 ms bound and likely overlaps
+the trial-10 burst near START+7 ms; `EEh` can follow a first or later byte
+timeout, while the wrapper hides partial bytes on error. Next: matched
+receive-pending-gated G/S and G/X pair IDs 11/12 at the top of the
+[canonical interface](../re-notes/ir-feedback-protocol.md). R preserves
+the last accepted host ID.
 
 **Owner clarification:** Arduino LED clock/data assignment is unknown and
 `7Eh` as a receive flag is SUSPECTED. Test both optical channel assignments;
