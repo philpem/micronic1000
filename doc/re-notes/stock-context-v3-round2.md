@@ -174,6 +174,8 @@ guarded free ROM area. The targeted hook tests passed, including
 
 Test sequence after the owner installs this ROM: first put the Uno in
 LISTEN_ONLY, then coldstart the handheld with no Arduino transmission.
+The LISTEN_ONLY build was uploaded and its USB banner verified before
+handing off this test; the Arduino is currently silent.
 An `I ss rr` display at that stage is a receive-dispatch event without
 our return burst and must be recorded before further trials. If the
 normal menu appears, run one V24 Load/Run attempt with the Uno still

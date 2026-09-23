@@ -8490,3 +8490,5 @@ names renamed, 144 unplated functions plated)
   not yet been installed. The proposed first test is silent Uno at
   boot and during a V24 attempt, followed by one archived F7 reply
   attempt if neither silent condition triggers the hook.
+* Uploaded the verified LISTEN_ONLY Arduino build and captured its
+  startup banner. The Arduino is silent for the initial ROM test.
