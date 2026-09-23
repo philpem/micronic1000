@@ -127,7 +127,8 @@ reported R trials have `after=C0h`, this does not prove an optical
 response. Next: camera check of the two IR LEDs using a USB-only
 sustained low-duty output self-test. The updated Uno sketch provides
 `V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
-released and ROM trial IDs unchanged. Direct TTL is now the sketch source
+released and ROM trial IDs unchanged. Repeating `V 1` after completion is
+allowed. Direct TTL is now the sketch source
 default for the owner's installed wiring. This needs a USB upload but no
 EPROM burn. Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R

@@ -1022,7 +1022,6 @@ FeedbackLineParser fbParser;
 FeedbackConfig fbConfig = {};
 FbRunState fbState = FB_IDLE;
 uint32_t fbLastId = 0, fbStateAt = 0, fbHighAt = 0, fbStartAt = 0;
-uint32_t fbVisualLastId = 0;
 uint32_t fbSerialAt = 0, fbAckAt = 0, fbReleaseAt = 0;
 uint32_t fbEmitStart = 0, fbEmitEnd = 0;
 uint32_t fbVisualAt = 0;
@@ -1216,9 +1215,11 @@ void fbCommandTick() {
       fbReady = false; fbStateAt = micros(); fbBlackLow();
       Serial.println(F("BLACK low (1000 ms maximum)")); continue;
     }
-    if (command == FB_VISUAL_TEST && fbState == FB_IDLE && !fbManualLow && id > fbVisualLastId) {
+    if (command == FB_VISUAL_TEST && fbState == FB_IDLE && !fbManualLow) {
       fbBlackRelease();
-      fbConfig.trialId = id; fbVisualLastId = id; fbReady = false; fbHighTracking = false;
+      // Visual IDs identify a run for cancellation/logging; reusing one is
+      // allowed because these checks do not consume ROM trial IDs.
+      fbConfig.trialId = id; fbReady = false; fbHighTracking = false;
       fbVisualPhase = 0; fbVisualAt = micros(); fbState = FB_VISUAL_RUN;
       analogWrite(CLK_OUT, 26); analogWrite(DAT_OUT, 0);
       Serial.print(F("VISUAL visual_id=")); Serial.print(id);

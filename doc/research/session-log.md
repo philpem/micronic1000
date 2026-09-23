@@ -7779,6 +7779,9 @@ names renamed, 144 unplated functions plated)
   another ROM burn; light at the handheld detector remains unmeasured.
 * Implemented an Arduino-only `V <visual_id>` check: 10% PWM for 1.5 s
   each on A/D5 then B/D6, black released, with a separate visual-ID
-  sequence and `C <visual_id>` cancellation. The updated sketch defaults
+  label and `C <visual_id>` cancellation. Initial code mistakenly required
+  increasing visual IDs, making `V 1` one-shot until another ID or reboot;
+  revised it so the same ID may be reused after completion. The updated
+  sketch defaults
   to direct TTL for the owner's installed wiring. Host state-machine tests
   and the Elegoo Uno R3 build pass; the ROM image is unchanged.

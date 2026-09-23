@@ -586,10 +586,14 @@ static void cameraVisibleLedCheck() {
 
   const size_t unchanged = pwmEvents.size();
   send("V " + std::to_string(cancelId) + "\n");
-  CHECK(fbState == FB_DESYNC && pwmEvents.size() >= unchanged + 2);
+  CHECK(fbState == FB_VISUAL_RUN && pwmEvents.size() == unchanged + 2);
+  CHECK(contains("VISUAL visual_id=" + std::to_string(cancelId) + " trial_id=unchanged channel=A"));
+  send("C " + std::to_string(cancelId) + "\n");
+  CHECK(fbState == FB_IDLE && !fbReady);
+  CHECK(contains("VISUAL_CANCELLED visual_id=" + std::to_string(cancelId)));
   CHECK(pwmEvents[pwmEvents.size() - 2].pin == 5 && pwmEvents[pwmEvents.size() - 2].duty == 0);
   CHECK(pwmEvents[pwmEvents.size() - 1].pin == 6 && pwmEvents[pwmEvents.size() - 1].duty == 0);
-  resyncAndReady();
+  waitReady();
 }
 
 int main() {

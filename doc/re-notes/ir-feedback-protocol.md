@@ -57,9 +57,10 @@ compare physical edges in CSV rather than software interval length.
    prints `VISUAL ... channel=A pin=D5`, pulses channel A at 10% PWM for
    1.5 s, then prints `VISUAL ... channel=B pin=D6` and pulses channel B
    for 1.5 s, then drives both low and prints `VISUAL_DONE`. Black/D7
-   remains released. Use `C 1` to stop it early. Visual IDs have their
-   own increasing counter and do not consume ROM trial IDs; the next
-   physical trial ID after 24 remains 25.
+   remains released. Use `C 1` to stop it early. The visual ID is a label
+   for cancellation and may be reused after the check finishes: send
+   `V 1` again as often as needed without rebooting. It does not consume
+   ROM trial IDs; the next physical trial ID after 24 remains 25.
 3. Note whether A alone and B alone appear bright relative to idle,
    whether the correct LED lights in each labeled interval, and whether
    light reaches the intended top V24 apertures with the existing masks

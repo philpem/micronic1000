@@ -129,7 +129,8 @@ low-duty LED self-test is the next practical output check and needs no
 new EPROM burn. The updated Uno sketch adds `V <visual_id>`: A/D5 runs
 at 10% PWM for 1.5 s, then B/D6 for 1.5 s, with black released throughout.
 It can run from idle without the handheld, and visual IDs do not consume
-trial IDs. Upload the updated sketch, send `V 1`, and compare each labeled
+trial IDs. The same visual ID can be reused after completion. Upload the
+updated sketch, send `V 1` as often as needed, and compare each labeled
 interval with idle through a camera known to see IR. This checks emitter
 light, not optical power at the handheld's internal detector.
 The exact next commands and capture acceptance targets are at the top of the

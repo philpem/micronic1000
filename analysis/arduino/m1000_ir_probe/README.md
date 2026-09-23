@@ -78,14 +78,14 @@ Arduino side; send `R` to resynchronise after any error. A ROM diagnostic
 error is recorded as data and does not establish an IR framing result.
 
 To check that the IR emitters produce light visible to a camera, send `V <id>`
-with a fresh, increasing visual ID (for example, `V 1`). It runs from idle over
-USB without a handheld transaction or a READY handshake. The Uno pulses
-channel A on D5 at 10% PWM for 1.5 seconds, then channel B on D6 for 1.5
-seconds, and turns both off. Point the camera at the emitters during each
+(for example, `V 1`). You can repeat the same ID any number of times. It runs
+from idle over USB without a handheld transaction or a READY handshake. The
+Uno pulses channel A on D5 at 10% PWM for 1.5 seconds, then channel B on D6
+for 1.5 seconds, and turns both off. Point the camera at the emitters during each
 serial-labeled interval. Send `C <id>` to stop early; completion or cancellation
 returns to quiet operation and prints `READY` after the normal idle settling
-period when the yellow input is high. Visual IDs have their own counter and do
-not consume ROM trial IDs. This check does not assert BLACK or contact the ROM.
+period when the yellow input is high. Visual IDs do not consume ROM trial IDs.
+This check does not assert BLACK or contact the ROM.
 
 For reproducible batches and timestamped JSONL logs, use
 `analysis/ir_feedback.py` as documented in the guide. Keep this entire sketch
