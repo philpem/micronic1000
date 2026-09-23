@@ -8169,7 +8169,7 @@ names renamed, 144 unplated functions plated)
   at 5 ms/div captured the full free-running candidate.
 * The first `STOCK_PHASE_IDX=3` build was **not** used on the handheld:
   its Uno reported about 400-us steady-state emission lateness, and the
-  2-us-sample scope CSV showed a 116-us median clock interval rather than
+  scope CSV with 2-us row spacing showed a 116-us median clock interval rather than
   the requested 122 us. Raw pre-fix serial and CSV are under
   `analysis/captures/stock-v3-phase3-before-fix-*`.
 * Replaced the expensive generic emitter queue for this positive phase
@@ -8178,7 +8178,7 @@ names renamed, 144 unplated functions plated)
   transitions remain in the host chronology test. All 25 focused emitter
   tests passed; the final fixed Uno build compiled and uploaded with
   verification.
-* The final 25,000-point scope CSV at 2 us/sample records 88/88 D2 clock
+* The final 25,000-row scope CSV at 2 us/row records 88/88 D2 clock
   pulses and 16/16 D3 data pulses. Clock intervals are 116–128 us with
   122-us median; each data pulse straddles the second clock edge with
   32–36-us setup and 40–46-us hold. D4 yellow stayed high in this idle
@@ -8210,7 +8210,7 @@ names renamed, 144 unplated functions plated)
 ## 2026-09-23 — segmented phase-3 trial
 
 * Repeated the repaired phase-3 fixed candidate while the scope captured
-  100 handheld-clock-triggered segments at 25 us/sample. The two sets of
+  100 handheld-clock-triggered segments exported at 25 us/row. The two sets of
   50 retry bursts were separated by 1.301 s. Uno D2/D3 activity appeared
   in 24 segments, including complete post-burst transmissions. The scope
   captured one yellow D4 falling edge about 0.55 ms after the last Uno
@@ -8307,3 +8307,26 @@ names renamed, 144 unplated functions plated)
   of free-running emission and the abnormal transition remain open.
   Raw captures are `analysis/captures/stock-v3-r1-f5-*` and
   `analysis/captures/stock-v3-r1-f6-*`.
+
+## 2026-09-23 — scope acquisition-rate correction
+
+* The owner flagged the scope's 78.1 kSa/s indication. SCPI confirmed
+  78,100 samples/s for the F6 128-segment, 10-ms/div setup. Its CSV
+  export is 50 us per row, so it cannot support microsecond bit-edge
+  timing or reliable decoding of 122-us cells. The F5/F6 conclusions
+  use millisecond reply placement and absence of a roughly 916-us
+  yellow pulse, which this scale can resolve within captured windows.
+* A re-acquisition at 128 segments and 5 ms/div reported 156 kSa/s;
+  the 2,000-row CSV export is 25 us/row. This was not measured on the
+  historical F2S/C1/F3/F4 acquisitions, so their CSV row spacing
+  must not be described as the instrument sample period.
+* Repeated the F2 edge waveform in real-time mode at a measured
+  20 MSa/s and the F3 inverted-clock waveform in two-segment mode at
+  10 MSa/s. Both exported at 2 us/row and reproduced their respective
+  falling-edge and rising-edge data setup/hold ranges. Captures:
+  `analysis/captures/stock-v3-phase3-rate-qualified-keysight.csv.gz`,
+  `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
+  The SCPI profile is in
+  `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
+* Stopped the scope and restored the verified LISTEN_ONLY Uno build
+  after this rate check. No handheld operation was requested.

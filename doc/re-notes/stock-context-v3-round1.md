@@ -137,7 +137,8 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   event order, and was uploaded with verify.
 * Final F2 idle proof: `analysis/captures/stock-v3-phase3-ready-uno.jsonl`,
   `analysis/captures/stock-v3-phase3-ready-keysight.csv.gz`, and the matching
-  `.png` screen image. CONFIRMED at scope D2/D3, 2-us sampling: 88/88
+  `.png` screen image. CONFIRMED at scope D2/D3 on a 2-us CSV grid
+  (acquisition rate was not recorded for this capture): 88/88
   clock pulses, 16/16 data pulses, clock intervals 116–128 us with
   122-us median. All 16 data pulses straddle the second clock edge with
   32–36-us setup and 40–46-us hold. Scope D4 stayed high during this idle
@@ -165,7 +166,7 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
 * F2S live run: `analysis/captures/stock-v3-r1-f2s-segmented-handheld-20260923.jsonl`
   and `analysis/captures/stock-v3-r1-f2s-segmented-keysight.csv.gz`.
   CONFIRMED: 100 handheld burst reports and 100 scope segments (2,000
-  points each, 25 us/sample). A 1.301-s gap separates two sets of 50
+  export rows each, spaced 25 us). A 1.301-s gap separates two sets of 50
   scope segments. Uno D2/D3 activity occurs in 24 windows: 18 complete
   transmissions after the handheld burst and six tails before its next
   burst. Four `# STOCK_YELLOW` low intervals are 916, 916, 920 and
@@ -188,8 +189,8 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   groups of 50; no yellow event or drop was reported. The matching
   `analysis/captures/stock-v3-r1-c1-silent-handheld-c-keysight.csv.gz` has
   100 segments with 21 or 22 handheld clock rises each, zero Uno D2/D3
-  rises, and zero D4 yellow low samples. Scope segments are 2,000 points
-  at 25 us/sample, with a 2.120-s gap between groups of 50.
+  rises, and zero D4 yellow low samples. Scope segments have 2,000 CSV
+  rows at 25-us spacing, with a 2.120-s gap between groups of 50.
   The owner reported `8000 (238/001)`, "Plinth not connected", then
   `8040 (238/001)`, "Line failure". Thus the short receive-return
   markers seen only in F2S correlate with its emitted candidate, while
@@ -201,7 +202,7 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   records the full startup banner and complete TX settings; observed
   post-write lateness is at most 22 us. Scope file
   `analysis/captures/stock-v3-f3-clockinv-idle-keysight.csv.gz` contains two
-  25,000-point idle segments at 2 us/sample. Each has 16 D3 data pulses
+  25,000-row idle segments at 2-us export spacing. Each has 16 D3 data pulses
   that straddle a D2 rising edge with 30–38 us setup and 42–48 us hold;
   there are 89 D2 rising and 89 falling edges, including the inversion
   boundary transitions. D4 yellow remained high. This qualifies the
@@ -236,7 +237,7 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   contains 100 handheld-triggered segments. In 99 ordinary segments,
   Uno D2's first rise is about 6.6 ms after the handheld trigger,
   about 4 ms after the last D1 rise. Segment 51 contains two Uno
-  transmissions; the second starts at D2 about 36.425 ms after the
+  transmissions; the second starts at D2 about 36.4 ms after the
   trigger. Its expected yellow return lies beyond the scope's 45-ms
   post-trigger window, so the absence of D4 samples in this file does
   not contradict the Uno's pulse report. At this point a late reply
@@ -264,9 +265,43 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   was recorded; maximum pre/post-write lateness is 14/22 us. The owner
   again reported `8000` then `8040`. The matching
   `analysis/captures/stock-v3-r1-f6-delay-sweep-handheld-keysight.csv.gz`
-  contains 52 segments, all with Uno output. D2 starts 32.55–38.60 ms
+  contains 52 segments, all with Uno output. D2 starts about 32.6–38.6 ms
   after the handheld trigger across the delay sweep, and D4 has no
   low sample. These regular late replies reject delay alone as the
   explanation for the F2S/F4 markers. The effects of free-running
   emission and the abnormal F4 transition remain separate candidates.
+
+## Scope sampling audit
+
+The owner observed **78.1 kSa/s** during the long segmented run. SCPI
+`:ACQ:SRAT?` confirmed 78,100 samples/s for the F6 setup (128
+segments, 10 ms/div). This is one acquisition sample per 12.8 us.
+Its 2,000-row CSV export spans 100 ms, so exported rows are 50 us
+apart. Individual 122-us bit cells have only about 9.5 acquired
+samples and about 2.4 CSV rows; do **not** use these long-window CSVs
+for bit decoding or microsecond setup/hold measurements. A 916-us
+yellow low is long enough to span about 18 exported rows, and the
+30–36-ms delay sweep is resolved at this setting. The F5/F6 inference
+uses only millisecond timing and the presence or absence of yellow.
+
+The same setup with 128 segments at 5 ms/div was re-acquired at
+156 kSa/s, with 25-us CSV row spacing. That rate was **not logged
+during** F2S/C1/F3/F4, so their historical CSV rows are not evidence
+of a faster acquisition. Their pulse/burst counts and millisecond
+comparisons stand; fine edge decoding remains out of scope.
+
+For the actual edge setup/hold check, new acquisitions used fewer
+segments. The repeated F2 waveform at 5 ms/div in real-time mode
+reported 20 MSa/s; its 25,000-row CSV has 2-us spacing and again
+shows 88 D2 clock pulses, 16 D3 data pulses, 32–36-us data setup and
+42–46-us hold around D2's falling edge. The repeated F3 waveform at
+5 ms/div with two segments reported 10 MSa/s; each 25,000-row CSV
+segment has 2-us spacing and 16 data pulses straddling a D2 rising
+edge with 30–38-us setup and 40–48-us hold. The 2-us export grid
+limits the quoted edge times even though the underlying acquisition
+rate is higher. Raw captures:
+`analysis/captures/stock-v3-phase3-rate-qualified-keysight.csv.gz` and
+`analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
+SCPI settings and sample-rate readings are preserved in
+`analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
 * Next discriminating trial and reason: PENDING

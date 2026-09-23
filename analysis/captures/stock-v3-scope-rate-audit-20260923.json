@@ -1,0 +1,46 @@
+{
+  "instrument_idn": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+  "method": "SCPI :ACQ:SRAT? after a triggered acquisition; CSV spacing read from export x-axis",
+  "profiles": [
+    {
+      "mode": "SEGM",
+      "segment_count_setting": 128,
+      "time_per_div_s": 0.01,
+      "acquisition_samples_per_s": 78100,
+      "rate_measured_on_related_capture": true,
+      "csv_rows_per_segment": 2000,
+      "csv_spacing_us": 50,
+      "related_capture": "stock-v3-r1-f6-delay-sweep-handheld-keysight.csv.gz"
+    },
+    {
+      "mode": "SEGM",
+      "segment_count_setting": 128,
+      "time_per_div_s": 0.005,
+      "acquisition_samples_per_s": 156000,
+      "rate_measured_on_related_capture": false,
+      "csv_rows_per_segment": 2000,
+      "csv_spacing_us": 25,
+      "related_capture": "stock-v3-r1-f2s-segmented-keysight.csv.gz"
+    },
+    {
+      "mode": "SEGM",
+      "segment_count_setting": 2,
+      "time_per_div_s": 0.005,
+      "acquisition_samples_per_s": 10000000,
+      "rate_measured_on_related_capture": true,
+      "csv_rows_per_segment": 25000,
+      "csv_spacing_us": 2,
+      "related_capture": "stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz"
+    },
+    {
+      "mode": "RTIM",
+      "segment_count_setting": null,
+      "time_per_div_s": 0.005,
+      "acquisition_samples_per_s": 20000000,
+      "rate_measured_on_related_capture": true,
+      "csv_rows_per_segment": 25000,
+      "csv_spacing_us": 2,
+      "related_capture": "stock-v3-phase3-rate-qualified-keysight.csv.gz"
+    }
+  ]
+}

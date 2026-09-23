@@ -118,6 +118,13 @@ regular late Uno output and no D4 low. **Discard delay alone as the
 explanation** for the F2S/F4 markers. Free-running emission, the
 abnormal F4 transition, and receive state still need discrimination;
 none of these is established as the cause.
+The scope sampling audit qualified the edge-timing claims separately:
+the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
+at 50 us/row, so use it for millisecond placement and yellow-event
+presence only. New short F2/F3 acquisitions measured 20/10 MSa/s
+and reproduced the earlier GPIO setup/hold ranges on a 2-us CSV
+grid. See the worksheet's scope sampling audit and the saved SCPI
+profile before comparing any future bit-edge measurements.
 
 **Previous IR round:** feedback-v2 is burned and has completed its first
 P/H/J/K handheld run. It retains v1 W/R/P/G and adds H/J/K controller-state
