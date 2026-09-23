@@ -181,7 +181,12 @@ C0f swept alignment during a V24 attempt: 100 handheld bursts,
 34 complete Arduino output segments, no yellow low on Arduino D8 or
 scope D4, and the same `8000`/`8040` errors. The owner is checking
 the handheld receiver while a FREE_TX build repeats clock/data bursts
-every 250 ms. Content inference remains suspended pending that check.
+every 250 ms. The owner reports that IR reaches the handheld and that
+alignment is less critical than first thought; the observation method
+and handheld display remain to be recorded. A 10-second Arduino log
+contains 41 free-running transmissions, 50 handheld bursts and no
+yellow event. Content inference remains suspended pending evidence
+of a decoded or accepted reply.
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event

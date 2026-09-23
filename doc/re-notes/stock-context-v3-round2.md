@@ -142,4 +142,10 @@ suspended. The owner then requested a continuous two-channel IR output
 to check the handheld's receiver. A verified FREE_TX build was uploaded;
 its USB reports show a repeated type-2 candidate burst every 250 ms on
 D5 clock and D6 data. Its free-running phase setting is -2/8 cell,
-distinct from F7's paced +2/8 cell. The receiver check is in progress.
+distinct from F7's paced +2/8 cell. The owner reports that this IR
+reaches the handheld and that alignment is less critical than first
+thought. The means of observing reception has not yet been recorded;
+this statement establishes neither payload decoding nor acceptance.
+A 10-second USB log during the check contains 41 free-running
+transmit reports, 50 handheld bursts and no yellow event. The owner
+has not yet reported what the handheld displayed during this check.
