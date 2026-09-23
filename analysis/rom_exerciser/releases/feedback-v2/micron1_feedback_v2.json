@@ -1,0 +1,46 @@
+{
+  "image": "micron1_feedback_v2.bin",
+  "purpose": "standalone combined IR feedback v2 diagnostic; ROM00 only",
+  "record_version": 2,
+  "fast_summary_record_bytes": "18..25: OR, AND, first bit-4 index LE, first bit-0 index LE, sample count LE",
+  "capture_modes": {
+    "H": {
+      "mode": 5,
+      "samples": 1000,
+      "audited_tstates": 321261,
+      "max_tstates": 340000,
+      "max_ms_at_3_6864_mhz": 92.23,
+      "control": "LINK_CTRL bits 6/7 high via ROM00:34BD"
+    },
+    "J": {
+      "mode": 6,
+      "samples": 1000,
+      "audited_tstates": 321261,
+      "max_tstates": 340000,
+      "max_ms_at_3_6864_mhz": 92.23,
+      "control": "LINK_CTRL bits 6/7 low via ROM00:34D2"
+    },
+    "K": {
+      "mode": 7,
+      "samples": 600,
+      "audited_tstates": 327468,
+      "max_tstates": 360000,
+      "max_ms_at_3_6864_mhz": 97.66,
+      "control": "repeated 34D2; one full LINK_STATUS read/test; 34BD if bit4 clear",
+      "limit": "no active stock TX/IRQ context; on pending this resumes sampling instead of dispatching RX"
+    }
+  },
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "a9966a607f672d75031113528b7c6ea3",
+    "sum16": "903E",
+    "sum24": "37903E",
+    "sha256": "ce5369712e56c1a741e748e25a9bb477fe0b4a22e198ea233d308a22b1c9ff9a"
+  },
+  "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "assembly_sha256": "2ca8283cb37c574a9ec27fcb4174a61c5de03c401dd96358b2bbccab53eefa8a",
+  "changed_bytes": 1992,
+  "entry": "ROM00:6000",
+  "end_exclusive": "ROM00:67D7"
+}

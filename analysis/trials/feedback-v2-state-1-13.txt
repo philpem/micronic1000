@@ -1,0 +1,20 @@
+# Run only after installing feedback-v2 ROM00 and uploading its H/J/K Uno sketch.
+# Start both freshly; ROM and Uno trial counters must start at 1.
+# P is a silent route/probe baseline. H holds LINK_CTRL bits 6/7 high,
+# J holds them low, K cycles clear/read/test/re-arm. All X bursts use the
+# same unproven 7E + zero-stuffed 1F candidate at START+5/28/51 ms.
+# Keep LED limiting resistors and optical placement fixed for all trials.
+T 1 P S 0 -- 0 0 0 -2 0 0 -
+T 2 H S 0 7E 1 0 0 -2 0 5000 1F
+T 3 J S 0 7E 1 0 0 -2 0 5000 1F
+T 4 K S 0 7E 1 0 0 -2 0 5000 1F
+T 5 H X 0 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+T 6 J X 0 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+T 7 K X 0 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+# Repeat with the other physical LED-role assignment in reverse mode order.
+T 8 K S 1 7E 1 0 0 -2 0 5000 1F
+T 9 J S 1 7E 1 0 0 -2 0 5000 1F
+T 10 H S 1 7E 1 0 0 -2 0 5000 1F
+T 11 K X 1 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+T 12 J X 1 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+T 13 H X 1 7E 1 0 0 -2 0 5000 1F 0 0 3 23

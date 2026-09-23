@@ -43,7 +43,18 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Current IR round:** feedback-v1 implements black command handshakes, yellow
+**Current IR round:** feedback-v2 is built and awaiting its first handheld
+burn/test. It retains v1 W/R/P/G and adds H/J/K controller-state capture.
+See the [v2 bench procedure](../re-notes/ir-feedback-protocol.md#feedback-v2-receive-state-diagnostic-built-awaiting-bench-test),
+the command sheet at `analysis/trials/feedback-v2-state-1-13.txt`, and the
+release manifest at `analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.json`.
+The image MD5 is `a9966a607f672d75031113528b7c6ea3`; byte sums are
+`903E`/`37903E`. No v2 physical result exists yet. The question is whether
+`LINK_STATUS` bit 4 differs across high/low/watcher-like `LINK_CTRL`
+bits-6/7 drive under matched IR stimuli. Even a positive correlation would
+not identify optical LED roles or a complete IR frame by itself.
+
+**Previous v1 round:** feedback-v1 implements black command handshakes, yellow
 markers, stock-order witness and bounded raw RX in one standalone ROM. Fresh
 `Link_PortSelect` bytes still clear `2Ah` bit 1 and top V24 sets `2Ch` bit 5,
 so the harness restores the known black gate only after teardown. The canonical

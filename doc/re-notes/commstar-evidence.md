@@ -1508,9 +1508,9 @@ id. Whether it means broadcast or unassigned is OPEN.
 `RXARM` (`LINK_CTRL` bits 6+7) via `ROM00:31B6` poll (`34D2` clear, `34E7`
 `AND 10h` `RXBUSY` test, `2FBD` dispatch or `34BD` set). Interrupt disassembly,
 polling-rate measurements, synthetic-peer timing experiments and the correction
-history that established the CONFIRMED roles (each bit's role read from the
-branch it drives) belong here. The normative ordering and `RXARM`-set-means-
-listening rule remain on the protocol page.
+history that established the CONFIRMED latch sequence belong here. The
+protocol page records that ordering and now marks the control pair's
+electrical receive-enable meaning as unmeasured.
 
 ### Captured M1000 session requests (controller-boundary TX) — raw captures {#captured-m1000-session-requests-controller-boundary-tx}
 

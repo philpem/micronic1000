@@ -1089,7 +1089,10 @@ void fbPrintWiring() {
 inline uint32_t fbHoldUs() {
   return fbConfig.holdKind == 'W' ? 100000UL :
          fbConfig.holdKind == 'R' ? 300000UL :
-         fbConfig.holdKind == 'P' ? 500000UL : 700000UL;
+         fbConfig.holdKind == 'P' ? 500000UL :
+         fbConfig.holdKind == 'H' ? 575000UL :
+         fbConfig.holdKind == 'J' ? 625000UL :
+         fbConfig.holdKind == 'K' ? 400000UL : 700000UL;
 }
 inline bool fbElapsed(uint32_t now, uint32_t then, uint32_t us) {
   return (uint32_t)(now - then) >= us;
@@ -1155,9 +1158,13 @@ void fbBuildStimulus() {
 }
 bool fbResultValid() {
   if (fbResultLen != 30 || fbResult[0] != 0xA5 || fbResult[1] != 0x5A ||
-      fbResult[2] != 1 || fbResult[3] > 4 || fbResult[6] > 8 ||
-      fbResult[17] > 8 || fbResult[16] != 0 || fbResult[15] > 134 ||
-      fbResult[17] > fbResult[15]) return false;
+      (fbResult[2] != 1 && fbResult[2] != 2) || fbResult[6] > 8) return false;
+  // v2 modes 5-7 use the former preview area for controller status capture.
+  // Keep v1 and v2 modes 1-4 on their original raw-RX validation path.
+  if ((fbResult[2] == 1 && fbResult[3] > 4) || fbResult[3] > 7) return false;
+  if (fbResult[2] == 2 && fbResult[3] >= 5 && fbResult[17] != 8) return false;
+  if (fbResult[3] < 5 && (fbResult[17] > 8 || fbResult[16] != 0 ||
+      fbResult[15] > 134 || fbResult[17] > fbResult[15])) return false;
   if (!fbResult[3] && (fbResult[6] < 1 || fbResult[6] > 3)) return false;
   uint8_t sum = 0; for (uint8_t i = 0; i < 30; ++i) sum += fbResult[i];
   return sum == 0;
@@ -1173,7 +1180,9 @@ void fbStoreResultByte(uint8_t value) {
   if (!fbResultValid()) { fbError(F("result")); return; }
   uint16_t seq = (uint16_t)fbResult[4] | ((uint16_t)fbResult[5] << 8);
   uint8_t expectedMode = fbConfig.holdKind == 'W' ? 1 :
-                        fbConfig.holdKind == 'R' ? 2 : fbConfig.holdKind == 'P' ? 3 : 4;
+                        fbConfig.holdKind == 'R' ? 2 : fbConfig.holdKind == 'P' ? 3 :
+                        fbConfig.holdKind == 'G' ? 4 : fbConfig.holdKind == 'H' ? 5 :
+                        fbConfig.holdKind == 'J' ? 6 : 7;
   if (fbResult[3] && (fbResult[3] != expectedMode || fbState != FB_WAIT_RESULT)) {
     fbError(F("mode")); return;
   }
@@ -1611,7 +1620,7 @@ void setup() {
   Serial.println(F("M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."));
 #endif
 #if FEEDBACK_HARNESS
-  Serial.println(F("MODE: FEEDBACK v1, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input"));
+  Serial.println(F("MODE: FEEDBACK v1/v2, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input"));
   fbPrintWiring();
 #elif LOOPBACK_TEST
   Serial.println(F("MODE: LOOPBACK -- transmitting to my own detectors."));

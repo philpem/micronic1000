@@ -7954,3 +7954,26 @@ names renamed, 144 unplated functions plated)
   state, with matched silent/stimulated controls and reversed run order.
   The proposed pulse widths and record layout are in
   `doc/re-notes/ir-feedback-protocol.md`. No v2 image or checksum exists.
+
+### 2026-09-23 — Feedback-v2 receive-state build and Commstar drive audit
+
+* CONFIRMED (fresh ROM bytes at `ROM00:31B6`, `3277`, `3454`, `348A`,
+  `34BD`, `34D2`): v1 G selects the top V24 route, but its `DI`,
+  reset/select, `LinkFinish`, and 5-ms direct poll differ from stock
+  Commstar's active TX/IRQ context. The stock watcher clears `LINK_CTRL`
+  bits 6/7, reads/tests `LINK_STATUS` bit 4, and re-arms if clear. The
+  optical electrical effect of the control pair is not yet established;
+  corrected earlier docs that called its high state physically listening.
+* Built guarded ROM00 feedback-v2 with H/J static control-pair states and
+  K watcher-like clear/read/test/re-arm, full-byte status summaries and
+  START-marker release before capture. Stock live TX/IRQ/session context
+  remains absent. H/J collect 1,000 samples in an audited 321,261 T;
+  K collects 600 in 327,468 T. Conservative bounds are below 100 ms.
+  V1 W/R/P/G remain available. No handheld v2 observation yet.
+* Added Uno H/J/K holds, a v1/v2 raw-record decoder, emulator and host
+  tests, and the 13-command bench sheet. The release image is 32,768 bytes,
+  MD5 `a9966a607f672d75031113528b7c6ea3`, additive 16/24-bit
+  `903E`/`37903E`. Integration checks passed: 71 focused tests, Elegoo
+  Uno R3 compile (12,088 flash bytes, 861 static SRAM bytes), strict docs
+  build and rendered-doc checks. The release manifest reproduces the image
+  from the verified stock ROM; the binary remains a local ignored artifact.

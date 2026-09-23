@@ -130,7 +130,7 @@ data, and it will not send a byte until the controller says it can take one.
 `Link_BlockTx` is the handheld-to-controller transmit path. In order:
 
 1. Select the IR port from wire-ID bit 5 via `Link_PortSelect`.
-2. Clear `RXARM`; toggle `LINK_CTRL` bits 0 and 4 with a short delay.
+2. Clear `LINK_CTRL` bits 6/7; toggle `LINK_CTRL` bits 0 and 4 with a short delay.
 3. Poll `TXRDY` and write `81h` to `LINK_CMD` — the controller's "are you
    there" exchange. Timeout → `EBh`.
 4. Write the prelude `link id & 1Fh` to `LINK_TXD`. This byte is excluded
@@ -229,17 +229,18 @@ in order), not four separate polls.
 | 1 | `PORTSEL` | Port select, driven from active-link-ID bit 5 |
 | 4 | `DIREN` | Direction/enable |
 | 5 | `STROBE` | Strobe |
-| 6, 7 | `RXARM` | Receive-armed, driven as a pair |
+| 6, 7 | `RXARM` (provisional nickname) | Set and cleared as a pair; electrical effect unmeasured |
 
-## The receive-armed handshake
+## The control pair at the receive watcher
 
-`RXARM` (`LINK_CTRL` bits 6+7) tells the controller the handheld is ready to
-be given data. The interrupt poll at `ROM00:31B6` is the mechanism: an idle
-handheld sits with `RXARM` set; a controller asserting `RXBUSY` clears it and
-dispatches the receive. `Link_BlockTx` also clears `RXARM` before
-transmitting.
-
-For a physical adapter: **`RXARM` set means the handheld is listening.**
+**CONFIRMED (ROM bytes):** the interrupt worker at `ROM00:31B6` clears
+`LINK_CTRL` bits 6 and 7, immediately tests `LINK_STATUS` bit 4, and
+dispatches receive when that status bit is set. When it is clear, the
+worker sets `LINK_CTRL` bits 6 and 7 again. `Link_BlockTx` also clears
+the control pair before transmitting; the transfer service restores it
+afterwards. `RXARM` is a provisional nickname for the pair, not a proven
+electrical receive-enable signal. Whether the pair controls the optical
+receiver, its interrupt, or another controller state remains open.
 
 **Transmit ordering (stable as latch sequence):**
 
@@ -491,8 +492,10 @@ anything else sends `CONNECT-DIRECT` (`0062`). Either way the handheld transmits
 
 ### What a host can do
 
-* **Be ready and answer.** The signal is `LINK_CTRL` bits 6+7 (`RXARM`)
-  **set** — the handheld is listening.
+* **Be ready and answer.** The ROM restores `LINK_CTRL` bits 6 and 7
+  after a transmit attempt and samples receive status in its interrupt
+  path. The pair's electrical meaning is unmeasured; do not treat its
+  set state alone as proof that a frame can be received.
 * **Take a reasonable time.** The handheld retries a request up to `32h` = 50
   times and a reply up to `14h` = 20 times. Miss the window and the operator
   sees `Plinth not connected.`

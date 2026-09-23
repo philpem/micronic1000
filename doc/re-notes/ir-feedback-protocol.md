@@ -4,7 +4,12 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
-## Current handoff: next physical trial
+## Current handoff: feedback-v2 bench trial
+
+Feedback-v2 is built but has not been burned or bench-tested. See the
+[v2 procedure](#feedback-v2-receive-state-diagnostic-built-awaiting-bench-test)
+for its image, checksums, wiring and command sheet. The following v1 record
+is retained as the evidence that motivated this change.
 
 **Status 2026-09-23:** feedback-v1 ROM00 is already installed. Trials 6 and
 8 validated digital timing for both proposed Uno clock/data assignments;
@@ -1277,32 +1282,97 @@ diagnostic should compare the two control states with otherwise matched
 stimuli and record a faster pending-status history before another broad
 waveform sweep.
 
-### Proposed next EPROM diagnostic (not implemented)
+### Feedback-v2 receive-state diagnostic — built, awaiting bench test
 
-The current feedback ROM cannot select the stock IRQ watcher's
-`LINK_CTRL`-bits-6/7-low pre-check state while G waits. A candidate v2
-would keep W/R/P/G intact and add two fast-poll modes: H holds
-`LINK_CTRL` bits 6/7 high via `LinkFinish`, while J clears those bits
-through the byte-verified stock helper at `ROM00:34D2`. Each mode would
-sample the full `LINK_STATUS` byte for the **same cycle-counted, bounded
-window** after yellow START, with interrupts disabled and no stock RX call.
-Separate full-window trials avoid confounding the state with an early or
-late half of one stimulus. H/J silent controls and X trials would use
-the same candidate and optical placement, interleaved in reversed order.
-This would test a control-state correlation; it would not reproduce the
-actual stock interrupt path or establish a decoded IR frame.
+**CONFIRMED (diagnostic source, build and emulator):** v2 preserves the
+W/R/P/G commands and adds H, J and K. H holds `LINK_CTRL` bits 6/7 high
+through the stock `ROM00:34BD` helper; J holds them low through
+`ROM00:34D2`. Each collects 1,000 full `LINK_STATUS` bytes in a separate
+window. K collects 600 samples while repeating the stock IRQ watcher's
+clear-bits-6/7, read-and-test-`LINK_STATUS`-bit-4, re-arm-if-clear order.
+It records whether the watcher saw bit 4, but does not dispatch stock RX
+on a hit. The assembled-path audit gives 321,261 T-states for H/J and
+327,468 for K; conservative limits of 340,000 and 360,000 T-states are
+92.23 and 97.66 ms at the owner-stated 3.6864 MHz clock. Interrupts remain
+disabled. These modes compare controller drive states, but do not recreate
+Commstar's active TX, IRQ or session context. A negative result therefore
+cannot eliminate a correctly framed optical signal.
 
-The existing command detector has unused width counts 111–129 between P
-and G. Proposed H=111–119 and J=120–129, with Uno black holds near
-575/625 ms, fit below its 160-count stuck-input bound. The current
-assembly ends at `ROM00:6666`, leaving `039Ah` bytes before the guarded
-`ROM00:6A00` limit. A v2 result can retain the 30-byte checksum frame,
-increment its version byte, and use the eight preview bytes for status
-OR/AND, first `LINK_STATUS`-bit-4/bit-0 sample indices, and sample count
-in H/J only. The loop duration and first-sample latency must be measured
-from the assembled Z80 instructions, then checked in the emulator before
-an image or checksum is issued. No v2 image exists yet. The 50-ms guard
-must remain **before** START.
+The yellow START pulse now releases after its 2-ms marker for H/J/K, before
+sampling; W/R/P/G retain their v1 marker behavior. The pre-START 50-ms
+guard remains. The v2 record keeps the 30-byte additive-zero checksum:
+byte 2 is version `02h`, byte 3 is mode 5/6/7, and bytes 18–25 contain
+full-status OR, AND, first bit-4 sample index (little-endian), first bit-0
+sample index (little-endian), and sample count (little-endian). `FFFFh`
+means no such sample. In K, record byte 10 is `10h` if its watcher test
+ever saw `LINK_STATUS` bit 4, otherwise `00h`. The ordinary error field
+does not claim frame acceptance. The LCD labels the new status summary;
+the serial `raw=` field remains the authoritative complete record.
+
+The burn image is
+`/home/philpem/Micronic-1000/analysis/rom_exerciser/releases/feedback-v2/micron1_feedback_v2.bin`
+(32,768 bytes). MD5 `a9966a607f672d75031113528b7c6ea3`, additive
+16-bit `903E`, additive 24-bit `37903E`; sums are unsigned byte sums
+without complement. Burn **ROM00 only**; leave ROM01 stock. The guarded
+source build and manifest are in the same `feedback-v2` release directory.
+The Micronic should boot with `IR FEEDBACK V2 W..K` on its LCD. Upload the
+sketch from `analysis/arduino/m1000_ir_probe/` to the Elegoo Uno R3 after
+burning; its boot line says `MODE: FEEDBACK v1/v2`. Use the connector wiring
+table above, direct-TTL black D7 only if the banner matches that physical
+wiring, blue-to-Uno ground, yellow-to-D8, and the two resistor-limited IR
+LED channels on Uno D5/D6. Do not connect handheld Vcc to Uno Vcc.
+
+Start both devices fresh so both sequence counters start at 1, then run
+`analysis/trials/feedback-v2-state-1-13.txt` in order. Its first P/S
+command checks feedback without an IR burst; the remaining H/J/K silent
+controls and stimulated trials compare matched optical candidates with
+both LED-role assignments. `analysis/feedback_record.py` decodes logged
+`raw=` records. Preserve the complete Uno serial output, ROM checksum,
+LED resistor values and placement, and any scope capture. Transcribe the
+LCD only if it disagrees with serial feedback. If all H/J/K samples remain
+bit-4-clear, the next discriminating experiment is an instrumented stock
+V24 transaction or a carefully factored post-transmit diagnostic; changing
+7Eh framing on this standalone harness would still confound controller
+context with the waveform.
+
+### Commstar hardware-drive audit for v2
+
+**CONFIRMED (fresh ROM bytes at `ROM00:3277`, `31B6`, `3454`, `348A`,
+`34BD`, and `34D2`):** the feedback G mode selects the owner-confirmed
+top V24 route correctly. Stock `Link_BlockTx` tests wire-ID bit 5; the
+V24 wire ID `43h` has that bit clear, so `Link_PortSelect` sets
+`LINK_CTRL` bit 1 and port `2Ch` bit 5. Feedback passes the equivalent
+zero-flag state to the same selection helper. Feedback also calls
+`LinkProbe`, which writes `1Fh` to `LINK_PROBE` (`4Fh`); the effect of
+that write and whether Commstar probes at the same point are open.
+
+G does **not** reproduce Commstar's operational receive sequence. Stock
+`Link_BlockTx` clears `LINK_CTRL` bits 6/7, calls `LinkPresent` (which
+writes `81h` to `LINK_CMD` when ready), writes the V24 wire-ID low five
+bits `03h` to `LINK_TXD`, and drives the bit-5/bit-4 arm before its
+transmit/status wait. Later, the active stock link IRQ worker at
+`ROM00:31B6` clears `LINK_CTRL` bits 6/7, immediately tests
+`LINK_STATUS` bit 4, and dispatches RX or restores bits 6/7. Feedback G
+instead starts from reset/select, calls `LinkFinish` to set bits 6/7,
+and polls `LINK_STATUS` bit 4 about every 5 ms with interrupts disabled.
+Its yellow START marker also holds port `2Ah` bit 0 asserted during the
+test; the physical effect of that marker on IR is unmeasured. These
+differences mean a G error-8 result cannot be treated as a Commstar
+receive failure. `LINK_CTRL` bits 6/7 are a confirmed latch-write pair;
+their electrical effect on the optical receiver is **SUSPECTED**, not
+established.
+
+The Uno's candidate waveform was built around the owner's top-window
+capture: about 122-us cells with proposed clock/data widths and a
+quarter-cell phase offset. Trial 17's scope capture shows the intended
+timing at Uno D5/D6. That digital match does not assign the two physical
+IR LEDs to clock/data, prove optical polarity at the Micronic detector,
+or show that a candidate burst reached the controller as a valid frame.
+V2 H/J will compare static `LINK_CTRL` pair states; planned K will
+repeat the stock watcher's clear/test/re-arm *write order* while logging
+status. All three remain standalone, interrupt-disabled diagnostics and
+omit the live Commstar request/session context. A true stock-context
+comparison still requires instrumenting the stock V24 transaction.
 
 ## Validation and limits
 
