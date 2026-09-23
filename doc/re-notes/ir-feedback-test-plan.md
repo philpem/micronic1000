@@ -98,14 +98,19 @@ software lateness, but no scope trace was captured. The exact stimulus
 was repeated as ID 17 with the scope connected. It again returned error 8
 and `E0h/C0h/C0h`; its tracked Keysight
 CSV shows the intended `7Eh 03h` cells at scope D2/D3, 21/21 clock pulses,
-8/8 data pulses, with all digital timing targets met. The pod-to-Uno
-mapping for trial 17 awaits owner confirmation; optical delivery remains
+8/8 data pulses, with all digital timing targets met. The owner confirms
+pod D2→Uno D5 and D3→Uno D6 were unchanged; optical delivery remains
 unmeasured. The subsequent comparison was a matched G/S and G/X pair (IDs 18/19)
 with `pol=1`, which complements the full frame after logical stuffing.
 Both returned error 8 with identical `A0h/80h/80h` status and never reached
 stock RX; no trial-19 scope trace was supplied. The next matched pair
 (IDs 20/21) keeps this candidate but uses mode R to call stock RX directly.
-This tests a different receiver path without changing the burned ROM.
+This tests a different receiver path without changing the burned ROM. Both
+returned `A=EEh`, `F=6Dh`, wrapper error 7. Trial 20's probe/before/after
+was `E0h/C0h/C0h`; trial 21's was `A0h/80h/C0h`. Thus `LINK_STATUS` bit 6
+rose during trial 21's RX call, but the before baselines already differed,
+so attribution to optical output remains open. The next matched mode-R
+pair (IDs 22/23) delays emission to START+60 ms as a late-stimulus control.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

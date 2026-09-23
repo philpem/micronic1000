@@ -7707,9 +7707,10 @@ names renamed, 144 unplated functions plated)
   Scope D2 carries 21/21 proposed clock pulses and D3 eight/eight data
   pulses, sampling `7Eh 03h`; rise intervals 117.5–125 us and widths
   within the documented timing targets. The CSV establishes the waveform
-  at the pod inputs, not the Uno header mapping or optical reception.
-* Next: ask owner to confirm whether D2→Uno D5 and D3→Uno D6 remained
-  connected, then try matched G/S and G/X IDs 18/19 with `pol=1` while
+  at the pod inputs, not optical reception. The owner subsequently
+  confirmed that scope connections had not changed since trial 6:
+  D2→Uno D5 and D3→Uno D6 for trial 17.
+* Next: try matched G/S and G/X IDs 18/19 with `pol=1` while
   retaining sketch `stuff=1`. The sketch complements the whole logically
   stuffed frame, including the flag, to test the inverted wire sense.
 
@@ -7727,3 +7728,19 @@ names renamed, 144 unplated functions plated)
 * Next: matched direct-stock-RX mode R/S and R/X IDs 20/21, preserving
   the ID-19 stimulus. This bypasses G's pending gate on the current
   feedback ROM, though the wrapper still hides partial bytes on carry.
+
+### 2026-09-23 — Direct stock-RX pair, IDs 20 and 21
+
+* CONFIRMED (owner serial report): valid 30-byte R/S and R/X feedback
+  returned mode 2/error 7, stock `A=EEh`, `F=6Dh` (carry) in both.
+  Trial 20 silent probe/before/after was E0h/C0h/C0h; trial 21 stimulated
+  was A0h/80h/C0h, with 3 us maximum software scheduling lateness.
+* Trial 21's `LINK_STATUS` bit 6 changed from clear before the stock RX
+  call to set afterward. The samples bracket the stock RX timeout; trial
+  20 already had bit 6 set before RX. Thus this change is not yet causally
+  attributable to stimulus. The wrapper hides partial DE/preview on carry.
+  No new scope capture was supplied; `/tmp/IR` still held trial 17.
+* Next: matched R/S and R/X IDs 22/23 with delay 60000 us, a late
+  stimulus after the roughly 30 ms first-byte wait if that no-byte path
+  was taken. Verify that trial 23 actually emitted; if RX ran longer on a
+  partial-byte path, the control's temporal separation is not guaranteed.
