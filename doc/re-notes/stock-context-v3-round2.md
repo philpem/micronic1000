@@ -125,27 +125,27 @@ measured 5 MSa/s acquisition rate and 25-us CSV spacing. That
 argues against a permanently failed D5/D6 output. The Uno was restored
 to LISTEN_ONLY afterward.
 
-Before another content trial, explicitly select V24 ADAPTOR and sweep
-the LED alignment over the owner's reported few-millimetre range.
-Reproduce a positive type-2 yellow return, then hold that position
-fixed and interleave a content variant. If the control stays negative,
-do not attribute the result to payload bytes.
+Before another content trial, explicitly select V24 ADAPTOR and
+reproduce a positive type-2 yellow return, then hold the setup fixed
+and interleave a content variant. If the control stays negative, do
+not attribute the result to payload bytes.
 
 C0f performed that sweep. The archived F7 binary logged 100 handheld
 bursts, 34 replies and no yellow event. The 100-segment scope export
 independently shows 34 output segments with D2 and D3 activity and no
 D4 low sample. The acquisition reported 97.7 kSa/s and exported at
 40 us/row, sufficient to distinguish the earlier roughly 920-us
-yellow lows. The owner again saw `8000` then `8040`. Optical reception
-has therefore not been re-established, and content inference remains
-suspended. The owner then requested a continuous two-channel IR output
+yellow lows. The owner again saw `8000` then `8040`. A receive-return
+marker has therefore not been re-established, and content inference
+remains suspended. The owner then requested a continuous two-channel IR output
 to check the handheld's receiver. A verified FREE_TX build was uploaded;
 its USB reports show a repeated type-2 candidate burst every 250 ms on
 D5 clock and D6 data. Its free-running phase setting is -2/8 cell,
 distinct from F7's paced +2/8 cell. The owner reports that this IR
 reaches the handheld and that alignment is less critical than first
-thought. The means of observing reception has not yet been recorded;
-this statement establishes neither payload decoding nor acceptance.
+thought. The owner confirmed arrival by probing the IR sensor
+amplifier output inside the handheld. This establishes optical signal
+arrival at that stage, not payload decoding or acceptance.
 A 10-second USB log during the check contains 41 free-running
 transmit reports, 50 handheld bursts and no yellow event. The owner
 has not yet reported what the handheld displayed during this check.

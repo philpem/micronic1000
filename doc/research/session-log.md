@@ -8465,8 +8465,9 @@ names renamed, 144 unplated functions plated)
   D6 data. It uses phase -2/8 cell, whereas the paced F7 used +2/8.
   Left it transmitting while the owner checks the handheld receiver.
   The owner reports that IR reaches the handheld and that alignment is
-  less critical than previously thought. The observation method and
-  handheld display have not yet been reported. A 10-second USB log
+  less critical than previously thought. They confirmed optical arrival
+  by probing the IR sensor amplifier output inside the handheld. The
+  handheld display has not yet been reported. A 10-second USB log
   captured 41 free-running TX reports, 50 handheld bursts and no
   yellow event. Optical arrival is owner-observed; payload acceptance
   is unestablished, so content inference remains suspended.

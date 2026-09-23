@@ -182,8 +182,10 @@ C0f swept alignment during a V24 attempt: 100 handheld bursts,
 scope D4, and the same `8000`/`8040` errors. The owner is checking
 the handheld receiver while a FREE_TX build repeats clock/data bursts
 every 250 ms. The owner reports that IR reaches the handheld and that
-alignment is less critical than first thought; the observation method
-and handheld display remain to be recorded. A 10-second Arduino log
+alignment is less critical than first thought. They confirmed arrival
+by probing the IR sensor amplifier output inside the handheld. That
+does not establish payload decoding or acceptance; the handheld
+display during this check remains to be recorded. A 10-second Arduino log
 contains 41 free-running transmissions, 50 handheld bursts and no
 yellow event. Content inference remains suspended pending evidence
 of a decoded or accepted reply.
