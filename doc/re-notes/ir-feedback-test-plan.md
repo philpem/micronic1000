@@ -90,8 +90,12 @@ with G silent/stimulated controls, because earlier matched experiments
 showed a strong software-role-dependent reaction without identifying a
 physical LED or accepted frame. Those unswapped controls (IDs 13/14) also
 timed out with identical probe/before/after status A0h/80h/80h. The next
-axis is one candidate `03h` payload byte after the opening `7Eh`, keeping
-the same G mode, role, timing, stuffing and no closing flag.
+axis was one candidate `03h` payload byte after the opening `7Eh`, keeping
+the same G mode, role, timing, stuffing and no closing flag. Matched trials
+15/16 again timed out at the pending gate (error 8), with identical
+`E0h/C0h/C0h` probe/before/after status. Trial 16 reports 3 us maximum
+software lateness, but no scope trace was captured. Repeat its exact
+stimulus as ID 17 with D5/D6 on the scope before changing another axis.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

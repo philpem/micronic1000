@@ -91,9 +91,12 @@ not demonstrate a stimulus response. G/S and G/X with `swap=0`, IDs 13/14,
 also returned error 8 with identical A0h/80h/80h probe/before/after bytes.
 Trial 14 reported 10 us maximum lateness, but no new scope capture; the
 flag-only candidate has not raised pending status in either software role.
-Next: keep G, `swap=0`, timing and framing fields fixed and add one `03h`
-payload byte after the opening `7Eh` in a matched silent/stimulated pair,
-IDs 15/16, at the top of the
+Matched G/S and G/X IDs 15/16 added one `03h` payload byte after `7Eh`,
+with `swap=0` and unchanged timing/framing; both timed out at the
+`LINK_STATUS` bit-4 gate (error 8), with identical `E0h/C0h/C0h`
+probe/before/after status. Trial 16 reports 3 us software lateness, but
+there is no scope trace. Next: repeat its exact stimulus as ID 17 while
+capturing D5/D6, per the
 [canonical interface](../re-notes/ir-feedback-protocol.md). Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R
 preserves the last accepted host ID.

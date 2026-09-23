@@ -15,6 +15,9 @@ not attempt RX. Forced-RX silent/stimulated trials 9/10 both returned raw
 that error after its 1785-count poll; the record hides partial bytes on
 error. Matched G pairs 11/12 (`swap=1`) and 13/14 (`swap=0`) all timed out
 waiting for `LINK_STATUS` bit 4 (error 8) with an opening `7Eh` alone.
+The matched `swap=0` G trials 15/16 added candidate payload `03h`; both
+again timed out with error 8 and `E0h/C0h/C0h` probe/before/after status.
+Trial 16 reports 3 us maximum scheduler lateness, but has **no scope trace**.
 **OPEN:** optical delivery, physical LED roles and receive framing remain
 unproved. The one-burn ROM and USB sketch stay in place.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
@@ -27,25 +30,24 @@ compare physical edges in CSV rather than software interval length.
    is needed for the next comparison.
 2. Scope **Uno header D5 and D6** with ground on Uno GND. The owner confirms
    trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
-   mapping again if probes have moved. For `swap=0`, D5 is the proposed
+   mapping again before capturing trial 17. For `swap=0`, D5 is the proposed
    clock and D6 the proposed data. Trigger on **D6 data rising** with enough
    pre-trigger for the five earlier D5 lead clocks. Capture at least 3 ms
    around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
    2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
-3. Open serial at 115200 baud; send `R`, wait for `READY`. Run the
-   receive-pending-gated **silent control first**, wait for `RESULT` and a
-   fresh `READY`, then the matched stimulus, keeping every other setting
-   and optical placement fixed. This adds one candidate `03h` payload byte
-   to the ID-13/14 flag-only pair, with no closing flag:
+3. Open serial at 115200 baud; send `R`, wait for `READY`. Repeat the
+   trial-16 **stimulus unchanged**, this time with the scope recording D5
+   and D6. Trial 15 already supplies the matched silent control with the
+   same settings and `E0h/C0h/C0h` baseline. Keep the optical placement
+   unchanged if possible:
 
    ```text
-   T 15 G S 0 7E 1 0 0 -2 5 7000 03
-   T 16 G X 0 7E 1 0 0 -2 5 7000 03
+   T 17 G X 0 7E 1 0 0 -2 5 7000 03
    ```
 
-   IDs must strictly increase: if 15 or 16 was already accepted, substitute
-   the next unused IDs. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 14 had host ID 14 but ROM sequence 16. Mode G
+   IDs must strictly increase: if 17 was already accepted, substitute the
+   next unused ID. `R` does not reset host ID. ROM sequence is an
+   independent counter; trial 16 had host ID 16 but ROM sequence 18. Mode G
    arms the idle receiver and waits up to about 100 ms for `LINK_STATUS`
    bit 4 before invoking stock RX. Compare bit-4 condition, error/status,
    and raw RX A/F/DE/preview with the silent G control. An error or absent
@@ -58,10 +60,11 @@ compare physical edges in CSV rather than software interval length.
    interval should be within 8 us of 122 us, clock high within 8 us of 61 us,
    data high within 8 us of
    76 us, and `emit_late_max` below about 15 us. Compare the G/X result
-   with its G/S control and the prior `swap=1` G pair. A change in the
+   with its G/S control (ID 15) and the prior `swap=1` G pair. A change in the
    pending condition is evidence of a controller-state response, not by
-   itself accepted framing. If both G results match, review the controls
-   before varying one new stimulus axis (payload, polarity or phase).
+   itself accepted framing. If the waveform is correct and G still sees no
+   pending condition, test one new axis at a time; polarity is a useful
+   next comparison, still with a silent control.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -890,13 +893,43 @@ flag-only `7Eh` candidate with `swap=0` either. Earlier conn10 retry
 reactions under a different program and timing do not override this direct
 pending-gate observation.
 
-**OPEN:** flag-only `7Eh` is not a complete candidate frame. The next
-USB-only comparison keeps mode G, `swap=0`, delay, phase, stuffing and
-polarity fixed, and adds one `03h` payload byte, with a matched silent
-control. The byte is a candidate copied from earlier response experiments,
-not a proven return address or acknowledgement. If that also fails to
-raise pending status, vary only one further axis at a time, including
-closing flag, polarity or a longer candidate body.
+**OPEN:** flag-only `7Eh` is not a complete candidate frame. IDs 15/16
+below add one `03h` payload byte while keeping mode G, `swap=0`, delay,
+phase, stuffing and polarity fixed. That byte is a candidate copied from
+earlier response experiments, not a proven return address or acknowledgement.
+
+## Candidate payload controls, IDs 15–16 — 2026-09-23
+
+**CONFIRMED (owner serial report):** the matched silent/stimulated pair
+carried `7Eh` plus one candidate `03h` byte, with no closing flag. Both
+30-byte result records pass the zero-sum checksum:
+
+```text
+TRIAL id=15 mode=G kind=S swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=03
+RESULT id=15 rom_seq=17 mode=4 err=8 ack_us=3489586108 release_us=3490286116 start_us=3490366152 emit_start_us=0 emit_end_us=0 emit_late_max=0 raw=A55A0104110008E0C0C0FFFF000000000000000000000000000022002340
+READY
+TRIAL id=16 mode=G kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=03
+RESULT id=16 rom_seq=18 mode=4 err=8 ack_us=3500211264 release_us=3500911264 start_us=3500991300 emit_start_us=3500998104 emit_end_us=3501001172 emit_late_max=3 raw=A55A0104120008E0C0C0FFFF00000000000000000000000000002200233F
+READY
+```
+
+Both probe/before/after triples are `E0h/C0h/C0h`; each `before`
+precedes any optical emission, and `after` equals `before`. Both waited
+for `LINK_STATUS` bit 4 until wrapper error 8; neither invoked stock RX.
+The added byte therefore produced no measured receive-pending response.
+Trial 15 emitted nothing by design; trial 16's reported maximum scheduler
+lateness is 3 us. **No scope trace was captured for trial 16.** The
+software telemetry does not measure D5/D6 edges or light reaching the
+handheld. The `7Eh 03h` sequence and clock/data LED identities remain
+SUSPECTED. Mode G tests the controller's post-`LinkFinish` pending gate;
+it is not equivalent to the running OS receive path.
+
+Next, repeat trial 16 with a scope capture, keeping the waveform settings
+identical, before interpreting another guessed framing or polarity change.
+Trial 15 is the existing matched silent control; the exact ID-17 command
+and capture criteria are in the handoff above. Earlier conn13 closing-flag
+tests found no effect on a different retry-timing metric; they did not
+test this G-mode pending gate.
 
 ## Validation and limits
 
@@ -913,8 +946,9 @@ The direct-TTL silent probe and W witness passed the diagnostic handshake.
 Trial 5 identified the emitter timing defect; trials 6 and 8 verified
 correctly timed digital stimuli for both proposed channel assignments, but
 both W results retained bit-6 timeout. Direct RX controls 9/10 returned the
-same `EEh` byte-wait error. Swapped-role G controls 11/12 both timed out
-waiting for `LINK_STATUS` bit 4; the unswapped-role G pair is next.
+same `EEh` byte-wait error. G controls 11–16 all timed out waiting for
+`LINK_STATUS` bit 4, including the unswapped `7Eh 03h` candidate in 15/16.
+The next repeat needs a scope capture of that candidate.
 Actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make

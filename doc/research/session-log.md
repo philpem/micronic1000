@@ -7679,3 +7679,17 @@ names renamed, 144 unplated functions plated)
   not establish optical delivery, physical LED roles or flag identity.
 * Next: matched G/S and G/X IDs 15/16, `swap=0`, same timing, add only
   candidate payload byte 03h. No EPROM or sketch change required.
+
+### 2026-09-23 — Candidate-payload G controls, IDs 15 and 16
+
+* CONFIRMED (owner serial report): matched G/S and G/X with `swap=0`,
+  opening 7Eh and payload 03h, returned valid 30-byte checksummed records,
+  mode 4/error 8. Both probe/before/after status triples were
+  E0h/C0h/C0h. Neither reached stock RX because `LINK_STATUS` bit 4
+  remained clear through the bounded pending wait.
+* Trial 15 emitted nothing by design. Trial 16 reported 3 us maximum
+  software event lateness. The owner did **not** capture a scope trace for
+  trial 16, so its D5/D6 waveform and optical delivery are unverified.
+* Next: repeat the trial-16 stimulus unchanged as ID 17 with a D5/D6 scope
+  capture. This uses the existing ROM and Uno sketch. Candidate framing,
+  physical LED roles and optical delivery remain open.
