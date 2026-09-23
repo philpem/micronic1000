@@ -1,5 +1,5 @@
 // M1000 IR link probe and responder.
-// Default: combined feedback harness, silent until a USB T command. See
+// Default: combined feedback harness, silent until a USB T or V command. See
 // doc/re-notes/ir-feedback-protocol.md. FEEDBACK_HARNESS=0 enables the
 // historical optical monitor/sweep modes described below.
 //
@@ -17,8 +17,8 @@
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
 // Select BLACK_USE_NPN just below this wiring section before uploading:
-//   1 = external NPN interface (default, preserves existing wiring)
-//   0 = direct 5 V TTL drive: D7 -> BLACK / scanner pin 5
+//   0 = direct 5 V TTL drive: D7 -> BLACK / scanner pin 5 (current default)
+//   1 = external NPN interface
 // Direct TTL mode: D7 HIGH is idle; D7 LOW asserts the command. Connect
 // both powered boards' grounds; power Uno before handheld, and switch the
 // handheld off before unplugging Uno USB. No NPN/base resistors are used.
@@ -49,7 +49,7 @@
 // D2/D4 monitoring is disabled and not required in feedback mode.
 //
 #ifndef BLACK_USE_NPN
-#define BLACK_USE_NPN 1  // Set to 0 for D7 directly wired to BLACK / pin 5.
+#define BLACK_USE_NPN 0  // Current bench: D7 directly wired to BLACK / pin 5.
 #endif
 #if BLACK_USE_NPN != 0 && BLACK_USE_NPN != 1
 #error "BLACK_USE_NPN must be 0 (direct TTL) or 1 (external NPN)"
@@ -1013,16 +1013,20 @@ void sendFrame(unsigned long startUs) {
 }
 
 #if FEEDBACK_HARNESS
-// Half-duplex connector controller. IR emission is bounded below 24 ms;
+// Half-duplex connector controller. T-trial IR emission is below 24 ms;
 // the ROM's 100 ms post-trial cooldown keeps UART reporting outside it.
+// V is a separate, bounded camera check with no handheld transaction.
 enum FbRunState : uint8_t { FB_IDLE, FB_WAIT_ACK, FB_HOLD, FB_WAIT_START,
-                            FB_WAIT_RESULT, FB_DESYNC };
+                            FB_WAIT_RESULT, FB_VISUAL_RUN, FB_DESYNC };
 FeedbackLineParser fbParser;
 FeedbackConfig fbConfig = {};
 FbRunState fbState = FB_IDLE;
 uint32_t fbLastId = 0, fbStateAt = 0, fbHighAt = 0, fbStartAt = 0;
+uint32_t fbVisualLastId = 0;
 uint32_t fbSerialAt = 0, fbAckAt = 0, fbReleaseAt = 0;
 uint32_t fbEmitStart = 0, fbEmitEnd = 0;
+uint32_t fbVisualAt = 0;
+uint8_t fbVisualPhase = 0;
 uint8_t fbResult[30], fbResultLen = 0;
 bool fbReady = false, fbHighTracking = false, fbRequestLow = false;
 bool fbEmitPending = false, fbManualLow = false;
@@ -1063,8 +1067,12 @@ void fbPrintHex(const uint8_t *bytes, uint8_t n) {
   }
 }
 void fbQuiet() {
+  analogWrite(CLK_OUT, 0); analogWrite(DAT_OUT, 0);
   fbBlackRelease(); clkLow(); datLow(); txActive = false;
   fbEmitPending = false; fbManualLow = false; fbRequestLow = false;
+}
+void fbVisualStop() {
+  fbQuiet();
 }
 void fbResetUart() {
   fbUartActive = false; fbYellowWasHigh = fbYellowHigh(); fbResultLen = 0;
@@ -1180,7 +1188,8 @@ void fbCommandTick() {
     char ch = (char)Serial.read();
     // Starting any new command cancels an outstanding optical stimulus.
     // Even an incomplete line must not leave an old trial armed.
-    if (ch != '\r' && !fbParser.pending() && fbState != FB_IDLE && fbState != FB_DESYNC) {
+    if (ch != '\r' && !fbParser.pending() && fbState != FB_IDLE && fbState != FB_DESYNC &&
+        !(fbState == FB_VISUAL_RUN && ch == 'C')) {
       fbQuiet(); fbState = FB_DESYNC; fbReady = false;
     }
     FeedbackCommand command = fbParser.feed(ch, &parsed, &id);
@@ -1191,7 +1200,13 @@ void fbCommandTick() {
       fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
       Serial.println(F("SYNC")); fbPrintWiring(); continue;
     }
-    if (command == FB_CANCEL) { fbError(F("cancel")); continue; }
+    if (command == FB_CANCEL) {
+      if (fbState == FB_VISUAL_RUN && id == fbConfig.trialId) {
+        fbVisualStop(); fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+        Serial.print(F("VISUAL_CANCELLED visual_id=")); Serial.println(id); continue;
+      }
+      fbError(F("cancel")); continue;
+    }
     if (command == FB_BLACK_RELEASE && fbManualLow) {
       fbQuiet(); fbState = FB_DESYNC;
       Serial.println(F("BLACK released; send R to resynchronise")); continue;
@@ -1200,6 +1215,14 @@ void fbCommandTick() {
       fbConfig.trialId = id; fbLastId = id; fbManualLow = true;
       fbReady = false; fbStateAt = micros(); fbBlackLow();
       Serial.println(F("BLACK low (1000 ms maximum)")); continue;
+    }
+    if (command == FB_VISUAL_TEST && fbState == FB_IDLE && !fbManualLow && id > fbVisualLastId) {
+      fbBlackRelease();
+      fbConfig.trialId = id; fbVisualLastId = id; fbReady = false; fbHighTracking = false;
+      fbVisualPhase = 0; fbVisualAt = micros(); fbState = FB_VISUAL_RUN;
+      analogWrite(CLK_OUT, 26); analogWrite(DAT_OUT, 0);
+      Serial.print(F("VISUAL visual_id=")); Serial.print(id);
+      Serial.println(F(" trial_id=unchanged channel=A pin=D5 duty=10% duration_ms=1500")); continue;
     }
     if (command != FB_TRIAL || fbState != FB_IDLE || !fbReady || fbManualLow || parsed.trialId <= fbLastId ||
         (parsed.holdKind == 'P' && parsed.mode != FB_SILENT)) { fbError(F("command")); continue; }
@@ -1218,7 +1241,19 @@ void feedbackTick() {
   fbCommandTick();
   uint32_t now = micros();
   bool high = fbYellowHigh();
-  if (fbState == FB_IDLE) {
+  if (fbState == FB_VISUAL_RUN) {
+    if (fbElapsed(now, fbVisualAt, 1500000UL)) {
+      if (!fbVisualPhase) {
+        analogWrite(CLK_OUT, 0); analogWrite(DAT_OUT, 26);
+        fbVisualPhase = 1; fbVisualAt = now;
+        Serial.print(F("VISUAL visual_id=")); Serial.print(fbConfig.trialId);
+        Serial.println(F(" trial_id=unchanged channel=B pin=D6 duty=10% duration_ms=1500"));
+      } else {
+        fbVisualStop(); fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+        Serial.print(F("VISUAL_DONE visual_id=")); Serial.println(fbConfig.trialId);
+      }
+    }
+  } else if (fbState == FB_IDLE) {
     if (fbManualLow) {
       if (fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("black_hold"));
       return;

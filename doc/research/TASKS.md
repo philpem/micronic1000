@@ -119,7 +119,17 @@ with 9 us maximum scheduler lateness. Since bit 6 was already set before
 RX in both, this pair does not explain trial 21's rise. Next: test the
 optical output at the top V24 receive window with the previously documented
 SFH213 photodiode probe before more framing sweeps. This verifies light
-at the target plane, not internal detector receipt. Earlier conn10
+at the target plane, not internal detector receipt. The owner clarified
+the SFH213 is now built into the Arduino transponder, not separately
+movable. Early R/X ID 24 repeated ID 21's A0h/80h/C0h status and
+`EEh`/carry result with 3 us maximum software lateness. Since all
+reported R trials have `after=C0h`, this does not prove an optical
+response. Next: camera check of the two IR LEDs using a USB-only
+sustained low-duty output self-test. The updated Uno sketch provides
+`V 1` from idle: A/D5 then B/D6 at 10% PWM for 1.5 s each, with black
+released and ROM trial IDs unchanged. Direct TTL is now the sketch source
+default for the owner's installed wiring. This needs a USB upload but no
+EPROM burn. Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R
 preserves the last accepted host ID.
 

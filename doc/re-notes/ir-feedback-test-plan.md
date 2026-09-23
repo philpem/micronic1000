@@ -116,10 +116,22 @@ Both returned the same `A=EEh`, `F=6Dh` error and identical
 `A0h/C0h/C0h` probe/before/after status. Trial 23 scheduled emission at
 START+59,808 us with 9 us maximum lateness; both trials began with
 `LINK_STATUS` bit 6 set, so the pair did not test whether the bit can rise
-without an in-window stimulus. The next useful check is the optical path:
-measure Uno LED light at the top V24 receive window using the owner's
-previously documented SFH213 photodiode probe. This needs no new burn or
-sketch build and precedes more candidate-frame sweeps.
+without an in-window stimulus. R/X ID 24 repeated the early
+START+7 ms complemented candidate and returned `A=EEh`, `F=6Dh`, error 7,
+with `A0h/80h/C0h` probe/before/after status, matching ID 21. The
+`after` status was C0h in every reported R trial, including silent and
+late controls, so the bit-6 rise cannot yet be attributed to optics.
+The optical path is the next useful check before more candidate-frame
+sweeps. The SFH213 photodiode from the earlier optical capture is now
+built into the Arduino transponder, not a separate movable scope probe.
+The owner can inspect the LEDs with a camera; a USB-only sustained,
+low-duty LED self-test is the next practical output check and needs no
+new EPROM burn. The updated Uno sketch adds `V <visual_id>`: A/D5 runs
+at 10% PWM for 1.5 s, then B/D6 for 1.5 s, with black released throughout.
+It can run from idle without the handheld, and visual IDs do not consume
+trial IDs. Upload the updated sketch, send `V 1`, and compare each labeled
+interval with idle through a camera known to see IR. This checks emitter
+light, not optical power at the handheld's internal detector.
 The exact next commands and capture acceptance targets are at the top of the
 [canonical handoff](ir-feedback-protocol.md#current-handoff-next-physical-trial).
 

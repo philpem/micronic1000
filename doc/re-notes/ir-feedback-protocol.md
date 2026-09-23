@@ -31,65 +31,44 @@ causation nor accepted receive framing is established.
 The late-stimulus R pair 22/23 both began with bit 6 set (`A0h/C0h/C0h`)
 and again returned `EEh`/carry. Trial 23 did schedule its burst at about
 START+60 ms. This does not reproduce or explain trial 21's bit-6 rise.
+Early R/X ID 24 repeated ID 21's `A0h/80h/C0h` status and `EEh`/carry;
+the post-RX byte was `C0h` in every reported R trial, including silent
+controls. The SFH213 is now built into the Arduino transponder, so the
+next check is a camera-visible LED self-test from an updated Uno sketch.
 **OPEN:** optical delivery, physical LED roles and receive framing remain
-unproved. The one-burn ROM and USB sketch stay in place.
+unproved. The one-burn ROM stays in place; only the USB sketch needs updating
+for the camera check.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
 compare physical edges in CSV rather than software interval length.
 
-1. Keep the tested sketch from branch `ir/automated-feedback-tests` and the
-   present geometry/wiring. It is the direct-TTL `BLACK_USE_NPN=0` build for
-   `arduino:avr:uno` (Elegoo Uno R3, 16 MHz). Confirm `BLACK: DIRECT_TTL`
-   and LCD `IR FEEDBACK/W/R/P/G` if restarting. No EPROM or Uno code change
-   is needed for the next comparison.
-2. Check the **optical output at the handheld top V24 receive window**
-   before changing frame parameters again. The owner previously used an
-   SFH213 photodiode with cathode to **Uno 5 V**, anode through 100 kOhm
-   to **Uno GND**, and a scope probe on the anode; light raises the anode
-   ([optical front-end notes](ir-wire-protocol.md#the-slew-is-the-receivers-not-the-transmitters)).
-   If that probe is still available, measure each Uno LED channel at its
-   intended handheld receive aperture. Keep the LED drivers, current
-   limiting, spacing and masks as used in trial 17. Scope Uno D5/D6 and
-   the photodiode analogue output together over at least 4 ms; the owner
-   confirmed scope pod
-   D2→Uno D5, D3→Uno D6 through trial 17. Record which receive aperture
-   the photodiode faces, its position relative to the handheld window,
-   and whether each D5/D6 pulse train produces a distinct light waveform.
-   This validates light at the target plane, not the internal detector.
-3. Open serial at 115200 baud; send the standalone `R` resync command and
-   wait for `READY`. For an optical capture, repeat the known ID-21 stimulus
-   with the next unused ID, while recording the scope. For example:
+1. Rsync the updated `analysis/arduino/m1000_ir_probe/` directory and upload
+   it to the Elegoo Uno R3. Direct TTL (`BLACK_USE_NPN=0`) is now the source
+   default to match the owner's D7→black connection; confirm the boot
+   banner says `BLACK: DIRECT_TTL`. The ROM image stays installed; no EPROM
+   burn is needed. The new visual command requires the Uno upload.
+2. Point a camera at both IR LEDs. With the Uno powered by USB, open serial
+   at 115200 baud and send the **Arduino-only** command:
 
    ```text
-   T 24 R X 0 7E 1 0 1 -2 5 7000 03
+   V 1
    ```
 
-   Use a new ID for each repeat; the standalone `R` does not reset host
-   IDs. `stuff=1` builds the logical stream before `pol=1` complements
-   the entire frame, yielding physical candidate `81h FCh`. If one
-   photodiode must be moved between the two apertures, repeat with the
-   next ID without changing Arduino settings. Preserve each full serial
-   result but interpret this as an optical-path check, not a new protocol
-   candidate. A photodiode trace at the window cannot itself prove that
-   the handheld receiver decoded a frame.
-4. The trial-17 source is archived at
-   `analysis/captures/feedback-trial17-keysight.csv`. Reproduce its decoding
-   with `python3 analysis/feedback_scope.py
-   analysis/captures/feedback-trial17-keysight.csv --clock-bit 2
-   --data-bit 3 --payload 03 --stuff 1`. Scope D2 carried **21** proposed
-   clock pulses and D3 **eight** data pulses, with sampled candidate cells
-   `0111111000000011` (`7Eh` followed by `03h`). Every clock rise
-   interval should be within 8 us of 122 us, clock high within 8 us of 61 us,
-   data high within 8 us of
-   76 us, and `emit_late_max` below about 15 us; trial 17 met these targets.
-   The trace cannot identify Uno header wiring, emitted IR light, or optical
-   receipt. For the proposed optical check, the expected sampled cells are
-   `1000000111111100` if the D2/D3 channel mapping is unchanged; the data
-   pulse count remains eight. Decode its *physical* complemented cells with
-   `--flag 81 --payload FC --stuff 2`; that decoder stuffing mode describes
-   the wire sense, whereas the sketch uses `stuff=1` **before** complementing
-   the frame. No stuffed cell occurs in this particular candidate. The
-   analogue light signal should follow the appropriate digital pulse train.
-   Do not infer a receiver frame merely from a matching optical waveform.
+   It works from idle without a handheld transaction or `READY`. The Uno
+   prints `VISUAL ... channel=A pin=D5`, pulses channel A at 10% PWM for
+   1.5 s, then prints `VISUAL ... channel=B pin=D6` and pulses channel B
+   for 1.5 s, then drives both low and prints `VISUAL_DONE`. Black/D7
+   remains released. Use `C 1` to stop it early. Visual IDs have their
+   own increasing counter and do not consume ROM trial IDs; the next
+   physical trial ID after 24 remains 25.
+3. Note whether A alone and B alone appear bright relative to idle,
+   whether the correct LED lights in each labeled interval, and whether
+   light reaches the intended top V24 apertures with the existing masks
+   and alignment. A phone camera may filter IR; check it against a known
+   IR remote or try another camera if both LEDs appear dark. Visible glow
+   proves emission at the LEDs, not optical power at the internal detector
+   or decoded framing. The trial-17 scope capture already verified
+   digital D5/D6 timing and the owner confirmed pod D2→Uno D5,
+   D3→Uno D6; its optical output remains unmeasured.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -106,9 +85,9 @@ yellow**. Power the handheld from its batteries and the Elegoo Uno R3 from
 USB. Join their grounds, but keep their positive supply rails separate.
 The optical connection still uses the existing two IR LED channels.
 
-Before uploading, set `BLACK_USE_NPN` in `m1000_ir_probe.ino` and wire black
-to match it. `1` is the default external-NPN interface; `0` selects a direct
-5 V TTL wire from D7 to black/pin 5. The startup and `R` output must say
+Before uploading, check `BLACK_USE_NPN` in `m1000_ir_probe.ino` and wire black
+to match it. `0` is the current direct-TTL default (5 V D7 to black/pin 5);
+`1` selects the external-NPN interface. The startup and `R` output must say
 `BLACK: NPN` or `BLACK: DIRECT_TTL` for the wiring actually fitted. The
 suggestion that black may feed 74LS logic remains SUSPECTED; direct TTL is a
 selected bench interface, not an established hardware identity.
@@ -1094,6 +1073,39 @@ stimulus-dependent stock RX return. There was no new scope capture;
 the stock RX return or reveal whether earlier partial bytes preceded a
 later timeout; `delay_us=60000` is therefore a likely late control, not
 a measured guarantee that the burst followed RX.
+
+## Repeated early direct-RX stimulus, ID 24 — 2026-09-23
+
+**CONFIRMED (owner serial report):** trial 24 repeated the same R/X
+`swap=0`, logical `7Eh 03h`, `pol=1` stimulus as ID 21 at START+7 ms.
+Its 30-byte record passes the zero-sum checksum:
+
+```text
+TRIAL id=24 mode=R kind=X swap=0 flag=7E stuff=1 close=0 pol=1 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=03
+RESULT id=24 rom_seq=27 mode=2 err=7 ack_us=1135973424 release_us=1136273432 start_us=1136353388 emit_start_us=1136360188 emit_end_us=1136363260 emit_late_max=3 raw=A55A01021B0007A080C0FFFF00EE6D00000000000000000000002200235E
+READY
+```
+
+Like ID 21, trial 24 has probe/before/after `A0h/80h/C0h`, stock RX
+`A=EEh`, `F=6Dh` (carry), and wrapper error 7. Its software scheduler
+reported 3 us maximum lateness. The same `LINK_STATUS` bit-6 rise across
+the RX call is repeatable in these two early-stimulus runs, but the
+`after` sample was `C0h` in *every* reported R trial (IDs 9, 10 and
+20–24), including silent and late-stimulus controls. The record cannot
+isolate optical causation: `before` is sampled before emission, and the
+stock RX timeout itself may leave status bit 6 set. No received byte or
+frame was demonstrated, and no new scope trace was supplied.
+
+**Owner hardware update:** the SFH213 photodiode used for the earlier
+optical capture is now built into the Arduino IR transponder, so it is
+not available as a separate probe at the handheld aperture. The repo
+does not document an accessible output from that detector in feedback
+mode; Uno D2/D4 monitoring is disabled there. The owner suggests viewing
+the IR LEDs with a camera. A dedicated USB-only LED self-test is being
+prepared so the output remains visible for a camera exposure without
+another ROM burn. Camera visibility can show that an LED emits light;
+it cannot establish its intensity at the handheld detector or decoded
+framing.
 
 ## Validation and limits
 

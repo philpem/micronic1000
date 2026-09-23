@@ -51,6 +51,8 @@ struct IrEvent {
 
 static std::vector<GpioEvent> gpioEvents;
 static std::vector<IrEvent> irEvents;
+struct PwmEvent { uint32_t at; uint8_t pin; uint8_t duty; };
+static std::vector<PwmEvent> pwmEvents;
 
 struct UartWaveform {
   bool active;
@@ -172,6 +174,9 @@ void digitalWrite(uint8_t pin, uint8_t value) {
     hostD7Latch = value != 0;
     recordD7();
   }
+}
+void analogWrite(uint8_t pin, int duty) {
+  pwmEvents.push_back(PwmEvent{hostNow, pin, (uint8_t)duty});
 }
 int digitalRead(uint8_t pin) {
   return pin == 8 ? (uartWave.level(hostNow) ? 1 : 0) : 0;
@@ -369,6 +374,7 @@ static void assertOneBurst(size_t first, uint8_t clockPin, uint8_t dataPin) {
 }
 
 static uint32_t nextId = 1;
+static uint32_t nextVisualId = 1;
 
 static std::string command(uint32_t id, char hold, char kind, int swap,
                            const char *payload = "03") {
@@ -540,6 +546,52 @@ static void payloadAndEarlyEdgeCases() {
   waitReady();
 }
 
+static void cameraVisibleLedCheck() {
+  waitReady();
+  Serial.clearOutput();
+  const uint32_t id = nextVisualId++;
+  const uint32_t trialIdBefore = fbLastId;
+  const size_t before = pwmEvents.size();
+  send("V " + std::to_string(id) + "\n");
+  CHECK(fbState == FB_VISUAL_RUN && !fbReady);
+  CHECK(contains("VISUAL visual_id=" + std::to_string(id) + " trial_id=unchanged channel=A pin=D5 duty=10%"));
+  CHECK(pwmEvents.size() == before + 2);
+  CHECK(pwmEvents[before].pin == 5 && pwmEvents[before].duty == 26);
+  CHECK(pwmEvents[before + 1].pin == 6 && pwmEvents[before + 1].duty == 0);
+  advanceUs(1490000);
+  CHECK(fbState == FB_VISUAL_RUN && pwmEvents.size() == before + 2);
+  advanceUs(20000);
+  CHECK(fbState == FB_VISUAL_RUN && pwmEvents.size() == before + 4);
+  CHECK(pwmEvents[before + 2].pin == 5 && pwmEvents[before + 2].duty == 0);
+  CHECK(pwmEvents[before + 3].pin == 6 && pwmEvents[before + 3].duty == 26);
+  CHECK(contains("channel=B pin=D6 duty=10%"));
+  CHECK(fbLastId == trialIdBefore);
+  advanceUs(1510000);
+  CHECK(fbState == FB_IDLE && !fbReady);
+  CHECK(pwmEvents[pwmEvents.size() - 2].pin == 5 && pwmEvents[pwmEvents.size() - 2].duty == 0);
+  CHECK(pwmEvents[pwmEvents.size() - 1].pin == 6 && pwmEvents[pwmEvents.size() - 1].duty == 0);
+  CHECK(contains("VISUAL_DONE visual_id=" + std::to_string(id)));
+  waitReady();
+
+  const uint32_t cancelId = nextVisualId++;
+  Serial.clearOutput();
+  send("V " + std::to_string(cancelId) + "\n");
+  CHECK(fbState == FB_VISUAL_RUN);
+  send("C " + std::to_string(cancelId) + "\n");
+  CHECK(fbState == FB_IDLE && !fbReady);
+  CHECK(contains("VISUAL_CANCELLED visual_id=" + std::to_string(cancelId)));
+  CHECK(pwmEvents[pwmEvents.size() - 2].pin == 5 && pwmEvents[pwmEvents.size() - 2].duty == 0);
+  CHECK(pwmEvents[pwmEvents.size() - 1].pin == 6 && pwmEvents[pwmEvents.size() - 1].duty == 0);
+  waitReady();
+
+  const size_t unchanged = pwmEvents.size();
+  send("V " + std::to_string(cancelId) + "\n");
+  CHECK(fbState == FB_DESYNC && pwmEvents.size() >= unchanged + 2);
+  CHECK(pwmEvents[pwmEvents.size() - 2].pin == 5 && pwmEvents[pwmEvents.size() - 2].duty == 0);
+  CHECK(pwmEvents[pwmEvents.size() - 1].pin == 6 && pwmEvents[pwmEvents.size() - 1].duty == 0);
+  resyncAndReady();
+}
+
 int main() {
   hostNow = 0xFFFF0000U;
   hostYellow = true;
@@ -556,6 +608,17 @@ int main() {
   CHECK(gpioEvents.size() >= 3);
   for (size_t i = 0; i < gpioEvents.size(); ++i)
     CHECK(!gpioEvents[i].blackAsserted);
+  // USB camera check is available without a handheld ACK / READY input.
+  setYellow(false);
+  send("V 1\n");
+  CHECK(fbState == FB_VISUAL_RUN && !hostBlack && fbLastId == 0);
+  CHECK(contains("trial_id=unchanged"));
+  send("C 1\n");
+  CHECK(fbState == FB_IDLE && !hostBlack);
+  CHECK(pwmEvents[pwmEvents.size() - 2].duty == 0 && pwmEvents[pwmEvents.size() - 1].duty == 0);
+  CHECK(fbLastId == 0);
+  nextVisualId = 2;
+  setYellow(true);
   resyncAndReady();
 
   successfulTrials();
@@ -563,6 +626,7 @@ int main() {
   malformedResultCases();
   commandFailureCases();
   payloadAndEarlyEdgeCases();
+  cameraVisibleLedCheck();
 
   puts(BLACK_USE_NPN
            ? "feedback public state-machine integration (NPN): ok"

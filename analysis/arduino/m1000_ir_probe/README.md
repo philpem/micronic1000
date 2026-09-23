@@ -10,8 +10,9 @@ arduino-cli compile --fqbn arduino:avr:uno \
   analysis/arduino/m1000_ir_probe
 ```
 
-The command-line define overrides the source default. Upload the same build
-to the Uno. The [current physical-test handoff](../../../doc/re-notes/ir-feedback-protocol.md#current-handoff-next-physical-trial)
+Direct TTL is also the source default, so an IDE upload uses the current
+bench wiring. Upload the same build to the Uno. The
+[current physical-test handoff](../../../doc/re-notes/ir-feedback-protocol.md#current-handoff-next-physical-trial)
 gives the next ID, scope setup, measurements and result fields.
 
 ## Combined feedback harness (default)
@@ -26,11 +27,11 @@ trials in one burn. See the complete [wiring, command and result guide](../../..
 At the top of `m1000_ir_probe.ino`, select exactly one black-command wiring:
 
 ```cpp
-#define BLACK_USE_NPN 1  // external NPN, existing wiring
-// #define BLACK_USE_NPN 0  // direct 5 V TTL: D7 -> black / pin 5
+#define BLACK_USE_NPN 0  // direct 5 V TTL: D7 -> black / pin 5
+// #define BLACK_USE_NPN 1  // external NPN transistor instead
 ```
 
-`BLACK_USE_NPN=1` is the default and preserves the existing NPN interface:
+`BLACK_USE_NPN=1` selects the alternative NPN interface:
 D7 low releases black and D7 high commands it low. `BLACK_USE_NPN=0` is the
 direct 5 V TTL option: wire **D7 directly to black / pin 5**, omit the NPN and
 its base resistors, and use D7 high for idle/released and D7 low for command.
@@ -75,6 +76,16 @@ This silent probe checks command/result communication before emitting IR.
 Wait for `RESULT` and fresh `READY` before each new trial. `C 1` cancels the
 Arduino side; send `R` to resynchronise after any error. A ROM diagnostic
 error is recorded as data and does not establish an IR framing result.
+
+To check that the IR emitters produce light visible to a camera, send `V <id>`
+with a fresh, increasing visual ID (for example, `V 1`). It runs from idle over
+USB without a handheld transaction or a READY handshake. The Uno pulses
+channel A on D5 at 10% PWM for 1.5 seconds, then channel B on D6 for 1.5
+seconds, and turns both off. Point the camera at the emitters during each
+serial-labeled interval. Send `C <id>` to stop early; completion or cancellation
+returns to quiet operation and prints `READY` after the normal idle settling
+period when the yellow input is high. Visual IDs have their own counter and do
+not consume ROM trial IDs. This check does not assert BLACK or contact the ROM.
 
 For reproducible batches and timestamped JSONL logs, use
 `analysis/ir_feedback.py` as documented in the guide. Keep this entire sketch

@@ -9,7 +9,8 @@
 #include <string.h>
 
 enum FeedbackCommand : uint8_t {
-  FB_NONE, FB_TRIAL, FB_CANCEL, FB_RESYNC, FB_BLACK_LOW, FB_BLACK_RELEASE, FB_BAD
+  FB_NONE, FB_TRIAL, FB_CANCEL, FB_RESYNC, FB_BLACK_LOW, FB_BLACK_RELEASE,
+  FB_VISUAL_TEST, FB_BAD
 };
 
 enum FeedbackMode : uint8_t { FB_SILENT, FB_STIMULUS };
@@ -89,6 +90,7 @@ inline bool fbHex(const char *text, uint8_t *dst, uint8_t *length) {
 //   C id
 //   R
 //   B id L|R
+//   V id       bounded camera-visible check: LED A then LED B
 // payload is even-length hex or '-'. With flag=-- it is literal MSB-first raw
 // bytes; otherwise it follows the candidate flag. The fields are logged verbatim.
 class FeedbackLineParser {
@@ -129,6 +131,9 @@ class FeedbackLineParser {
     if (token || !count) return FB_BAD;
     uint32_t parsedId = 0;
     if (count == 1 && !strcmp(parts[0], "R")) return FB_RESYNC;
+    if (count == 2 && !strcmp(parts[0], "V") && fbUnsigned(parts[1], 0xFFFFFFFFUL, &parsedId)) {
+      *id = parsedId; return FB_VISUAL_TEST;
+    }
     if (count == 2 && !strcmp(parts[0], "C") && fbUnsigned(parts[1], 0xFFFFFFFFUL, &parsedId)) {
       *id = parsedId; return FB_CANCEL;
     }

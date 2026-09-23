@@ -7761,3 +7761,24 @@ names renamed, 144 unplated functions plated)
   LED light at the top V24 receive window with the existing ROM/sketch.
   Prove optical delivery at the target plane before more framing/phase
   permutations; internal detector receipt remains a separate question.
+
+### 2026-09-23 — Repeated early R stimulus and optical-hardware update
+
+* CONFIRMED (owner serial report): R/X ID 24 repeated the ID-21
+  complemented `7Eh 03h` candidate at START+7 ms. Its valid 30-byte
+  feedback returned mode 2/error 7, stock `A=EEh`, `F=6Dh` (carry),
+  `LINK_STATUS` probe/before/after A0h/80h/C0h and 3 us maximum software
+  lateness. ID 21 had the same status and error. All reported R trials
+  (9, 10, 20–24) have `after=C0h`, including silent and late controls;
+  the bit-6 rise is not proven optical. No new scope CSV was supplied.
+* CONFIRMED (owner hardware): the SFH213 photodiode previously used as a
+  scope probe is now part of the Arduino IR transponder. There is no
+  documented spare optical-sensor output in feedback mode. The owner
+  suggests viewing the IR LEDs with a camera. A USB-only, low-duty
+  sustained LED self-test will make camera observation practical without
+  another ROM burn; light at the handheld detector remains unmeasured.
+* Implemented an Arduino-only `V <visual_id>` check: 10% PWM for 1.5 s
+  each on A/D5 then B/D6, black released, with a separate visual-ID
+  sequence and `C <visual_id>` cancellation. The updated sketch defaults
+  to direct TTL for the owner's installed wiring. Host state-machine tests
+  and the Elegoo Uno R3 build pass; the ROM image is unchanged.
