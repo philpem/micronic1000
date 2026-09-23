@@ -18,7 +18,7 @@ from ir_feedback import SerialLines
 
 UINT32_MASK = 0xFFFFFFFF
 UINT32_HALF = 0x80000000
-TX_RE = re.compile(r"(?:^|\s)tx_start_us=(\d+)(?:\s|$)")
+TX_RE = re.compile(r"(?:^|\s)tx_start_us=(\d+)(?=\s|\]|$)")
 SWAP_RE = re.compile(r"(?:^|\s)swap=(\S+)(?:\s|$)")
 YELLOW_RE = re.compile(
     r"^#\s*STOCK_YELLOW\s+rise_us=(\d+)\s+low_us=(\d+)(?:\s|$)"

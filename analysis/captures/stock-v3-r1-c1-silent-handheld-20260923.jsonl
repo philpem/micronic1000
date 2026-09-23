@@ -1,0 +1,6 @@
+{"utc": "2026-09-23T17:55:21.963760+00:00", "monotonic_s": 902778.996168281, "direction": "rx", "line": "M1000 IR probe. Expectiock-context silent control: D8 yellow event capture"}
+{"utc": "2026-09-23T17:55:21.963861+00:00", "monotonic_s": 902778.996241637, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-23T17:55:23.555941+00:00", "monotonic_s": 902780.588335239, "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-23T17:55:23.560005+00:00", "monotonic_s": 902780.592395991, "direction": "rx", "line": "MODE: LISTEN ONLY -- not transmitting, sweep frozen."}
+{"utc": "2026-09-23T17:55:23.564135+00:00", "monotonic_s": 902780.596526558, "direction": "rx", "line": "  stock-context silent control: D8 yellow event capture"}
+{"utc": "2026-09-23T17:55:23.568195+00:00", "monotonic_s": 902780.60058108, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}

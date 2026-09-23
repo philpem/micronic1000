@@ -63,10 +63,103 @@ rather than the legacy automatic rule to discriminate hypotheses. Start
 with phase -2/8 or +2/8 for setup/hold around the first or second logical
 clock edge respectively; inverted dark-idle boundaries remain a confound.
 See the [discrimination sequence](../re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention).
-**OPEN:** run the silent V24 control and matched stimulated attempts on
-hardware, determine whether stock RX is entered and whether its return has
-carry set, and check any event drops. A post-receive pulse is not a
-validated frame; LED roles, physical polarity and framing remain open.
+The [round-one worksheet](../re-notes/stock-context-v3-round1.md)
+is the current capture record; PRs #22–#24 merged the feedback-v1, v2 and
+v3 instrumentation in order.
+**Current bench result:** owner installed revision-2 ROM00. C0 recorded the
+3,636-us initialization marker and a V24 attempt, but its main log missed
+the Uno boot banner. Fixed F0/F1 LED-role trials both captured handheld
+outgoing bursts and no stock-RX return marker; the owner saw
+`8000 (238/001)` / `8040 (238/001)` errors. The +2/8-cell timing path
+was found distorted on the scope before any handheld phase-3 trial;
+its Uno scheduler was repaired, and the replacement GPIO waveform is now
+scope-qualified with yellow on pod D4. Details and raw captures are in
+the [round-one worksheet](../re-notes/stock-context-v3-round1.md).
+The first phase-3 V24 attempt had no RX return marker and ended with
+`8000 (238/001)` / `8040 (238/001)`. The repeated F2S attempt used
+100 handheld-triggered scope segments spanning both groups of about
+50 retries. Uno D2/D3 activity appears in 24 segments; four 916–920-us
+yellow lows follow Uno transmissions and match the instrumented
+`Link_BlockRx` carry-set return path. The owner still saw `8000
+(238/001)` then `8040 (238/001)`, "Line Failure". The scope caught
+one yellow fall after the Uno data emission. This is a receive-call
+return, not proof of a valid frame or session. The [round-one worksheet](../re-notes/stock-context-v3-round1.md)
+has the raw capture filenames and timings.
+**C1 silent control complete:** a verified LISTEN_ONLY build captured
+100 handheld retries in two groups of 50, with no yellow pulse or
+event drop. The matching scope CSV shows all 100 handheld bursts, zero
+Uno D2/D3 rises and no yellow D4 low sample. The owner again saw
+`8000 (238/001)`, "Plinth not connected", then `8040 (238/001)`,
+"Line failure". The four F2S receive-return markers are therefore
+associated with the transmitting condition in this comparison.
+**OPEN:** discriminate optical role/level and return framing. The
+current candidate has no demonstrated accepted frame; the intermittent
+carry-set returns do not identify which bits, if any, were received.
+An F3 trial inverted only the Uno clock output level at phase +2/8-cell.
+The scope verified data setup/hold around the opposite physical clock
+edge, then recorded 100 handheld retry segments with 21 showing Uno
+output and no yellow pulse. The owner saw the same errors. F2S had
+four carry-set markers with 18 complete post-burst Uno transmissions;
+F3 had none with 14. This suggests clock polarity matters but does not
+resolve a sparse, free-running comparison. A handheld-paced fixed
+candidate using the F2S polarity is the next timing discriminator.
+The F4 paced run requested 4 ms after each handheld burst. Its 100
+ordinary replies had no yellow marker. One anomalous reply after a
+short burst fragment started 32.58 ms after the last handheld edge and
+was followed by a 916-us carry-set marker. The scope saw the second
+transmission begin about 36.4 ms after its handheld trigger; the
+predicted yellow return was beyond the 45-ms post-trigger window.
+This suggested a later response window as a testable timing hypothesis,
+without establishing an accepted frame. F5 then gave 100 regular
+30-ms replies and F6 swept 30–36 ms across 100 replies; each requested
+delay was achieved 14–15 times. Neither run produced a yellow marker
+or a change from `8000` / `8040`. Scope captures independently show
+regular late Uno output and no D4 low. **Discard delay alone as the
+explanation** for the F2S/F4 markers. Free-running emission, the
+abnormal F4 transition, and receive state still need discrimination;
+none of these is established as the cause.
+F7 tested sparse pacing directly: the Uno replied 33 ms after every
+third handheld burst, sending 34 replies during 100 retries. All 34
+reply segments produced a 916–924-us yellow carry-set marker, while
+the handheld still displayed `8000` then `8040`. The scope independently
+recorded 34 Uno outputs and 34 yellow lows in 100 trigger segments.
+Sparse pacing therefore makes the receive-call return repeatable, but
+does not establish frame or session acceptance. The decisive next
+question is which electrical/framing condition makes the receive call
+return carry clear and whether the handheld advances. Keep the F7
+cadence fixed when comparing one candidate setting at a time; the
+35-ms outlier pulse requires separate interpretation. See the worksheet.
+F8 retained the sparse cadence and effective stuffing mode 1 while
+changing the opening flag to `81`. It produced 34 timed optical replies
+in 100 handheld-triggered segments but no yellow return marker; the
+owner saw the same errors. The `7E`/`81` flag choice therefore
+discriminates the observed carry-set return under this configuration.
+Next hold the `7E` F7 configuration fixed and compare explicit stuffing
+modes; do not infer that either flag yields a valid frame.
+F9 (stuffing mode 0) and F10 (mode 2) each sent 34 sparse replies with
+no yellow low; the scope independently found 34 Uno output segments
+and zero yellow lows in each 100-trigger run. The owner reported the
+same `8000` / `8040` errors. Under these tested settings, only F7's
+`7E` plus effective stuffing mode 1 produces a receive-call return
+marker. Replace the now-completed stuffing comparison with controlled
+frame-closure and content comparisons; retain F7's cadence and
+physical settings. Do not promote this marker to frame acceptance.
+F11 added a closing `7E` flag and saw 50 short one/two-cell fragments
+alongside 100 normal handheld bursts. Those fragments shifted the
+original every-third counter to 50 replies, with no yellow marker.
+F11b ignored fragments shorter than 9 cells, restoring 34 replies
+across 100 normal bursts; the scope also found 34 output segments and
+zero yellow lows. The owner reported the same errors. Under the
+restored cadence, the closing flag does not preserve F7's return
+marker. The origin of the short fragments is unresolved. Next compare
+content while retaining F7's open `7E`/stuffing-mode-1 configuration.
+The scope sampling audit qualified the edge-timing claims separately:
+the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
+at 50 us/row, so use it for millisecond placement and yellow-event
+presence only. New short F2/F3 acquisitions measured 20/10 MSa/s
+and reproduced the earlier GPIO setup/hold ranges on a 2-us CSV
+grid. See the worksheet's scope sampling audit and the saved SCPI
+profile before comparing any future bit-edge measurements.
 
 **Previous IR round:** feedback-v2 is burned and has completed its first
 P/H/J/K handheld run. It retains v1 W/R/P/G and adds H/J/K controller-state

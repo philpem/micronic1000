@@ -8103,3 +8103,299 @@ names renamed, 144 unplated functions plated)
 * Isolated event-enabled Uno builds passed: FREE_TX 9,708/918 bytes
   flash/SRAM, RX_NARROW 9,616/909. ELF banners verified; stale shared-cache
   output was discarded. Neither verification image was uploaded.
+
+
+## 2026-09-23 — merged IR instrumentation stack; opened v3 bench round
+
+* PRs #22, #23 and #24 merged into master in order, preserving their
+  individual commits and focused review diffs. The v3 instrumentation is
+  merged as tooling; handheld acceptance has not been observed.
+* Started a new branch from merged master with the first-run worksheet for
+  the v3 burn, silent initialization control, matched LED-role trials and
+  subsequent framing discrimination. Results and logs remain PENDING.
+
+## 2026-09-23 — stock-context v3 first handheld control
+
+* Locally verified revision-2 ROM00 image MD5 and byte sums. Owner reports
+  the ROM installed; no EPROM readback result was supplied. Compiled C0,
+  F0 and F1 Uno builds; uploaded and verified C0, then F0 on the connected
+  Uno. C0 startup banner was observed in a separate short check.
+* Owner saw `TESTING` during cold boot and later selected `FOO` from
+  `V24 ADAPTOR` / `LOCAL_LINK`. The connection failed with screen code
+  `8000 (238/001)`; no message text was supplied.
+* C0 capture `analysis/captures/stock-v3-r1-control-20260923T1716Z.jsonl`
+  records a 3,636-us yellow initialization low, 51 outgoing burst reports,
+  and no reported event drops or receive-width pulses. The logger did not
+  capture a complete Uno banner, so this control is partial and requires a
+  fresh bannered repetition before treating RX silence as evidence.
+* F0 capture `analysis/captures/stock-v3-r1-f0-20260923T1719Z.jsonl` has
+  the full fixed-candidate banner and free-running Uno TX reports, but no
+  handheld outgoing bursts or yellow pulses. The handheld operation was
+  not repeated within that window.
+* A subsequent F0 capture with the owner repeating the V24 operation is
+  `analysis/captures/stock-v3-r1-f0-handheld-20260923.jsonl`: 378 complete
+  fixed-candidate TX reports, 250 handheld outgoing burst reports in three
+  clusters, and no yellow RX-width pulse or event-drop report. Reported
+  maximum software/applied emission lateness was 19/31 us. The owner saw
+  `8040 (238/001)` after one attempt, then `8000 (238/001)` followed by
+  `8040 (238/001)` after the next. No screen message text or scope trace was
+  supplied. This is a negative marker observation, not proof of any one
+  optical or framing failure. F1 was uploaded and verified; its handheld
+  trial awaits coordination with the owner.
+* No Ghidra finding was established or changed in this preparation pass.
+
+## 2026-09-23 — stock-context v3 swapped-role F1 trial
+
+* Uploaded and verified the fixed FREE_TX build with `STOCK_TX_SWAP=1`.
+  The complete `analysis/captures/stock-v3-r1-f1-handheld-20260923.jsonl`
+  log has the v3 startup banner, 223 complete Uno TX reports, and 111
+  handheld outgoing burst reports in two clusters. No yellow event or
+  event-drop report occurred; maximum software/applied emission lateness
+  was 19/29 us.
+* Owner saw `8000 (238/001)` followed by `8040 (238/001)`; the latter
+  screen said "Line Failure". This matches the F0 screen-code sequence
+  without a stock-RX return marker in either LED-role configuration.
+  Neither result proves that the light arrived at the handheld detector.
+* Selected a fixed `swap=0`, phase-index-3 candidate as the next controlled
+  edge test. The electrical LED levels, content and framing stay as in F0;
+  data setup/hold moves from the first to the second logical clock edge.
+
+## 2026-09-23 — connected-scope qualification of phase-3 Uno emitter
+
+* Owner connected yellow/pin 6 to scope pod D4 in parallel with Uno D8;
+  existing scope labels identify D0/D1 as handheld data/clock and D2/D3
+  as Uno D5/D6. Read-only LXI queries and the scope's HTTP CSV export
+  worked. The scope was stopped at 500 us/div; a remote single acquisition
+  at 5 ms/div captured the full free-running candidate.
+* The first `STOCK_PHASE_IDX=3` build was **not** used on the handheld:
+  its Uno reported about 400-us steady-state emission lateness, and the
+  scope CSV with 2-us row spacing showed a 116-us median clock interval rather than
+  the requested 122 us. Raw pre-fix serial and CSV are under
+  `analysis/captures/stock-v3-phase3-before-fix-*`.
+* Replaced the expensive generic emitter queue for this positive phase
+  with a chronological fast path: the preceding cell's data fall is
+  scheduled before the next clock rise. The same 88 clock and 16 data
+  transitions remain in the host chronology test. All 25 focused emitter
+  tests passed; the final fixed Uno build compiled and uploaded with
+  verification.
+* The final 25,000-row scope CSV at 2 us/row records 88/88 D2 clock
+  pulses and 16/16 D3 data pulses. Clock intervals are 116–128 us with
+  122-us median; each data pulse straddles the second clock edge with
+  32–36-us setup and 40–46-us hold. D4 yellow stayed high in this idle
+  capture. Thirty complete Uno TX reports show at most 18-us pre-write
+  and 26-us post-write software lateness. CSV, screenshot and serial log
+  are `analysis/captures/stock-v3-phase3-ready-*`. This qualifies GPIO
+  timing only; optical delivery and stock receive remain untested for F2.
+
+## 2026-09-23 — phase-3 handheld trial and segmented scope preparation
+
+* The completed F2 phase-3 trial used the fixed `swap=0`, `7Eh`, content-2
+  build. `analysis/captures/stock-v3-r1-f2-phase3-handheld-20260923.jsonl`
+  contains 292 complete Uno TX reports and 89 handheld outgoing bursts in
+  two clusters. There is no yellow RX-width pulse or event-drop report;
+  maximum pre-write/post-write software lateness was 14/26 us. The owner
+  reported `8000 (238/001)` followed by `8040 (238/001)` again.
+* The scope, triggered once on handheld clock D1, captured a 50-ms window
+  with 17 handheld clock pulses and five handheld data pulses. Uno D2/D3
+  did not transition in that window; yellow D4 stayed high. The CSV is
+  `analysis/captures/stock-v3-r1-f2-phase3-handheld-keysight.csv.gz`.
+  It cannot exclude Uno bursts in the other retry windows.
+* Verified the scope's segmented-memory path without handheld activity:
+  `:ACQ:MODE SEGM`, three D2-triggered segments, all-segment HTTP CSV
+  export (`analysis/captures/stock-v3-segmented-export-check.csv.gz`), and
+  SCPI tags 0, 250.022, 500.037 ms. A repeated F2 run will trigger on
+  handheld D1 across many segments to test optical-stimulus overlap before
+  changing physical polarity or framing.
+
+## 2026-09-23 — segmented phase-3 trial
+
+* Repeated the repaired phase-3 fixed candidate while the scope captured
+  100 handheld-clock-triggered segments exported at 25 us/row. The two sets of
+  50 retry bursts were separated by 1.301 s. Uno D2/D3 activity appeared
+  in 24 segments, including complete post-burst transmissions. The scope
+  captured one yellow D4 falling edge about 0.55 ms after the last Uno
+  data transition in its segment.
+* The serial log recorded four yellow lows of 916–920 us, each starting
+  about 11.28–11.29 ms after a preceding Uno TX start. This matches the
+  instrumented `Link_BlockRx` carry-set return width. The owner still
+  reported `8000 (238/001)` then `8040 (238/001)`, "Line Failure".
+  Raw records: `analysis/captures/stock-v3-r1-f2s-segmented-handheld-20260923.jsonl`
+  and `analysis/captures/stock-v3-r1-f2s-segmented-keysight.csv.gz`.
+  No valid received frame or session is established by these markers.
+* Uploaded a verified LISTEN_ONLY build and armed a new handheld-triggered
+  scope run for the C1 silent control. The owner left black/pin 5 on Uno
+  D7, which remains an undriven input in the stock-context builds.
+  No handheld operation was recorded in either C1 serial window. The
+  scope filled 128 segments with sporadic triggers but no complete
+  handheld burst and no yellow low. C1 therefore remains open; see
+  the worksheet for the raw files.
+
+## 2026-09-23 — completed silent control
+
+* With the verified LISTEN_ONLY build still loaded, the owner repeated
+  FOO / V24 ADAPTOR / LOCAL_LINK. The serial log has 100 handheld bursts
+  in two groups of 50, separated by about 2.122 s, and no yellow event
+  or event-drop report. The scope independently has 100 handheld-triggered
+  segments, each with 21 or 22 D1 rises, zero Uno D2/D3 rises, and no
+  yellow D4 low sample. Captures:
+  `analysis/captures/stock-v3-r1-c1-silent-handheld-c-20260923.jsonl`
+  and `analysis/captures/stock-v3-r1-c1-silent-handheld-c-keysight.csv.gz`.
+* Owner saw `8000 (238/001)`, "Plinth not connected", followed by
+  `8040 (238/001)`, "Line failure". The F2S short yellow markers are
+  associated with the transmitting condition; no accepted frame or
+  working session has yet been observed.
+
+## 2026-09-23 — opposite clock level in stock context
+
+* Built and verified F3 with only `STOCK_CLOCK_INVERT=1` changed from
+  F2S. A two-segment idle scope CSV confirmed all 16 data pulses
+  straddled the opposite physical clock edge with 30–38 us setup and
+  42–48 us hold. The Uno startup banner named the build settings and
+  maximum observed post-write lateness was 22 us in the idle sample.
+* In the handheld run, 100 scope segments included 21 with Uno output,
+  14 of those complete after the handheld burst, and no D4 yellow low.
+  The serial log had 101 burst reports including a two-cell fragment,
+  1,049 complete TX reports, no yellow event or drop report, and at most
+  16/28-us pre/post-write lateness. The owner reported the same
+  `8000 (238/001)` / `8040 (238/001)` errors. Files are named
+  `analysis/captures/stock-v3-f3-clockinv-idle-*` and
+  `analysis/captures/stock-v3-r1-f3-clockinv-handheld-*`.
+* This comparison is suggestive, because F2S had four carry-set
+  markers with 18 complete post-burst transmissions and F3 had none
+  with 14. A handheld-paced fixed candidate at the F2S polarity is
+  the next timing discriminator.
+
+## 2026-09-23 — handheld-paced reply timing
+
+* The verified F4 build used the F2S candidate in `RX_NARROW=1` with a
+  requested 4-ms reply delay after each handheld burst. One hundred
+  ordinary serial reports achieved 4 ms and had no yellow pulse.
+  At the transition between retry groups, an eight-cell fragment was
+  followed by a 17-cell report delayed to 32.58 ms; 11.888 ms after
+  that TX start, yellow went low for 916 us. The owner still saw
+  `8000` then `8040`. Its 100-segment scope CSV shows 99 regular
+  replies starting about 6.6 ms after the handheld trigger; the
+  delayed second reply in segment 51 starts about 36.4 ms after the
+  trigger, with its yellow return expected after the 45-ms scope
+  window. The serial and scope files are
+  `analysis/captures/stock-v3-r1-f4-paced-handheld-*`.
+* Built and uploaded a verified F5 paced variant requesting 30 ms,
+  keeping F2S polarity and frame settings. The banner was captured in
+  `analysis/captures/stock-v3-f5-paced30ms-idle-uno.jsonl`. A 100-ms
+  segmented scope window and serial logger were armed for its handheld
+  trial; no outcome is inferred before that trial completes.
+
+## 2026-09-23 — late paced replies reject delay-only explanation
+
+* F5 completed with 100 handheld bursts and 100 regular 30-ms replies.
+  No yellow event or drop occurred. The scope recorded 51 segments at
+  100 ms each, with Uno D2 output beginning about 32.6 ms after the
+  handheld trigger and D4 high throughout. The owner again saw `8000`
+  then `8040`.
+* Added a compile-time 30–36-ms delay sweep for the fixed `RX_NARROW`
+  candidate, guarded so other modes cannot accidentally use it. Its
+  index advances once per reported burst, and each report prints the
+  requested and achieved delay. The host test checks sweep progression
+  and wrap; all 26 focused emitter tests passed. The F6 build compiled,
+  uploaded with verification, and printed the sweep settings at startup.
+* F6 completed with 100 handheld bursts; all seven requested delays
+  were achieved 14–15 times each. No yellow event or drop occurred.
+  Fifty-two scope segments cover the late Uno output, starting
+  32.55–38.60 ms after the handheld trigger, with D4 high throughout.
+  The owner again saw `8000` then `8040`. F5/F6 reject the simple
+  delay-only explanation for F4's abnormal return marker. The effects
+  of free-running emission and the abnormal transition remain open.
+  Raw captures are `analysis/captures/stock-v3-r1-f5-*` and
+  `analysis/captures/stock-v3-r1-f6-*`.
+
+## 2026-09-23 — scope acquisition-rate correction
+
+* The owner flagged the scope's 78.1 kSa/s indication. SCPI confirmed
+  78,100 samples/s for the F6 128-segment, 10-ms/div setup. Its CSV
+  export is 50 us per row, so it cannot support microsecond bit-edge
+  timing or reliable decoding of 122-us cells. The F5/F6 conclusions
+  use millisecond reply placement and absence of a roughly 916-us
+  yellow pulse, which this scale can resolve within captured windows.
+* A re-acquisition at 128 segments and 5 ms/div reported 156 kSa/s;
+  the 2,000-row CSV export is 25 us/row. This was not measured on the
+  historical F2S/C1/F3/F4 acquisitions, so their CSV row spacing
+  must not be described as the instrument sample period.
+* Repeated the F2 edge waveform in real-time mode at a measured
+  20 MSa/s and the F3 inverted-clock waveform in two-segment mode at
+  10 MSa/s. Both exported at 2 us/row and reproduced their respective
+  falling-edge and rising-edge data setup/hold ranges. Captures:
+  `analysis/captures/stock-v3-phase3-rate-qualified-keysight.csv.gz`,
+  `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
+  The SCPI profile is in
+  `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
+* Stopped the scope and restored the verified LISTEN_ONLY Uno build
+  after this rate check. No handheld operation was requested.
+
+## 2026-09-23 — F7 sparse replies reproduce receive return
+
+* Added a guarded `STOCK_REPLY_EVERY_N` option for fixed `RX_NARROW`
+  builds, plus a reported `reply_sent` field. Built and verified F7
+  with F2S optical settings, 33-ms reply delay and every-third-burst
+  pacing. The Arduino logged 100 handheld bursts, 34 replies, 66
+  skips, 34 yellow lows of 916–924 us, and no event drops. The owner
+  saw `8000` then `8040`, same as before.
+* The 100-segment scope export contains 34 Uno transmissions and 34
+  yellow lows in the same segments. The scope acquired at 97.7 kSa/s
+  and exported at 40 us/row; this supports pulse detection and
+  millisecond placement, not bit decoding. One yellow pulse was
+  delayed by about 22.5 ms relative to the other 33 and is retained
+  as an outlier. Sparse pacing reproduces a carry-set receive return,
+  but frame acceptance remains unproven.
+* Fixed the serial analyzer's `tx_start_us` match for bracket-terminated
+  paced `burst` reports; a focused regression test now covers it.
+
+## 2026-09-23 — F8 flag comparison suppresses return marker
+
+* Built and verified F8 with F7's 33-ms every-third-burst cadence,
+  content and optical settings, changing the emitted opening flag
+  from `7E` to `81`. Explicit stuffing mode 1 preserved F7's
+  effective `wire_stuff=1`. The owner again saw `8000` then `8040`.
+* The Arduino logged 100 handheld bursts, 34 replies, no yellow low
+  and no event drop. The 100-segment scope export independently shows
+  34 Uno output segments and no yellow low. At the measured 97.7 kSa/s
+  acquisition rate and 40-us export grid, a roughly 916-us return
+  pulse would be visible. Flag choice affects the marker in this
+  configuration; no valid frame or carry-clear return is established.
+* Restored and verified the LISTEN_ONLY Uno build after F8. The scope
+  remains stopped.
+
+## 2026-09-23 — F9/F10 stuffing comparison
+
+* Kept F7's `7E` opening flag, 33-ms every-third-burst timing,
+  content and physical settings. F9 disabled stuffing and logged
+  101 handheld burst reports, 34 replies and no yellow low. F10
+  selected stuffing mode 2 and logged 100 bursts, 34 replies and no
+  yellow low. Neither reported event drops. The owner saw `8000`,
+  "Plinth not connected", then `8040`, "line failure", in both runs.
+* Each 100-segment scope capture independently shows 34 Uno output
+  segments and no yellow low. Both acquisitions measured 97.7 kSa/s,
+  exported at 40 us/row, and placed Uno output 33.00–33.04 ms after
+  the last handheld clock rise. F7's carry-set marker appears under
+  the tested `7E`/mode-1 combination; no accepted frame is shown.
+* Restored and verified the LISTEN_ONLY Uno build after F10. The
+  scope remains stopped.
+
+## 2026-09-23 — closing-flag comparison and fragment guard
+
+* F11 added a closing `7E` flag to F7's other frame and optical
+  settings. The Arduino saw 100 normal bursts plus 50 one/two-cell
+  fragments; those fragments advanced the original sparse counter,
+  yielding 50 replies and no yellow return. The scope captured 100
+  handheld-triggered segments, 50 Uno transmissions and no yellow
+  low. The extra clock cells occurred ahead of some normal bursts.
+* Changed the fixed RX_NARROW sparse counter to ignore bursts shorter
+  than 9 cells and added a host regression test. All 27 focused
+  emitter tests passed. F11b then saw 100 normal bursts, 33 short
+  fragments, 34 replies and no yellow return. The scope independently
+  captured 100 segments, 34 Uno transmissions and no yellow low at
+  97.7 kSa/s, 40-us export spacing. The owner reported `8000`,
+  "Plinth not connected", then `8040`, "line failure", in both runs.
+  Closure under the restored cadence did not preserve F7's marker;
+  the fragment origin is still unknown.
+* Restored and verified the LISTEN_ONLY Uno build after F11b. The
+  scope remains stopped.

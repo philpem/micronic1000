@@ -244,6 +244,15 @@
 #ifndef STOCK_REPLY_DELAY_US
 #define STOCK_REPLY_DELAY_US 4000
 #endif
+#ifndef STOCK_REPLY_DELAY_STEP_US
+#define STOCK_REPLY_DELAY_STEP_US 0
+#endif
+#ifndef STOCK_REPLY_DELAY_COUNT
+#define STOCK_REPLY_DELAY_COUNT 1
+#endif
+#ifndef STOCK_REPLY_EVERY_N
+#define STOCK_REPLY_EVERY_N 1
+#endif
 #if (STOCK_TX_SWAP != 0 && STOCK_TX_SWAP != 1) || \
     (STOCK_CLOCK_INVERT != 0 && STOCK_CLOCK_INVERT != 1) || \
     (STOCK_DATA_INVERT != 0 && STOCK_DATA_INVERT != 1)
@@ -270,6 +279,19 @@
 #endif
 #if STOCK_REPLY_DELAY_US < 500 || STOCK_REPLY_DELAY_US > 60000
 #error "STOCK_REPLY_DELAY_US must be 500..60000"
+#endif
+#if STOCK_REPLY_DELAY_COUNT < 1 || STOCK_REPLY_DELAY_COUNT > 32 || \
+    STOCK_REPLY_DELAY_STEP_US < 0 || \
+    STOCK_REPLY_DELAY_US + \
+    (STOCK_REPLY_DELAY_COUNT - 1) * STOCK_REPLY_DELAY_STEP_US > 60000
+#error "STOCK reply delay sweep must contain 1..32 values in 500..60000 us"
+#endif
+#if STOCK_REPLY_DELAY_COUNT > 1 && !(STOCK_FIXED_CANDIDATE && RX_NARROW)
+#error "STOCK reply delay sweep requires fixed RX_NARROW"
+#endif
+#if STOCK_REPLY_EVERY_N < 1 || STOCK_REPLY_EVERY_N > 32 || \
+    (STOCK_REPLY_EVERY_N > 1 && !(STOCK_FIXED_CANDIDATE && RX_NARROW))
+#error "STOCK_REPLY_EVERY_N must be 1..32 and requires fixed RX_NARROW"
 #endif
 
 // Stage 9: narrowed receive sweep.  The first handheld-paced RX_SWEEP run
@@ -919,11 +941,32 @@ void buildReply(uint8_t content) {
 uint8_t sweepContent = 1, sweepDelay = 0, sweepClock = 0, sweepInvert = 0;
 uint8_t sweepSwap = 0;   // 1 exchanges physical D5/D6; receiver roles unconfirmed
 unsigned long achievedUs = 0;   // reply delay actually achieved, us
+uint8_t stockReplyDelayIndex = 0;
+uint8_t stockReplyBurstIndex = 0;
+bool stockReplySent = false;
+uint32_t stockReplyDelayUs() {
+  return (uint32_t)STOCK_REPLY_DELAY_US +
+      (uint32_t)stockReplyDelayIndex * STOCK_REPLY_DELAY_STEP_US;
+}
+bool stockReplyDue(uint8_t observedCells) {
+  // The handheld's normal retries have 17/22 cells. Ignore the 1/2-cell
+  // fragments observed ahead of some retries so they cannot shift a sparse
+  // cadence or trigger a reply of their own.
+  if (observedCells < 9) return false;
+  bool due = stockReplyBurstIndex == 0;
+  if (++stockReplyBurstIndex >= STOCK_REPLY_EVERY_N)
+    stockReplyBurstIndex = 0;
+  return due;
+}
 int8_t  txPhaseEighths = -2;    // data-rise minus clock-rise, in 1/8 cells
                                 // (-2 is the nominal 30 us data lead)
 
 void advanceSweep() {
 #if STOCK_FIXED_CANDIDATE && (FREE_TX || RX_NARROW)
+#if RX_NARROW && STOCK_REPLY_DELAY_COUNT > 1
+  if (++stockReplyDelayIndex >= STOCK_REPLY_DELAY_COUNT)
+    stockReplyDelayIndex = 0;
+#endif
   return;
 #endif
 #if LADDER_TEST
@@ -1162,6 +1205,28 @@ void emitSimpleCells(uint32_t startUs, uint8_t pre, uint8_t total,
   }
 }
 
+// Fast path when each data fall lands before the next cell's clock rise.
+// The generic event queue meets chronology but is too expensive on a 16 MHz
+// Uno for a full +2/8-cell frame: its work accumulates hundreds of us of
+// lateness. Schedule the previous cell's fall first in the next cell.
+void emitEarlyCrossCellFall(uint32_t startUs, uint8_t pre, uint8_t total,
+                            int32_t dataRise, int32_t dataFall) {
+  const int32_t tail = dataFall - (int32_t)CELL_US;
+  for (uint8_t index = 0; index < total; index++) {
+    uint32_t cell = startUs + (uint32_t)index * (uint32_t)CELL_US;
+    bool wantData = index >= pre && index < pre + frameLen &&
+                    (frameBits[index - pre] ^ sweepInvert);
+    if (index) dispatchTxEvent(cell, tail, 3);
+    dispatchTxEvent(cell, (int32_t)DATA_LEAD_US, 1);
+    if (wantData) dispatchTxEvent(cell, dataRise, 0);
+    dispatchTxEvent(cell, (int32_t)(DATA_LEAD_US + CLK_HIGH_US), 2);
+  }
+  if (total) {
+    uint32_t after = startUs + (uint32_t)total * (uint32_t)CELL_US;
+    dispatchTxEvent(after, tail, 3);
+  }
+}
+
 // The bit-cell emitter, shared by framed replies and pulse tests.  The phase
 // setting is absolute: txPhaseEighths is data-rise minus clock-rise, in eighths
 // of a cell.  A negative value therefore gives data setup before sampling.
@@ -1190,6 +1255,15 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
       DATA_LEAD_US + CLK_HIGH_US < CELL_US) {
     emitSimpleCells(startUs, pre, total, phaseUs);
     waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
+    txPhysicalDark();
+    return;
+  }
+  if (dataRise > (int32_t)DATA_LEAD_US &&
+      dataRise < (int32_t)(DATA_LEAD_US + CLK_HIGH_US) &&
+      dataFall >= (int32_t)CELL_US &&
+      dataFall - (int32_t)CELL_US < (int32_t)DATA_LEAD_US &&
+      DATA_LEAD_US + CLK_HIGH_US < CELL_US) {
+    emitEarlyCrossCellFall(startUs, pre, total, dataRise, dataFall);
     txPhysicalDark();
     return;
   }
@@ -1774,13 +1848,16 @@ void report(uint8_t n, const uint8_t *bits) {
   printReplyPayload();
   Serial.print(F(" delay_req="));
 #if STOCK_FIXED_CANDIDATE && RX_NARROW
-  Serial.print(STOCK_REPLY_DELAY_US);
+  Serial.print(stockReplyDelayUs());
 #else
   Serial.print(delayUs[sweepDelay]);
 #endif
   Serial.print(F("/")); Serial.print(achievedUs);
   Serial.print(F("us emit_late_max=")); Serial.print(txMaxLatenessUs);
   Serial.print(F(" emit_applied_late_max=")); Serial.print(txAppliedMaxLatenessUs);
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+  Serial.print(F(" reply_sent=")); Serial.print(stockReplySent ? 1 : 0);
+#endif
   Serial.print(F(" swap=")); Serial.print(sweepSwap);
   Serial.print(F(" clk_inv=")); Serial.print(txClockLevelInvert);
   Serial.print(F(" dat_inv=")); Serial.print(txDataLevelInvert);
@@ -1947,6 +2024,14 @@ void setup() {
   Serial.print(F(" pol=")); Serial.print(rxPolIdx);
   Serial.print(F(" content_idx=")); Serial.print(rxContentIdx);
   Serial.print(F(" delay_us=")); Serial.println(STOCK_REPLY_DELAY_US);
+#if RX_NARROW && STOCK_REPLY_DELAY_COUNT > 1
+  Serial.print(F("STOCK_DELAY_SWEEP step_us="));
+  Serial.print(STOCK_REPLY_DELAY_STEP_US);
+  Serial.print(F(" count=")); Serial.println(STOCK_REPLY_DELAY_COUNT);
+#endif
+#if RX_NARROW && STOCK_REPLY_EVERY_N > 1
+  Serial.print(F("STOCK_REPLY_EVERY_N=")); Serial.println(STOCK_REPLY_EVERY_N);
+#endif
 #endif
 #endif
 }
@@ -2020,6 +2105,12 @@ void loop() {
 #if STOCK_CONTEXT_EVENTS
   stockLastReplyStartUs = 0;
 #endif
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+  stockReplySent = false;
+  achievedUs = 0;
+  txMaxLatenessUs = 0;
+  txAppliedMaxLatenessUs = 0;
+#endif
 
   // Reply first, report afterwards.  One Serial line at 115200 is ~4 ms and
   // the LINK_STATUS bit-6-clear wait is about 9.92 ms; printing first would
@@ -2071,9 +2162,13 @@ void loop() {
   }
 #else
   if (n <= SUCCESS_CELLS) {
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+    stockReplySent = stockReplyDue(n);
+    if (stockReplySent) {
+#endif
     unsigned long fire = last +
 #if STOCK_FIXED_CANDIDATE && RX_NARROW
-        STOCK_REPLY_DELAY_US;
+        stockReplyDelayUs();
 #else
         delayUs[sweepDelay];
 #endif
@@ -2106,6 +2201,9 @@ void loop() {
     buildReply(sweepContent);
 #endif
     sendFrame(fire);
+#if STOCK_FIXED_CANDIDATE && RX_NARROW
+    }
+#endif
   }
 #endif
 #endif

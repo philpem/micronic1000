@@ -234,6 +234,17 @@ These additional build flags allow exact replay without changing ROM:
 | `STOCK_STUFFING_MODE` | -1 = historical flag-dependent choice (default); 0 = off; 1 = insert zero after five ones; 2 = insert one after five zeros; explicit modes describe emitted serialized bits |
 | `STOCK_CLOSE_FLAG` | 0 = open (default), 1 = append a raw closing flag after terminal stuffing |
 | `STOCK_REPLY_DELAY_US` | 500..60000; fixed RX_NARROW delay from last observed outbound clock edge |
+| `STOCK_REPLY_DELAY_STEP_US`, `STOCK_REPLY_DELAY_COUNT` | Fixed RX_NARROW only: cycle `COUNT` delays, starting at `STOCK_REPLY_DELAY_US` and adding `STEP_US` after each reported burst; defaults 0 and 1; maximum resulting delay 60000 us |
+| `STOCK_REPLY_EVERY_N` | Fixed RX_NARROW only: transmit on one of every N completed handheld bursts of at least 9 cells; shorter fragments do not advance the sparse counter. Default 1, range 1..32. Each burst report includes `reply_sent=1/0`. |
+
+For a timing sweep with the same emitted frame, set fixed RX_NARROW and
+add `-DSTOCK_REPLY_DELAY_US=30000 -DSTOCK_REPLY_DELAY_STEP_US=1000
+-DSTOCK_REPLY_DELAY_COUNT=7`. The startup banner identifies the sweep;
+each `burst` line prints `delay_req=requested/achieved` in microseconds.
+For a sparse fixed reply comparable to the 250-ms free-running cadence,
+use `-DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3` and leave
+`STOCK_REPLY_DELAY_COUNT=1`. Skipped bursts report `reply_sent=0`,
+achieved delay 0, and no `tx_start_us`.
 
 For independent framing tests, always specify `STOCK_STUFFING_MODE=0`, `1`
 or `2`: the compatibility default `-1` couples stuffing to flag choice.
