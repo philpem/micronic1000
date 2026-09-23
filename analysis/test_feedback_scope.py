@@ -42,6 +42,18 @@ def test_archived_trial8_capture_swaps_clock_and_data_channels():
     assert all(abs(pulse["width_us"] - 76) <= 8 for pulse in result["data"])
 
 
+def test_archived_trial17_capture_contains_payload_candidate():
+    capture = Path(__file__).resolve().parent / "captures" / "feedback-trial17-keysight.csv"
+    result = feedback_scope.measure(capture, 2, 3, 5, 0x7E, 122,
+                                    bytes.fromhex("03"), 1)
+    assert result["samples"] == 2000
+    assert (len(result["clock"]), len(result["data"])) == (21, 8)
+    assert result["sampled_bits"] == "0111111000000011"
+    assert all(abs(period - 122) <= 8 for period in result["clock_intervals_us"])
+    assert all(abs(pulse["width_us"] - 61) <= 8 for pulse in result["clock"])
+    assert all(abs(pulse["width_us"] - 76) <= 8 for pulse in result["data"])
+
+
 def test_mso_packed_capture_measures_complete_candidate(tmp_path):
     capture = tmp_path / "capture.csv"
     rows = ["x-axis,D0-D7", "second,"]

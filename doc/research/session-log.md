@@ -7693,3 +7693,22 @@ names renamed, 144 unplated functions plated)
 * Next: repeat the trial-16 stimulus unchanged as ID 17 with a D5/D6 scope
   capture. This uses the existing ROM and Uno sketch. Candidate framing,
   physical LED roles and optical delivery remain open.
+
+### 2026-09-23 — Scoped candidate-payload repeat, ID 17
+
+* CONFIRMED (owner serial report): G/X ID 17 repeated the `swap=0`,
+  `7Eh 03h` candidate. Valid 30-byte feedback reports ROM sequence 20,
+  mode 4/error 8, probe/before/after E0h/C0h/C0h and 3 us maximum
+  scheduler lateness. The `LINK_STATUS` bit-4 pending wait again expired
+  without calling stock RX.
+* CONFIRMED (owner Keysight CSV): archived `/tmp/IR` as
+  `analysis/captures/feedback-trial17-keysight.csv`, SHA-256
+  `088613cc57d8b688ce7adaf8fbeb5316ae29d3865274578fbfb799a33375f1eb`.
+  Scope D2 carries 21/21 proposed clock pulses and D3 eight/eight data
+  pulses, sampling `7Eh 03h`; rise intervals 117.5–125 us and widths
+  within the documented timing targets. The CSV establishes the waveform
+  at the pod inputs, not the Uno header mapping or optical reception.
+* Next: ask owner to confirm whether D2→Uno D5 and D3→Uno D6 remained
+  connected, then try matched G/S and G/X IDs 18/19 with `pol=1` while
+  retaining sketch `stuff=1`. The sketch complements the whole logically
+  stuffed frame, including the flag, to test the inverted wire sense.

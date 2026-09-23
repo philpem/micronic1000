@@ -17,7 +17,10 @@ error. Matched G pairs 11/12 (`swap=1`) and 13/14 (`swap=0`) all timed out
 waiting for `LINK_STATUS` bit 4 (error 8) with an opening `7Eh` alone.
 The matched `swap=0` G trials 15/16 added candidate payload `03h`; both
 again timed out with error 8 and `E0h/C0h/C0h` probe/before/after status.
-Trial 16 reports 3 us maximum scheduler lateness, but has **no scope trace**.
+Trial 16 has no scope trace. Its unchanged repeat, trial 17, also returned
+error 8. The trial-17 Keysight CSV independently shows the intended
+`7Eh 03h` candidate at scope D2/D3 with all digital timing targets met;
+the pod-to-Uno-header mapping for this capture awaits owner confirmation.
 **OPEN:** optical delivery, physical LED roles and receive framing remain
 unproved. The one-burn ROM and USB sketch stay in place.
 `emit_start_us` marks scheduler entry about 256 us before the first edge;
@@ -32,39 +35,53 @@ compare physical edges in CSV rather than software interval length.
    trial 6 used scope pod **D2→Uno D5, D3→Uno D6**; verify and record that
    mapping again before capturing trial 17. For `swap=0`, D5 is the proposed
    clock and D6 the proposed data. Trigger on **D6 data rising** with enough
-   pre-trigger for the five earlier D5 lead clocks. Capture at least 3 ms
+   pre-trigger for the five earlier D5 lead clocks. Capture at least 4 ms
    around the stimulated burst; export Keysight `x-axis,D0-D7` CSV at
    2.5 us/sample or finer. A silent control has no D5/D6 pulse train.
-3. Open serial at 115200 baud; send `R`, wait for `READY`. Repeat the
-   trial-16 **stimulus unchanged**, this time with the scope recording D5
-   and D6. Trial 15 already supplies the matched silent control with the
-   same settings and `E0h/C0h/C0h` baseline. Keep the optical placement
-   unchanged if possible:
+3. Open serial at 115200 baud; send `R`, wait for `READY`. Trial 17
+   completed the scoped repeat of the `7Eh 03h` candidate. Preserve the
+   same optical placement. Test the **complemented wire polarity** next,
+   using a matched silent control before the stimulus, and wait for each
+   `RESULT` and fresh `READY`:
 
    ```text
-   T 17 G X 0 7E 1 0 0 -2 5 7000 03
+   T 18 G S 0 7E 1 0 1 -2 5 7000 03
+   T 19 G X 0 7E 1 0 1 -2 5 7000 03
    ```
 
-   IDs must strictly increase: if 17 was already accepted, substitute the
-   next unused ID. `R` does not reset host ID. ROM sequence is an
-   independent counter; trial 16 had host ID 16 but ROM sequence 18. Mode G
+   Only `pol` changes from the IDs 15–17 configuration. Keep `stuff=1`:
+   the sketch stuffs the logical `7Eh`/payload stream first and then
+   complements every frame bit, yielding physical `81h FCh` for this
+   payload and inverted-HDLC stuffing sense. `pol=1` complements both flag
+   and payload; it is not an independent payload-polarity test. IDs must
+   strictly increase: substitute later unused IDs if needed. `R` does not
+   reset host ID. ROM sequence is an independent counter (trial 17 had
+   host ID 17 and ROM sequence 20). Mode G
    arms the idle receiver and waits up to about 100 ms for `LINK_STATUS`
    bit 4 before invoking stock RX. Compare bit-4 condition, error/status,
    and raw RX A/F/DE/preview with the silent G control. An error or absent
    preview does not establish that no optical bits reached the controller.
-4. Run `python3 analysis/feedback_scope.py path/to/new.csv --clock-bit 2
-   --data-bit 3 --payload 03 --stuff 1` if pod D2 is physically on Uno D5
-   and D3 on Uno D6; adjust the bit arguments to the actual pod wiring.
-   Check **21** proposed clock and **eight** data pulses, sampled candidate
-   cells `0111111000000011` (`7Eh` followed by `03h`). Every clock rise
+4. The trial-17 source is archived at
+   `analysis/captures/feedback-trial17-keysight.csv`. Reproduce its decoding
+   with `python3 analysis/feedback_scope.py
+   analysis/captures/feedback-trial17-keysight.csv --clock-bit 2
+   --data-bit 3 --payload 03 --stuff 1`. Scope D2 carried **21** proposed
+   clock pulses and D3 **eight** data pulses, with sampled candidate cells
+   `0111111000000011` (`7Eh` followed by `03h`). Every clock rise
    interval should be within 8 us of 122 us, clock high within 8 us of 61 us,
    data high within 8 us of
-   76 us, and `emit_late_max` below about 15 us. Compare the G/X result
-   with its G/S control (ID 15) and the prior `swap=1` G pair. A change in the
-   pending condition is evidence of a controller-state response, not by
-   itself accepted framing. If the waveform is correct and G still sees no
-   pending condition, test one new axis at a time; polarity is a useful
-   next comparison, still with a silent control.
+   76 us, and `emit_late_max` below about 15 us; trial 17 met these targets.
+   The trace cannot identify Uno header wiring, emitted IR light, or optical
+   receipt. For trial 19, the expected sampled cells are
+   `1000000111111100` if the D2/D3 channel mapping is unchanged; the data
+   pulse count remains eight. Decode its *physical* complemented cells with
+   `--flag 81 --payload FC --stuff 2`; that decoder stuffing mode describes
+   the wire sense, whereas the sketch uses `stuff=1` **before** complementing
+   the frame. No stuffed cell occurs in this particular candidate. Compare
+   trial 19 with its matched silent
+   control, ID 18. A change
+   in the pending condition is evidence of a controller-state response, not
+   by itself accepted framing.
 
 For each trial preserve the full serial `TRIAL`/`RESULT`/`READY` text, CSV,
 scope pod-to-Uno map, geometry, sketch commit/build setting, and ROM identity.
@@ -924,12 +941,43 @@ handheld. The `7Eh 03h` sequence and clock/data LED identities remain
 SUSPECTED. Mode G tests the controller's post-`LinkFinish` pending gate;
 it is not equivalent to the running OS receive path.
 
-Next, repeat trial 16 with a scope capture, keeping the waveform settings
-identical, before interpreting another guessed framing or polarity change.
-Trial 15 is the existing matched silent control; the exact ID-17 command
-and capture criteria are in the handoff above. Earlier conn13 closing-flag
-tests found no effect on a different retry-timing metric; they did not
-test this G-mode pending gate.
+Trial 17 below repeats the trial-16 stimulus with a scope capture. Trial 15
+remains the matched silent control. Earlier conn13 closing-flag tests found
+no effect on a different retry-timing metric; they did not test this G-mode
+pending gate.
+
+## Scoped candidate-payload repeat, ID 17 — 2026-09-23
+
+**CONFIRMED (owner serial report):** trial 17 repeated the G/X `swap=0`,
+`7Eh 03h` candidate without a closing flag. Its 30-byte record passes the
+zero-sum checksum:
+
+```text
+TRIAL id=17 mode=G kind=X swap=0 flag=7E stuff=1 close=0 pol=0 phase=-2 lead=5 delay_us=7000 cell_us=122 order=MSB payload=03
+RESULT id=17 rom_seq=20 mode=4 err=8 ack_us=474918832 release_us=475618840 start_us=475698876 emit_start_us=475705680 emit_end_us=475708748 emit_late_max=3 raw=A55A0104140008E0C0C0FFFF00000000000000000000000000002200233D
+READY
+```
+
+As in IDs 15/16, probe/before/after are `E0h/C0h/C0h`; the bounded
+`LINK_STATUS` bit-4 pending wait expired (wrapper error 8), so stock RX
+was not invoked. ROM sequence 20 advanced independently of host ID 17.
+Software maximum scheduling lateness is 3 us.
+
+**CONFIRMED (owner Keysight CSV):** `/tmp/IR` was copied to
+`analysis/captures/feedback-trial17-keysight.csv`, SHA-256
+`088613cc57d8b688ce7adaf8fbeb5316ae29d3865274578fbfb799a33375f1eb`.
+At 2.5 us/sample, the decoder sees 21/21 proposed clock pulses on scope
+D2 and 8/8 data pulses on scope D3. The sampled candidate cells are
+`0111111000000011` (`7Eh 03h`). Clock rise intervals span 117.5–125 us;
+clock widths 60–67.5 us; data widths 72.5–77.5 us; data rises 25–32.5 us
+before its paired clock. All fall inside the established digital timing
+limits. This verifies the signal at the **scope pods**. The prior owner
+mapping D2→Uno D5, D3→Uno D6 was measured on trial 6; the mapping for
+trial 17 awaits explicit confirmation. Neither the CSV nor the error
+result measures IR light at the handheld detector. Thus the scoped repeat
+removes an Arduino edge-timing explanation for these *pod signals* but
+cannot distinguish wrong optical delivery from wrong receive framing or
+a receive-gate mismatch.
 
 ## Validation and limits
 
@@ -946,9 +994,9 @@ The direct-TTL silent probe and W witness passed the diagnostic handshake.
 Trial 5 identified the emitter timing defect; trials 6 and 8 verified
 correctly timed digital stimuli for both proposed channel assignments, but
 both W results retained bit-6 timeout. Direct RX controls 9/10 returned the
-same `EEh` byte-wait error. G controls 11–16 all timed out waiting for
-`LINK_STATUS` bit 4, including the unswapped `7Eh 03h` candidate in 15/16.
-The next repeat needs a scope capture of that candidate.
+same `EEh` byte-wait error. G controls 11–17 all timed out waiting for
+`LINK_STATUS` bit 4, including the unswapped `7Eh 03h` candidate in 15–17.
+Trial 17 verified that candidate at the scope pods.
 Actual IR reception remains unproven. `7Eh` and the physical
 LED roles remain hypotheses. Stock poll bodies and ordering are retained,
 but wrapper call overhead, markers and disabled maskable interrupts make

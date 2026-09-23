@@ -95,8 +95,13 @@ Matched G/S and G/X IDs 15/16 added one `03h` payload byte after `7Eh`,
 with `swap=0` and unchanged timing/framing; both timed out at the
 `LINK_STATUS` bit-4 gate (error 8), with identical `E0h/C0h/C0h`
 probe/before/after status. Trial 16 reports 3 us software lateness, but
-there is no scope trace. Next: repeat its exact stimulus as ID 17 while
-capturing D5/D6, per the
+there is no scope trace. Its exact stimulus was repeated as ID 17 with the
+scope connected. That repeat returned error 8 with `E0h/C0h/C0h`, but its
+tracked Keysight CSV verifies 21/21 clock and 8/8 data pulses on scope
+D2/D3, sampled cells `7Eh 03h`, within digital timing targets. The
+trial-17 pod-to-Uno map still awaits owner confirmation and optical light
+is unmeasured. Next: matched G/S and G/X IDs 18/19 with the full frame
+complemented (`pol=1`), as specified in the
 [canonical interface](../re-notes/ir-feedback-protocol.md). Earlier conn10
 role-dependent retries did not prove physical LED mapping or framing. R
 preserves the last accepted host ID.
