@@ -36,7 +36,8 @@ Hook sets:
     LINK_RXD if byte-ready) and halts.  If no burst is accepted, the firmware
     runs its normal error path and nothing is printed.
 
-Usage:  stock_instrument.py [--hook bit6|rx|rxb|rxb2] [-o OUT] [--rom ROM]
+Usage:  stock_instrument.py [--hook bit6|rx|rxb|rxb2]
+                            [--force-coldstart] [-o OUT] [--rom ROM]
 """
 import hashlib
 import pathlib
@@ -54,6 +55,15 @@ DEFAULT_ROM = HERE.parent.parent / "micronic" / "micron1.bin"
 # is a 356-byte all-zero gap with no CALL/JP into it.
 CODE_ORG = 0x7E96
 CODE_END = 0x7FF9
+
+# Both known ROM routes that skip the cold-start body.  The first is the
+# battery-RAM 55h gate on reset; the second is a direct restart helper.
+# Keep the replacement the same size as each guarded JP instruction.
+COLD_ENTRY = 0x01A6
+WARMSTART_JUMPS = (
+    (0x01A3, bytes.fromhex("ca 4d 02")),
+    (0x3812, bytes.fromhex("c3 4d 02")),
+)
 
 # Shared HD61830 helpers.  Register-indexed: port 23h picks the register, port
 # 03h carries the byte.  Same sequence as the stock Lcd_Init / exerciser.
@@ -421,7 +431,7 @@ HOOKS = {
 # RAM).  Do not re-add without understanding 267a fully.
 
 
-def build_image(hook="bit6", rom_path=None):
+def build_image(hook="bit6", rom_path=None, force_coldstart=False):
     if hook not in HOOKS:
         raise SystemExit(f"unknown hook {hook!r}; choose from {list(HOOKS)}")
     src = f"        org 0x{CODE_ORG:04X}\n" + COMMON + HOOKS[hook][0]
@@ -470,6 +480,14 @@ def build_image(hook="bit6", rom_path=None):
         rom[addr:addr + len(expect)] = blob
         print(f"patched {addr:04X}: {expr} -> {target:04X} ({len(blob)} bytes)")
 
+    if force_coldstart:
+        for addr, expect in WARMSTART_JUMPS:
+            if bytes(orig[addr:addr + len(expect)]) != expect:
+                raise SystemExit(
+                    f"{addr:04X} does not hold the expected warmstart jump")
+            rom[addr:addr + 3] = bytes([0xC3]) + COLD_ENTRY.to_bytes(2, "little")
+            print(f"patched {addr:04X}: force coldstart -> {COLD_ENTRY:04X}")
+
     return bytes(rom), sym, orig
 
 
@@ -478,6 +496,7 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--hook", default="bit6", choices=sorted(HOOKS))
+    ap.add_argument("--force-coldstart", action="store_true")
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--rom", default=str(DEFAULT_ROM))
     a = ap.parse_args(argv)
@@ -485,7 +504,7 @@ def main(argv=None):
         a.out = str(HERE / ("micron1_stockhook.bin" if a.hook == "bit6"
                             else f"micron1_stockhook_{a.hook}.bin"))
 
-    rom, sym, orig = build_image(a.hook, a.rom)
+    rom, sym, orig = build_image(a.hook, a.rom, a.force_coldstart)
     pathlib.Path(a.out).write_bytes(rom)
     print(f"wrote {a.out}")
     print(f"bytes changed vs the original: "

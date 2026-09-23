@@ -8492,3 +8492,12 @@ names renamed, 144 unplated functions plated)
   attempt if neither silent condition triggers the hook.
 * Uploaded the verified LISTEN_ONLY Arduino build and captured its
   startup banner. The Arduino is silent for the initial ROM test.
+* At the owner's request, rebuilt the prepared receive-dispatch image
+  with forced cold initialization through two byte-verified ROM
+  warmstart jumps: `ROM00:01A3` (`CA 4D 02` -> `C3 A6 01`) and
+  `ROM00:3812` (`C3 4D 02` -> `C3 A6 01`). New MD5
+  `182e9a72a2ac175ebbe3e1faa819cac9`, sum16 `DB4F`. Six targeted
+  emulator tests pass, including a reset-vector run with the
+  `ram:F81C` warmstart flag set to `55h`. The battery-RAM/NMI wake path
+  has not yet been verified on hardware. The next physical boot should
+  confirm the `TESTING` screen before interpreting the receive test.

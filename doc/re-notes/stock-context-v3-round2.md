@@ -165,17 +165,28 @@ or prove that the pending receive came from the Arduino.
 
 The guarded 32-KiB image is
 `analysis/rom_exerciser/releases/stock-rx-entry/micron1_stock_rx_entry.bin`:
-MD5 `e4573f3e2cd9d925e7b64c2700baa7db`, sum16 `DAA6`, SHA-256
-`5365bd1127656ae9f7e7f7a8cc7511dd9479f4abb7deee716c638f92a7630010`.
-The patch replaced the verified stock bytes `2A DC FD` at
-`ROM00:2FBD` with `C3 C5 7E`; all other changes are hook code in the
-guarded free ROM area. The targeted hook tests passed, including
-`LINK_STATUS` bit-0-set and bit-0-clear LCD output cases.
+MD5 `182e9a72a2ac175ebbe3e1faa819cac9`, sum16 `DB4F`, SHA-256
+`a4c382c7be5b85c3712a67a7a850b12d02cce708e2874de2862939178caeea35`.
+The receive hook replaces verified stock bytes `2A DC FD` at
+`ROM00:2FBD` with `C3 C5 7E`; the hook code occupies the guarded free
+ROM area. At the owner's request, the image also redirects the two
+byte-verified ROM warmstart jumps to cold initialization at
+`ROM00:01A6`: `ROM00:01A3` changes `CA 4D 02` to `C3 A6 01`, and
+`ROM00:3812` changes `C3 4D 02` to `C3 A6 01`. The former bypasses the
+battery-RAM `55h` warmstart gate; the latter redirects a direct ROM
+restart helper. Six targeted emulator tests pass: the reset vector
+and two warmstart routes reach `ROM00:01A6`. The hook's LCD cases for
+`LINK_STATUS` bit 0 set and clear work. This forces those ROM routes
+through cold initialization. An uncharacterized RAM-resident restart
+route has not been tested on hardware, so do not infer that every
+possible wake mechanism is cold.
 
 Test sequence after the owner installs this ROM: first put the Uno in
 LISTEN_ONLY, then coldstart the handheld with no Arduino transmission.
 The LISTEN_ONLY build was uploaded and its USB banner verified before
 handing off this test; the Arduino is currently silent.
+The first boot must reach the `TESTING` screen to confirm the forced
+cold path on hardware; a warm resume would leave that claim open.
 An `I ss rr` display at that stage is a receive-dispatch event without
 our return burst and must be recorded before further trials. If the
 normal menu appears, run one V24 Load/Run attempt with the Uno still

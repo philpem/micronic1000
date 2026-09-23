@@ -174,6 +174,41 @@ def test_rx_hook_patches_dispatcher_entry():
     assert image[0x2FC0:0x3065] == orig[0x2FC0:0x3065]
 
 
+@pytest.mark.parametrize("start", [0x019E, 0x3812])
+def test_rx_hook_force_coldstart_reaches_cold_body(start):
+    image, _, orig = si.build_image("rx", force_coldstart=True)
+    m = z80.Z80Machine()
+    m.set_memory_block(0, image)
+    m.memory[0xF81C] = 0x55       # stock reset would take the warm branch
+    m.sp = 0xF000
+    m.pc = start
+    m.set_breakpoint(0x01A6)
+    m.ticks_to_stop = 1000
+    m.run()
+    assert m.pc == 0x01A6
+    assert image[0x2FBD:0x2FC0] == bytes([0xC3, 0xC5, 0x7E])
+    assert orig[0x01A3:0x01A6] == bytes.fromhex("ca 4d 02")
+    assert orig[0x3812:0x3815] == bytes.fromhex("c3 4d 02")
+
+
+def test_rx_hook_force_coldstart_from_reset_vector():
+    image, _, _ = si.build_image("rx", force_coldstart=True)
+    m = z80.Z80Machine()
+    m.set_memory_block(0, image)
+    m.memory[0xF81C] = 0x55
+    m.set_input_callback(lambda port: 0)
+    m.set_output_callback(lambda port, value: None)
+    m.sp = 0xF000
+    m.pc = 0x0000
+    m.set_breakpoint(0x01A6)
+    for _ in range(20):
+        m.ticks_to_stop = 100000
+        m.run()
+        if m.pc == 0x01A6:
+            break
+    assert m.pc == 0x01A6
+
+
 def test_rx_hook_captures_status_and_byte():
     mem, sym, writes = _run_rx(0x13, 0x03)   # bit4 set, bit0 (byte ready) set
     assert mem[0xC7E0] == 0x13

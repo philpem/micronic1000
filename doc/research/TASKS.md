@@ -191,7 +191,10 @@ its absence does not distinguish a missing receive-dispatch call from
 a receive call that did not return during the attempt. A guarded
 one-shot receive-dispatch ROM image is prepared at
 `analysis/rom_exerciser/releases/stock-rx-entry/`; it shows `I ss rr`
-at `LinkRxDispatcher` entry. Next compare a silent Uno V24 attempt
+at `LinkRxDispatcher` entry and redirects the verified ROM warmstart
+jumps at `ROM00:01A3` and `ROM00:3812` into cold initialization.
+The RAM-resident wake route has not been validated on hardware.
+Next compare a silent Uno V24 attempt
 with the archived F7 reply under that ROM, with no further physical
 probing. Content
 inference remains suspended pending evidence of a decoded or accepted
