@@ -20,14 +20,18 @@
 #define WGM21 1
 #define CS20 0
 #define OCIE2A 1
+typedef char __FlashStringHelper;
 
 volatile uint8_t PORTD = 0, PORTB = 0;
 volatile uint8_t TCCR2A = 0, TCCR2B = 0, OCR2A = 0, TIMSK2 = 0;
 struct SerialStub {
   void begin(unsigned long) {}
+  int available() { return 0; }
+  int read() { return -1; }
   template <typename T> void print(T) {}
   template <typename T> void print(T, int) {}
   template <typename T> void println(T) {}
+  template <typename T> void println(T, int) {}
   void println() {}
   void write(char) {}
 } Serial;
@@ -46,6 +50,8 @@ void delayMicroseconds(unsigned long) {}
 void noInterrupts() {}
 void interrupts() {}
 void pinMode(uint8_t, uint8_t) {}
+void digitalWrite(uint8_t, uint8_t) {}
+void analogWrite(uint8_t, int) {}
 void attachInterrupt(int, void (*)(), int) {}
 int digitalPinToInterrupt(uint8_t p) { return p; }
 int digitalPinToPort(uint8_t p) { return p < 8 ? 0 : 1; }
@@ -59,6 +65,11 @@ struct TraceEvent {
   uint8_t type;
 };
 std::vector<TraceEvent> trace;
+struct GpioTraceEvent { uint8_t pin; bool high; };
+std::vector<GpioTraceEvent> gpioTrace;
+void irHostGpio(uint8_t pin, bool high) {
+  gpioTrace.push_back({pin, high});
+}
 void irHostEvent(uint32_t intended, uint32_t actual, uint8_t type) {
   // The sketch passes the timestamp observed by its AVR-style wait loop.
   trace.push_back({actual, intended, type});
@@ -103,6 +114,22 @@ static std::vector<uint8_t> sampled(const std::vector<TraceEvent> &events) {
   return result;
 }
 
+static void checkGpioTrace() {
+  // Every scheduled event reaches its physical output, followed by the two
+  // writes that leave the emitter dark after the frame.
+  assert(gpioTrace.size() == trace.size() + 2);
+  for (size_t i = 0; i < trace.size(); ++i) {
+    const uint8_t expectedPin =
+        (trace[i].type == 1 || trace[i].type == 2) ? 5 : 6;
+    const bool expectedHigh = trace[i].type == 0 || trace[i].type == 1;
+    assert(gpioTrace[i].pin == expectedPin);
+    assert(gpioTrace[i].high == expectedHigh);
+  }
+  assert(gpioTrace[trace.size()].pin == 5 && !gpioTrace[trace.size()].high);
+  assert(gpioTrace[trace.size() + 1].pin == 6 &&
+         !gpioTrace[trace.size() + 1].high);
+}
+
 static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
                     int phase) {
   frameLen = (uint8_t)bits.size();
@@ -112,6 +139,7 @@ static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
   sweepSwap = 0;
   std::vector<ExpectedEvent> want = expected(start, bits, phase);
   trace.clear();
+  gpioTrace.clear();
   // Reset the simulated 32-bit AVR clock for every call, beginning at the
   // earliest event so negative phase offsets are physically representable.
   fakeNow = want.front().at;
@@ -124,6 +152,7 @@ static void runCase(uint32_t start, const std::vector<uint8_t> &bits,
     assert(trace[i].actual == want[i].at);
     assert(trace[i].type == want[i].type);
   }
+  checkGpioTrace();
 }
 
 int main() {
@@ -132,7 +161,7 @@ int main() {
   clkMask = 0x01;
   datMask = 0x02;
 
-  for (int phase : {-4, -2, 0, 2, 4}) {
+  for (int phase : {-4, -2, -1, 0, 2, 4}) {
     for (const std::vector<uint8_t> &bits : {
         std::vector<uint8_t>{1, 1, 1},
         std::vector<uint8_t>{1, 0},
@@ -153,13 +182,37 @@ int main() {
   fakeNow = want.front().at;
   fakeReads = 0;
   trace.clear();
+  gpioTrace.clear();
   emitCells(100, 0, 0);
   assert(txMaxLatenessUs == 0);
   assert(sampled(trace) == (std::vector<uint8_t>{0, 1}));
+  checkGpioTrace();
 
   // Exercise both sides of the explicit 32-bit micros() wrap.
   for (uint32_t start : {0x7fffff00u, 0xffffff00u})
     runCase(start, {1, 0, 1}, -2);
+
+  // Exercise the exact current feedback stimulus through the new simple
+  // dispatch path: five lead clocks followed by the candidate 7Eh bits.
+  const std::vector<uint8_t> flagBits{0, 1, 1, 1, 1, 1, 1, 0};
+  frameLen = (uint8_t)flagBits.size();
+  for (uint8_t i = 0; i < frameLen; ++i) frameBits[i] = flagBits[i];
+  txPhaseEighths = -2;
+  sweepInvert = 0;
+  const uint32_t feedbackStart = 1000;
+  fakeNow = feedbackStart;
+  fakeReads = 0;
+  trace.clear();
+  gpioTrace.clear();
+  emitCells(feedbackStart, 5, 0);
+  assert(txMaxLatenessUs == 0);
+  const std::vector<uint8_t> feedbackSampled = sampled(trace);
+  assert(feedbackSampled.size() == 13);
+  assert(std::vector<uint8_t>(feedbackSampled.begin() + 5,
+                              feedbackSampled.end()) == flagBits);
+  assert(std::count_if(trace.begin(), trace.end(),
+                       [](const TraceEvent &e) { return e.type == 0; }) == 6);
+  checkGpioTrace();
 
   buildReply(5);
   std::string wire;

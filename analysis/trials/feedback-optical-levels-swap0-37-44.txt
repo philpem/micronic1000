@@ -1,0 +1,10 @@
+# Second optical-level matrix: swap=0; prior IDs 29-36 used swap=1.
+# Keep LED resistors and top V24 placement fixed; wait RESULT + READY.
+T 37 G S 0 7E 1 0 0 -2 5 7000 03 0 0
+T 38 G X 0 7E 1 0 0 -2 5 7000 03 0 0
+T 39 G S 0 7E 1 0 0 -2 5 7000 03 1 0
+T 40 G X 0 7E 1 0 0 -2 5 7000 03 1 0
+T 41 G S 0 7E 1 0 0 -2 5 7000 03 0 1
+T 42 G X 0 7E 1 0 0 -2 5 7000 03 0 1
+T 43 G S 0 7E 1 0 0 -2 5 7000 03 1 1
+T 44 G X 0 7E 1 0 0 -2 5 7000 03 1 1

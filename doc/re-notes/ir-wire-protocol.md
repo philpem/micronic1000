@@ -892,7 +892,7 @@ code, which needs a link. See T6 for the way out of that circle.
 | 3 | Is there an FCS, and what polynomial? | **T6**, or **T5** followed by a completed-frame capture |
 | 4 | Is there a closing flag, or does the clock simply stop? | **T6** / **T5** |
 | 5 | What does the return direction look like? | Not observable without a partner — **T4** characterises the front end instead |
-| ~~5a~~ | ~~Which detector is clock and which is data?~~ | **ANSWERED** (conn10): the wiring as built is correct; swapping the emitters kills the reaction |
+| 5a | Which Arduino LED reaches which handheld receive channel? | **OPEN.** Conn10's changed reaction on swapping software roles does not identify either optical destination. |
 | 6 | What clears `LINK_STATUS` bit 6 (`HSBUSY`) / bit 4 (`RXBUSY`)? | **T6** reads `LINK_STATUS` directly; conn3-conn13 cannot distinguish the bit-6 wait from the first bit-7 wait |
 | 7 | Does the return clock have to be M1000-locked or may it free-run? | **T5.3** |
 | 8 | Is `4Ch` a flag strobe or an unstuffed byte channel? | **T6** |
@@ -957,14 +957,13 @@ illumination, this test has found no detectable effect; it does not prove what
 structure the controller requires.
 
 **T2b — electrical loopback (after T4).** With the front end characterised,
-wire the clock emitter's drive into the clock detector's input and the data
-emitter's into the data detector's, keeping the two channels separate. That is
-a perfect echo adapter with none of the optics problem, and it costs no
-protocol design: if the controller accepts its own transmission as a reply,
-the handshake completes and the full 12-byte frame appears on the wire — which
-is T5's prize without writing any Arduino logic at all. If it does not
-complete, the status phase that failed remains OPEN until `LINK_STATUS` is
-captured directly.
+test both separate pairings between the two software-driven emitters and the
+two handheld receiver inputs. The physical roles are unknown, so a same-label
+pairing is only one candidate. If the controller accepts a pairing, the
+handshake completes and the full 12-byte frame appears on the wire — which is
+T5's prize without writing Arduino framing logic. A negative result cannot
+localise the failed controller status phase or identify an input role until
+`LINK_STATUS` is captured directly.
 
 T2b remains a low-cost adjunct to T5b/T6, but a negative result cannot localise
 the failed controller status phase.
@@ -1153,15 +1152,14 @@ frame that is allowed to close answers OPEN 3 and 4.
   harness `analysis/boot_hw.py` first; a one-byte table edit is verifiable in
   the emulator by reading `FE83` after boot.
 
-### T8 — which way round are the handheld's detectors? — **ANSWERED**
+### T8 — Arduino LED / handheld receiver roles — **OPEN**
 
-This was open when the orientation experiment was planned. Conn10 settled it:
-under otherwise identical stimuli, the as-built assignment produced a
-reaction on 90-95% of trials while swapping the responder's clock and data
-emitters reduced the result to baseline. **CONFIRMED:** the responder's
-as-built clock emitter addresses the handheld clock detector and its as-built
-data emitter addresses the handheld data detector. See the conn3-conn13 result
-table below.
+Conn10 measured a reaction on 90-95% of trials with the as-built software
+assignment and baseline with the two software roles swapped. That is a useful
+stimulus result, but it does not identify either LED's optical destination or
+show that the handheld receive direction uses the handheld transmit roles.
+Test both assignments with an instrument that distinguishes controller status
+and received bytes.
 
 ### T7 — the plinth, if one can be borrowed
 
@@ -1293,22 +1291,22 @@ duration is controlled.
 | **Free-running clock** | Timer2 clocking continuously vs burst (conn12) | Every valid frame-bearing group reacts. Clock-only controls react 1/80; silent controls react 0/80 |
 | **Start time** | 0.5-12 ms (conn10) | Flat 1-9 ms, dies at 11 ms — i.e. only through the same cutoff |
 | **Bit-rate modulation** | 50% duty square wave (conn8) | **Nothing**, 0% — indistinguishable from silence |
-| **Emitter orientation** | clock/data swapped (conn10) | Swapping **kills** the reaction: 95% → 0%. The wiring is correct as built |
+| **Software-role permutation** | two Arduino output roles swapped (conn10) | The measured reaction changes: 95% → 0%. Physical LED/detector mapping and cause remain OPEN. |
 
 ### What was established positively
 
-* **The emitter assignment is correct.** conn10: every swapped variant
-  collapses to baseline while every unswapped one runs 90-95%. The reaction
-  follows the signal assignment, not the physical emitter.
+* **The software-role permutation changes the reaction.** conn10: swapped
+  variants collapsed to baseline while unswapped variants ran 90-95%. This
+  does not identify physical LED/detector mapping or the receiver convention.
 * **Light reaches the handheld and it responds.** conn8 onward, against an
   interleaved silent control in the same run: 100% versus 1-4%.
-* **The data line does the work.** Steady light on the data emitter alone
-  reproduces the whole effect (37-55%); on the clock emitter alone, exactly
-  nothing (0.0%).
-* **Phase matters where content does not.** Driving clock and data identically
-  and in phase produces 0%, while the same light with the protocol's
-  quarter-cell data lead produces 74-100% (conn8 vs conn7, timing matched).
-  Whatever consumes the data line is sampling it against the clock.
+* **The two software outputs affect the reaction differently.** Steady light
+  on the output named data reproduced the effect (37-55%); the output named
+  clock alone did not (0.0%). This identifies neither physical receive role.
+* **The tested output timing changes the reaction.** Driving the two software
+  outputs identically and in phase produced 0%, while the captured
+  transmit-like quarter-cell lead produced 74-100% (conn8 vs conn7, timing
+  matched). The result does not show how the handheld receiver samples them.
 
 ### Method notes — three mistakes worth not repeating
 
@@ -1370,20 +1368,24 @@ the complete transmit handshake is established.
 
 ## Building an adapter — what the M1000 must see
 
-Three layers, and only the middle one is unknown.
+Three layers are involved. The handheld-to-adapter capture establishes the
+transmit-side physical and frame observations below; the Arduino-to-handheld
+optical roles and return framing remain unknown.
 
-**Physical.** Drive two emitters (clock, data) at 8192 bit/s, 122.0703 µs cell,
-data as a ~78 µs RZ pulse straddling the clock's rising edge. Receive the
-other two. The M1000's own timing is the reference for what its receiver will
-accept, but that its receiver *requires* the same shape is an assumption —
-sweep it (T4.3).
+**Physical.** Drive two Arduino-controlled emitters with adjustable role,
+timing and polarity. The handheld transmit capture supplies a 8192 bit/s,
+122.0703 µs-cell candidate waveform with a ~78 µs RZ pulse. Test both optical
+assignments and framing candidates; the capture does not establish what the
+handheld receiver requires.
 
-**Frame.** Hunt for `10000001`; then destuff — drop the `1` that follows five
-consecutive `0`s — and assemble MSB-first bytes. To transmit, stuff and frame
-the same way. The first byte after the flag is the address; the M1000 sends
-`link id & 1Fh`, and for every id in the device table bits 6-7 are `01`, so
-`(prelude & 1Fh) | 40h` reconstructs it — which is exactly what
-`micronic.peer` already assumes.
+**Frame.** For the captured handheld transmit direction, hunt for `10000001`,
+then destuff — drop the `1` that follows five consecutive `0`s — and assemble
+MSB-first bytes. The first byte after that transmit flag is the address; the
+M1000 sends `link id & 1Fh`, and for every id in the device table bits 6-7 are
+`01`, so `(prelude & 1Fh) | 40h` reconstructs it — which is exactly what
+`micronic.peer` already assumes. Arduino return traffic must keep flag sense,
+stuffing, byte order and framing selectable candidates; it cannot assume this
+transmit-side form.
 
 **Session.** Already solved: `micronic.peer.CommstarPeer` parses requests and
 produces replies, is transport-independent by design, and drives real firmware
@@ -1401,8 +1403,9 @@ of that controller handshake.
 ## Tooling
 
 `analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino` — the monitor and swept
-responder described in T5. Its framer is unit-checked against the capture:
-the `flag+03h` reply it builds is byte-identical to the handheld's own burst.
+responder described in T5. Its framer can reproduce the captured handheld
+transmit pattern in a software test; that does not establish an accepted
+Arduino return pattern.
 
 `analysis/scope_ir_decode.py` — clock/data recovery plus the HDLC unframing,
 for the segmented CSV or the `.h5`:

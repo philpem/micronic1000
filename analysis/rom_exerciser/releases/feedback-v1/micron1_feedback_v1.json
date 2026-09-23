@@ -1,0 +1,17 @@
+{
+  "image": "micron1_feedback_v1.bin",
+  "purpose": "standalone combined IR feedback diagnostic; ROM00 only",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "815db5763ad1f0b9910620a7dd83ed7c",
+    "sum16": "A1FA",
+    "sum24": "37A1FA",
+    "sha256": "23572b77763cfba2d64a069cfe0b1e42a034b542fcf97c607461465b73e4f93c"
+  },
+  "checksum_definition": "unsigned byte sum modulo 2^16 or 2^24; no complement",
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "assembly_sha256": "ef0d401fdef2ff9e98f73af0639fd8afe7bc65de47775bfb0ee535bd8e957eb4",
+  "changed_bytes": 1627,
+  "entry": "ROM00:6000",
+  "end_exclusive": "ROM00:6666"
+}

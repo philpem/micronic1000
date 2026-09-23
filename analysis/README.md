@@ -16,6 +16,14 @@ Use the Elegoo Uno R3 target (`arduino:avr:uno`). Large tool downloads and
 build outputs belong in the ignored disk-backed `.cache/ir-arduino/`, not
 `/tmp` (tmpfs on the owner's machine).
 
+The current combined burn is **feedback-v1**. Build it explicitly with
+`analysis/venv/bin/python analysis/rom_exerciser/feedback.py -o PATH` and use
+the [IR feedback harness interface](../doc/re-notes/ir-feedback-protocol.md)
+for the black-command, yellow-UART and result-record contract. Its ROM (26)
+and UART (2) host checks pass; it has not yet received physical bench
+validation. The legacy `RX_NARROW` material remains experimental evidence,
+not feedback-v1's default procedure.
+
 ## IR scope-capture decoders
 
 * `scope_ir_decode.py` recovers the analogue handheld waveform in the
@@ -27,6 +35,19 @@ build outputs belong in the ignored disk-backed `.cache/ir-arduino/`, not
   scope D2/D3 are Arduino clock/data; these are scope pod channel numbers,
   not Arduino pin numbers. Use `--groups`, `--addresses`, or `--segments` for
   progressively more detail.
+* `feedback_scope.py` measures a Keysight `x-axis,D0-D7` CSV from one feedback
+  trial. It reports pulse counts, widths, spacing, data-to-clock offset, and
+  the byte sampled at the candidate clock edges. Source captures for trials
+  5, 6, 8 and 17 are tracked at `analysis/captures/feedback-trialN-keysight.csv`;
+  run `python3 analysis/feedback_scope.py analysis/captures/feedback-trial8-keysight.csv --clock-bit 3 --data-bit 2`
+  for the swapped trial-8 stimulus, or
+  `python3 analysis/feedback_scope.py analysis/captures/feedback-trial17-keysight.csv --clock-bit 2 --data-bit 3 --payload 03 --stuff 1`
+  for the trial-17 candidate payload.
+  Defaults are scope D2/D3, confirmed by the owner as Uno D5/D6 for trial 6;
+  five lead cells and candidate `7E`; use `--clock-bit`/`--data-bit` if the
+  scope pod wiring differs. For a payload experiment add `--payload 03
+  --stuff 1` (and `--close 1` if a closing candidate flag was requested);
+  `--json-out` writes machine-readable results.
 
 ## Reusable firmware models — `micronic/`
 

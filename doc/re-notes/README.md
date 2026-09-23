@@ -47,6 +47,8 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
   that reads `HSBUSY` from inside the latch boundary: what it measures, and
   what to do on the happy and sad paths
 * [Open questions](open-questions.md) — single address for every `OPEN` item
+* [IR feedback automation plan](ir-feedback-test-plan.md) — one reusable ROM,
+  connector handshakes and Arduino-controlled receive hypotheses
 
 Legacy internals paths redirect to these locations. The worklist that
 prioritises the open questions lives in the

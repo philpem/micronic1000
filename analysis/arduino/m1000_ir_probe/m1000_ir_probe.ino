@@ -1,4 +1,7 @@
 // M1000 IR link probe and responder.
+// Default: combined feedback harness, silent until a USB T or V command. See
+// doc/re-notes/ir-feedback-protocol.md. FEEDBACK_HARNESS=0 enables the
+// historical optical monitor/sweep modes described below.
 //
 // Listens to the handheld's outbound clock/data pair, decodes the
 // inverted-HDLC frame documented in doc/re-notes/ir-wire-protocol.md, and
@@ -13,18 +16,56 @@
 // payload.  A short burst does not identify which wait failed.
 //
 // Wiring (5 V AVR assumed - Uno/Nano at 16 MHz):
-//   CLK_IN   D2   handheld clock emitter drive   (INT0)
-//   DAT_IN   D4   handheld data emitter drive
-//   CLK_OUT  D5   our clock emitter -> handheld's clock detector
-//   DAT_OUT  D6   our data emitter  -> handheld's data detector
+// Select BLACK_USE_NPN just below this wiring section before uploading:
+//   0 = direct 5 V TTL drive: D7 -> BLACK / scanner pin 5 (current default)
+//   1 = external NPN interface
+// Direct TTL mode: D7 HIGH is idle; D7 LOW asserts the command. Connect
+// both powered boards' grounds; power Uno before handheld, and switch the
+// handheld off before unplugging Uno USB. No NPN/base resistors are used.
+//   CLK_IN   D2   handheld clock emitter drive (INT0); legacy modes only
+//   DAT_IN   D4   handheld data emitter drive; legacy modes only
+//   CLK_OUT  D5   physical return channel A; proposed clock role
+//   DAT_OUT  D6   physical return channel B; proposed data role
+//   BLACK_OUT D7  with BLACK_USE_NPN=1, wire the external transistor:
+//                D7 -> 10k resistor -> external NPN BASE
+//                NPN COLLECTOR -> BLACK; NPN EMITTER -> common GND
+//                100k resistor from BASE to EMITTER (off during Uno reset)
+//                D7 HIGH pulls BLACK low; D7 LOW releases BLACK.
+//                Direct wiring instead requires BLACK_USE_NPN=0.
+//   YELLOW_IN D8  handheld YELLOW / scanner pin 6 -> D8 (input only)
+//                10k pull-up from YELLOW to UNO 5 V, NOT handheld Vcc
+//                YELLOW carries ACK, START and 1200-baud result records.
+//   GND          handheld BLUE / scanner pin 8 -> UNO GND and NPN EMITTER
 //
-// The handheld's drive lines swing to ~5.5 V, which is over VCC+0.5 on a 5 V
+// BLACK/YELLOW/GND are the three scanner-connector wires for feedback mode.
+// Connector pin numbers/colours confirmed by owner, 2026-09-22.
+// Check the actual NPN's B/C/E pinout. Remove old BLACK-to-ground test loads
+// and YELLOW-to-orange/Vcc or YELLOW-to-ground test resistors.
+// Leave ORANGE/pin 3 (handheld Vcc), RED/pin 1, BROWN/pin 2, VIOLET/pin 4
+// and GREEN/pin 7 disconnected and insulated. Power Uno from USB and the
+// handheld from batteries; share GND, not positive supplies.
+// Keep the existing D5/D6 LED current limiting/drivers aimed at the top V24
+// window. D5/D6 connect optically, not to scanner-connector contacts.
+// D2/D4 monitoring is disabled and not required in feedback mode.
+//
+#ifndef BLACK_USE_NPN
+#define BLACK_USE_NPN 0  // Current bench: D7 directly wired to BLACK / pin 5.
+#endif
+#if BLACK_USE_NPN != 0 && BLACK_USE_NPN != 1
+#error "BLACK_USE_NPN must be 0 (direct TTL) or 1 (external NPN)"
+#endif
+
+// Owner clarification 2026-09-22: receive LED roles are unconfirmed. These
+// names describe the generated signals, not identified handheld detectors.
+// Both optical assignments need testing; 7E as a receive flag is SUSPECTED.
+//
+// For legacy D2/D4 monitoring, the handheld's drive lines swing to ~5.5 V,
+// which is over VCC+0.5 on a 5 V
 // part and well over a 3.3 V one.  Put 10k in series with each input, or a
 // divider on a 3.3 V board.  Do not connect an input directly.
 //
 // Keep the two return channels optically separated - a mask or a short opaque
-// tube per LED.  Crosstalk from our clock into the handheld's data detector
-// will look exactly like a protocol failure.
+// tube per LED. Crosstalk between channels can confound protocol tests.
 
 // Stage 1: build with LISTEN_ONLY 1, confirm the monitor prints 17- and
 // 22-cell bursts every 93.75 ms and that they match the scope.  Only then set
@@ -169,12 +210,32 @@
 // Flag is fixed to 7E (the current trial baseline); the data lead and the
 // other axes stay at the handheld's own TX convention unless selected here. Reply
 // to each handheld burst, handheld-paced.
+#ifndef FEEDBACK_HARNESS
+#if LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW
+#define FEEDBACK_HARNESS 0
+#else
+#define FEEDBACK_HARNESS 1
+#endif
+#endif
 #ifndef RX_NARROW
+#if FEEDBACK_HARNESS
+#define RX_NARROW 0
+#else
 #define RX_NARROW 1
+#endif
 #endif
 #ifndef RX_NARROW_AXIS
 #define RX_NARROW_AXIS 2
 #endif
+
+// Feedback command syntax keeps its historical T fields and defaults. After
+// payload, optional fields are `clk_inv dat_inv`; an additional trailing
+// `repeat_count repeat_gap_ms` enables repeats only for `T ... X ...` trials.
+// repeat_count is 2..3 total identical bursts; repeat_gap_ms is 1..60 ms
+// between scheduled starts. delay_us + (count-1)*gap + 26 ms must be <=80 ms,
+// reserving 192 encoded cells plus the maximum lead inside the ROM's ~100 ms
+// pending poll. The runtime also checks the actual scheduled frame end.
+// Older commands (omitting both pairs) retain one burst, or remain silent.
 
 // Reply lead-in: the handheld's own bursts carry 4-5 clock-only cells before
 // the flag (its framer's pipeline flush); a faithful reply should too.
@@ -224,6 +285,9 @@
 #if RX_NARROW && (LADDER_TEST || FREERUN_TEST || PULSE_TEST || ADDR_SWEEP || ORIENTATION_TEST || LOOPBACK_TEST || LISTEN_ONLY || RX_SWEEP || FREE_TX)
 #error "RX_NARROW needs every other mode flag 0"
 #endif
+#if FEEDBACK_HARNESS && (LISTEN_ONLY || RECORD_READOUT || LOOPBACK_TEST || ORIENTATION_TEST || PULSE_TEST || ADDR_SWEEP || FREERUN_TEST || LADDER_TEST || RX_SWEEP || FREE_TX || RX_NARROW)
+#error "FEEDBACK_HARNESS needs every legacy mode 0"
+#endif
 
 // ---------------------------------------------------------------- timing --
 // True values, not raw measurements.  The handheld's drive is slew-limited
@@ -251,6 +315,11 @@ const uint8_t  FLAG        = 0x81;  // = ~0x7E, six 0s bracketed by 1s
 const uint8_t  SUCCESS_CELLS = 30;  // a payload frame is 100+ cells; 17/22 is not
 
 const uint8_t CLK_IN = 2, DAT_IN = 4, CLK_OUT = 5, DAT_OUT = 6;
+const uint8_t BLACK_OUT = 7, YELLOW_IN = 8;
+
+#if FEEDBACK_HARNESS
+#include "feedback_harness.h"
+#endif
 
 // ------------------------------------------------------------- reception --
 volatile uint8_t  rxBits[160];  // a 12-byte payload frame is ~120 cells
@@ -353,7 +422,11 @@ void onClockEdge() {
 // ------------------------------------------------------------ the framer --
 // Inverted HDLC: idle 0, flag 1000_0001 sent raw, data bit-stuffed with a 1
 // after five consecutive 0s, MSB first.
+#if FEEDBACK_HARNESS
+uint8_t frameBits[192];  // 16 data bytes + worst stuffing + two flags
+#else
 uint8_t frameBits[128];
+#endif
 uint8_t frameLen = 0;
 
 #if RX_SWEEP || FREE_TX || RX_NARROW
@@ -739,12 +812,31 @@ void advanceSweep() {
 // edge is instead placed at a fixed offset from the frame's start time.
 volatile uint8_t *clkReg, *datReg;
 uint8_t clkMask, datMask;
+uint8_t txClockLevelInvert = 0, txDataLevelInvert = 0;
 
-// The swap is applied here, so one flag re-points both lines at once.
-inline void clkHigh() { if (sweepSwap) *datReg |=  datMask; else *clkReg |=  clkMask; }
-inline void clkLow()  { if (sweepSwap) *datReg &= ~datMask; else *clkReg &= ~clkMask; }
-inline void datHigh() { if (sweepSwap) *clkReg |=  clkMask; else *datReg |=  datMask; }
-inline void datLow()  { if (sweepSwap) *clkReg &= ~clkMask; else *datReg &= ~datMask; }
+// Swap selects the physical pin; inversion changes its driven level.
+inline void drivePin(volatile uint8_t *reg, uint8_t mask, bool high) {
+  if (high) *reg |= mask; else *reg &= (uint8_t)~mask;
+#ifdef IR_HOST_TEST
+  uint8_t pin = (mask == clkMask ? 5 : 6);
+  bool outputHigh = (*reg & mask) != 0;
+  extern void irHostGpio(uint8_t, bool);
+  irHostGpio(pin, outputHigh);
+#endif
+}
+inline void clkLevel(bool high) {
+  drivePin(sweepSwap ? datReg : clkReg, sweepSwap ? datMask : clkMask,
+           high ^ (txClockLevelInvert != 0));
+}
+inline void datLevel(bool high) {
+  drivePin(sweepSwap ? clkReg : datReg, sweepSwap ? clkMask : datMask,
+           high ^ (txDataLevelInvert != 0));
+}
+inline void clkHigh() { clkLevel(true); }
+inline void clkLow()  { clkLevel(false); }
+inline void datHigh() { datLevel(true); }
+inline void datLow()  { datLevel(false); }
+inline void txPhysicalDark() { drivePin(clkReg, clkMask, false); drivePin(datReg, datMask, false); }
 
 inline int32_t txTimeDiff(uint32_t a, uint32_t b) {
   return (int32_t)(a - b);
@@ -809,20 +901,17 @@ inline int32_t txMinEventOffset(int32_t phaseUs) {
   return dataRise < (int32_t)DATA_LEAD_US ? dataRise : (int32_t)DATA_LEAD_US;
 }
 
-// Find the first edge that will actually be driven.  For a negative phase the
-// first data edge can precede the cell origin; callers mask reception at this
-// time so the requested phase is not silently shortened by waitUntil().
+// Feedback state machine uses this to dispatch the emitter before its first
+// physical edge, leaving time for setup without shortening the first pulse.
 uint32_t txFirstEventTime(uint32_t startUs, uint8_t pre) {
   if (pre) return txEventTime(startUs, (int32_t)DATA_LEAD_US);
-  uint32_t cell = startUs;
   int32_t first = (int32_t)DATA_LEAD_US;
-  if (pre < pre + frameLen &&
-      (frameBits[0] ^ sweepInvert)) {
+  if (frameLen && (frameBits[0] ^ sweepInvert)) {
     int32_t dataRise = first +
                        (int32_t)txPhaseEighths * (int32_t)CELL_US / 8;
     if (dataRise < first) first = dataRise;
   }
-  return txEventTime(cell, first);
+  return txEventTime(startUs, first);
 }
 
 uint32_t waitUntilMeasured(uint32_t t) {
@@ -835,6 +924,11 @@ uint32_t waitUntilMeasured(uint32_t t) {
 }
 
 void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
+#if !LOOPBACK_TEST
+  // Arm crosstalk masking at the first actual edge, after queue setup and
+  // deadline waiting.  Masking during the requested reply delay loses RX.
+  txActive = true;
+#endif
 #ifdef IR_HOST_TEST
   extern void irHostEvent(uint32_t, uint32_t, uint8_t);
   irHostEvent(at, actual, type);
@@ -843,6 +937,37 @@ void applyTxEvent(uint8_t type, uint32_t at, uint32_t actual) {
   else if (type == 1) clkHigh();
   else if (type == 2) clkLow();
   else datLow();
+}
+
+inline void dispatchTxEvent(uint32_t cell, int32_t offset, uint8_t type) {
+  uint32_t deadline = txEventTime(cell, offset);
+  uint32_t actual = waitUntilMeasured(deadline);
+  applyTxEvent(type, deadline, actual);
+}
+
+// When all four edges fit inside their cell, no adjacent-cell sorting is
+// needed.  Dispatch in time order so a 16 MHz AVR does no queue scans between
+// edges 15-30 us apart.  The feedback trial's phase=-2 uses this path.
+void emitSimpleCells(uint32_t startUs, uint8_t pre, uint8_t total,
+                     int32_t phaseUs) {
+  int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
+  int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
+  int32_t clockFall = (int32_t)DATA_LEAD_US + (int32_t)CLK_HIGH_US;
+  bool dataFallsFirst = dataFall < clockFall;
+  for (uint8_t index = 0; index < total; index++) {
+    uint32_t cell = startUs + (uint32_t)index * (uint32_t)CELL_US;
+    bool wantData = index >= pre && index < pre + frameLen &&
+                    (frameBits[index - pre] ^ sweepInvert);
+    if (wantData) dispatchTxEvent(cell, dataRise, 0);
+    dispatchTxEvent(cell, (int32_t)DATA_LEAD_US, 1);
+    if (dataFallsFirst) {
+      dispatchTxEvent(cell, dataFall, 3);
+      dispatchTxEvent(cell, clockFall, 2);
+    } else {
+      dispatchTxEvent(cell, clockFall, 2);
+      dispatchTxEvent(cell, dataFall, 3);
+    }
+  }
 }
 
 // The bit-cell emitter, shared by framed replies and pulse tests.  The phase
@@ -854,6 +979,27 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
   uint8_t nextCell = 0;
   txEventCount = 0;
   txMaxLatenessUs = 0;
+
+  // Establish the complemented baseline before the first scheduled edge.
+  // With no lead cells and a negative data phase, that edge can precede
+  // startUs; 16 us of setup avoids making the edge late.
+  if (txClockLevelInvert || txDataLevelInvert) {
+    uint32_t first = txFirstEventTime(startUs, pre);
+    uint32_t baselineAt = txTimeDiff(first, startUs) < 0 ? first - 16U : startUs;
+    waitUntil(baselineAt);
+    clkLow(); datLow();
+  }
+
+  int32_t dataRise = (int32_t)DATA_LEAD_US + phaseUs;
+  int32_t dataFall = dataRise + (int32_t)DATA_HIGH_US;
+  if (dataRise >= 0 && dataRise <= (int32_t)DATA_LEAD_US &&
+      dataFall < (int32_t)CELL_US &&
+      DATA_LEAD_US + CLK_HIGH_US < CELL_US) {
+    emitSimpleCells(startUs, pre, total, phaseUs);
+    waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
+    txPhysicalDark();
+    return;
+  }
 
   while (txEventCount || nextCell < total) {
     // Add future cells only when their earliest possible edge cannot precede
@@ -885,7 +1031,7 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
     applyTxEvent(event.type, event.at, actual);
   }
   waitUntil(startUs + (uint32_t)total * (uint32_t)CELL_US);
-  clkLow(); datLow();
+  txPhysicalDark();
 }
 
 // Clock-only lead-in / postamble, Micronic-style.  The handheld's own bursts
@@ -894,13 +1040,8 @@ void emitCells(uint32_t startUs, uint8_t pre, uint8_t post) {
 uint8_t txPre = 0, txPost = 0;
 
 void sendFrame(unsigned long startUs) {
-#if !LOOPBACK_TEST
-  // Wait before masking crosstalk.  Setting txActive here used to discard
-  // genuine receive edges during the requested reply delay.
-  uint8_t pre = (sweepClock >= 2) ? PREAMBLE_CELLS : txPre;
-  waitUntil(txFirstEventTime((uint32_t)startUs, pre));
-  txActive = true;          // in loopback we deliberately listen to ourselves
-#endif
+  // Prepare the emitter before the first deadline.  applyTxEvent masks
+  // crosstalk when the first edge is actually driven.
   if (sweepClock >= 2) emitCells(startUs, PREAMBLE_CELLS, PREAMBLE_CELLS);
   else                 emitCells(startUs, txPre, txPost);
 #if !LOOPBACK_TEST
@@ -908,6 +1049,348 @@ void sendFrame(unsigned long startUs) {
 #endif
   delayMicroseconds(300);          // let any crosstalk settle, while listening
 }
+
+#if FEEDBACK_HARNESS
+// Half-duplex connector controller. T-trial IR emission is below 24 ms;
+// the ROM's 100 ms post-trial cooldown keeps UART reporting outside it.
+// V is a separate, bounded camera check with no handheld transaction.
+enum FbRunState : uint8_t { FB_IDLE, FB_WAIT_ACK, FB_HOLD, FB_WAIT_START,
+                            FB_WAIT_RESULT, FB_VISUAL_RUN, FB_DESYNC };
+FeedbackLineParser fbParser;
+FeedbackConfig fbConfig = {};
+FbRunState fbState = FB_IDLE;
+uint32_t fbLastId = 0, fbStateAt = 0, fbHighAt = 0, fbStartAt = 0;
+uint32_t fbSerialAt = 0, fbAckAt = 0, fbReleaseAt = 0;
+uint32_t fbEmitStart = 0, fbEmitEnd = 0;
+uint8_t fbRepeatIndex = 0;
+uint32_t fbVisualAt = 0;
+uint8_t fbVisualPhase = 0;
+uint8_t fbResult[30], fbResultLen = 0;
+bool fbReady = false, fbHighTracking = false, fbRequestLow = false;
+bool fbEmitPending = false, fbManualLow = false;
+bool fbHaveSequence = false;
+uint16_t fbExpectedSequence = 0;
+bool fbYellowWasHigh = true, fbUartActive = false;
+uint8_t fbUartBit = 0, fbUartValue = 0;
+uint32_t fbUartNext = 0;
+
+inline bool fbYellowHigh() { return digitalRead(YELLOW_IN) != 0; }
+// Direct TTL drives the idle high; the NPN interface releases its collector.
+const uint8_t BLACK_IDLE_LEVEL = BLACK_USE_NPN ? 0 : 1;
+inline void fbBlackRelease() { digitalWrite(BLACK_OUT, BLACK_IDLE_LEVEL); }
+inline void fbBlackLow() { digitalWrite(BLACK_OUT, 1 - BLACK_IDLE_LEVEL); }
+void fbPrintWiring() {
+#if BLACK_USE_NPN
+  Serial.println(F("BLACK: NPN; D7 LOW=idle, HIGH=command"));
+#else
+  Serial.println(F("BLACK: DIRECT_TTL; D7 HIGH=idle, LOW=command"));
+#endif
+}
+inline uint32_t fbHoldUs() {
+  return fbConfig.holdKind == 'W' ? 100000UL :
+         fbConfig.holdKind == 'R' ? 300000UL :
+         fbConfig.holdKind == 'P' ? 500000UL : 700000UL;
+}
+inline bool fbElapsed(uint32_t now, uint32_t then, uint32_t us) {
+  return (uint32_t)(now - then) >= us;
+}
+void fbPrintPrefix(const __FlashStringHelper *kind) {
+  Serial.print(kind); Serial.print(F(" id=")); Serial.print(fbConfig.trialId);
+}
+void fbPrintHex(const uint8_t *bytes, uint8_t n) {
+  if (!n) Serial.print('-');
+  for (uint8_t i = 0; i < n; ++i) {
+    if (bytes[i] < 0x10) Serial.print('0');
+    Serial.print(bytes[i], HEX);
+  }
+}
+void fbQuiet() {
+  analogWrite(CLK_OUT, 0); analogWrite(DAT_OUT, 0);
+  txClockLevelInvert = txDataLevelInvert = 0;
+  fbBlackRelease(); clkLow(); datLow(); txPhysicalDark(); txActive = false;
+  fbEmitPending = false; fbManualLow = false; fbRequestLow = false;
+}
+void fbVisualStop() {
+  fbQuiet();
+}
+void fbResetUart() {
+  fbUartActive = false; fbYellowWasHigh = fbYellowHigh(); fbResultLen = 0;
+}
+void fbError(const __FlashStringHelper *reason) {
+  fbQuiet(); fbReady = false; fbState = FB_DESYNC;
+  fbPrintPrefix(F("ERROR")); Serial.print(F(" reason=")); Serial.print(reason);
+  Serial.print(F("; send R to resynchronise"));
+  if (fbResultLen) { Serial.print(F(" raw=")); fbPrintHex(fbResult, fbResultLen); }
+  Serial.println();
+}
+// Rejecting a command while idle cannot have changed the handheld's ROM
+// sequence. Keep the current idle/READY state and trial ID so a corrected
+// command can follow. Errors after a transaction starts still need R.
+void fbCommandError(const __FlashStringHelper *reason) {
+  if (fbState != FB_IDLE || fbManualLow) { fbError(reason); return; }
+  fbPrintPrefix(F("ERROR")); Serial.print(F(" reason=")); Serial.print(reason);
+  Serial.println(F("; no handheld transaction; no R needed"));
+}
+void fbBuildStimulus() {
+  frameLen = 0;
+  uint8_t run = 0;
+  if (fbConfig.haveFlag)
+    for (int8_t bit = 7; bit >= 0; --bit) putBit((fbConfig.flagByte >> bit) & 1);
+  for (uint8_t i = 0; i < fbConfig.payloadLen; ++i) {
+    uint8_t byte = fbConfig.payload[i];
+    for (int8_t bit = 7; bit >= 0; --bit) {
+      uint8_t value = (byte >> bit) & 1;
+      if (fbConfig.stuffing && run == 5) {
+        putBit(fbConfig.stuffing == 1 ? 0 : 1); run = 0;
+      }
+      putBit(value);
+      if (fbConfig.stuffing)
+        run = (fbConfig.stuffing == 1 ? value : !value) ? (uint8_t)(run + 1) : 0;
+    }
+  }
+  // Finish the pending stuffed run at the end of data, even without a flag.
+  if (fbConfig.stuffing && run == 5) putBit(fbConfig.stuffing == 1 ? 0 : 1);
+  if (fbConfig.closeFlag)
+    for (int8_t bit = 7; bit >= 0; --bit) putBit((fbConfig.flagByte >> bit) & 1);
+}
+bool fbResultValid() {
+  if (fbResultLen != 30 || fbResult[0] != 0xA5 || fbResult[1] != 0x5A ||
+      fbResult[2] != 1 || fbResult[3] > 4 || fbResult[6] > 8 ||
+      fbResult[17] > 8 || fbResult[16] != 0 || fbResult[15] > 134 ||
+      fbResult[17] > fbResult[15]) return false;
+  if (!fbResult[3] && (fbResult[6] < 1 || fbResult[6] > 3)) return false;
+  uint8_t sum = 0; for (uint8_t i = 0; i < 30; ++i) sum += fbResult[i];
+  return sum == 0;
+}
+void fbStoreResultByte(uint8_t value) {
+  // Hunt for the sync word rather than treating a busy-low break as data.
+  if (!fbResultLen && value != 0xA5) return;
+  if (fbResultLen == 1 && value != 0x5A) {
+    fbResultLen = value == 0xA5 ? 1 : 0; return;
+  }
+  if (fbResultLen < sizeof(fbResult)) fbResult[fbResultLen++] = value;
+  if (fbResultLen != sizeof(fbResult)) return;
+  if (!fbResultValid()) { fbError(F("result")); return; }
+  uint16_t seq = (uint16_t)fbResult[4] | ((uint16_t)fbResult[5] << 8);
+  uint8_t expectedMode = fbConfig.holdKind == 'W' ? 1 :
+                        fbConfig.holdKind == 'R' ? 2 : fbConfig.holdKind == 'P' ? 3 : 4;
+  if (fbResult[3] && (fbResult[3] != expectedMode || fbState != FB_WAIT_RESULT)) {
+    fbError(F("mode")); return;
+  }
+  if (fbHaveSequence && seq != (fbResult[3] ? fbExpectedSequence : (uint16_t)(fbExpectedSequence - 1))) {
+    fbError(F("sequence")); return;
+  }
+  if (fbResult[3]) { fbExpectedSequence = (uint16_t)(seq + 1); fbHaveSequence = true; }
+  fbQuiet();
+  fbPrintPrefix(F("RESULT")); Serial.print(F(" rom_seq=")); Serial.print(seq);
+  Serial.print(F(" mode=")); Serial.print(fbResult[3]);
+  Serial.print(F(" err=")); Serial.print(fbResult[6]);
+  Serial.print(F(" ack_us=")); Serial.print(fbAckAt);
+  Serial.print(F(" release_us=")); Serial.print(fbReleaseAt);
+  Serial.print(F(" start_us=")); Serial.print(fbStartAt);
+  Serial.print(F(" emit_start_us=")); Serial.print(fbEmitStart);
+  Serial.print(F(" emit_end_us=")); Serial.print(fbEmitEnd);
+  Serial.print(F(" emit_late_max=")); Serial.print(txMaxLatenessUs);
+  Serial.print(F(" raw=")); fbPrintHex(fbResult, sizeof(fbResult)); Serial.println();
+  fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+}
+// Sample start, eight data bits and stop without blocking. A long busy-low
+// interval is ignored before magic; a framing error inside a record fails it.
+void fbUartTick(uint32_t now) {
+  bool high = fbYellowHigh();
+  if (!fbUartActive && fbYellowWasHigh && !high) {
+    fbUartActive = true; fbUartBit = 0; fbUartValue = 0; fbUartNext = now + 416;
+  }
+  if (fbUartActive && txTimeDiff(now, fbUartNext) >= 0) {
+    if (txTimeDiff(now, fbUartNext) > 200 ||
+        (fbUartBit == 0 && high) || (fbUartBit == 9 && !high)) {
+      fbUartActive = false;
+      if (fbResultLen) fbError(F("uart_framing"));
+    } else if (fbUartBit == 9) {
+      fbUartActive = false; fbStoreResultByte(fbUartValue);
+    } else {
+      if (fbUartBit && high) fbUartValue |= (uint8_t)(1U << (fbUartBit - 1));
+      ++fbUartBit; fbUartNext += 833;
+    }
+  }
+  fbYellowWasHigh = high;
+}
+void fbLogTrial() {
+  fbPrintPrefix(F("TRIAL")); Serial.print(F(" mode=")); Serial.print((char)fbConfig.holdKind);
+  Serial.print(F(" kind=")); Serial.print(fbConfig.mode == FB_SILENT ? 'S' : 'X');
+  Serial.print(F(" swap=")); Serial.print(fbConfig.swapRoles);
+  Serial.print(F(" flag=")); if (fbConfig.haveFlag) fbPrintHex(&fbConfig.flagByte, 1); else Serial.print(F("--"));
+  Serial.print(F(" stuff=")); Serial.print(fbConfig.stuffing);
+  Serial.print(F(" close=")); Serial.print(fbConfig.closeFlag);
+  Serial.print(F(" pol=")); Serial.print(fbConfig.polarity);
+  Serial.print(F(" clk_inv=")); Serial.print(fbConfig.clockInvert);
+  Serial.print(F(" dat_inv=")); Serial.print(fbConfig.dataInvert);
+  Serial.print(F(" repeat_count=")); Serial.print(fbConfig.repeatCount);
+  Serial.print(F(" repeat_gap_ms=")); Serial.print(fbConfig.repeatGapMs);
+  Serial.print(F(" phase=")); Serial.print(fbConfig.phaseEighths);
+  Serial.print(F(" lead=")); Serial.print(fbConfig.leadCells);
+  Serial.print(F(" delay_us=")); Serial.print(fbConfig.delayUs);
+  Serial.print(F(" cell_us=122 order=MSB payload="));
+  fbPrintHex(fbConfig.payload, fbConfig.payloadLen); Serial.println();
+}
+void fbCommandTick() {
+  while (Serial.available()) {
+    FeedbackConfig parsed = {};
+    uint32_t id = 0;
+    char ch = (char)Serial.read();
+    // Starting any new command cancels an outstanding optical stimulus.
+    // Even an incomplete line must not leave an old trial armed.
+    if (ch != '\r' && !fbParser.pending() && fbState != FB_IDLE && fbState != FB_DESYNC &&
+        !(fbState == FB_VISUAL_RUN && ch == 'C')) {
+      fbQuiet(); fbState = FB_DESYNC; fbReady = false;
+    }
+    FeedbackCommand command = fbParser.feed(ch, &parsed, &id);
+    if (fbParser.pending()) fbSerialAt = micros();
+    if (command == FB_NONE) continue;
+    if (command == FB_RESYNC) {
+      fbQuiet(); fbResetUart(); fbHaveSequence = false; fbExpectedSequence = 0;
+      fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+      Serial.println(F("SYNC")); fbPrintWiring(); continue;
+    }
+    if (command == FB_CANCEL) {
+      if (fbState == FB_VISUAL_RUN && id == fbConfig.trialId) {
+        fbVisualStop(); fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+        Serial.print(F("VISUAL_CANCELLED visual_id=")); Serial.println(id); continue;
+      }
+      fbCommandError(F("cancel")); continue;
+    }
+    if (command == FB_BLACK_RELEASE && fbManualLow) {
+      fbQuiet(); fbState = FB_DESYNC;
+      Serial.println(F("BLACK released; send R to resynchronise")); continue;
+    }
+    if (command == FB_BLACK_LOW && fbState == FB_IDLE && fbReady && id > fbLastId) {
+      fbConfig.trialId = id; fbLastId = id; fbManualLow = true;
+      fbReady = false; fbStateAt = micros(); fbBlackLow();
+      Serial.println(F("BLACK low (1000 ms maximum)")); continue;
+    }
+    if (command == FB_VISUAL_TEST && fbState == FB_IDLE && !fbManualLow) {
+      fbBlackRelease();
+      // Visual IDs identify a run for cancellation/logging; reusing one is
+      // allowed because these checks do not consume ROM trial IDs.
+      fbConfig.trialId = id; fbReady = false; fbHighTracking = false;
+      fbVisualPhase = 0; fbVisualAt = micros(); fbState = FB_VISUAL_RUN;
+      analogWrite(CLK_OUT, 26); analogWrite(DAT_OUT, 0);
+      Serial.print(F("VISUAL visual_id=")); Serial.print(id);
+      Serial.println(F(" trial_id=unchanged channel=A pin=D5 duty=10% duration_ms=1500")); continue;
+    }
+    if (command != FB_TRIAL || fbState != FB_IDLE || !fbReady || fbManualLow || parsed.trialId <= fbLastId ||
+        (parsed.holdKind == 'P' && parsed.mode != FB_SILENT)) { fbCommandError(F("command")); continue; }
+    fbConfig = parsed; fbLastId = parsed.trialId;
+    fbResetUart(); fbBuildStimulus();
+    fbAckAt = fbReleaseAt = fbStartAt = fbEmitStart = fbEmitEnd = 0;
+    fbRepeatIndex = 0;
+    txMaxLatenessUs = 0; fbEmitPending = false; fbRequestLow = false;
+    fbLogTrial(); fbState = FB_WAIT_ACK; fbStateAt = micros();
+    fbReady = false; fbHighTracking = false;
+  }
+  if (fbParser.pending() && fbElapsed((uint32_t)micros(), fbSerialAt, 1000000UL)) {
+    fbParser.timeout(); fbCommandError(F("serial_timeout"));
+    Serial.println(F("Finish timed-out line with Enter before next command"));
+  }
+}
+void feedbackTick() {
+  fbCommandTick();
+  uint32_t now = micros();
+  bool high = fbYellowHigh();
+  if (fbState == FB_VISUAL_RUN) {
+    if (fbElapsed(now, fbVisualAt, 1500000UL)) {
+      if (!fbVisualPhase) {
+        analogWrite(CLK_OUT, 0); analogWrite(DAT_OUT, 26);
+        fbVisualPhase = 1; fbVisualAt = now;
+        Serial.print(F("VISUAL visual_id=")); Serial.print(fbConfig.trialId);
+        Serial.println(F(" trial_id=unchanged channel=B pin=D6 duty=10% duration_ms=1500"));
+      } else {
+        fbVisualStop(); fbState = FB_IDLE; fbReady = false; fbHighTracking = false;
+        Serial.print(F("VISUAL_DONE visual_id=")); Serial.println(fbConfig.trialId);
+      }
+    }
+  } else if (fbState == FB_IDLE) {
+    if (fbManualLow) {
+      if (fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("black_hold"));
+      return;
+    }
+    if (!high) { fbReady = false; fbHighTracking = false; }
+    else if (!fbHighTracking) { fbHighAt = now; fbHighTracking = true; }
+    else if (!fbReady && fbElapsed(now, fbHighAt, 100000UL)) {
+      fbReady = true; Serial.println(F("READY"));
+    }
+  } else if (fbState == FB_WAIT_ACK) {
+    if (!fbRequestLow) {
+      if (!high) fbHighTracking = false;
+      else if (!fbHighTracking) { fbHighTracking = true; fbHighAt = now; }
+      else if (fbElapsed(now, fbHighAt, 100000UL)) {
+        fbBlackLow(); fbRequestLow = true; fbStateAt = now;
+      }
+    } else if (!high) { fbState = FB_HOLD; fbStateAt = fbAckAt = now; }
+    if (fbState == FB_WAIT_ACK && fbElapsed(now, fbStateAt, 1500000UL)) fbError(F("ack"));
+  } else if (fbState == FB_HOLD) {
+    if (high) { fbError(F("ack_lost")); return; }
+    if (fbElapsed(now, fbStateAt, fbHoldUs())) {
+      fbBlackRelease(); fbState = FB_WAIT_START; fbStateAt = fbReleaseAt = now;
+      fbHighTracking = false; fbResetUart();
+    }
+  } else if (fbState == FB_WAIT_START) {
+    if (high) {
+      if (!fbHighTracking) { fbHighTracking = true; fbHighAt = now; }
+    } else {
+      bool start = fbHighTracking && fbElapsed(now, fbHighAt, 40000UL);
+      fbHighTracking = false;
+      if (start && !fbResultLen) {
+        fbStartAt = now; fbState = FB_WAIT_RESULT; fbResetUart();
+        fbEmitPending = fbConfig.mode == FB_STIMULUS;
+      }
+    }
+    if (fbState == FB_WAIT_START) {
+      fbUartTick(now);
+      if (fbState == FB_WAIT_START && fbElapsed(now, fbStateAt, 1000000UL)) fbError(F("start"));
+    }
+  } else if (fbState == FB_WAIT_RESULT) {
+    // Enter the emitter ahead of the first physical edge.  Earlier versions
+    // dispatched at the deadline and built the lazy queue afterward, making
+    // the first clock late even when the requested delay was otherwise valid.
+    // Keep cancellation/serial handling live until this bounded setup window.
+    const uint32_t setupAheadUs = 256;
+    sweepInvert = fbConfig.polarity; txPhaseEighths = fbConfig.phaseEighths;
+    const uint32_t scheduled = fbStartAt + fbConfig.delayUs +
+        (uint32_t)fbRepeatIndex * fbConfig.repeatGapMs * 1000UL;
+    if (fbEmitPending && txTimeDiff(now, txFirstEventTime(
+        scheduled, fbConfig.leadCells) - setupAheadUs) >= 0) {
+      // All serial parsing and cancellation remain live during the delay.
+      // A maximum frame plus lead takes under 26 ms. No serial prints occur
+      // inside sendFrame; its deadline lateness is reported with the result.
+      fbEmitPending = false; sweepClock = 0;
+      sweepSwap = fbConfig.swapRoles; sweepInvert = fbConfig.polarity;
+      txClockLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.clockInvert : 0;
+      txDataLevelInvert = fbConfig.mode == FB_STIMULUS ? fbConfig.dataInvert : 0;
+      txPhaseEighths = fbConfig.phaseEighths; txPre = fbConfig.leadCells; txPost = 0;
+      // Hard end guard: repeated stimuli must finish within 80 ms of START.
+      // Keep existing single-burst scheduling behavior unchanged.
+      const uint32_t frameUs = (uint32_t)(txPre + frameLen) * 122UL + 100UL;
+      const uint32_t repeatDeadline = fbStartAt + 80000UL;
+      const bool repeatInWindow = fbConfig.repeatCount == 1 ||
+          (txTimeDiff(scheduled + frameUs, repeatDeadline) <= 0 &&
+           txTimeDiff(micros() + frameUs, repeatDeadline) <= 0);
+      if (repeatInWindow) {
+        if (!fbRepeatIndex) fbEmitStart = micros();
+        sendFrame(scheduled); fbEmitEnd = micros();
+        ++fbRepeatIndex;
+        fbEmitPending = fbRepeatIndex < fbConfig.repeatCount;
+      } else {
+        fbEmitPending = false;
+      }
+      txClockLevelInvert = txDataLevelInvert = 0;
+      fbResetUart();
+    }
+    fbUartTick((uint32_t)micros());
+    if (fbState == FB_WAIT_RESULT && fbElapsed((uint32_t)micros(), fbStartAt, 6000000UL)) fbError(F("result_timeout"));
+  }
+}
+#endif
 
 #if FREERUN_TEST
 // ------------------------------------------------- free-running clock ------
@@ -1099,20 +1582,38 @@ void setup() {
   pinMode(DAT_IN, INPUT);
   pinMode(CLK_OUT, OUTPUT);
   pinMode(DAT_OUT, OUTPUT);
+#if FEEDBACK_HARNESS
+  fbBlackRelease();  // preload the selected idle level before enabling D7
+  pinMode(BLACK_OUT, OUTPUT);
+  pinMode(YELLOW_IN, INPUT);
+#endif
   clkReg = portOutputRegister(digitalPinToPort(CLK_OUT));
   datReg = portOutputRegister(digitalPinToPort(DAT_OUT));
   clkMask = digitalPinToBitMask(CLK_OUT);
   datMask = digitalPinToBitMask(DAT_OUT);
   clkLow(); datLow();
+#if FEEDBACK_HARNESS
+  fbBlackRelease();
+#endif
+#if !FEEDBACK_HARNESS
   attachInterrupt(digitalPinToInterrupt(CLK_IN), onClockEdge, RISING);
+#endif
 #if FREERUN_TEST
   // Enable Timer2 only after the ISR's GPIO pointers and masks are valid.
   freerunBegin();
 #endif
   // State the build in the log.  The IDE will happily flash a stale sketch, so
   // the run must say which one it actually is.
+#if FEEDBACK_HARNESS
+  fbHighAt = micros();
+  Serial.println(F("BOOT"));
+#else
   Serial.println(F("M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."));
-#if LOOPBACK_TEST
+#endif
+#if FEEDBACK_HARNESS
+  Serial.println(F("MODE: FEEDBACK v1, SILENT until explicit T; D5=A D6=B D7=black driver D8=yellow input"));
+  fbPrintWiring();
+#elif LOOPBACK_TEST
   Serial.println(F("MODE: LOOPBACK -- transmitting to my own detectors."));
   Serial.println(F("  pass = 10000001000001011 comes back"));
 #elif LISTEN_ONLY
@@ -1163,6 +1664,10 @@ void setup() {
 }
 
 void loop() {
+#if FEEDBACK_HARNESS
+  feedbackTick();
+  return;
+#endif
   // lastEdgeUs is four bytes on an 8-bit core, so reading it while the ISR may
   // be writing it can tear: catch it mid-update and the high bytes come from
   // the old value, "micros() - lastEdgeUs" goes huge, and the burst is falsely

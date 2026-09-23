@@ -1,5 +1,18 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-22 — merged instrumentation; next IR feedback draft
+
+* Squash-merged PR #21 after 163 focused tests plus 71 subtests and passing
+  GitHub documentation checks. A clean export without connector binaries
+  passed all 27 connector tests and reproduced both burn images exactly.
+* Started `ir/automated-feedback-tests` from merged master with a plan for
+  one reusable ROM and Arduino-adjustable receive hypotheses. No combined
+  image or new checksum exists yet; implementation remains open.
+* Consistency review found historical claims of established LED orientation
+  and `7Eh` framing. Withdraw those interpretations, retain measurements,
+  and require both channel assignments and controlled stimuli. Recorded the
+  owner clarification as an unresolved Ghidra bookmark and saved the program.
+
 ## 2026-09-22 — connector bridge result and PR polish
 
 * Owner clarifies that Arduino LED clock/data assignment is unknown and
@@ -7300,8 +7313,10 @@ names renamed, 144 unplated functions plated)
   the return flag is `7E` (normal HDLC), the return data must be **zero-stuffed**
   (a 0 after five 1s), not the Micronic's inverted one-stuffing (a 1 after five
   0s). The Arduino now sets `stuffNormal = (flag == 0x7E)` and zero-stuffs
-  accordingly. `content=2` (`1Fh`) has no five-1 run so does not exercise the
-  stuffing; content 4 (`7Fh`) or a frame does. Sketch set to `RX_NARROW 1`,
+  accordingly. [Correction, 2026-09-22: `1Fh` ends with five consecutive
+  ones and exercises terminal zero-stuffing. The original claim that it has
+  no five-1 run was wrong.] Content 4 (`7Fh`) exercises a longer run.
+  Sketch set to `RX_NARROW 1`,
   axis 1 (polarity), phase fixed −2/8; all mode configs pass the host
   `-fsyntax-only` check.
 * **Byte capture result (owner, `rxb` hook, 2026-09-20).** The byte-capture
@@ -7396,3 +7411,546 @@ names renamed, 144 unplated functions plated)
   6 subtests passed; opt-in barcode 24 passed (including those five skips).
   Strict MkDocs build and rendered-document checks passed. Report is not
   explicitly in nav, but linked from TASKS and affected test instructions.
+
+### 2026-09-22 — Implement the one-burn IR feedback harness
+
+* Added the standalone feedback-v1 ROM, guarded reproducible builder and
+  tracked checksum manifest. W/R/P/G cover the stock-order opening witness,
+  forced raw receive, probe and pending-gated raw receive in one EPROM.
+  Black commands run only with the tested input gate; yellow marks START
+  and returns a checksummed 30-byte record. LCD and keypad controls use the
+  same trial results. Generated binaries remain untracked.
+* Added default Uno feedback mode to the existing sketch directory: explicit
+  silent/one-stimulus requests, USB-selected LED roles and candidate bytes,
+  protected black drive, yellow UART receive, timeouts and cancellation.
+  Added a POSIX serial batch logger that preserves raw records and stops
+  without replaying failed trials. Existing optical modes remain available.
+* Review corrected UART cadence, result timeout, payload-buffer capacity,
+  early data-edge scheduling and a stale final port-2Dh sample. Raw stock
+  receive DE is retained without equating it to a physical frame count.
+* Validation: 201 tests and 5 subtests passed across the focused IR suite,
+  including executed-ROM tests, independent UART decoding at nominal
+  1200 baud and receiver clocks offset by +/-2%, Arduino state-machine
+  integration and existing IR regressions. The actual Uno feedback build
+  uses 9,630 flash bytes and 845 static SRAM bytes; all 13 legacy build
+  configurations also compile. Strict documentation/render checks pass.
+* Physical feedback/IR coexistence remains untested. Owner-confirmed
+  connector mappings are reused; LED clock/data assignments and receive
+  `7Eh` framing remain SUSPECTED. No semantic Ghidra changes; saved the
+  current program. Operator instructions and image checksums are in
+  [the feedback interface](../re-notes/ir-feedback-protocol.md).
+
+### 2026-09-22 — Make the feedback harness wiring explicit
+
+* Owner identified that the interface guide lacked buildable connection
+  instructions. Added a complete handheld/Uno wire table, NPN B/C/E diagram,
+  resistor values, separate-supply/common-ground wiring, unused contacts,
+  removal of old test pull-ups/loads, and the existing optical-head hookup.
+* Blue/yellow numeric connector pins remain unrecorded; the guide uses the
+  owner-tested colours without inventing a mini-DIN pin numbering scheme.
+  Firmware and EPROM image/checksums are unchanged.
+
+### 2026-09-22 — Owner supplies the remaining connector pin numbers
+
+* CONFIRMED (owner identification): black=5, yellow=6, blue=8, red=1,
+  orange=3. Recorded in the sketch wiring header, operator guide, sketch
+  README, hardware notes and connector pin table; the preceding statement
+  that blue/yellow numbers were unrecorded is superseded.
+* Stored the owner pin identification in a Ghidra bookmark and saved the
+  program. This records physical evidence, without new scanner-role claims.
+  No firmware bytes or image checksums changed.
+
+### 2026-09-22 — Clarify the black-input transistor rationale
+
+* Owner suggests black/pin 5 feeds a 74LS IC. Recorded as SUSPECTED pending
+  a PCB trace/part marking. Existing load measurements fit a weakly biased
+  input but do not identify its logic family.
+* Withdrew the blanket claim that driving this input HIGH is wrong: a 5 V
+  Uno can drive a 74LS input. The NPN is optional electrical separation;
+  current code retains its inversion, so direct wiring requires a software
+  polarity/startup change. No firmware or wiring configuration changed.
+
+### 2026-09-22 — Select direct TTL or NPN black-input drive
+
+* Added `BLACK_USE_NPN` beside the sketch wiring header: 0 drives black
+  directly (D7 HIGH idle/LOW command); default 1 retains the external NPN
+  wiring (D7 LOW idle/HIGH command). Setup preloads the selected idle latch
+  before enabling output. Startup and serial R report the selected wiring.
+* Updated both wiring variants and the first silent-probe procedure in the
+  sketch/README/operator guide. This selects a test interface; it does not
+  promote the suggested 74LS receiver identity to confirmed.
+* Validation: 3 integration/configuration tests cover both electrical
+  polarities under ASan/UBSan, startup without a spurious low command,
+  resynchronisation and invalid-option rejection. The existing emitter and
+  logger suite passed 22 tests. Actual Uno compilation passed for NPN
+  (9,680 flash bytes), direct TTL (9,686 flash bytes), and legacy default;
+  both feedback variants use 845 static SRAM bytes.
+* ROM source, image and checksums are unchanged. No further EPROM burn is
+  needed if feedback-v1 is already installed. Documentation checks passed.
+
+### 2026-09-23 — First direct-TTL feedback transaction on hardware
+
+* CONFIRMED (owner report): feedback-v1 boot/LCD banner and Arduino direct
+  TTL startup/resync succeed. Silent P trial ID 1 returns ROM sequence 1,
+  mode 3/error 0, then READY. Preserved complete serial result and LCD rows
+  in the feedback interface guide.
+* Independently decoded 30 bytes and verified the zero-sum check byte. Probe
+  and before/after status are C0h; witness polls FFh/not run; TX arm and RX
+  fields zero. Final 2Ah=22h, 2Ch=00h, 2Dh=23h agree with the display.
+  Logged ACK/release interval is 500 ms; release/START interval is 80 ms.
+* One command/result round trip is established; active IR coexistence,
+  physical LED roles and receive framing remain unproven. Next test is the
+  silent W witness, ID 2. Recorded the owner result in Ghidra and saved.
+
+### 2026-09-23 — Silent W witness baseline, host ID 2
+
+* CONFIRMED (owner report, independently decoded): 30-byte result checksum
+  valid; ROM sequence 2/mode 1/error 6. LINK_STATUS bit-4 poll passed (10h),
+  arm flag 1, bit-6 poll timed out (00h). Probe/before/after status is
+  A0h/80h/C8h. No RX attempt; final 2Ah=22h, 2Ch=00h, 2Dh=23h match LCD.
+* Preserved full serial and LCD records in the feedback guide. Logged black
+  hold is 100 ms and release/START interval 84.904 ms; no Arduino optical
+  emission was scheduled. Valid feedback/READY after this witness is
+  established; error 6 is the diagnostic outcome, not a transport failure.
+* Next is the paired X trial, ID 3, retaining swap=0/candidate 7E/7 ms delay
+  and optical placement. No interpretation of bit 6 as wire ACK, nor any
+  confirmation of receive framing/LED roles. Saved a Ghidra bench bookmark.
+
+### 2026-09-23 — First W/X stimulus, timing concern
+
+* CONFIRMED (owner report): host/ROM sequence 3, valid 30-byte checksum and
+  LCD agreement. Bit-4 poll passed, TX arm executed, bit-6 wait timed out;
+  probe/before/after A0h/C0h/C8h. Final 2Ah/2Ch/2Dh are 22h/00h/23h.
+  Preserved original serial/LCD records in the feedback guide.
+* Emission dispatch timestamp is START+7044 us; emission interval 1856 us
+  includes the 300 us post-burst delay. Reported event lateness 110 us is
+  substantial relative to the 122 us cell. These are software timestamps,
+  not a captured optical waveform. No receive/framing rejection concluded.
+* Next: identical X trial ID 4 with D5/D6 capture to check first/later edge
+  timing before changing assignments. Source review identifies post-deadline
+  queue setup as a possible contributor; actual AVR costs are not modelled
+  by the host scheduler tests. Saved the observation as an open Ghidra item.
+
+### 2026-09-23 — Generic command rejection after trial 3
+
+* Owner reports ERROR id=3 reason=command with the exact preceding trial-3
+  bytes. Source verification shows command errors retain fbConfig's last
+  accepted ID and the old result buffer: this is not another ROM result.
+* Owner clarified that the same ID-3 command was entered twice. Duplicate
+  ID rejection explains this event; every repeat needs a new ID. Documented
+  recovery using serial R, READY, then ID 4. R retains the host-ID monotonic
+  limit. No hardware conclusion or code change.
+* Routine reports need full TRIAL/RESULT/ERROR lines, not duplicated LCD
+  transcription. Request LCD only for mismatch, missing serial result, or
+  display debugging.
+
+### 2026-09-23 — Repeat stimulus ID 4 and clipped scope view
+
+* Owner supplied successful trial 4 (valid 30-byte checksum), followed by
+  repeated ID-4 command rejections despite R. Explained that R preserves
+  the last accepted host ID; the final log is READY and next ID is 5.
+* Same bit-4-pass/arm/bit-6-timeout outcome; probe/before/after A0h/80h/C8h.
+  Emission dispatch again START+7044 us, interval 1852 us, maximum event
+  lateness again 110 us. Preserved complete TRIAL/RESULT lines in guide.
+* Owner initially reported apparent D6 onset before D5 with activity
+  off-screen, then identified incorrect scope labels. Withdraw the apparent
+  physical reversal. Pulse timing remains unverified: requested per-bit
+  data lead is 30 us, while the D5 train starts about 702 us before D6.
+  Next repeat ID 5 captures both with corrected labels, single-shot D6
+  trigger and pre-trigger. No code change.
+
+### 2026-09-23 — Trial 5 Keysight digital scope capture
+
+* CONFIRMED (owner serial report): ID 5 repeated mode 1/error 6; valid
+  feedback reports 138 us maximum event lateness. Recorded exact lines in
+  `doc/re-notes/ir-feedback-protocol.md`.
+* CONFIRMED (2.5 us/sample scope CSV): scope D2 has 13 pulses, D3 six;
+  candidate clock-edge sampling recovers 7Eh. Initial lead spacing is about
+  90 us, later spacing mostly 130 us rather than requested 122 us; high
+  widths are also short. These are pod labels; Uno pin correspondence for
+  this capture awaits owner confirmation. Withdrew the earlier single-clipped
+  lead-pulse explanation.
+* Added `analysis/feedback_scope.py` and synthetic CSV tests so future
+  captures can be measured reproducibly. Copied the 31 KB CSV to ignored
+  disk-backed `.cache/ir-arduino/` and recorded its SHA-256 in the guide.
+  Next: correct the Uno emitter via USB and re-scope using host ID 6; no
+  additional EPROM burn indicated by this timing observation.
+
+### 2026-09-23 — Uno emitter repair and physical retest handoff
+
+* Source review found two contributors to the trial-5 timing defect: the
+  feedback state machine entered `sendFrame` only at the first edge deadline,
+  and the generic emitter sorted a lazy event queue between close edges.
+  It now enters 256 us ahead, masks RX crosstalk only at the first driven
+  edge, and uses a direct ordered path when every edge stays within its cell.
+  Other overlapping phase settings retain the generic queue.
+* Host emitter/feedback tests pass; the actual Elegoo Uno R3 direct-TTL
+  sketch compiles to 10072 flash bytes and 845 RAM bytes. AVR timing remains
+  OPEN until the next scope capture. No ROM or connector wiring change.
+* Tracked the 31 KB trial-5 Keysight CSV as
+  `analysis/captures/feedback-trial5-keysight.csv`, added a fixture check,
+  and wrote an explicit next-trial handoff in the canonical interface:
+  upload sketch with `BLACK_USE_NPN=0`, confirm probe mapping, use ID 6,
+  collect complete serial/CSV, and measure against bounded timing targets.
+
+### 2026-09-23 — Trial 6 validates repaired digital stimulus
+
+* CONFIRMED (owner serial report): W/X host ID 6, ROM sequence 7, valid
+  30-byte checksum, probe/before/after A0h/80h/C8h. `LINK_STATUS` bit-4
+  poll passed, arm executed, bit-6 poll timed out/error 6; W mode did not
+  attempt RX. Uno reported 7 us maximum scheduling lateness.
+* CONFIRMED (Keysight CSV, 2.5 us/sample): scope D2/D3 show 13/6 pulses;
+  candidate sampling yields 7Eh. Clock periods span 117.5–127.5 us,
+  clock widths 60–67.5 us, data widths 77.5 us, all within the handoff
+  targets. Pod-to-Uno header assignment needs owner confirmation; optical
+  delivery and physical LED roles remain open.
+* Copied the source CSV into tracked
+  `analysis/captures/feedback-trial6-keysight.csv`, SHA-256 recorded in the
+  canonical guide, and added a fixture regression. Replaced stale ID-6
+  instructions with swapped-role W silent/stimulated IDs 7/8. No further
+  ROM burn or Uno firmware change is indicated before those tests.
+
+### 2026-09-23 — Trial 6 scope pod mapping confirmed by owner
+
+* CONFIRMED (owner): scope pod D2 was connected to Uno header D5 and scope
+  pod D3 to Uno header D6 during trial 6. This resolves the capture's
+  provisional electrical channel labels. With `swap=0`, D5 was the proposed
+  clock and D6 the proposed data; which LED channel the handheld receives as
+  clock or data remains OPEN. Trial-5 probe wiring was not separately
+  confirmed by this statement.
+
+### 2026-09-23 — Swapped W control/stimulus trials 7 and 8
+
+* CONFIRMED (owner serial report): W/S trial 7 emitted nothing, as intended;
+  its emission timestamps and maximum lateness are zero. W/X trial 8 emitted
+  with 3 us maximum lateness. Both returned valid 30-byte feedback: bit-4
+  poll passed, TX arm executed, bit-6 timeout/error 6. W did not invoke RX.
+* CONFIRMED (Keysight CSV): trial 8 scope D3 has 13 proposed clock pulses,
+  D2 six proposed data pulses; candidate byte at the clock rises is 7Eh.
+  All intervals/widths meet the established targets. Archived the raw CSV
+  at `analysis/captures/feedback-trial8-keysight.csv`; SHA-256 is in the
+  canonical guide. This controls the swapped digital stimulus at the Uno,
+  not optical reception by the handheld.
+* Next: matched forced-RX mode R silent/stimulated trials 9/10 with swap=1,
+  then the other role if needed. No code or EPROM change is required.
+
+### 2026-09-23 — Forced-RX matched trials 9 and 10
+
+* CONFIRMED (owner serial report): both R/S and R/X with swap=1 produced
+  valid 30-byte feedback, mode 2/error 7, probe/before/after A0h/C0h/C0h,
+  stock raw `A=EEh`, `F=6Dh` (carry set), no saved DE/preview. Trial 9
+  emitted nothing by design; trial 10 dispatched at START+6800 us with
+  3 us reported maximum lateness. No trial-10 scope capture was provided.
+* Byte-checked stock `Link_BlockRx` at ROM00:33CF–33EB: `EEh` here is the
+  `LINK_STATUS` bit-0 byte-ready/bit-1 frame-end wait's `06F9h` timeout,
+  about 30.0 ms at 3.6864 MHz (62 T-state no-byte loop). The 24.69 ms
+  figure belongs to the TX per-byte loop. It is not the W bit-6 wait. The
+  ROM wrapper does not record DE or preview after carry, so zero fields
+  cannot exclude partial byte delivery before a later timeout.
+* Next: G/S then G/X IDs 11/12, preserving the same candidate and role,
+  to test the separate receive-pending gate. Physical optical delivery,
+  LED role and flag identity remain open; no EPROM or Uno change required.
+
+### 2026-09-23 — Receive-pending-gated trials 11 and 12
+
+* CONFIRMED (owner serial report): G/S and G/X with `swap=1`, candidate
+  opening 7Eh and 7 ms delay, both gave valid 30-byte results with wrapper
+  error 8: `LINK_STATUS` bit-4 pending did not appear in the bounded ~100 ms
+  wait, so stock RX was not called. The silent control emitted nothing;
+  stimulated trial reported maximum scheduling lateness 3 us. No new scope
+  capture supplied.
+* Trial 11 probe/before/after was A0h/80h/80h; trial 12 was E0h/C0h/C0h.
+  The before/probe samples precede stimulus; after equals before in each
+  trial. These differences do not demonstrate an optical response.
+* Next: matched G/S and G/X pair IDs 13/14 with only `swap=0` changed.
+  Conn10's earlier software-role-dependent retry reaction makes this the
+  sharper next axis. It does not establish optical LED mapping or framing.
+
+### 2026-09-23 — Unswapped receive-pending controls, IDs 13 and 14
+
+* CONFIRMED (owner serial report): both G/S and G/X with `swap=0` returned
+  valid 30-byte records, mode 4/error 8; probe/before/after exactly
+  A0h/80h/80h in both. Neither entered stock RX because the bounded
+  `LINK_STATUS` bit-4 pending wait expired. Trial 13 emitted nothing by
+  design; trial 14 reported 10 us maximum scheduling lateness. No new
+  scope capture was supplied.
+* Thus a bare opening 7Eh candidate failed to raise pending status with
+  either software-role assignment in the feedback-v1 G mode. This does
+  not establish optical delivery, physical LED roles or flag identity.
+* Next: matched G/S and G/X IDs 15/16, `swap=0`, same timing, add only
+  candidate payload byte 03h. No EPROM or sketch change required.
+
+### 2026-09-23 — Candidate-payload G controls, IDs 15 and 16
+
+* CONFIRMED (owner serial report): matched G/S and G/X with `swap=0`,
+  opening 7Eh and payload 03h, returned valid 30-byte checksummed records,
+  mode 4/error 8. Both probe/before/after status triples were
+  E0h/C0h/C0h. Neither reached stock RX because `LINK_STATUS` bit 4
+  remained clear through the bounded pending wait.
+* Trial 15 emitted nothing by design. Trial 16 reported 3 us maximum
+  software event lateness. The owner did **not** capture a scope trace for
+  trial 16, so its D5/D6 waveform and optical delivery are unverified.
+* Next: repeat the trial-16 stimulus unchanged as ID 17 with a D5/D6 scope
+  capture. This uses the existing ROM and Uno sketch. Candidate framing,
+  physical LED roles and optical delivery remain open.
+
+### 2026-09-23 — Scoped candidate-payload repeat, ID 17
+
+* CONFIRMED (owner serial report): G/X ID 17 repeated the `swap=0`,
+  `7Eh 03h` candidate. Valid 30-byte feedback reports ROM sequence 20,
+  mode 4/error 8, probe/before/after E0h/C0h/C0h and 3 us maximum
+  scheduler lateness. The `LINK_STATUS` bit-4 pending wait again expired
+  without calling stock RX.
+* CONFIRMED (owner Keysight CSV): archived `/tmp/IR` as
+  `analysis/captures/feedback-trial17-keysight.csv`, SHA-256
+  `088613cc57d8b688ce7adaf8fbeb5316ae29d3865274578fbfb799a33375f1eb`.
+  Scope D2 carries 21/21 proposed clock pulses and D3 eight/eight data
+  pulses, sampling `7Eh 03h`; rise intervals 117.5–125 us and widths
+  within the documented timing targets. The CSV establishes the waveform
+  at the pod inputs, not optical reception. The owner subsequently
+  confirmed that scope connections had not changed since trial 6:
+  D2→Uno D5 and D3→Uno D6 for trial 17.
+* Next: try matched G/S and G/X IDs 18/19 with `pol=1` while
+  retaining sketch `stuff=1`. The sketch complements the whole logically
+  stuffed frame, including the flag, to test the inverted wire sense.
+
+### 2026-09-23 — Complemented-wire G controls, IDs 18 and 19
+
+* CONFIRMED (owner serial report): matched G/S and G/X kept `swap=0`,
+  logical `7Eh 03h`, `stuff=1`, 7 ms delay and set `pol=1`. Both valid
+  30-byte records returned mode 4/error 8 with identical A0h/80h/80h
+  probe/before/after status. Neither entered stock RX because the
+  `LINK_STATUS` bit-4 pending wait expired. Trial 18 emitted nothing;
+  trial 19 reported 3 us maximum scheduler lateness.
+* No trial-19 scope trace was supplied; `/tmp/IR` still held trial 17.
+  The baseline status changed from IDs 15–17 for both members of this
+  pair, so that across-run difference is not a polarity response.
+* Next: matched direct-stock-RX mode R/S and R/X IDs 20/21, preserving
+  the ID-19 stimulus. This bypasses G's pending gate on the current
+  feedback ROM, though the wrapper still hides partial bytes on carry.
+
+### 2026-09-23 — Direct stock-RX pair, IDs 20 and 21
+
+* CONFIRMED (owner serial report): valid 30-byte R/S and R/X feedback
+  returned mode 2/error 7, stock `A=EEh`, `F=6Dh` (carry) in both.
+  Trial 20 silent probe/before/after was E0h/C0h/C0h; trial 21 stimulated
+  was A0h/80h/C0h, with 3 us maximum software scheduling lateness.
+* Trial 21's `LINK_STATUS` bit 6 changed from clear before the stock RX
+  call to set afterward. The samples bracket the stock RX timeout; trial
+  20 already had bit 6 set before RX. Thus this change is not yet causally
+  attributable to stimulus. The wrapper hides partial DE/preview on carry.
+  No new scope capture was supplied; `/tmp/IR` still held trial 17.
+* Next: matched R/S and R/X IDs 22/23 with delay 60000 us, a late
+  stimulus after the roughly 30 ms first-byte wait if that no-byte path
+  was taken. Verify that trial 23 actually emitted; if RX ran longer on a
+  partial-byte path, the control's temporal separation is not guaranteed.
+
+### 2026-09-23 — Late direct-RX control, IDs 22 and 23
+
+* CONFIRMED (owner serial report): both 30-byte records passed checksum,
+  returned mode 2/error 7 and stock `A=EEh`, `F=6Dh` (carry), with identical
+  `LINK_STATUS` probe/before/after A0h/C0h/C0h. Trial 22 was silent.
+  Trial 23's scheduler entered at START+59,808 us, about 256 us before
+  the first clock edge, and reported 9 us maximum lateness. No new scope
+  capture was supplied; `/tmp/IR` remained the trial-17 source.
+* Both began with `LINK_STATUS` bit 6 set, so this pair does not show
+  whether bit 6 could rise during RX without an in-window stimulus. The
+  identical return also supplies no frame reception evidence. The wrapper
+  does not timestamp RX return or retain partial bytes on carry.
+* Next: use the owner's documented SFH213 photodiode probe to measure Uno
+  LED light at the top V24 receive window with the existing ROM/sketch.
+  Prove optical delivery at the target plane before more framing/phase
+  permutations; internal detector receipt remains a separate question.
+
+### 2026-09-23 — Repeated early R stimulus and optical-hardware update
+
+* CONFIRMED (owner serial report): R/X ID 24 repeated the ID-21
+  complemented `7Eh 03h` candidate at START+7 ms. Its valid 30-byte
+  feedback returned mode 2/error 7, stock `A=EEh`, `F=6Dh` (carry),
+  `LINK_STATUS` probe/before/after A0h/80h/C0h and 3 us maximum software
+  lateness. ID 21 had the same status and error. All reported R trials
+  (9, 10, 20–24) have `after=C0h`, including silent and late controls;
+  the bit-6 rise is not proven optical. No new scope CSV was supplied.
+* CONFIRMED (owner hardware): the SFH213 photodiode previously used as a
+  scope probe is now part of the Arduino IR transponder. There is no
+  documented spare optical-sensor output in feedback mode. The owner
+  suggests viewing the IR LEDs with a camera. A USB-only, low-duty
+  sustained LED self-test will make camera observation practical without
+  another ROM burn; light at the handheld detector remains unmeasured.
+* Implemented an Arduino-only `V <visual_id>` check: 10% PWM for 1.5 s
+  each on A/D5 then B/D6, black released, with a separate visual-ID
+  label and `C <visual_id>` cancellation. Initial code mistakenly required
+  increasing visual IDs, making `V 1` one-shot until another ID or reboot;
+  revised it so the same ID may be reused after completion. The updated
+  sketch defaults
+  to direct TTL for the owner's installed wiring. Host state-machine tests
+  and the Elegoo Uno R3 build pass; the ROM image is unchanged.
+
+### 2026-09-23 — Camera check and idle-command recovery
+
+* CONFIRMED (owner camera report): `V 1` lit the Arduino transponder's IR
+  LEDs. This proves light at the emitters, but not optical delivery to the
+  handheld detector or receive-frame decoding. The SFH213 remains integrated
+  in the transponder; no separate photodiode scope probe is available.
+* CONFIRMED (owner serial experience and sketch source): reusing an accepted
+  trial ID was correctly rejected, but the old error path set `FB_DESYNC`,
+  trapping subsequent commands until `R`. The Arduino-only fix keeps the
+  current idle/READY state and accepted-ID counter on malformed, duplicate,
+  and timed-out idle commands. The next higher trial ID can follow directly.
+  A timed-out serial line must first be ended with Enter. In-flight errors
+  still require `R`; `R` does not reset the accepted-ID counter. `V 1` is
+  repeatable and does not consume a trial ID.
+* The feedback-v1 ROM image is unchanged. Focused host tests (12 passing)
+  and a cached Elegoo Uno R3 compile pass after this source change.
+
+### 2026-09-23 — Next controlled IR pair
+
+* Selected the missing mode-G `swap=1` + `7Eh 03h` comparison: silent
+  host ID 25 and stimulated host ID 26 at START+7 ms, same placement.
+  Previous `swap=1` G trials used `7Eh` only; the scoped `7Eh 03h`
+  candidate was used with `swap=0`. Exact commands and result
+  interpretation are in `doc/re-notes/ir-feedback-protocol.md`.
+* No new hardware result or ROM change is implied by this test plan.
+
+### 2026-09-23 — Optical receiver observation and trials 25–26
+
+* CONFIRMED (owner serial report; both 30-byte sums zero): G/S host ID 25,
+  ROM sequence 28, returned error 8 and `LINK_STATUS` probe/before/after
+  A0h/C0h/C0h. Matched G/X host ID 26, ROM sequence 29, also returned
+  error 8, with E0h/C0h/C0h. ID 26 reported emission and at most 3 us
+  scheduler lateness. Neither entered stock RX. The differing probe bytes
+  are pre-stimulus and do not establish an optical response.
+* CONFIRMED (owner hardware): after bypassing the Uno LED ballast resistors,
+  the `V 1` PWM appeared at a Micronic photodiode-amplifier output low for
+  about 10% and high for about 90%. The owner cannot establish whether the
+  earlier, current-limited drive was detected. The observation establishes
+  modulation at that measured node, not controller logic level or decoded
+  clock/data polarity.
+* Corrected the interpretation of `pol`: source shows it complements the
+  serialized data-bit pattern, including the flag, while leaving clock
+  pulses unchanged. The owner's question is physical IR clock/data level
+  polarity, so a `pol=1` trial alone would not answer it. Next, restore
+  deliberate current limiting and compare D5/D6 to the receiver-amplifier
+  waveform (and downstream logic node if accessible) on one scope capture.
+
+### 2026-09-23 — Visual-command rejection triage
+
+* Owner reported three idle `ERROR id=26 reason=command` lines when trying
+  `V 1`, and observed lowercase `r` differs from uppercase `R`. Current
+  parser source and host test confirm command letters are case-sensitive:
+  exact ASCII `V 1` plus LF works from idle; `v 1` and `r` are rejected.
+  CRLF is accepted, while CR alone cannot produce these errors. `id=26`
+  is the last accepted trial ID in the error prefix, not the visual ID.
+* The exact bytes sent in the owner's failing attempt remain unconfirmed.
+  Ask for the terminal and line-ending setting if uppercase `V 1` followed
+  by LF still fails. No new ROM or Arduino build was made.
+
+### 2026-09-23 — Resistor-limited optical signal confirmed
+
+* CONFIRMED (owner hardware report): after reinstating the LED limiting
+  resistors, the signal still reaches the Micronic IR receiver. Withdraw
+  the earlier implication that detection required bypassing those
+  resistors. The 10%-low/90%-high waveform was measured with resistors
+  bypassed; its exact shape with resistors fitted was not reported.
+* Proceed with the current-limited drive. The remaining scope question is
+  physical clock/data edge polarity and phase at the receiver during a
+  short feedback trial. Keep a fresh silent control when comparing ROM
+  status across drive changes. No ROM or Arduino source change is needed.
+
+### 2026-09-23 — Resistor-limited G control pair and no amplifier capture
+
+* CONFIRMED (owner serial report; both 30-byte sums zero): G/S ID 27,
+  ROM sequence 30, and G/X ID 28, ROM sequence 31, both returned error 8
+  with identical `LINK_STATUS` probe/before/after A0h/80h/80h. ID 28
+  scheduled emission with 3 us maximum software lateness. Neither
+  reached stock RX; no measured short-burst optical waveform is implied.
+* The existing `/tmp/IR` file predates IDs 27/28; the owner confirms no
+  new scope trace and says the Micronic photodiode amplifier is hard to
+  probe. Supersede the direct-probe prerequisite: USB-selectable physical
+  clock/data level inversion, with drive pins low before/after brief T
+  bursts, can
+  test the polarity hypothesis through matched ROM feedback. This is
+  separate from `pol`, which changes serialized data bits only.
+* Implemented optional `clk_inv dat_inv` after the T payload in the Uno
+  sketch; old 13-field lines default to 0/0. The flags invert physical
+  clock/data levels independently after swap only during X emission.
+  A timed burst baseline and direct physical-dark teardown avoid idle
+  illumination and an end-of-burst glitch. The earliest-edge case with
+  no lead and negative phase is covered by a host test. IDs 29–36 in
+  `analysis/trials/feedback-optical-levels-29-36.txt` are the next matched
+  S/X matrix, with all four level combinations and no ROM change.
+* Focused feedback/runner tests: 12 passed. Cached Uno R3 compile: 11,472
+  flash bytes, 856 static SRAM bytes. No Micronic bench result yet for
+  the new optical-level modes.
+
+### 2026-09-23 — Connected Uno, optical-level and reference-like G trials
+
+* Temporary ACL allowed upload to the attached Elegoo Uno R3 on
+  `/dev/ttyACM0`. `arduino-cli upload --verify` succeeded. Boot reported
+  feedback-v1/direct-TTL; exact uppercase `V 1` returned labeled A and B
+  intervals, `VISUAL_DONE` and `READY`, resolving the earlier report of
+  idle command errors for this exact input on the uploaded sketch.
+* CONFIRMED (live yellow feedback): IDs 29–44 covered both `swap` states
+  and all four physical GPIO-level inversion combinations, matched S/X.
+  All 16 returned mode 4/error 8. ROM sequence advanced 32–47; each
+  30-byte record has zero byte-sum. Every X trial emitted with reported
+  maximum scheduler lateness at most 8 us; all S trials had no emission.
+  `LINK_STATUS` probe/before/after was either A0h/80h/80h or
+  E0h/C0h/C0h, with some S/X pairs already different before the X burst.
+  No pending-bit transition or stock RX call was observed. Logs:
+  `analysis/captures/feedback-optical-levels-29-36.jsonl` and
+  `analysis/captures/feedback-optical-levels-swap0-37-44.jsonl`.
+* Targeted G approximation of the older stock-ROM positive candidate,
+  IDs 45–48, sent `7Eh` + zero-stuffed `1Fh`, no lead, phase -2/8,
+  START+3 ms, normal GPIO levels, with matched S/X in both assignments.
+  All four were mode 4/error 8; sequences 48–51. Log:
+  `analysis/captures/feedback-historical-candidate-45-48.jsonl`.
+  This does not refute the old stock-ROM `I 98`/`I 90` bit-4 observations,
+  which occurred with stock receive/session setup and burst-relative
+  timing. Stop broad G sweeps; compare those contexts before more trials.
+* Corrected an investigator's timing error by returning to the installed
+  ROM source/manifest: the approximately 50-ms guard ends before yellow
+  START. `accepted_trial` then calls `tick2` and G reset/select/poll;
+  START+7-ms emission was not 45 ms before the receive window. G samples
+  bit 4 at approximately 5-ms intervals, so a brief nonlatched pending
+  signal between polls remains SUSPECTED. Do not claim this explains the
+  negative results without measuring its lifetime.
+* A targeted candidate/poll-phase set (IDs 49–54) used `7Eh` +
+  zero-stuffed `1Fh`, no lead, 5/6-ms delay, both role assignments and
+  silent controls. All six valid 30-byte results were mode 4/error 8,
+  ROM sequences 52–57; X lateness at most 10 us. An initial serial-open
+  attempt returned malformed `REASYNC` and timed out before any T line;
+  a retry with `--startup-wait 4` succeeded. Both logs are archived as
+  `analysis/captures/feedback-poll-phase-*.jsonl`.
+
+### 2026-09-23 — Bounded Uno repeat-window trial
+
+* Read-only source/disassembly comparison found a concrete receive-context
+  difference: feedback G uses `DI`, reset/select, `LinkFinish` (setting
+  `LINK_CTRL` bits 6/7), and roughly 5-ms direct polls of `LINK_STATUS`
+  bit 4. The earlier positive stock hook ran in the active V24 interrupt
+  path, whose status watcher first clears `LINK_CTRL` bits 6/7. The bytes
+  confirm the differing setup, not that G's setup suppresses reception.
+* Added a USB-only bounded repeat option after the two optional optical
+  inversion fields. Existing T syntax retains one burst; a repeat is
+  limited to 2–3 starts, 1–60 ms spacing, and an end before START+80 ms.
+  Focused feedback and emitter host tests (16 passed), Uno R3 compile,
+  and verified upload passed. The broader host run exposed an old emitter
+  fixture missing the physical GPIO observation hook; the fixture now
+  checks each scheduled write and final dark-idle outputs.
+* IDs 55–60 compared silent, one-burst, and three-burst G trials for both
+  role assignments using explicit `7Eh` + zero-stuffed `1Fh`. Repeats
+  started at START+5/28/51 ms. All six raw 30-byte zero-sum records were
+  mode 4/error 8, sequences 58–63. Repeated emission spanned about
+  48.6 ms with at most 3 us scheduler lateness. A readable timing field
+  in trial 58 was garbled on USB serial, but its raw record remained valid.
+  Trial commands and the timestamped log are under `analysis/trials/` and
+  `analysis/captures/`. A negative result does not distinguish idle link
+  state from insufficient optical/framing acceptance.
+* Reviewed a proposed v2 diagnostic without building or burning it. A
+  sequential high/low capture was rejected because one state's window
+  could miss a short START-relative burst. The retained design uses two
+  separate full-window, fast-poll modes, one per `LINK_CTRL` bits-6/7
+  state, with matched silent/stimulated controls and reversed run order.
+  The proposed pulse widths and record layout are in
+  `doc/re-notes/ir-feedback-protocol.md`. No v2 image or checksum exists.

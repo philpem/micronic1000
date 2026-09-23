@@ -23,6 +23,42 @@ unchanged. This dedicated diagnostic does not run normal menus. It writes
 scratch RAM and the RAM NMI vector; use the normal stock-ROM restoration
 and restart procedure afterwards.
 
+## Owner-confirmed connector pin numbers
+
+**CONFIRMED: owner identification, 2026-09-22.** These are the owner's
+connector pin numbers and tested cable colours; no plug/socket viewing
+orientation is inferred.
+
+| Pin | Wire | Established connection |
+|---:|---|---|
+| 1 | Red | Port `2Ah` bit 4 output |
+| 2 | Brown | Unassigned |
+| 3 | Orange | Handheld Vcc |
+| 4 | Violet | Unassigned |
+| 5 | Black | Port `2Dh` bit 0 input, subject to the documented gate |
+| 6 | Yellow | Port `2Ah` bit 0 sink/release output |
+| 7 | Green | Unassigned |
+| 8 | Blue | Ground |
+
+## Black input electrical interface: TTL hypothesis
+
+**SUSPECTED (owner suggestion):** black/pin 5 may feed a 74LS input; a
+floating-high indication alone does not identify the device. The measured
+0.9 V through 10 kOhm and 0.056 V through 500 Ohm correspond to about
+90 uA and 112 uA respectively, consistent with a weakly biased input.
+Trace black to the receiving IC and read its marking to resolve the identity.
+
+If it is a 74LS input, a 5 V Uno can drive it HIGH/LOW directly. For example,
+TI specifies a 2 V minimum HIGH and 0.8 V maximum LOW for the SN74LS00;
+see the [TI datasheet](https://www.ti.com/lit/ds/symlink/sn74ls00.pdf).
+The feedback harness's NPN is an optional means of separating the GPIO from
+the handheld input voltage, not a TTL logic requirement. The earlier claim
+that push-pull HIGH is inherently wrong is withdrawn. The current sketch has
+an explicit `BLACK_USE_NPN` selection: `1` retains the inverting NPN; `0`
+uses direct TTL with idle HIGH and command LOW. Direct TTL requires Uno power
+before the handheld and handheld power-off before unplugging Uno USB. The
+74LS suggestion remains SUSPECTED.
+
 ## Image and transfer checks
 
 File:
@@ -602,7 +638,7 @@ absence of detected diode paths does not prove no connection. Record them
 and defer further pin hunting while returning to the IR experiment.
 
 The useful measured signals are now black/pin 5 input (`2Dh` bit 0),
-red/pin 1 output (`2Ah` bit 4), and yellow sink/release output (`2Ah` bit 0,
+red/pin 1 output (`2Ah` bit 4), and yellow/pin 6 sink/release output (`2Ah` bit 0,
 including the owner's 200 mA sink measurement). Three signal contacts
 remain unassigned; no additional connector ROM burn is required to retain
 these results.
@@ -626,29 +662,21 @@ simultaneous optical operation. Red already responded at the reset baseline
 in the first bench run. Yellow is now the preferred marker candidate for
 the next IR harness; further unknown-pin exploration is deferred.
 
-**Proposed next IR harness (not yet implemented):**
+**Combined IR harness now implemented:** feedback-v1 receives bounded black
+commands only while idle, restores the gate after stock teardown, marks a
+trial on yellow and returns its fixed result on yellow. It retains raw status
+and bounded RX facts rather than claiming frame acceptance. The connector-v2
+ROM remains a connector-only diagnostic; it does not run the IR controller.
 
-1. Receive a test command on black while idle in the proven connector
-   configuration. Use held-level handshakes initially, not an assumed data
-   rate, and release the command before entering the IR trial.
-2. Restore/select the stock IR state. Use a mapped output for bounded
-   markers identifying the test and controller stages. Preserve other
-   latch bits through their shadows; validate electrical interfacing and
-   marker visibility in the actual IR configuration.
-3. Exercise one controlled IR stimulus and record its waveform together
-   with controller wait outcomes/receive status. Initially bracket the
-   timing-critical waits; any marker instructions added inside them must
-   have their timing cost measured and documented.
-4. Only after the IR operation completes, return to the connector input
-   state and report the result/accept the next command. Timestamp markers
-   alongside Arduino stimulus settings so results identify a specific
-   physical trial, not just an LCD screen observed afterwards.
-
-Use the corrected Arduino emitter and existing stock instrumentation as
-starting points. Command handling, marker capture and the combined ROM
-still need implementation and validation; the current connector ROM has
-no IR experiment in it. Scope-check the corrected emitter before using
-protocol acceptance/rejection to draw conclusions.
+For the first feedback bench run, select `BLACK_USE_NPN` before uploading,
+fit the matching black interface and confirm its `BLACK:` startup banner.
+Connect yellow/pin 6 to D8 with its 10 kOhm pull-up to Uno 5 V and blue/pin 8
+to Uno ground; leave orange, red, brown, violet and green disconnected. With
+the feedback-v1 ROM checksums verified, send `R`, wait for `READY`, then run
+the canonical silent probe `T 1 P S 0 -- 0 0 0 -2 0 0 -`. The same
+[feedback harness interface](ir-feedback-protocol.md) defines the next W/R/P/G
+trials, result record and direct-TTL/NPN power order. Scope-check the emitter
+before using any result to draw protocol conclusions.
 
 ## Scope of the image
 
@@ -668,12 +696,10 @@ Rsync the existing sketch directory, including its `.ino` and README:
 ```
 
 The target is **Elegoo Uno R3**, board `arduino:avr:uno`, serial 115200 baud.
-All 13 compile-time configurations build with the actual AVR toolchain. The
-current default remains `RX_NARROW=1`, content axis 2; the README documents
-pins and mode selection. It is an IR experiment sketch, not yet a connector
-pin-mapping interface. Red and black now provide a tested output/input pair
-for developing Arduino feedback; electrical interfacing, timing and combined
-IR operation remain to be implemented and checked.
+The default is the feedback harness; the README documents `BLACK_USE_NPN`,
+direct-TTL/NPN wiring and current trial commands. Legacy `RX_NARROW` remains
+available as an experiment, not as the feedback default. Electrical and scope
+validation of combined IR operation remain pending.
 
 The IR fixes include absolute phase scheduling, timestamp-ordered edges,
 terminal stuffing, malformed-stuffing rejection and reply-window receive

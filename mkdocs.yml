@@ -110,6 +110,8 @@ nav:
       - IR wire protocol: re-notes/ir-wire-protocol.md
       - ROM exerciser test plan: re-notes/exerciser-test-plan.md
       - Connector experiment: re-notes/connector-experiment.md
+      - IR feedback harness interface: re-notes/ir-feedback-protocol.md
+      - IR feedback automation plan: re-notes/ir-feedback-test-plan.md
       - Open questions: re-notes/open-questions.md
       - Research archive:
           - research/README.md

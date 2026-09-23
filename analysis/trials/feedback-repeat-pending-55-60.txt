@@ -1,0 +1,10 @@
+# Matched feedback-v1 G tests: explicit 7E 1F candidate, 5 ms after START.
+# Repeated X trials emit the identical frame at +5, +28, +51 ms.
+# The single X trials use the historical 15-field command syntax.
+# Keep limiting resistors fitted and optical placement unchanged.
+T 55 G S 0 7E 1 0 0 -2 0 5000 1F 0 0
+T 56 G X 0 7E 1 0 0 -2 0 5000 1F 0 0
+T 57 G X 0 7E 1 0 0 -2 0 5000 1F 0 0 3 23
+T 58 G S 1 7E 1 0 0 -2 0 5000 1F 0 0
+T 59 G X 1 7E 1 0 0 -2 0 5000 1F 0 0
+T 60 G X 1 7E 1 0 0 -2 0 5000 1F 0 0 3 23
