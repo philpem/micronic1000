@@ -6,6 +6,9 @@ is new test firmware, not a discovered Micronic protocol.
 
 ## Current handoff: stock-context v3 bench trial
 
+The [round-one bench worksheet](stock-context-v3-round1.md)
+records the first burn, silent control, matched LED-role trials and logs.
+
 **CONFIRMED (stock ROM bytes):** the V24 link worker at `ROM00:31B6`
 clears `LINK_CTRL` bits 6/7, calls `ROM00:34E7` for its one
 `LINK_STATUS` read and bit-4 test, and enters `LinkRxDispatcher` only

@@ -8103,3 +8103,13 @@ names renamed, 144 unplated functions plated)
 * Isolated event-enabled Uno builds passed: FREE_TX 9,708/918 bytes
   flash/SRAM, RX_NARROW 9,616/909. ELF banners verified; stale shared-cache
   output was discarded. Neither verification image was uploaded.
+
+
+## 2026-09-23 — merged IR instrumentation stack; opened v3 bench round
+
+* PRs #22, #23 and #24 merged into master in order, preserving their
+  individual commits and focused review diffs. The v3 instrumentation is
+  merged as tooling; handheld acceptance has not been observed.
+* Started a new branch from merged master with the first-run worksheet for
+  the v3 burn, silent initialization control, matched LED-role trials and
+  subsequent framing discrimination. Results and logs remain PENDING.

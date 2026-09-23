@@ -63,6 +63,9 @@ rather than the legacy automatic rule to discriminate hypotheses. Start
 with phase -2/8 or +2/8 for setup/hold around the first or second logical
 clock edge respectively; inverted dark-idle boundaries remain a confound.
 See the [discrimination sequence](../re-notes/ir-feedback-protocol.md#discriminating-the-receive-convention).
+The [round-one worksheet](../re-notes/stock-context-v3-round1.md)
+is the current capture record; PRs #22–#24 merged the feedback-v1, v2 and
+v3 instrumentation in order.
 **OPEN:** run the silent V24 control and matched stimulated attempts on
 hardware, determine whether stock RX is entered and whether its return has
 carry set, and check any event drops. A post-receive pulse is not a
