@@ -49,6 +49,8 @@ A repeatable comment in Ghidra carries only **CONFIRMED** facts.
 * [Open questions](open-questions.md) — single address for every `OPEN` item
 * [IR feedback automation plan](ir-feedback-test-plan.md) — one reusable ROM,
   connector handshakes and Arduino-controlled receive hypotheses
+* [Stock-context v3 round two](stock-context-v3-round2.md) — content
+  comparisons, failed interleaved positive control, and hardware audit
 
 Legacy internals paths redirect to these locations. The worklist that
 prioritises the open questions lives in the

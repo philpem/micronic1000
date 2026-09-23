@@ -8399,3 +8399,53 @@ names renamed, 144 unplated functions plated)
   the fragment origin is still unknown.
 * Restored and verified the LISTEN_ONLY Uno build after F11b. The
   scope remains stopped.
+
+## 2026-09-23 — round-two controls overturn framing inference
+
+* C1 (`7E` plus `03h`) and C2 (`7E` plus diagnostic
+  `00 00 FF FF 96`) each produced 34 correctly timed replies in 100
+  handheld-triggered scope segments and no yellow low. A recompiled
+  type-2 control C0 also produced 34 replies and no yellow low.
+* Re-uploaded the exact archived F7 binary as C0b. It again sent 34
+  93-cell replies at 33 ms, but produced no yellow low. F7's original
+  34/34 positive result therefore did not reproduce. Discarded the
+  causal claims that the flag, stuffing mode or closing flag removed
+  the marker; round-two content comparisons are inconclusive without
+  a positive interleaved control.
+* The owner reported a backup-battery-low warning and warmstart with
+  no Arduino yellow event. A subsequent coldstart produced a 3,636-us
+  yellow low on Arduino D8 and a matching roughly 3.63-ms D4 low on
+  a 20-MSa/s scope acquisition. The owner saw TESTING, then the main
+  menu and Load/Run screen. This confirms the yellow measurement path
+  for that event.
+* The owner found PLINTH selected and cannot date the switch; the
+  actual port choice in earlier negative runs is unverified. The owner
+  also reports that LED alignment at the top V24 window is critical.
+  An exact F7-binary repeat C0c with PLINTH selected yielded eight
+  916–924-us yellow lows in its first eight of 34 reply segments.
+* Before the later exact-binary C0d run, the owner adjusted the LEDs,
+  bypassed their series resistors and connected lab +5 V directly to
+  the USB-connected Arduino 5-V terminal. C0d had 33 replies and no
+  yellow low; the handheld port choice is unconfirmed. Further
+  transmitting runs are paused pending restoration of a defined
+  current-limited LED drive and Arduino power arrangement. Restored
+  the verified LISTEN_ONLY build; the scope is stopped.
+
+## 2026-09-23 — restored drive and transient output-capture anomaly
+
+* The owner restored the original 220-ohm LED series resistors and removed lab
+  +5 V from the USB-connected Uno, then confirmed V24 ADAPTOR for C0e.
+  The exact F7 binary logged 100 handheld bursts, 34 replies and no
+  yellow return; the owner saw `8000` then `8040`. The owner reports
+  that useful optical alignment changes within a few millimetres.
+* C0e's 100-segment scope export has no D3 data rises and only 1–4
+  D2 clock rises in 31 segments, unlike 93 D2 rises per reply in
+  prior complete captures. This is an unresolved electrical/capture
+  anomaly; the Arduino serial report is not independent proof of
+  voltage at D5/D6 or optical emission.
+* A verified free-running output-check build then emitted four
+  complete scope segments without handheld action. Each has 88 D2
+  clock rises and 16 D3 data rises; acquisition was 5 MSa/s, export
+  grid 25 us. This rejects a simple permanent D5/D6 or scope-lead
+  failure, but does not explain C0e. Restored LISTEN_ONLY and stopped
+  the scope. Protocol content inference remains suspended.

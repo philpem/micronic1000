@@ -1,7 +1,7 @@
 # Stock-context v3: first handheld run
 
-Status: **F7 sparse `7E` replies produce repeatable receive-return markers;
-no accepted session yet**. This is the
+Status: **F7 produced receive-return markers once; an exact-binary
+repeat in round two did not reproduce them. The cause is open.** This is the
 worksheet for the first stock-context v3 run; the full electrical setup,
 interpretation limits, and later framing matrix remain in
 [the harness guide](ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial).
@@ -311,10 +311,10 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   128-segment acquisition measured 97.7 kSa/s and exported at
   40 us/row. Raw file:
   `analysis/captures/stock-v3-r1-f8-sparse33-flag81-handheld-keysight.csv.gz`.
-  The owner reported the same `8000` then `8040` errors. Under this
-  sparse pacing, changing the opening flag choice suppresses the
-  carry-set return marker. This does not identify accepted bits or
-  demonstrate a carry-clear return.
+  The owner reported the same `8000` then `8040` errors. The zero-marker
+  result is an observation, not a causal flag comparison: an exact F7
+  binary repeat later also produced zero markers. See the
+  [round-two correction](stock-context-v3-round2.md).
 * F9/F10 stuffing comparison: the `7E` flag, 33-ms every-third-burst
   timing, content and physical drive settings were held at F7 values.
   F9 used explicit stuffing mode 0; its serial log contains 101 burst
@@ -330,9 +330,9 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   `analysis/captures/stock-v3-r1-f9-sparse33-stuff0-handheld-*` and
   `analysis/captures/stock-v3-r1-f10-sparse33-stuff2-handheld-*`, with
   scope CSVs committed as `.csv.gz`.
-  The F7 marker thus requires this tested `7E`/mode-1 combination;
-  neither the flag nor stuffing mode is proven as a complete protocol
-  requirement, and no run has shown a carry-clear return.
+  These zero-marker runs do not establish a stuffing-mode requirement:
+  an exact F7 binary repeat later also produced zero markers. No run
+  has shown a carry-clear return.
 * F11 closure comparison: a verified build retained F7's flag,
   stuffing mode 1, content, phase, optical levels and 33-ms sparse
   delay, then added `STOCK_CLOSE_FLAG=1`. The serial log reports
@@ -350,8 +350,9 @@ control and retain each build's `wire_flag` and `wire_stuff` report.
   yellow low. Uno D2 starts 33.00–33.04 ms after the last handheld
   D1 rise; acquisition was 97.7 kSa/s with a 40-us export grid.
   The owner reported `8000`, "Plinth not connected", then `8040`,
-  "line failure", for both F11 and F11b. Under the restored cadence,
-  adding this closing flag did not preserve F7's carry-set return.
+  "line failure", for both F11 and F11b. The restored cadence still
+  produced zero markers, but the later exact F7 binary repeat also
+  produced zero; closure is not established as the cause.
   The short fragments remain an observed difference, and their
   origin is unresolved. Captures are
   `analysis/captures/stock-v3-r1-f11-sparse33-close1-handheld-*` and
@@ -396,9 +397,8 @@ rate is higher. Raw captures:
 `analysis/captures/stock-v3-f3-clockinv-rate-qualified-keysight.csv.gz`.
 SCPI settings and sample-rate readings are preserved in
 `analysis/captures/stock-v3-scope-rate-audit-20260923.json`.
-* Next discriminator: retain F7's open frame, sparse cadence, `7E`
-  opening flag, stuffing mode 1 and physical levels while comparing
-  content. The marker is only a carry-set receive return; the target
-  remains a carry-clear return or handheld advancement. Also determine
-  whether the one/two-cell fragments in F11/F11b are handheld output
-  or a capture artefact before using them as protocol evidence.
+* Round-two correction: before any further framing or content
+  comparison, re-establish a positive control. An exact F7 binary
+  repeat produced 34 timed replies and zero yellow lows. The prior
+  causal interpretations of F8–F11b are withdrawn. See the
+  [round-two worksheet](stock-context-v3-round2.md).

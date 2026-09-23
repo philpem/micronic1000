@@ -123,36 +123,57 @@ third handheld burst, sending 34 replies during 100 retries. All 34
 reply segments produced a 916–924-us yellow carry-set marker, while
 the handheld still displayed `8000` then `8040`. The scope independently
 recorded 34 Uno outputs and 34 yellow lows in 100 trigger segments.
-Sparse pacing therefore makes the receive-call return repeatable, but
-does not establish frame or session acceptance. The decisive next
-question is which electrical/framing condition makes the receive call
-return carry clear and whether the handheld advances. Keep the F7
-cadence fixed when comparing one candidate setting at a time; the
-35-ms outlier pulse requires separate interpretation. See the worksheet.
+This F7 run showed a receive-call return, but an exact-binary repeat
+in round two produced zero yellow markers. **Withdraw the claim that
+sparse pacing makes the marker repeatable.** The 35-ms outlier pulse
+also requires separate interpretation. See both worksheets.
 F8 retained the sparse cadence and effective stuffing mode 1 while
 changing the opening flag to `81`. It produced 34 timed optical replies
 in 100 handheld-triggered segments but no yellow return marker; the
-owner saw the same errors. The `7E`/`81` flag choice therefore
-discriminates the observed carry-set return under this configuration.
-Next hold the `7E` F7 configuration fixed and compare explicit stuffing
-modes; do not infer that either flag yields a valid frame.
+owner saw the same errors. The flag-choice causal inference is
+withdrawn because the later exact F7 binary repeat also had zero
+markers. Do not infer that either flag yields a valid frame.
 F9 (stuffing mode 0) and F10 (mode 2) each sent 34 sparse replies with
 no yellow low; the scope independently found 34 Uno output segments
 and zero yellow lows in each 100-trigger run. The owner reported the
-same `8000` / `8040` errors. Under these tested settings, only F7's
-`7E` plus effective stuffing mode 1 produces a receive-call return
-marker. Replace the now-completed stuffing comparison with controlled
-frame-closure and content comparisons; retain F7's cadence and
-physical settings. Do not promote this marker to frame acceptance.
+same `8000` / `8040` errors. The mode-1 causal inference is withdrawn:
+the later exact F7 binary repeat also had zero markers. Do not promote
+the original marker to frame acceptance.
 F11 added a closing `7E` flag and saw 50 short one/two-cell fragments
 alongside 100 normal handheld bursts. Those fragments shifted the
 original every-third counter to 50 replies, with no yellow marker.
 F11b ignored fragments shorter than 9 cells, restoring 34 replies
 across 100 normal bursts; the scope also found 34 output segments and
 zero yellow lows. The owner reported the same errors. Under the
-restored cadence, the closing flag does not preserve F7's return
-marker. The origin of the short fragments is unresolved. Next compare
-content while retaining F7's open `7E`/stuffing-mode-1 configuration.
+restored cadence, F11b had zero yellow markers. The claim that closure
+caused this is withdrawn because the later exact F7 binary repeat also
+had zero. The origin of the short fragments is unresolved.
+**Current blocker:** re-establish a positive receive-return control
+under a verified V24 ADAPTOR selection and a stable, current-limited
+LED drive before resuming content inference. Round-two C1 (`03h`)
+and C2 (`00 00 FF FF 96`) were negative, but the interleaved type-2
+baseline and exact F7 binary repeat were negative too. The owner
+found PLINTH selected and cannot date the switch, so the port choice
+for earlier negative runs is unverified. Coldstart independently
+produced a 3,636-us yellow pulse on Arduino D8 and scope D4, clearing
+the yellow measurement path for that event. An exact F7 repeat with
+PLINTH selected and LEDs adjusted at the top V24 window yielded
+8/34 return markers, all on the first eight replies. A later run
+after further LED and power changes yielded 0/33, with its port
+choice unconfirmed. The owner briefly bypassed the LED series
+resistors and fed lab +5 V to the USB-connected Arduino 5-V terminal,
+then restored the original 220-ohm resistor for each LED and removed
+lab +5 V. A later
+exact F7 run with V24 ADAPTOR confirmed had 34 Arduino replies and
+zero yellow lows, but the matching scope capture had no D3 rises and
+only 1–4 D2 rises in 31 segments instead of the expected 93 per
+reply. An Arduino-only free-running check immediately afterward had
+four complete output segments (88 D2 and 16 D3 rises each), so a
+permanent output or scope-lead failure is not established. The owner
+reports alignment sensitivity within a few millimetres. Establish
+both a complete output waveform and positive yellow control in the
+same V24 run before resuming protocol comparisons. See the
+[round-two worksheet](../re-notes/stock-context-v3-round2.md).
 The scope sampling audit qualified the edge-timing claims separately:
 the long F5/F6 128-segment setup acquired at 78.1 kSa/s and exported
 at 50 us/row, so use it for millisecond placement and yellow-event
