@@ -400,7 +400,7 @@ Reads: as a **boot-mode select at reset** (`0168`/`016E`):
 | 49h | path | meaning |
 |---|---|---|
 | bit0=0 | `01A6` | **cold start** (clear restart/warmboot sigs, `OUT 04h`=FFh, `OUT 2Bh`=0) |
-| bit0=1, bit1=0 | `0175` | **service/DEBUG gate**: `Lcd_Init`, then a keyboard pattern check (drive `02h`=FD read `KBD_SENSE`; drive `02h`=02 require sense `1Ch`); on match sets `g_bBootmodeFlag` `f81d`=FFh, enabling the conditional debug stub |
+| bit0=1, bit1=0 | `0175` | **service/DEBUG gate**: `Lcd_Init`, then a keyboard pattern check (drive `02h`=FD read `KBD_SENSE`, require `0`; then drive `02h`=02 require sense `1Ch` = **H+L+P** held); on match sets `g_bBootmodeFlag` `f81d`=FFh, which `ColdStartSelfTestBanner` (`0291`) turns into `CALL 3513` (the **break/monitor entry**) |
 | bit0=1, bit1=1 | `17A5` | the **suspend-wake / restart continuation** (clears `CTRL_07` bit0, then the boot/restart flow) |
 
 So the debug gate needs **two factors** (49h config `01` *plus* a held
