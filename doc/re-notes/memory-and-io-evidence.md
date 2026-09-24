@@ -381,13 +381,21 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   `f9aa==2Ah`). Whether this index/id actually routes between the
   barcode and the IR ports (as opposed to selecting console/subsystem
   descriptors) is **OPEN** — do not treat it as the mux until traced.
-* **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** **OPEN.**
-  Port `2C` bit 5 is high for V24 and low for both PLINTH-IR (LIKELY)
-  and the barcode gate, so it cannot distinguish back-IR from barcode;
-  the disambiguator is either the active-device index (FBC5) or the
-  barcode-only `2A` bits 0/4. Hardware (owner) is needed to settle
-  whether the two IR ports share one transceiver/cluster (port-selected)
-  or are independent.
+* **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the barcode
+  and the IR link are **separate subsystems**, and the "device" tables
+  do **not** mux between them. `Device_LookupConfigEntry` (ROM00:31FF)
+  selects a 16-byte config record from `FE83` (copy A) or `FE93`
+  (copy B) by the active-device index. Reading those records shows they
+  are **consistent with link wire-id configs**, not a barcode/IR router: `FE83` =
+  `{80,AB,63,43}{80,2B,63,43}{80,67,63,43}{80,67,63,43}` — every record
+  carries the two known IR wire-ids `63h`/`43h`; `FE93` =
+  `{00,7F,73,72}` = the storage wires (C:=`73h`, D:=`72h`). So
+  `g_bActiveDevice` selects a *link* / *storage* partner device, not the
+  barcode front end. The only thing shared between barcode and IR is the
+  control-latch bits (port `2C` bit 5, port `2A` bit 1), which the
+  barcode path happens to leave at their neutral values — not a mux.
+  Whether the two IR ports are one port-selected transceiver cluster or
+  two independent ones remains **OPEN** (hardware).
 
 ---
 
