@@ -399,6 +399,40 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   bit 5 HIGH = V24 IR, LOW + `2C` bit 5 LOW = PLINTH IR. Whether this is
   one hardware router or two independent enables, and whether the two IR
   ports share one transceiver cluster, remain **OPEN** (hardware).
+
+## Remaining port-bit refinements (2026-09-24)
+
+### Port `07h` — `CTRL_07`
+
+Write-only two-bit output (shadow `F786`); only bits 0-1 are ever
+written. Six write sites, no reads. Observed contexts:
+* **bit 0** (`01h`): set on entering power-down (`Power_SaveState`
+  ROM00:28F0-28F2 writes `01h`, just before port `04h`=FFh) and cleared
+  on the wake path (Boot_entry ROM00:17B1-17B6, `AND FEh`) — consistent
+  with a power-down indicator/output.
+* **bit 1** (`02h`): cleared by the RTC-alarm status watcher
+  (`Link_StatusWatcher` ROM00:24A5-24AD), set by a companion
+  (ROM00:24B3-24B8) and in the restart flow (ROM00:23C7-23CC) — toggles
+  around a periodic RTC/link event.
+**Physical role OPEN** — candidates: alarm/status output, peripheral
+power/control. No read site to corroborate.
+
+### Port `04h` — `OUT_LATCH` bit refinement
+
+Besides the active-low IRQ-mask role (ROM00:22E9 loads `1Fh`, CPLs,
+OUT; ROM00:2306 loads A=2) and the `FFh` idle/power-off state:
+* **bit 0**: power-latch bit, set by `Power_LatchSetBit0` (ROM00:1B2E),
+  cleared by `Power_LatchClrBit0` (ROM00:1B39).
+* **bits 3-4**: mirrored from `fda1` bits 3-4 by `Power_LatchSetBits`
+  (ROM00:241B).
+* **bit 5**: barcode capture window enable (prior evidence).
+
+### Port `33h` — orphan
+
+Single access in the firmware: `IN A,(33h)` at the tail of an
+LCD-stub at ROM00:1ED0 (`LD A,0Dh; OUT (03h); …; IN A,(33h); RET`) with
+**no xref to 1ED0** (unreachable by static refs). Candidates: LCD
+status/busy read or an alias of `23h`/`03h`. **OPEN**; not fruitful.
 ---
 
 ## Worked example: `ram:E5C2`
