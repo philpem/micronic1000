@@ -565,6 +565,24 @@ Confirmed as an **IR/link device**: it is probed and accessed over the
   storage config (wires `73h`/`72h`).
 So the drive is a keyed-record peripheral on the IR link, probed by
 wire-id and read through 4-byte keyed-read commands over the transport.
+
+### Storage vs barcode front end (adversarial check, 2026-09-24)
+
+**Storage does NOT use the barcode scanner side port.** All eight
+`2Dh` (edge input) reads are inside the barcode front-end code
+(ROM00:1200-1570); the storage/drive path uses `Link_TransportCall`
+(ROM00:2F1A) via `Disk_SelectProbe` and the `Device_*` service-33
+open/message functions. So the storage data flows over the **4× byte
+transport** (`4A-4F`), never the 2D edge front end. The only overlap
+with the barcode is the shared control-latch bit (port `2C` bit 5 = IR
+port select), not the data path.
+
+**Port: BACK PLINTH (LIKELY).** The storage wires `73h`/`72h` (`FE93`)
+both have wire-ID **bit 5 = 1** (`73h & 20h`, `72h & 20h`). Bit-5=1 is
+the state complementary to the owner-confirmed top **V24** port
+(bit-5=0 → `LINK_CTRL` bit1 set, port `2C` bit5 set). By two-port
+elimination the storage adapter is on the **back PLINTH** port (LIKELY;
+not yet observed there).
 ---
 
 ## Worked example: `ram:E5C2`
