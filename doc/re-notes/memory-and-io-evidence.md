@@ -416,8 +416,38 @@ destination (boot jumper/switch, a test probe, a latch, or the IR
 transceiver) is **OPEN** — the ROM alone cannot say; MAME leaves its IR
 path as TODO.
 
-### Multiplexing conclusions
+### Monitor / ICE hook — vestigial (2026-09-24)
 
+`Monitor_Enter` (`3513`) is a **2-byte stub** (`XOR A; RET`) in these
+ROM images. It is the target of a network of monitor/ICE hooks left in
+the firmware:
+* **RST 30h** (vector `0030h` → `JP F5F0`) and `ram:F5F0` `JP 3513` —
+  the restart-vector monitor hook (RAM-redirectable, like the other
+  resident-kernel stubs);
+* the cold-boot **debug gate** — `g_bBootmodeFlag` `f81d`=FFh →
+  `0296 CALL 3513` (set by the `49h` + H+L+P gate);
+* `Diag_ErrorHandler` (`2C4F`) saves context to `FEFA`/`FEF8` then
+  `CALL 3513` — a break-on-error hook;
+* `Kbd_ReadChar` (`18EB`) and others (`3857`, `ram:F33A`, `ROM00:3B0D`).
+None opens a monitor in these images — every hook returns immediately.
+The actual monitor is a **separate artifact** (MAME BIOS 1 "Micronic 1000
+LCD monitor" = `monitor2.bin`; Lee Davison lists a monitor ROM and
+disassembly), installed over this hook. So the ROM contains a
+**vestigial development/ICE hook**, not an implemented monitor.
+
+### 48h/49h and the self-test — resolving the tension
+
+`Kernel_SenseDiagEcho` writes `48h` and requires `49h` to read back the
+same value. That is only self-consistent if `49h` is the **readback of
+`48h`** (same latch; MAME's model), or `48h` drives the shared lines and
+overrides any external state. Either way the test **drives `48h`**, so
+`49h` follows it and matches — it cannot detect a "stuck" external
+config. Consequently the reset boot-mode value is the **latch's
+power-on/retained state**, not a separate external input: the debug
+selection is set by *writing `48h`* (software) or a retained value, not
+by a physical jumper as I'd earlier suggested as most likely.
+
+### Multiplexing conclusions
 * **Q1 (why two select bits):** `Link_PortSelect` (ROM00:3454) drives
   `LINK_CTRL` bit 1 and port `2C` bit 5 as a strict mirror pair — both
   set on the wire-ID-bit-5-clear branch (`old|02h` vs `(old&FCh)|20h`)
