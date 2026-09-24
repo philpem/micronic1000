@@ -450,6 +450,28 @@ ROM00:2352):
 bit 1 is also probed directly in the standby wake path (ROM00:17A5).
 The two reset reads (ROM00:01B1/0238) read-and-discard the value, so
 port `05h` is **not** the reset boot-key test (that is port `49h`).
+
+### Battery-low monitor (main / backup)
+
+The low-battery warnings trace to active-low flag lines on `STATUS_IN`
+bits 3/4:
+* **MAIN BATTERY LOW** (string ROM00:24CA) — printed when
+  `STATUS_IN` **bit 3 is low**.
+* **BACKUP BATTERY LOW** (string ROM00:24DD) — printed when
+  `STATUS_IN` **bit 4 is low**.
+* **Chain:** the IRQ dispatch's handler `2365` (which fires on status
+  bits 3/4) latches the inverted status into `FDA1` and schedules a
+  deferred call to the battery check at ROM00:2387; that routine tests
+  `FDA1` bits 3/4 (`AND 18h`), prints the MAIN and/or BACKUP message
+  (via the string printer ROM00:240C), and sets `CTRL_07` bit 1 on
+  backup-low (ROM00:23C7-23CC). If neither flag is set it clears
+  `OUT_LATCH` bits 3-4 and continues.
+* **Confirms the owner-surmised low-battery detection** (micronic_notes):
+  the unit reads active-low battery-flag lines on port `05h` bits 3/4,
+  not a sampled analog ADC.
+* The related link-layer text "Link inhibited -   battery low"
+  (ROM00:2D59) is the session consequence when a link transfer is
+  inhibited on low battery; its exact reference is not yet located.
 ---
 
 ## Worked example: `ram:E5C2`
