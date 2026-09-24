@@ -620,6 +620,38 @@ elimination the storage adapter is on the **back PLINTH** port (LIKELY;
 not yet observed there).
 ---
 
+## Keyboard: Sun (☼) modifier (2026-09-24)
+
+The Sun key (keycap ☼) is keycode `D0h` (`tbl_kbd_map` page 0/1 index
+27). Two distinct mechanisms:
+* **One-shot Sun (tap Sun, then a key)** selects page 2 of `tbl_kbd_map`
+  (ROM00:1B58, 3 × 36-byte pages) for the next key. Page 2 (ROM00:1BA0)
+  maps F/J/N to `X`/`Y`/`Z` (`58h`/`59h`/`5Ah`) and supplies function
+  codes `1Ah`, `0Ch`, `12h`, `0Bh`, `11h` at other positions; the rest
+  are `00`.
+* **Held Sun + key (direct chord)** bypasses the table: the dispatch at
+  ROM00:19C0 matches the raw matrix pattern (A = `KBD_DRIVE` byte, B =
+  expected `KBD_SENSE` rows) against the 4-entry table at ROM00:19E0 and
+  tail-jumps to the handler:
+
+  | pattern (drive, sense) | handler | operation |
+  |---|---|---|
+  | `04h,01h` | `1A0A` | backlight toggle (Sun+`LIGHT`/B) |
+  | `10h,08h` | `1D60` `Power_LatchIncr` | LCD contrast up |
+  | `08h,21h` | `1D4A` `Power_LatchDecr` | LCD contrast down |
+  | `01h,01h` | `19FB` → `1721` | power-down (Sun+MODE) |
+
+**Contrast:** `Power_LatchDecr`/`Incr` step `FC05` by ±2 (floor `00`,
+ceiling `FF`) and apply it to port `46h` (LCD contrast DAC) via
+`WritePowerLatchPort46` (ROM00:1FD4). **CONFIRMED** — so yes, the
+`Power_Latch*` names are misnomers for the LCD-contrast adjusters.
+
+**Wake from deep standby:** pressing a key during `Power_DownSuspend`
+wakes the unit, but the *keypress itself is not decoded* in the standby
+spin (it only drives the wake event); what, if anything, the waking key
+then triggers is **OPEN** (the NMI/restart path restores the saved
+session state).
+
 ## Worked example: `ram:E5C2`
 
 `ram:E5C2` is the body of the Commstar receive object. The emulator harness
