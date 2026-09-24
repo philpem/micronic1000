@@ -417,29 +417,27 @@ written. Six write sites, no reads. Observed contexts:
 **Physical role OPEN** — candidates: alarm/status output, peripheral
 power/control. No read site to corroborate.
 
-### Port `04h` — `OUT_LATCH` = interrupt-ENABLE register
+### Port `04h` — interrupt-ENABLE + capture-window gate (mixed register)
 
-**Reframed (2026-09-24):** port `04h` is the **interrupt-enable mask**,
-not primarily a power/output latch. `Kernel_CfgEnableIrq` (ROM00:22E9)
-loads `1Fh`, `CPL`s it, stores `F784`, and `OUT (04h)` — so **a bit set
-in the argument enables that source** (active-low stored mask). The
-interrupt dispatch gates `STATUS_IN` by this mask (`B = NOT(F784 OR
-status)`; a source fires iff its mask bit is 0 and its `STATUS_IN` bit
-is 0).
+**Reframed (2026-09-24):** port `04h` is a **mixed-purpose register**.
+Bits 0-4 are the **interrupt-enable mask**; bit 5 is a peripheral
+capture-window gate. `Kernel_CfgEnableIrq` (ROM00:22E9) loads `1Fh`,
+`CPL`s it, stores `F784`, and `OUT (04h)` — so **a bit set in the
+argument enables that source** (active-low stored mask). The interrupt
+dispatch gates `STATUS_IN` by this mask (`B = NOT(F784 OR status)`; a
+source fires iff its mask bit is 0 and its `STATUS_IN` bit is 0).
 * **bits 0-4** = enables for the five polled sources (kbd / RTC-wake /
   link / main-battery / backup-battery).
-* **bit 5** = toggled only in the barcode/comms capture front end
-  (ROM00:1499 sets `F784|=20h`; ROM00:1397 clears `F784&=DFh`). There is
-  **no `fd84` dispatch entry** for a source 5, so it is not a resolved
-  interrupt-enable. Whether bit 5 is an interrupt-enable for an unmapped
-  source or a genuine peripheral output gate is **OPEN** — do not label
-  it an out-of-table "capture window".
+* **bit 5** = barcode **capture-window gate** (peripheral output, not an
+  interrupt-enable): cleared at capture entry (ROM00:1397 `AND DFh`),
+  set at capture completion (ROM00:1499 `OR 20h`) — it brackets the
+  barcode edge-capture window. There is no `fd84` source-5 entry; it is
+  a separate output bit, so the whole register is **not** purely an
+  interrupt controller.
 * **FFh** = all sources masked (ROM00:28DA/28FB before power-down).
 
-The legacy `OUT_LATCH`/`Power_Latch*` names describe these
-interrupt-enable bits loosely; whether the register is purely an
-interrupt controller or a mixed-purpose latch is confirmed only for
-bits 0-4.
+The legacy `OUT_LATCH`/`Power_Latch*` names describe the
+interrupt-enable bits loosely.
 
 ### Port `33h` — orphan
 
@@ -486,6 +484,31 @@ bits 3/4:
 * The related link-layer text "Link inhibited -   battery low"
   (ROM00:2D59) is the session consequence when a link transfer is
   inhibited on low battery; its exact reference is not yet located.
+
+## Barcode front-end I/O set (2026-09-24)
+
+The side-port barcode reader front end uses these ports, sequenced
+around the edge-timing capture:
+* **Port `2Dh`** (read-only edge input): bit 0 = photocell/timing input
+  (owner: black/pin5); **bit 1** = second input, tested with bit 0 at
+  `ExtBus_BusArm` (ROM00:1299 `AND 1` / `12A3` `AND 2`) to select the
+  attached barcode device type `E = 0/1/2` (stored in `f9ab`).
+* **Port `2Ah`** (shadow `F78B`): bit 0 = output (owner: yellow/pin6
+  sink/release), bit 1 = attention/trigger, bit 4 = output (owner:
+  red/pin1), bit 5 = boot/standby line.
+* **Port `2Ch`** (shadow `F78D`): bit 0 = attention-strobe pulse, bit 1 =
+  capture enable around `2Dh` reads, bit 5 = IR port select / barcode
+  gate.
+* **Port `04h` bit 5** = **capture-window gate**: cleared at capture
+  entry (ROM00:1397) and set at capture completion (ROM00:1499),
+  bracketing the capture; a peripheral output, not an interrupt-enable.
+* **Port `2Bh`** = sounder: the attention beep is emitted through the
+  standard `Sound_2bWrite`/`Sound_Off` path (not a new barcode pin).
+
+The capture sequencing (ROM00:1317-14A3): sample `2Dh` → `04h` bit 5
+clear (capture entry) → poll/acquire `2Dh` edges (`ExtBus_BusAcquireEdge`)
+→ `04h` bit 5 set (capture completion) → arm/re-arm. The `2A`/`2C`
+attention lines are set around each capture window.
 ---
 
 ## Worked example: `ram:E5C2`
