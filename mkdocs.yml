@@ -89,6 +89,7 @@ nav:
       - Commstar application API: reference/commstar-api.md
       - Commstar peer library: reference/commstar-peer.md
       - Memory and I/O map: reference/memory-map.md
+      - Keyboard: reference/keyboard.md
   - Protocol reference:
       - protocol/README.md
       - Commstar transport: protocol/commstar.md

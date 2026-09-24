@@ -93,9 +93,9 @@ the non-keyboard uses are **Provisional**.
 Interrupt-enable mask, active low. `ROM00:22E9` does
 `LD A,1Fh; DI; IM 1; CPL; LD (F784),A; OUT (04h),A` — the mask is
 complemented before output, so a *set* bit in the argument enables a
-source. A second entry at `ROM00:2306` passes `A = 2`. Also carries
-power-latch bits (`Power_LatchSetBit0`/`ClrBit0`, `ROM00:1B36`/`1B41`).
-Shadow `F784`. CONFIRMED.
+source. A second entry at `ROM00:2306` passes `A = 2`. Also carries the
+per-source enable bits touched by `Kernel_IrqMaskBit0Set`/`Clr`
+(`ROM00:1B2E`/`1B39`). Shadow `F784`. CONFIRMED.
 
 ### Port `05h` — `STATUS_IN`
 
@@ -133,9 +133,9 @@ assume it is either.
 
 ### Port `46h` — `LCD_CONTRAST`
 
-Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`,
-called from `Lcd_Init` (`ROM00:1F2B`) and from `Power_LatchIncr`/`Power_LatchDecr`
-(`ROM00:1D73`/`1D57`). **LIKELY**, and stronger than it was. Observed: the
+Written only via `LD A,(FC05); LD C,46h; OUT (C),A` at `ROM00:1FD4`
+(`Lcd_ContrastWrite`), called from `Lcd_Init` (`ROM00:1F2B`) and from
+`Lcd_ContrastUp`/`Lcd_ContrastDown` (`ROM00:1D73`/`1D57`). **CONFIRMED**. Observed: the
 adjusters step `FC05` by **±2, not ±1** (`1D4A` does `DEC A` twice with a
 floor at `00h`, `1D60` `INC A` twice with a ceiling at `FFh`), and
 although `FC05` lives in battery RAM, cold boot overwrites it with `70h`
@@ -144,8 +144,9 @@ unit, a Sun-modified key lightens it, and a cold boot puts it back — which
 matches that overwrite exactly. Corroborating but **not** primary: MAME
 maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the
 same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and
-seeing the screen legibility change. The Ghidra name
-`Power_PowerLatchPort46` is a grandfathered misnomer.
+seeing the screen legibility change. (The old Ghidra names
+`Power_PowerLatchPort46`/`Lcd_ContrastUp`/`Lcd_ContrastDown` were
+grandfathered misnomers; renamed to `Lcd_ContrastWrite`/`Up`/`Down`.)
 
 ### Port `47h` — `BANK_SEL`
 
@@ -473,7 +474,7 @@ source fires iff its mask bit is 0 and its `STATUS_IN` bit is 0).
   interrupt controller.
 * **FFh** = all sources masked (ROM00:28DA/28FB before power-down).
 
-The legacy `OUT_LATCH`/`Power_Latch*` names describe the
+The legacy `OUT_LATCH`/`Kernel_IrqMask*`/`Lcd_Contrast*` names describe the
 interrupt-enable bits loosely.
 
 ### Port `33h` — orphan
@@ -495,7 +496,7 @@ ROM00:2352):
 * bit 1 (`02h`) → `2206` `RTC_WakeReasonFetch` (RTC alarm/wake)
 * bit 2 (`04h`) → `31B6` `Link_IrqPollArmOrService` (link event)
 * bit 3 (`08h`) / bit 4 (`10h`) → `2365` (latches inverted status to
-  `FDA1`, then sets `OUT_LATCH` bits 3-4 via `Power_LatchSetBits`)
+  `FDA1`, then sets `OUT_LATCH` bits 3-4 via `Kernel_IrqMaskBitsSet`)
 bit 1 is also probed directly in the standby wake path (ROM00:17A5).
 The two reset reads (ROM00:01B1/0238) read-and-discard the value, so
 port `05h` is **not** the reset boot-key test (that is port `49h`).
@@ -637,14 +638,14 @@ The Sun key (keycap ☼) is keycode `D0h` (`tbl_kbd_map` page 0/1 index
   | pattern (drive, sense) | handler | operation |
   |---|---|---|
   | `04h,01h` | `1A0A` | backlight toggle (Sun+`LIGHT`/B) |
-  | `10h,08h` | `1D60` `Power_LatchIncr` | LCD contrast up |
-  | `08h,21h` | `1D4A` `Power_LatchDecr` | LCD contrast down |
+  | `10h,08h` | `1D60` `Lcd_ContrastUp` | LCD contrast up |
+  | `08h,21h` | `1D4A` `Lcd_ContrastDown` | LCD contrast down |
   | `01h,01h` | `19FB` → `1721` | power-down (Sun+MODE) |
 
-**Contrast:** `Power_LatchDecr`/`Incr` step `FC05` by ±2 (floor `00`,
-ceiling `FF`) and apply it to port `46h` (LCD contrast DAC) via
-`WritePowerLatchPort46` (ROM00:1FD4). **CONFIRMED** — so yes, the
-`Power_Latch*` names are misnomers for the LCD-contrast adjusters.
+**Contrast:** `Lcd_ContrastUp`/`Lcd_ContrastDown` step `FC05` by ±2
+(floor `00`, ceiling `FF`) and apply it to port `46h` (LCD contrast DAC)
+via `Lcd_ContrastWrite` (ROM00:1FD4). **CONFIRMED** — the legacy
+`Power_Latch*` names were misnomers (contrast adjusters).
 
 **Wake from deep standby:** pressing a key during `Power_DownSuspend`
 wakes the unit, but the *keypress itself is not decoded* in the standby
