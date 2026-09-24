@@ -428,12 +428,18 @@ status)`; a source fires iff its mask bit is 0 and its `STATUS_IN` bit
 is 0).
 * **bits 0-4** = enables for the five polled sources (kbd / RTC-wake /
   link / main-battery / backup-battery).
-* **bit 5** = prior evidence: barcode capture window enable; role OPEN.
+* **bit 5** = toggled only in the barcode/comms capture front end
+  (ROM00:1499 sets `F784|=20h`; ROM00:1397 clears `F784&=DFh`). There is
+  **no `fd84` dispatch entry** for a source 5, so it is not a resolved
+  interrupt-enable. Whether bit 5 is an interrupt-enable for an unmapped
+  source or a genuine peripheral output gate is **OPEN** — do not label
+  it an out-of-table "capture window".
 * **FFh** = all sources masked (ROM00:28DA/28FB before power-down).
 
 The legacy `OUT_LATCH`/`Power_Latch*` names describe these
-interrupt-enable bits loosely; whether the bits also drive genuine
-physical outputs (vs pure interrupt enables) is **OPEN**.
+interrupt-enable bits loosely; whether the register is purely an
+interrupt controller or a mixed-purpose latch is confirmed only for
+bits 0-4.
 
 ### Port `33h` — orphan
 
