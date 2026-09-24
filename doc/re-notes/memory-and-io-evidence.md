@@ -417,16 +417,23 @@ written. Six write sites, no reads. Observed contexts:
 **Physical role OPEN** — candidates: alarm/status output, peripheral
 power/control. No read site to corroborate.
 
-### Port `04h` — `OUT_LATCH` bit refinement
+### Port `04h` — `OUT_LATCH` = interrupt-ENABLE register
 
-Besides the active-low IRQ-mask role (ROM00:22E9 loads `1Fh`, CPLs,
-OUT; ROM00:2306 loads A=2) and the `FFh` idle/power-off state:
-* **bit 0**: power-latch bit, set by `Power_LatchSetBit0` (ROM00:1B2E),
-  cleared by `Power_LatchClrBit0` (ROM00:1B39).
-* **bits 3-4**: mirrored from `FDA1` (= inverted `STATUS_IN` snapshot)
-  bits 3-4 by `Power_LatchSetBits` (ROM00:241B) — these echo
-  `STATUS_IN` bits 3/4 back out.
-* **bit 5**: barcode capture window enable (prior evidence).
+**Reframed (2026-09-24):** port `04h` is the **interrupt-enable mask**,
+not primarily a power/output latch. `Kernel_CfgEnableIrq` (ROM00:22E9)
+loads `1Fh`, `CPL`s it, stores `F784`, and `OUT (04h)` — so **a bit set
+in the argument enables that source** (active-low stored mask). The
+interrupt dispatch gates `STATUS_IN` by this mask (`B = NOT(F784 OR
+status)`; a source fires iff its mask bit is 0 and its `STATUS_IN` bit
+is 0).
+* **bits 0-4** = enables for the five polled sources (kbd / RTC-wake /
+  link / main-battery / backup-battery).
+* **bit 5** = prior evidence: barcode capture window enable; role OPEN.
+* **FFh** = all sources masked (ROM00:28DA/28FB before power-down).
+
+The legacy `OUT_LATCH`/`Power_Latch*` names describe these
+interrupt-enable bits loosely; whether the bits also drive genuine
+physical outputs (vs pure interrupt enables) is **OPEN**.
 
 ### Port `33h` — orphan
 
@@ -435,11 +442,12 @@ LCD-stub at ROM00:1ED0 (`LD A,0Dh; OUT (03h); …; IN A,(33h); RET`) with
 **no xref to 1ED0** (unreachable by static refs). Candidates: LCD
 status/busy read or an alias of `23h`/`03h`. **OPEN**; not fruitful.
 
-### Port `05h` — `STATUS_IN` fully decoded
+### Port `05h` — `STATUS_IN` = interrupt STATUS register
 
-Active-low polled peripheral event/status port. Each IRQ
-`Kernel_WorkerPollPort5` (ROM00:230A) snapshots it to `F785` (raw),
-gates it by the active-low IRQ-enable mask (`OUT_LATCH` shadow `F784`),
+**Reframed (2026-09-24):** port `05h` is the **interrupt status/pending
+register** (read-only — there is no `OUT` to it anywhere in the image).
+Each IRQ `Kernel_WorkerPollPort5` (ROM00:230A) snapshots it to `F785`,
+gates it by the interrupt-enable mask (`OUT_LATCH`/`04h` shadow `F784`),
 and dispatches via the `fd84` `{mask,handler}` table (template
 ROM00:2352):
 * bit 0 (`01h`) → `18F0` `Kbd_ScanMain` (keyboard event)
