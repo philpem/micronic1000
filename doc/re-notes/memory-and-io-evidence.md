@@ -322,38 +322,37 @@ suspend sequence; the per-site evidence for each is above.
   `g_bConsoleStateSavedFlag` (FC03). `g_eRestartFlag` (FBD5) drives the
   NMI restart/wake decision.
 
-## Standby / low-power hierarchy (2026-09-24)
+## Standby / low-power (2026-09-24)
 
-Three distinct sleep / low-power paths, distinguished by whether the
-CPU clock is actually stopped:
-* **Normal idle (LCD stays on)** — the main event loop holds the CPU in
-  a `HALT` (ROM00:16C9) between IRQ events: it `EI`s, re-arms the IRQ
-  gate (`ffa8`), `HALT`s, then on wake tests the `fbc9`/`fbca` event
-  flags; `fbf2==0` re-arms and HALTs again. The Z80 `HALT` stops the
-  CPU clock, so this is already power-saving, but the LCD stays lit.
-* **Deep standby (LCD + backlight off, wake on a key)** — on idle the
-  event loop schedules `Power_DownSuspend` (ROM00:1711 → 1721) via the
-  deferred-call queue (ROM00:16BA: `HL=1711`, `DE=FBEC`). `Power_DownSuspend`
-  clears the backlight (port `2C` bit 4, ROM00:1786), sets port `04h`
-  to the **wake-source interrupt-enable mask** (`F8h`/`FAh`/`D8h` =
-  only kbd/RTC/link sources stay enabled), then **busy-spins**
-  refreshing `CTL_LATCH_2A`/`CTRL_07` while keeping the keyboard
-  wake-scan (`KBD_DRIVE` bit 6) live. A keypress asserts NMI (bit-6
-  hypothesis, LIKELY) to wake. The CPU **keeps running** (busy-spin),
-  so the clock is *not* stopped here — only the LCD/backlight (main
-  power consumers) are shed.
-* **Timed-wait sleep** — `RTC_AlarmSleep` (ROM00:21EC, `BDOS FEh`) sets
-  a countdown (`FD4D`) and **HALTs** the CPU until the RTC alarm wakes
-  it; used by `Bdos_InternalTimedWait` (ROM00:1129).
+**CORRECTION (2026-09-24):** the earlier framing of a clean three-path
+"standby hierarchy" was overstated. The two `HALT` sites are in
+specific wait contexts, not a general idle loop, and the autonomous
+"idle → LCD/backlight off → wake on key" trigger is **not yet pinned
+down**. What is confirmed:
 
-Conclusion: there is **no single register bit that stops the Z80
-clock**. The CPU clock is stopped only by the `HALT` instruction
-(normal idle / timed-wait); the deep standby sheds the LCD/backlight via
-`2C` bit 4 and keeps the CPU busy-spinning. The user-reported "backlight
-off before power off" is consistent with `Power_DownSuspend` clearing
-`2C` bit 4 as part of the teardown.
-CONFIRMED: the HALT idle loop (16C9), the deferred-call to 1711 (16BA),
-and the Power_DownSuspend teardown sequence at the cited addresses.
+* **`Link_WaitForLink`** (ROM00:168F-1707) holds the CPU in a **`HALT`**
+  (ROM00:16C9) while waiting for link/session events: it `EI`s, re-arms
+  the IRQ gate (`ffa8`), `HALT`s, then tests the `fbc9`/`fbca` event
+  flags; `fbf2==0` re-arms and HALTs again. It also schedules
+  `Power_DownSuspend` (ROM00:1711 → 1721) via the deferred-call queue
+  (ROM00:16BA: `HL=1711`, `DE=FBEC`).
+* **`Power_DownSuspend`** (ROM00:1721) clears the backlight (port `2C`
+  bit 4, ROM00:1786), sets port `04h` to the wake-source interrupt-enable
+  mask (`F8h`/`FAh`/`D8h` = only kbd/RTC/link stay armed), then
+  **busy-spins** (ROM00:1793-17A3, no `HALT`) refreshing `CTL_LATCH_2A`/
+  `CTRL_07` while keeping the keyboard wake-scan (`KBD_DRIVE` bit 6)
+  live. Reached from the NMI handler, a key dispatch, `Link_WaitForLink`,
+  and the barcode capture-timer underflow. The CPU keeps running.
+* **`RTC_AlarmSleep`** (ROM00:21EC, `BDOS FEh` timed wait) sets a
+  countdown (`FD4D`) and **HALTs** until the RTC alarm wakes it; used by
+  `Bdos_InternalTimedWait` (ROM00:1129).
+
+So the Z80 clock is stopped only by the `HALT` instruction (link-wait /
+timed-wait); `Power_DownSuspend` keeps the CPU busy-spinning. Whether
+there is a distinct autonomous idle-countdown that drives the
+LCD/backlight off is **OPEN** — not established.
+CONFIRMED: the two HALT sites, the deferred-call to 1711, and the
+Power_DownSuspend teardown at the cited addresses.
 
 ## Shared control latches and device multiplexing (2026-09-24)
 
