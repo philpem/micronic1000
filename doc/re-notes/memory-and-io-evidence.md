@@ -623,12 +623,16 @@ not yet observed there).
 
 ## Keyboard: Sun (☼) modifier (2026-09-24)
 
-The Sun key (keycap ☼) is keycode `D0h` (`tbl_kbd_map` page 0/1 index
-27). Two distinct mechanisms:
+**Correction (2026-09-24):** the Sun (2nd) key carries **no keycode** —
+it is a page modifier (its `tbl_kbd_map` entry is `00`). `D0h` is
+**DEPT** and `14h` is **END**, not Sun. The full matrix (validated
+against MAME and the `F/J/N → X/Y/Z` page-2 map; index = `sense*6+drive`)
+is in the [keyboard reference](../reference/keyboard.md). Two distinct
+Sun mechanisms:
 * **One-shot Sun (tap Sun, then a key)** selects page 2 of `tbl_kbd_map`
   (ROM00:1B58, 3 × 36-byte pages) for the next key. Page 2 (ROM00:1BA0)
   maps F/J/N to `X`/`Y`/`Z` (`58h`/`59h`/`5Ah`) and supplies function
-  codes `1Ah`, `0Ch`, `12h`, `0Bh`, `11h` at other positions; the rest
+  codes `1Ah`/`0Ch`/`12h`/`0Bh`/`11h` at other positions; the rest
   are `00`.
 * **Held Sun + key (direct chord)** bypasses the table: the dispatch at
   ROM00:19C0 matches the raw matrix pattern (A = `KBD_DRIVE` byte, B =
