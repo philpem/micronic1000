@@ -378,12 +378,15 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   the `FE83`/`FE93` config tables to produce a **wire-id** (reader-channel
   selection at ROM00:110C: `((FBC5>>2)+5)&1Fh` → FE83+idx−1 → wire-id in
   `f999`). That wire-id is then dispatched by `Link_CommandLookup`
-  (ROM00:31C6) through a wire→handler table (ROM00:31F2 =
-  `2B,2A,23,03,…`) to a per-device handler. Measured `FBC5=04` →
-  FE83+5 = **wire `2Bh`**, and both `2Bh` and `2Ah` map to handler
-  `0x1221` = `ExtBus_BusArm` (the barcode front end). So the device
-  index **does** select the barcode, alongside the IR and storage
-  devices — this supersedes the earlier "link-only" reading.
+  (ROM00:31C6) through a wire→handler table (base `IX=0x31F5`, wire list
+  at ROM00:31F2 = `2B,2A,23,03,…`) to a per-device handler: **`2Bh` and
+  `2Ah` → `0x1221` (`ExtBus_BusArm`, the barcode)**; **`23h` and `03h` →
+  `0x1893` (`Bdos_SharedErrorStub`)**, which issues syscall `FEh`
+  (`LD C,FEh; RST 28h`) — an error/support route, so `23h`/`03h` are not
+  real devices. Measured `FBC5=04` → FE83+5 = **wire `2Bh`**, which is
+  the barcode. So the device index **does** select the barcode,
+  alongside the IR and storage devices — this supersedes the earlier
+  "link-only" reading.
 * **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the "device"
   tables select the logical device by wire-id (above), and the barcode
   and IR link DO share actively-configured control-latch bits — this is
