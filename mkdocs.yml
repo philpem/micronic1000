@@ -101,6 +101,7 @@ nav:
       - InlineTableDispatch tables: re-notes/inline-dispatch.md
       - Listing-repair script: re-notes/ghidra-repair-script.md
       - OS internals: re-notes/os-diposb.md
+      - Monitor / ICE hook: re-notes/monitor-and-debug.md
       - Forms and UI: re-notes/forms-ui.md
       - CP/M comparison: re-notes/cp-m-comparison.md
       - Interrupts: re-notes/interrupts.md
