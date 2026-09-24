@@ -295,6 +295,33 @@ power and ground known (2026-09-22). The earlier assertion that the current
 exerciser already implements a pin walk was incorrect; that mode is absent.
 See the [manual output-first experiment](../research/reviews/ir-protocol-audit-2026-09-22.md#manual-scanner-connector-experiment-outputs-first-then-inputs).
 
+## Power-down / standby path (consolidated)
+
+`Power_DownSuspend` (ROM00:1721) groups the port writes below into one
+suspend sequence; the per-site evidence for each is above.
+
+* **`KBD_DRIVE` bit 6** is the wake-scan mode: released to `00h`, then
+  driven `48h` when set / `3Fh` when clear (ROM00:1759-176B). It keeps
+  the keyboard matrix scan live during the low-power spin.
+* **`OUT_LATCH`** receives the power state `FAh`/`F8h`/`D8h`
+  (ROM00:177F) — `F8h`/`FAh` chosen on `bit 6`, else `D8h`/`F8h` on
+  `FBCB`.
+* **`CTL_LATCH_2C`** is masked to `AND 20h` (ROM00:1786) so only bit 5
+  (IR port select) survives, dropping bit 4 (LIKELY LCD backlight); the
+  dedicated power-down path then clears bit 4 again (`AND EFh`,
+  ROM00:17E7).
+* **`LCD_STROBE`** bits 0-1 are forced to `11` (ROM00:1788-178D).
+* **Spin loop** (ROM00:1795-17A3) refreshes `CTL_LATCH_2A` (bit 5
+  clear) and `CTRL_07` (=3) and reads `STATUS_IN` bit 1 (ROM00:17A5).
+  The loop is a **busy-spin, not a CPU halt**; the JR at ROM00:17A3
+  targets the middle byte of a preceding `LD (db00),HL`, so `0xDB`
+  executes as `IN A,(05h)` — an overlapping self-modifying read. This is
+  the reason standby consumes power despite the LCD being off.
+* **State save:** the 8-byte console context `g_abConsoleContext`
+  (FBF3) is copied to `g_abConsoleContextSaved` (FBFB), gated on
+  `g_bConsoleStateSavedFlag` (FC03). `g_eRestartFlag` (FBD5) drives the
+  NMI restart/wake decision.
+
 ---
 
 ## Worked example: `ram:E5C2`

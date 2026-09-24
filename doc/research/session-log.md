@@ -1,5 +1,27 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-24 — low-power standby annotation pass
+
+Annotated the low-power standby (LCD off, wake-on-key) path and its
+documentation on branch `standby-annotations`.
+
+* Named `g_eRestartFlag` (FBD5) as enum `RestartFlag` (0 NORMAL /
+  1 SUSPEND_ENTRY / 2 SUSPENDED); documented it in the NMI handler
+  (ROM00:3B13) and `Power_DownSuspend` (ROM00:1721) plates.
+* Named the 8-byte console/TTY state snapshot `g_abConsoleContext`
+  (FBF3) / `g_abConsoleContextSaved` (FBFB), plus
+  `g_bConsoleStateSavedFlag` (FC03), `g_bConsoleDeviceState` (FC04);
+  per-byte roles documented (several bytes still OPEN).
+* Added bit-mapped repeatable comments to standby I/O ports: 02h bit 6
+  wake-scan, 04h power state, 07h bits0-1, 2Ah bits1/4/5, 2Ch bit 4
+  backlight / bit 5 port select, 48h bits0-1, 05h status.
+* Documented the standby busy-spin at ROM00:17A3 as an overlapping
+  self-modifying `IN A,(05h)` read (JR into the middle byte of
+  `LD (db00),HL`) — standby is a spin, not a CPU halt.
+* Named `ExtBus_BusAdvanceTimer`'s underflow → `Power_DownSuspend`
+  (ROM00:14C3) as a **SUSPECTED** inactivity auto-standby route; wake on
+  ordinary keypress remains OPEN.
+
 ## 2026-09-22 — merged instrumentation; next IR feedback draft
 
 * Squash-merged PR #21 after 163 focused tests plus 71 subtests and passing
