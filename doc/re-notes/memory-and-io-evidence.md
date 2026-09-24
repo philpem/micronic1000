@@ -354,10 +354,16 @@ owned by one routine.
 
 `Kernel_SenseDiagEcho` (ROM00:24F7-252D) drives `48h` bits 0-1 with
 `00,01,02,03` and reads back `49h` low 2 bits, requiring each to match
-(result `FD AF`: `00h`=present, `FFh`=absent) — a **presence/shunt test**
-of the device on the 48/49 strobe pair, likely the IR transceiver
-control lines. `Link_SelftestRun` (28AE-28E4) sets them then powers port
-`04h` to `FFh` (all off) as part of the link self-test.
+(result `FD AF`). **The result is diagnostic only:** `fdaf` is read by
+`Diag_SelfTestScreen` (03D3), which prints it as the self-test
+"Status flags" line (string at ROM00:29D1) then enters a key-wait loop.
+**Nothing downstream is functionally gated on the outcome** — it is not
+a presence check that enables/disables a device. `48h` is an OUTPUT
+(`F792` shadow) and `49h` an INPUT on the same 2-bit line set (`49h` is
+also read at reset as a boot-mode selector, ROM00:0168-0172); whether
+those lines reach an external device (IR transceiver) or are merely an
+internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
+(28AE-28E4) additionally powers port `04h` to `FFh` as part of its run.
 
 ### Multiplexing conclusions
 
