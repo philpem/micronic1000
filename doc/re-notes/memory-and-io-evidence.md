@@ -372,12 +372,15 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   set on the wire-ID-bit-5-clear branch (`old|02h` vs `(old&FCh)|20h`)
   and both cleared on the bit-5-set branch. No site sets one without the
   other, so it is one select signal fanned to two latch outputs.
-* **Q3 (what selects the device):** not a single select line. Active
-  device index `g_bActiveDevice` (FBC5, low 2 bits) is mapped through a
+* **Q3 (what selects the device):** this is **not** established as a
+  barcode-vs-IR mux. What the bytes show is **mechanics**: the active
+  console index `g_bActiveDevice` (FBC5, low 2 bits) is mapped through a
   device descriptor table (`Link_SelectActiveDevice` ROM00:0EC8 →
-  ROM00:31FF) and the front-end device id `f9aa` is latched at
-  arm/disarm (ROM00:1225/1214) and drives per-device control bits
-  (e.g. `2A` bit 1 when `f9aa==2Ah`).
+  ROM00:31FF), and a front-end device id `f9aa` is latched at arm/disarm
+  (ROM00:1225/1214) and drives a per-device control bit (`2A` bit 1 when
+  `f9aa==2Ah`). Whether this index/id actually routes between the
+  barcode and the IR ports (as opposed to selecting console/subsystem
+  descriptors) is **OPEN** — do not treat it as the mux until traced.
 * **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** **OPEN.**
   Port `2C` bit 5 is high for V24 and low for both PLINTH-IR (LIKELY)
   and the barcode gate, so it cannot distinguish back-IR from barcode;
