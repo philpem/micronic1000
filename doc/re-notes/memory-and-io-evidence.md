@@ -396,13 +396,20 @@ Writes (`F792` shadow): `03h` by `Session_SystemInit` (0359) and
 `Link_SelftestRun` (28AE/28B8); bits 0-1 forced to `11h` by
 `Power_DownSuspend` (178D).
 
-Reads: as a **boot-mode select at reset** (`0168`/`016E`) — `bit0=0`
-→ cold path `01A6`; `bit1=1` → `17A5`; else `0175` (`Lcd_Init` +
-keyboard check). And as the self-test loopback: `Kernel_SenseDiagEcho`
-(24F2) drives `48h` `00/01/02/03` and reads back `49h` low 2 bits,
-requiring a match (result `FDAF`). **Diagnostic only:** `fdaf` is read
-by `Diag_SelfTestScreen` (03D3) and printed as the "Status flags" line
-(29D1); nothing downstream is gated on it.
+Reads: as a **boot-mode select at reset** (`0168`/`016E`):
+| 49h | path | meaning |
+|---|---|---|
+| bit0=0 | `01A6` | **cold start** (clear restart/warmboot sigs, `OUT 04h`=FFh, `OUT 2Bh`=0) |
+| bit0=1, bit1=0 | `0175` | **service/DEBUG gate**: `Lcd_Init`, then a keyboard pattern check (drive `02h`=FD read `KBD_SENSE`; drive `02h`=02 require sense `1Ch`); on match sets `g_bBootmodeFlag` `f81d`=FFh, enabling the conditional debug stub |
+| bit0=1, bit1=1 | `17A5` | the **suspend-wake / restart continuation** (clears `CTRL_07` bit0, then the boot/restart flow) |
+
+So the debug gate needs **two factors** (49h config `01` *plus* a held
+key pattern), which is why it reads as a service entry. And as the
+self-test loopback: `Kernel_SenseDiagEcho` (24F2) drives `48h`
+`00/01/02/03` and reads back `49h` low 2 bits, requiring a match (result
+`FDAF`). **Diagnostic only:** `fdaf` is read by `Diag_SelfTestScreen`
+(03D3) and printed as the "Status flags" line (29D1); nothing
+downstream is gated on it.
 
 So `48h` drives and `49h` senses the same 2-bit lines. The physical
 destination (boot jumper/switch, a test probe, a latch, or the IR
