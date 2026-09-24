@@ -509,6 +509,24 @@ The capture sequencing (ROM00:1317-14A3): sample `2Dh` → `04h` bit 5
 clear (capture entry) → poll/acquire `2Dh` edges (`ExtBus_BusAcquireEdge`)
 → `04h` bit 5 set (capture completion) → arm/re-arm. The `2A`/`2C`
 attention lines are set around each capture window.
+
+### Barcode device-type probe (ROM00:1221 `ExtBus_BusArm`)
+
+At arm time the barcode front end identifies the attached device by a
+2-bit probe on `2Dh` after a control-line pulse (byte-verified):
+1. Clear port `2C` bit 1 (`F78D &= FD`), delay (~0xDE-loop, ROM00:35CE),
+   then set port `2C` bit 1 (`F78D |= 02`) — a control-line pulse.
+2. Short delay (ROM00:1563, A=2).
+3. Read port `2Dh` → 3-state code `E`:
+   * bit 0 **set** → `E = 0` → invalid/error (JP 13A3)
+   * bit 0 clear, bit 1 **set** → `E = 1` (route 12DD)
+   * bits 0 and 1 **clear** → `E = 2` (default)
+4. `E` stored in `f9ab` **and** `fbcb`; `fbcb` later selects the
+   power-down latch value (`F8h` vs `D8h`, ROM00:1772).
+5. Route on `E`: `E=1` gates the attention beep on `fbbf` (work item
+   `DE=1`); `E=2` calls the attention strobe directly.
+The physical device mapping of the `E` codes and the electrical role of
+`2Dh` bit 1 are **OPEN** — see GitHub issue #29.
 ---
 
 ## Worked example: `ram:E5C2`
