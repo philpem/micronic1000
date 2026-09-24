@@ -386,20 +386,28 @@ owned by one routine.
 | 4 | `14EB`/`14F2` (`OR 10h`) | — | barcode output (owner: red/pin1) |
 | 5 | `17FB` (Boot_entry `OR 20h`) | `179B`/`179D` (standby refresh `AND DFh`) | boot/standby line |
 
-### Port `48h` / `49h` — strobe + echo pair
+### Port `48h` / `49h` — 2-bit I/O port (write 48h / read 49h)
 
-`Kernel_SenseDiagEcho` (ROM00:24F7-252D) drives `48h` bits 0-1 with
-`00,01,02,03` and reads back `49h` low 2 bits, requiring each to match
-(result `FD AF`). **The result is diagnostic only:** `fdaf` is read by
-`Diag_SelfTestScreen` (03D3), which prints it as the self-test
-"Status flags" line (string at ROM00:29D1) then enters a key-wait loop.
-**Nothing downstream is functionally gated on the outcome** — it is not
-a presence check that enables/disables a device. `48h` is an OUTPUT
-(`F792` shadow) and `49h` an INPUT on the same 2-bit line set (`49h` is
-also read at reset as a boot-mode selector, ROM00:0168-0172); whether
-those lines reach an external device (IR transceiver) or are merely an
-internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
-(28AE-28E4) additionally powers port `04h` to `FFh` as part of its run.
+`48h` and `49h` are two halves of one 2-bit I/O port: **write `48h`,
+read it back at `49h`**. MAME (`src/mame/skeleton/micronic.cpp`) models
+them as a single read/write latch (`status_flag`).
+
+Writes (`F792` shadow): `03h` by `Session_SystemInit` (0359) and
+`Link_SelftestRun` (28AE/28B8); bits 0-1 forced to `11h` by
+`Power_DownSuspend` (178D).
+
+Reads: as a **boot-mode select at reset** (`0168`/`016E`) — `bit0=0`
+→ cold path `01A6`; `bit1=1` → `17A5`; else `0175` (`Lcd_Init` +
+keyboard check). And as the self-test loopback: `Kernel_SenseDiagEcho`
+(24F2) drives `48h` `00/01/02/03` and reads back `49h` low 2 bits,
+requiring a match (result `FDAF`). **Diagnostic only:** `fdaf` is read
+by `Diag_SelfTestScreen` (03D3) and printed as the "Status flags" line
+(29D1); nothing downstream is gated on it.
+
+So `48h` drives and `49h` senses the same 2-bit lines. The physical
+destination (boot jumper/switch, a test probe, a latch, or the IR
+transceiver) is **OPEN** — the ROM alone cannot say; MAME leaves its IR
+path as TODO.
 
 ### Multiplexing conclusions
 
