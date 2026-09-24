@@ -644,7 +644,7 @@ bits 2, 3, 6 or 7.**
 | 0 | An output strobe on the external port — short fixed-width pulse in the barcode block | CONFIRMED (width); **OPEN** (what it strobes) |
 | 1 | An enable asserted around reads of `2Dh` | CONFIRMED (set-then-read ordering); **OPEN** (drive/wand-power/direction) |
 | 2, 3 | unused, or not brought out | **OPEN** |
-| 4 | **LIKELY the LCD backlight** — toggles in the keyboard handler, switched off on power-down | **LIKELY**; corroborated by MAME inference |
+| 4 | **EL-backlight enable** — Sun (red) + `LIGHT` (letter B) toggles it; the keyboard handler toggles `2Ch` bit 4 at `1A0A`-`1A25`; cleared on power-down | **CONFIRMED** (owner hardware fact + firmware) |
 | 5 | **IR port select** — moves with `LINK_CTRL` bit 1 | CONFIRMED |
 | 6, 7 | unused, or not brought out | **OPEN** |
 
