@@ -423,8 +423,9 @@ Besides the active-low IRQ-mask role (ROM00:22E9 loads `1Fh`, CPLs,
 OUT; ROM00:2306 loads A=2) and the `FFh` idle/power-off state:
 * **bit 0**: power-latch bit, set by `Power_LatchSetBit0` (ROM00:1B2E),
   cleared by `Power_LatchClrBit0` (ROM00:1B39).
-* **bits 3-4**: mirrored from `fda1` bits 3-4 by `Power_LatchSetBits`
-  (ROM00:241B).
+* **bits 3-4**: mirrored from `FDA1` (= inverted `STATUS_IN` snapshot)
+  bits 3-4 by `Power_LatchSetBits` (ROM00:241B) — these echo
+  `STATUS_IN` bits 3/4 back out.
 * **bit 5**: barcode capture window enable (prior evidence).
 
 ### Port `33h` — orphan
@@ -433,6 +434,22 @@ Single access in the firmware: `IN A,(33h)` at the tail of an
 LCD-stub at ROM00:1ED0 (`LD A,0Dh; OUT (03h); …; IN A,(33h); RET`) with
 **no xref to 1ED0** (unreachable by static refs). Candidates: LCD
 status/busy read or an alias of `23h`/`03h`. **OPEN**; not fruitful.
+
+### Port `05h` — `STATUS_IN` fully decoded
+
+Active-low polled peripheral event/status port. Each IRQ
+`Kernel_WorkerPollPort5` (ROM00:230A) snapshots it to `F785` (raw),
+gates it by the active-low IRQ-enable mask (`OUT_LATCH` shadow `F784`),
+and dispatches via the `fd84` `{mask,handler}` table (template
+ROM00:2352):
+* bit 0 (`01h`) → `18F0` `Kbd_ScanMain` (keyboard event)
+* bit 1 (`02h`) → `2206` `RTC_WakeReasonFetch` (RTC alarm/wake)
+* bit 2 (`04h`) → `31B6` `Link_IrqPollArmOrService` (link event)
+* bit 3 (`08h`) / bit 4 (`10h`) → `2365` (latches inverted status to
+  `FDA1`, then sets `OUT_LATCH` bits 3-4 via `Power_LatchSetBits`)
+bit 1 is also probed directly in the standby wake path (ROM00:17A5).
+The two reset reads (ROM00:01B1/0238) read-and-discard the value, so
+port `05h` is **not** the reset boot-key test (that is port `49h`).
 ---
 
 ## Worked example: `ram:E5C2`
