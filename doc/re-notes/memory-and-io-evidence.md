@@ -529,6 +529,42 @@ At arm time the barcode front end identifies the attached device by a
    `DE=1`); `E=2` calls the attention strobe directly.
 The physical device mapping of the `E` codes and the electrical role of
 `2Dh` bit 1 are **OPEN** — see GitHub issue #29.
+
+### Wire-`0x2B` identity ambiguity (OPEN)
+
+Wire-id `0x2B` appears in two contexts that must be reconciled:
+* **Reader channel** — `Device_SlotSelectPair` (ROM00:110C-1119) computes
+  `((FBC5>>2)+5)&1Fh` → `FE83+idx-1` → wire-id stored in `f999`, which is
+  read by **`Bdos_ReaderInChar`** (ROM00:1083, the `RDR:` reader = the
+  barcode). Measured `FBC5=04` → wire `2Bh`.
+* **Disk probe** — `Disk_SelectWireId2b` (ROM00:0D6B) loads `A=0x2Bh`
+  and probes it (`Fs_SelectProbeResult`). Its plate (prior analysis)
+  labels it "EXT STORAGE default".
+
+So `0x2Bh` is the `RDR:` barcode channel *and* is probed by a disk
+function labeled "ext storage". Resolution is **OPEN** — either the
+barcode reader and the ext-storage device are the same/related device,
+share the wire-id value in different lookup contexts, or the disk
+function is mislabeled. Do not resolve by fiat.
+
+### Storage adapter (EXT STORAGE) — IR/link device (2026-09-24)
+
+Confirmed as an **IR/link device**: it is probed and accessed over the
+4× byte transport (`4A-4F`), consistent with AGENTS §3.
+* **Probe** — `Disk_SelectProbe` (ROM00:0ABC): `HL=0x839` (callback);
+  `CALL 2F1A` (`LinkTransportCall`); `C=0x0B`, `HL=0x40`;
+  `CALL 168F` (`EventWaitForLink`); checks result bit 0 (0xEE = none)
+  and drive type from `f93e` (>=0xDF valid). `Disk_SelectWireId2b`
+  (0D6B) drives the probe with wire `0x2Bh`.
+* **Keyed-record access** — `Disk_KeyedWriteCmd` (ROM00:081B) writes a
+  4-byte keyed-read command header `{C,B,E,D}` at `(HL)` (length + key);
+  `DiskKeyedRead0` (0AA5) reads a 0x24-byte record, `DiskKeyedRead128`
+  (0AB0) a 0x80-byte block; `DiskKeyedSearch` (0A6D) searches by key;
+  `Disk_KeyedClearPair` (0A0D) clears a keyed record.
+* **Validate** — `Disk_DriveValidate` (ROM00:3205) reads the `FE93`
+  storage config (wires `73h`/`72h`).
+So the drive is a keyed-record peripheral on the IR link, probed by
+wire-id and read through 4-byte keyed-read commands over the transport.
 ---
 
 ## Worked example: `ram:E5C2`
