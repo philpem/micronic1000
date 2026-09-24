@@ -381,22 +381,24 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   `f9aa==2Ah`). Whether this index/id actually routes between the
   barcode and the IR ports (as opposed to selecting console/subsystem
   descriptors) is **OPEN** — do not treat it as the mux until traced.
-* **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the barcode
-  and the IR link are **separate subsystems**, and the "device" tables
-  do **not** mux between them. `Device_LookupConfigEntry` (ROM00:31FF)
-  selects a 16-byte config record from `FE83` (copy A) or `FE93`
-  (copy B) by the active-device index. Reading those records shows they
-  are **consistent with link wire-id configs**, not a barcode/IR router: `FE83` =
-  `{80,AB,63,43}{80,2B,63,43}{80,67,63,43}{80,67,63,43}` — every record
-  carries the two known IR wire-ids `63h`/`43h`; `FE93` =
-  `{00,7F,73,72}` = the storage wires (C:=`73h`, D:=`72h`). So
-  `g_bActiveDevice` selects a *link* / *storage* partner device, not the
-  barcode front end. The only thing shared between barcode and IR is the
-  control-latch bits (port `2C` bit 5, port `2A` bit 1), which the
-  barcode path happens to leave at their neutral values — not a mux.
-  Whether the two IR ports are one port-selected transceiver cluster or
-  two independent ones remains **OPEN** (hardware).
-
+* **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the "device"
+  tables do **not** select the barcode — `Device_LookupConfigEntry`
+  (ROM00:31FF) indexes 16-byte config records in `FE83`/`FE93` by the
+  active-device index, and those records carry the link wire-ids
+  (`63h`/`43h` in `FE83`; `73h`/`72h` storage wires in `FE93`), so the
+  index selects a *link*/*storage* partner, not the barcode front end.
+  **However** the barcode and IR link DO share actively-configured
+  control-latch bits — this is *not* a case of "neutral" values. The
+  owner's bench gate (black/pin5 = `2Dh` bit 0 timing input) requires
+  **`2A` bit 1 HIGH and `2C` bit 5 LOW** (owner-measured hardware
+  requirement), and the firmware configures exactly that on barcode arm:
+  `ExtBus_BusArm` clears `2C` bit 5 (ROM00:122C) and sets `2A` bit 1
+  (ROM00:1245, for device id `2Ah`). Since IR operation clears `2A`
+  bit 1 (`Link_PortSelect` ROM00:3458, both branches), the two bits form
+  a plausible 2-bit device decode: `2A` bit 1 HIGH = barcode, LOW + `2C`
+  bit 5 HIGH = V24 IR, LOW + `2C` bit 5 LOW = PLINTH IR. Whether this is
+  one hardware router or two independent enables, and whether the two IR
+  ports share one transceiver cluster, remain **OPEN** (hardware).
 ---
 
 ## Worked example: `ram:E5C2`
