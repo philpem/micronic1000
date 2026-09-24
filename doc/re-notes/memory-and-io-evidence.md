@@ -322,6 +322,64 @@ suspend sequence; the per-site evidence for each is above.
   `g_bConsoleStateSavedFlag` (FC03). `g_eRestartFlag` (FBD5) drives the
   NMI restart/wake decision.
 
+## Shared control latches and device multiplexing (2026-09-24)
+
+The three external devices (V24 IR, PLINTH IR, barcode side port) do
+**not** contend for data pins — link/storage I/O runs the 4× byte
+transport (4A–4F), the barcode runs the 2D edge front end — but they
+**do** share control-latch bits on ports 2A/2C. Every write to these is a
+read-modify-write through the shadow (`F78B`/`F78D`), so each bit is
+owned by one routine.
+
+### Port `2Ch` (`CTL_LATCH_2C`, shadow `F78D`) bit ownership
+
+| bit | set at | clear at | meaning |
+|---|---|---|---|
+| 0 | `150F`/`1519` | `1520`/`1528` | barcode attention-strobe pulse |
+| 1 | `128A`/`1292` | `1280`/`1283`, `14E1`/`14E6` | enable asserted around `2Dh` reads (barcode capture enable) |
+| 4 | `1A14`/`1A19` | `1A20`/`1A25`, `17E7` | LIKELY LCD backlight |
+| 5 | `3482`/`3487` | `346F`/`3487`, `34B5`, `122C`/`1231` | **IR port select** / shared device select |
+| 2,3,6,7 | — | — | never written; not brought out |
+
+### Port `2Ah` (`CTL_LATCH_2A`, shadow `F78B`) bit ownership
+
+| bit | set at | clear at | meaning |
+|---|---|---|---|
+| 0 | — | `14EB`/`14F2` (`AND FEh`) | barcode output (owner: yellow/pin6 sink/release) |
+| 1 | `1245`/`124A` (armed dev==2Ah), `1541`/`1550` | `3458`/`345D` (both IR branches), `1236`/`123B` | attention/trigger, **shared** IR+barcode |
+| 4 | `14EB`/`14F2` (`OR 10h`) | — | barcode output (owner: red/pin1) |
+| 5 | `17FB` (Boot_entry `OR 20h`) | `179B`/`179D` (standby refresh `AND DFh`) | boot/standby line |
+
+### Port `48h` / `49h` — strobe + echo pair
+
+`Kernel_SenseDiagEcho` (ROM00:24F7-252D) drives `48h` bits 0-1 with
+`00,01,02,03` and reads back `49h` low 2 bits, requiring each to match
+(result `FD AF`: `00h`=present, `FFh`=absent) — a **presence/shunt test**
+of the device on the 48/49 strobe pair, likely the IR transceiver
+control lines. `Link_SelftestRun` (28AE-28E4) sets them then powers port
+`04h` to `FFh` (all off) as part of the link self-test.
+
+### Multiplexing conclusions
+
+* **Q1 (why two select bits):** `Link_PortSelect` (ROM00:3454) drives
+  `LINK_CTRL` bit 1 and port `2C` bit 5 as a strict mirror pair — both
+  set on the wire-ID-bit-5-clear branch (`old|02h` vs `(old&FCh)|20h`)
+  and both cleared on the bit-5-set branch. No site sets one without the
+  other, so it is one select signal fanned to two latch outputs.
+* **Q3 (what selects the device):** not a single select line. Active
+  device index `g_bActiveDevice` (FBC5, low 2 bits) is mapped through a
+  device descriptor table (`Link_SelectActiveDevice` ROM00:0EC8 →
+  ROM00:31FF) and the front-end device id `f9aa` is latched at
+  arm/disarm (ROM00:1225/1214) and drives per-device control bits
+  (e.g. `2A` bit 1 when `f9aa==2Ah`).
+* **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** **OPEN.**
+  Port `2C` bit 5 is high for V24 and low for both PLINTH-IR (LIKELY)
+  and the barcode gate, so it cannot distinguish back-IR from barcode;
+  the disambiguator is either the active-device index (FBC5) or the
+  barcode-only `2A` bits 0/4. Hardware (owner) is needed to settle
+  whether the two IR ports share one transceiver/cluster (port-selected)
+  or are independent.
+
 ---
 
 ## Worked example: `ram:E5C2`

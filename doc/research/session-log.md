@@ -29,6 +29,15 @@ documentation on branch `standby-annotations`.
   polls nothing, so a key closure must assert NMI) — with a hardware
   discriminating test. The reduced wake drive `48h` (bit6+bit3) is not
   the all-columns value (`3Fh`).
+* Resolved the shared-latch multiplexing picture for ports 2A/2C/48:
+  built the per-bit ownership matrix (2C b0 pulse/b1 enable/b4 backlight/
+  b5 select; 2A b0/b4 barcode outputs/b1 shared attention/b5 boot line),
+  confirmed the two-bit IR select (LINK_CTRL b1 + 2C b5) is a strict
+  mirror pair, found device selection is index-based
+  (`g_bActiveDevice` FBC5 → table @31FF, front-end id `f9aa`), and
+  identified the 48/49 strobe+echo pair as a presence/shunt self-test.
+  Barcode-vs-back-IR disambiguation and whether both IR ports share one
+  cluster remain OPEN (hardware).
 
 ## 2026-09-22 — merged instrumentation; next IR feedback draft
 
