@@ -21,6 +21,14 @@ documentation on branch `standby-annotations`.
 * Named `ExtBus_BusAdvanceTimer`'s underflow → `Power_DownSuspend`
   (ROM00:14C3) as a **SUSPECTED** inactivity auto-standby route; wake on
   ordinary keypress remains OPEN.
+* Confirmed the keyboard matrix scans **6 columns** (KBD_DRIVE bits 0-5,
+  stepped 01h→20h by SLA, B=06h) sensing 6 rows (KBD_SENSE & 3Fh);
+  `3Fh` = all 6 columns (Kbd_SenseAllColumns prescan).
+* Recorded **LIKELY** that `KBD_DRIVE` bit 6 is a keyboard→NMI wake
+  enable (only set on the suspend/wake path; suspend spin runs DI and
+  polls nothing, so a key closure must assert NMI) — with a hardware
+  discriminating test. The reduced wake drive `48h` (bit6+bit3) is not
+  the all-columns value (`3Fh`).
 
 ## 2026-09-22 — merged instrumentation; next IR feedback draft
 
