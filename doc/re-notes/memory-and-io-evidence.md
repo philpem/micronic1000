@@ -372,33 +372,32 @@ internal loopback is **not determinable from the ROM**. `Link_SelftestRun`
   set on the wire-ID-bit-5-clear branch (`old|02h` vs `(old&FCh)|20h`)
   and both cleared on the bit-5-set branch. No site sets one without the
   other, so it is one select signal fanned to two latch outputs.
-* **Q3 (what selects the device):** this is **not** established as a
-  barcode-vs-IR mux. What the bytes show is **mechanics**: the active
-  console index `g_bActiveDevice` (FBC5, low 2 bits) is mapped through a
-  device descriptor table (`Link_SelectActiveDevice` ROM00:0EC8 →
-  ROM00:31FF), and a front-end device id `f9aa` is latched at arm/disarm
-  (ROM00:1225/1214) and drives a per-device control bit (`2A` bit 1 when
-  `f9aa==2Ah`). Whether this index/id actually routes between the
-  barcode and the IR ports (as opposed to selecting console/subsystem
-  descriptors) is **OPEN** — do not treat it as the mux until traced.
+* **Q3 (device selection) — CORRECTED (2026-09-24): there IS a genuine
+  device selector, and it includes the barcode.** `g_bActiveDevice`
+  (FBC5) is mapped through `Device_LookupConfigEntry` (ROM00:31FF) into
+  the `FE83`/`FE93` config tables to produce a **wire-id** (reader-channel
+  selection at ROM00:110C: `((FBC5>>2)+5)&1Fh` → FE83+idx−1 → wire-id in
+  `f999`). That wire-id is then dispatched by `Link_CommandLookup`
+  (ROM00:31C6) through a wire→handler table (ROM00:31F2 =
+  `2B,2A,23,03,…`) to a per-device handler. Measured `FBC5=04` →
+  FE83+5 = **wire `2Bh`**, and both `2Bh` and `2Ah` map to handler
+  `0x1221` = `ExtBus_BusArm` (the barcode front end). So the device
+  index **does** select the barcode, alongside the IR and storage
+  devices — this supersedes the earlier "link-only" reading.
 * **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the "device"
-  tables do **not** select the barcode — `Device_LookupConfigEntry`
-  (ROM00:31FF) indexes 16-byte config records in `FE83`/`FE93` by the
-  active-device index, and those records carry the link wire-ids
-  (`63h`/`43h` in `FE83`; `73h`/`72h` storage wires in `FE93`), so the
-  index selects a *link*/*storage* partner, not the barcode front end.
-  **However** the barcode and IR link DO share actively-configured
-  control-latch bits — this is *not* a case of "neutral" values. The
-  owner's bench gate (black/pin5 = `2Dh` bit 0 timing input) requires
-  **`2A` bit 1 HIGH and `2C` bit 5 LOW** (owner-measured hardware
-  requirement), and the firmware configures exactly that on barcode arm:
-  `ExtBus_BusArm` clears `2C` bit 5 (ROM00:122C) and sets `2A` bit 1
-  (ROM00:1245, for device id `2Ah`). Since IR operation clears `2A`
-  bit 1 (`Link_PortSelect` ROM00:3458, both branches), the two bits form
-  a plausible 2-bit device decode: `2A` bit 1 HIGH = barcode, LOW + `2C`
-  bit 5 HIGH = V24 IR, LOW + `2C` bit 5 LOW = PLINTH IR. Whether this is
-  one hardware router or two independent enables, and whether the two IR
-  ports share one transceiver cluster, remain **OPEN** (hardware).
+  tables select the logical device by wire-id (above), and the barcode
+  and IR link DO share actively-configured control-latch bits — this is
+  *not* a case of "neutral" values. The owner's bench gate (black/pin5 =
+  `2Dh` bit 0 timing input) requires **`2A` bit 1 HIGH and `2C` bit 5
+  LOW** (owner-measured hardware requirement), and the firmware configures
+  exactly that on barcode arm: `ExtBus_BusArm` clears `2C` bit 5
+  (ROM00:122C) and sets `2A` bit 1 (ROM00:1245, for device id `2Ah`).
+  Since IR operation clears `2A` bit 1 (`Link_PortSelect` ROM00:3458,
+  both branches), the two bits form a plausible 2-bit device decode:
+  `2A` bit 1 HIGH = barcode, LOW + `2C` bit 5 HIGH = V24 IR, LOW + `2C`
+  bit 5 LOW = PLINTH IR. Whether this is one hardware router or two
+  independent enables, and whether the two IR ports share one
+  transceiver cluster, remain **OPEN** (hardware).
 
 ## Remaining port-bit refinements (2026-09-24)
 
