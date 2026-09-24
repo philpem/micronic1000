@@ -672,8 +672,10 @@ call followed by normal return, not a transfer to another monitor ROM.
 * **Power_DownSuspend** (ROM00:1721) is the suspend routine, reached
   from the NMI handler — strong evidence the power button is wired
   to NMI — and also from the capture-timer underflow at
-  `ExtBus_BusAdvanceTimer` (ROM00:14C3), a **SUSPECTED** route for the
-  owner-observed inactivity auto-standby:
+  `ExtBus_BusAdvanceTimer` (ROM00:14C3). That underflow is the
+  **barcode-capture window timeout**, not an autonomous idle/standby
+  timer; an idle-countdown that drives the owner-observed
+  LCD/backlight-off has **not** been located in the ROM (2026-09-24):
   * saves SP to `g_wSysSavedSp` (FBD0) and the 8-byte console context
     `g_abConsoleContext` (FBF3) → `g_abConsoleContextSaved` (FBFB);
     the copy is gated on `g_bConsoleStateSavedFlag` (FC03)
