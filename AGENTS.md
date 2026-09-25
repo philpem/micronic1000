@@ -376,11 +376,11 @@ UPPER_SNAKE peripheral-based name (never address-based), carrying a
 | 48h | `STATUS_DRIVE` | status-drive output (with 49h); physical identity OPEN |
 | 49h | `STATUS_SENSE` | status-sense input (with 48h); physical identity OPEN |
 | 4Ah | `LINK_CTRL` | 4x external-link control latch (shadow F794) |
-| 4Bh | `LINK_STATUS` | link status (ready/ACK/RX phase) |
-| 4Ch | `LINK_CMD` | link command/ACK (0x81) |
+| 4Bh | `LINK_STATUS` | link status (electrical names "ready"/"ACK"/"RX phase" unproven) |
+| 4Ch | `LINK_CMD` | link command latch; electrical alias "ACK" unproven |
 | 4Dh | `LINK_TXD` | link TX data byte |
 | 4Eh | `LINK_RXD` | link RX data byte |
-| 4Fh | `LINK_PROBE` | device probe/reset (0x1F) |
+| 4Fh | `LINK_PROBE` | device probe; electrical alias "reset" unproven |
 
 Use **datasheet names** for chip registers/bits where a datasheet
 exists (HD146818 Reg A `DV`/`RS`, Reg B `PIE`/`SET`/`24h`; HD61830).

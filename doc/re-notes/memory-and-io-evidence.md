@@ -65,7 +65,7 @@ Seven sites use `OUT (C),r` / `IN r,(C)`, where the port number is in
 | `ROM00:1FD9` | `0E 46` | `46h` | LCD contrast, `A = (FC05)` |
 | `ROM00:2104` | `0E 28` | `28h` | `RTC_ReadRegisterFile`, `IN B,(C)` |
 | `ROM00:22DD`, `22E4` | `0E 08` | `08h` | `RTC_RegWrite` / `RTC_RegRead` |
-| `ROM00:246E`, `2477` | `0E 28` | `28h` | `Link_StatusWatcher` reads RTC registers `07h`/`08h` |
+| `ROM00:246E`, `2477` | `0E 28` | `28h` | `RTC_DayChangeWatcher` reads RTC registers `07h`/`08h` |
 
 CONFIRMED — the `LD C,nn` immediately precedes each in every case. The
 remaining raw `ED 50` (`ROM00:7E1C`) and `ED 58` (`ROM01:59A0`) hits fall
@@ -245,7 +245,7 @@ a table of `{bitmask, handler}` triples at `ram:FD84`, copied from
 | 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
 | 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
 | 2 | `04h` | `ROM00:31B6` | **the link controller** |
-| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **CONFIRMED** power/battery (strings `24CA`/`24DD` confirm MAIN/BACKUP battery) |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
 | 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (`ROM00:2349`); caller `ROM00:138B` supplies HL=13B8h (edge-capture). `ROM00:1397` clears port04 bit5 (AND DFh) to ENABLE the source; `ROM00:1499` sets it (OR 20h) to mask after capture |
 | 6, 7 | — | — | no slot exists |
@@ -257,9 +257,10 @@ end has installed its handler (`ROM00:139C` clears the mask bit, `149E`
 sets it back), and bits 6 and 7 are masked permanently because nothing
 dispatches them.
 
-Reading `05h` appears to acknowledge: three sites (`ROM00:01B1`, `0238`,
-`288A`) read it and discard the value, and at `288A` the very next action
-is the HD146818's own acknowledge (`LD A,0Ch; OUT (08h); IN A,(28h)`).
+Reading `05h` is followed by source-specific acknowledgement for the RTC
+via HD146818 Reg C (`LD A,0Ch; OUT (08h),A; IN A,(28h)` at `ROM00:288A`).
+Two other sites (`ROM00:01B1`, `0238`) read and discard.
+A generic port-`05h` acknowledge-on-read is NOT established.
 
 ---
 
@@ -302,10 +303,10 @@ at the zero `Link_Probe` establishes at `ROM00:34B5` (`XOR A`).
 |---|---|---|
 | 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **a programmed output pulse.** Pulse sequence and placement are CONFIRMED; physical routing and electrical function are **OPEN** (physical attention/strobe SUSPECTED) |
 | 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6`. Owner bench: mapped `2Dh` bit0 readable with bit1 low OR high in otherwise working states, so "capture enable" not established | **a control switched before reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is an internal enable or an external signal is **OPEN** |
-| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **LIKELY/unproven** |
+| 2, 3 | never written to 1 anywhere in the image | never written to 1 by this ROM; otherwise OPEN |
 | 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **CONFIRMED the EL-backlight enable.** Owner hardware fact: holding the red Sun key and pressing **`LIGHT` (letter B)** toggles the backlight, and the firmware toggles `2Ch` bit 4 in the keyboard handler (`1A0A`-`1A25`, set `1A14`/`1A19`, clear `1A20`/`1A25`). The unit's HD61830 LCD has an EL backlight (owner spec). MAME's `port_2c_w` `m_lcd_backlight` is corroborating, not the source. |
-| 5 | `Link_PortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](commstar-evidence.md#device-table-ports) |
-| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **LIKELY/unproven** |
+| 5 | `Link_PortSelect` sets it for id bit 5 clear (`OR 20h` at `3482`, `OUT (2Ch)` at `3487`) and clears it for id bit 5 set (`AND DCh` at `346F`); `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](commstar-evidence.md#device-table-ports) |
+| 6, 7 | never written to 1 anywhere in the image | never written to 1 by this ROM; otherwise OPEN |
 
 `CTL_LATCH_2C` bits 0 and 1 are initial output candidates for the scanner
 connector, not an exhaustive physical pinout. Internal use of other bits
@@ -327,7 +328,7 @@ suspend sequence; the per-site evidence for each is above.
   (ROM00:177F) — `F8h`/`FAh` chosen on `bit 6`, else `D8h`/`F8h` on
   `FBCB`.
 * **`CTL_LATCH_2C`** is masked to `AND 20h` (ROM00:1786) so only bit 5
-  (IR port select) survives, dropping bit 4 (LIKELY LCD backlight); the
+  (IR port select) survives, dropping bit 4 (CONFIRMED LCD backlight); the
   dedicated power-down path then clears bit 4 again (`AND EFh`,
   ROM00:17E7).
 * **`48h` (`STATUS_DRIVE`)** bits 0-1 are forced to `11` (ROM00:1788-178D).
@@ -390,9 +391,9 @@ owned by one routine.
 
 | bit | set at | clear at | meaning |
 |---|---|---|---|
-| 0 | `150F`/`1519` | `1520`/`1528` | barcode attention-strobe pulse |
+| 0 | `150F`/`1511`/`1519` | `1520`/`1528` | barcode attention-strobe pulse |
 | 1 | `128A`/`1292` | `1280`/`1283`, `14E1`/`14E6` | enable asserted around `2Dh` reads (barcode capture enable) |
-| 4 | `1A14`/`1A19` | `1A20`/`1A25`, `17E7` | LIKELY LCD backlight |
+| 4 | `1A14`/`1A19` | `1A20`/`1A25`, `17E7` | CONFIRMED LCD backlight |
 | 5 | `3482`/`3487` | `346F`/`3487`, `34B5`, `122C`/`1231` | **IR port select** / shared device select |
 | 2,3,6,7 | — | — | never written; not brought out |
 
@@ -400,9 +401,9 @@ owned by one routine.
 
 | bit | set at | clear at | meaning |
 |---|---|---|---|
-| 0 | — | `14EB`/`14F2` (`AND FEh`) | barcode output (owner: yellow/pin6 sink/release) |
+| 0 | `1537`/`1541` (`OR 01h`) | `14EB`/`14F2` (`AND FEh`) | barcode output (owner: yellow/pin6 sink/release) |
 | 1 | `1245`/`124A` (armed dev==2Ah), `1541`/`1550` | `3458`/`345D` (both IR branches), `1236`/`123B` | attention/trigger, **shared** IR+barcode |
-| 4 | `14EB`/`14F2` (`OR 10h`) | — | barcode output (owner: red/pin1) |
+| 4 | `14EB`/`14F2` (`OR 10h`) | `1537` (`AND EFh`) | barcode output (owner: red/pin1) |
 | 5 | `17FB` (Boot_entry `OR 20h`) | `179B`/`179D` (standby refresh `AND DFh`) | boot/standby line |
 
 ### Port `48h` / `49h` — 2-bit status-drive/sense (write 48h / read 49h)
@@ -516,7 +517,7 @@ written. Six write sites, no reads. Observed contexts:
   watcher (ROM00:2468-24AF reads HD146818 regs `07h`/`08h` and
   schedules a delayed re-set), plus the backup-battery warning
   (ROM00:23C7-23CC). It is **not** "link activity" (that came from the
-  stale `Link_StatusWatcher` label).
+  earlier `Link_StatusWatcher` label, now renamed to `RTC_DayChangeWatcher`).
 **Physical role OPEN** — candidates: alarm/status output, peripheral
 power/control. No read site to corroborate.
 

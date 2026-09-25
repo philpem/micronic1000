@@ -650,10 +650,9 @@ SUSPECTED until bench evidence discriminates them.
    * **Run 6 (front-end init + early probe witness `3351`, owner 2026-09-20):**
      the stock I/O log shows a **teardown** after the bit6 poll (drop
      `LINK_CTRL` bit4/bit0, `ROM00:3361-3376`) and three latches the
-     boot-replacing exerciser never set: `48h` (`IR_STROBE`) = `03h`
+     boot-replacing exerciser never set: `48h` (`STATUS_DRIVE`) = `03h`
      (`Session_SystemInit` `ROM00:0359`), `07h` (`CTRL_07`) = `00h`
-     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`, also
-     power-latch bits) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
+     (`RTC_DayChangeWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
      boot (settling). LCD `W D8 40 10 00 D3 C4 C8 55`, **still no burst**.
    * **Run 7 (6/7 idle-state witness `3072`, owner 2026-09-20):** set
      `LINK_CTRL` 6/7 at boot (`early_init` in a reclaimed `01BE-024F` region)

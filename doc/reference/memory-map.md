@@ -563,7 +563,7 @@ decodes it.
 | `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Per-bit assignments in [separate table](#port-2ch-bits) below | CONFIRMED |
 | `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end. | CONFIRMED |
 | `33h` | *unknown* | R | **Single access**: `ROM00:1ED9` `IN A,(33h); RET` inside the LCD driver block. Candidates: LCD status/busy or incomplete alias. | **OPEN** |
-| `46h` | `LCD_CONTRAST` | W | LCD contrast DAC. Written via `LD C,46h` from `Lcd_Init` and power adjusters. Cold boot overwrites to `70h`. | **LIKELY** (owner-confirmed: stock `70h` is near-black; Sun contrast key adjusts it) |
+| `46h` | `LCD_CONTRAST` | W | LCD contrast DAC. Written via `LD C,46h` from `Lcd_Init` and power adjusters. Cold boot overwrites to `70h`. | **CONFIRMED** (owner bench: stock `70h` is near-black; Sun contrast key adjusts it; connector diagnostic YES/NO) |
 | `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791` | CONFIRMED |
 | `48h` | `STATUS_DRIVE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by diagnostic and link selftest routines. Paired with `49h`. Physical identity **OPEN**. | CONFIRMED as status-drive; identity **OPEN** |
 | `49h` | `STATUS_SENSE` | R | Low 2 bits read back after each `48h` write (loopback/presence test); also read at reset to select boot path. Physical identity **OPEN**. | CONFIRMED as status-sense; identity **OPEN** |
@@ -572,7 +572,7 @@ decodes it.
 | `4Ch` | `LINK_CMD` | W | Link command latch; only write is `81h` in `Link_Present`. | CONFIRMED |
 | `4Dh` | `LINK_TXD` | W | Link TX data byte, sole site `ROM00:32B6`. | CONFIRMED |
 | `4Eh` | `LINK_RXD` | R | Link RX data byte, sole site `ROM00:338C`. | CONFIRMED |
-| `4Fh` | `LINK_PROBE` | W | Device probe/reset; sole write is `1Fh` in `Link_Probe`. | CONFIRMED |
+| `4Fh` | `LINK_PROBE` | W | Device probe (electrical name "reset" unproven); sole write is `1Fh` in `Link_Probe`. | CONFIRMED |
 
 **No other port is accessed anywhere in either ROM image or in any
 RAM-resident module.** The untouched ranges are `01h`, `06h`, `09h`-`22h`,
@@ -619,8 +619,8 @@ bit. This table is the exhaustive result of matching that idiom
 | `02h` `KBD_DRIVE` | `F782` | - | - | . | . | . | . | . | . | `017D` `0188` `019B` `1759` `176B` `1A47` `3B51` |
 | `04h` `IRQ_MASK` | `F784` | . | . | x | - | - | . | . | x | `01B5` `023C` `177F` `22F2` `2428` `2851` `28DA` `28FB` |
 | `07h` `CTRL_07` | `F786` | . | . | . | . | . | . | x | - | `17A0` `28F2` |
-| `2Ah` `CTL_LATCH_2A` | `F78B` | . | . | o | o | . | . | x | . | `0154` `0255` `14F2` `1541` `179D` |
-| `2Ch` `CTL_LATCH_2C` | `F78D` | . | . | - | x | . | . | x | x | `1786` `3487` `34B5` |
+| `2Ah` `CTL_LATCH_2A` | `F78B` | . | . | o | x | . | . | x | x | `0154` `0255` `14F2` `1541` `179D` |
+| `2Ch` `CTL_LATCH_2C` | `F78D` | . | . | x | x | . | . | x | x | `1786` `3487` `34B5` |
 | `4Ah` `LINK_CTRL` | `F794` | x | x | x | x | . | . | x | x | — |
 
 Two negatives bound searches:
@@ -643,10 +643,10 @@ bits 2, 3, 6 or 7.**
 |---|---|---|
 | 0 | An output strobe on the external port — short fixed-width pulse in the barcode block. Physical attention/strobe SUSPECTED. | CONFIRMED (width); **OPEN** (what it strobes) |
 | 1 | A control asserted around reads of `2Dh`. Owner bench: `2Dh` bit0 readable with bit1 low OR high in working states, so "capture enable" not established. | CONFIRMED (set-then-read ordering); **OPEN** (drive/wand-power/direction) |
-| 2, 3 | unused, or not brought out | **LIKELY/unproven** |
+| 2, 3 | never written to 1 by this ROM; otherwise OPEN | **OPEN** |
 | 4 | **EL-backlight enable** — Sun (red) + `LIGHT` (letter B) toggles it; the keyboard handler toggles `2Ch` bit 4 at `1A0A`-`1A25`; cleared on power-down | **CONFIRMED** (owner hardware fact + firmware) |
 | 5 | **IR port select** — moves with `LINK_CTRL` bit 1 | CONFIRMED |
-| 6, 7 | unused, or not brought out | **LIKELY/unproven** |
+| 6, 7 | never written to 1 by this ROM; otherwise OPEN | **OPEN** |
 
 Per-site evidence and exerciser plans: see
 [RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).

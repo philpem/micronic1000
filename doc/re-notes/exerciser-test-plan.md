@@ -186,7 +186,7 @@ clear. A late clear would explain that specific timeout path; the subsequent
    phase and both ports repeat several times. A complete 128-state sweep per
    port requires a much longer run. A counting hex row means everything
    downstream is working. Use good ambient light: the link run does not depend
-   on the still-LIKELY identification of port `2Ch` bit 4 as the backlight.
+   on the CONFIRMED identification of port `2Ch` bit 4 as the backlight.
    Build the sketch with `RECORD_READOUT 1` (as well as `LISTEN_ONLY 1`) to
    read the de-stuffed records straight over serial with no scope; every
    non-hex log line is ignored by `decode_records.py --hex`. See

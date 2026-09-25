@@ -690,7 +690,7 @@ call followed by normal return, not a transfer to another monitor ROM.
     ignored
   * shuts down latches: `KBD_DRIVE` released then driven `48h` (bit 6
     wake-scan) vs `3Fh`, `04h` (`IRQ_MASK`) ← `FAh/F8h/D8h`, `CTL_LATCH_2C`
-    masked to keep only bit 5 (IR port select) so bit 4 (LIKELY LCD
+    masked to keep only bit 5 (IR port select) so bit 4 (CONFIRMED LCD
     backlight) drops, `48h` (`STATUS_DRIVE`) bits 0-1 set
   * **busy-spins** refreshing `CTL_LATCH_2A` (bit 5 clear) and
     `CTRL_07` (=3) while polling `STATUS_IN` bit 1 — standby is a spin,
