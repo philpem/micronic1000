@@ -361,8 +361,8 @@ UPPER_SNAKE peripheral-based name (never address-based), carrying a
 | 00h | `KBD_SENSE` | keyboard matrix sense (read) |
 | 02h | `KBD_DRIVE` | keyboard matrix drive/column (write) |
 | 03h | `LCD_DATA` | LCD data byte |
-| 04h | `OUT_LATCH` | output/power latch (shadow F784) |
-| 05h | `STATUS_IN` | status/boot-key byte |
+| 04h | `IRQ_MASK` | interrupt-enable mask, active low (shadow F784) |
+| 05h | `STATUS_IN` | interrupt/status byte, active low |
 | 07h | `CTRL_07` | control latch |
 | 08h | `RTC_ADDR` | RTC address latch (HD146818) |
 | 23h | `LCD_REG` | LCD register/command select |
@@ -373,8 +373,8 @@ UPPER_SNAKE peripheral-based name (never address-based), carrying a
 | 2Dh | `EXTBUS_EDGE` | edge/level input for the 2A/2B-wire capture front end (barcode reader, §3) |
 | 46h | `LCD_CONTRAST` | LCD contrast DAC |
 | 47h | `BANK_SEL` | 32K bank select (shadow F791) |
-| 48h | `LCD_STROBE` | drive/sense strobe (with 49h) |
-| 49h | `BOOTKEYS` | boot-key/probe sense (with 48h) |
+| 48h | `STATUS_DRIVE` | status-drive output (with 49h); physical identity OPEN |
+| 49h | `STATUS_SENSE` | status-sense input (with 48h); physical identity OPEN |
 | 4Ah | `LINK_CTRL` | 4x external-link control latch (shadow F794) |
 | 4Bh | `LINK_STATUS` | link status (ready/ACK/RX phase) |
 | 4Ch | `LINK_CMD` | link command/ACK (0x81) |

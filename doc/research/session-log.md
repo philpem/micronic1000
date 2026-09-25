@@ -1,5 +1,37 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-25 — I/O semantic corrections applied to docs
+
+* Applied I/O port semantic corrections across documentation per
+  correction list from IRQ_MASK/STATUS_DRIVE/STATUS_SENSE rename pass.
+  Worktree: `standby-annotations` (PR #28). Branch `/home/philpem/Micronic-1000`
+  was NOT touched.
+* **A: Port 04h** — heading `IRQ_MASK`/`OUT_LATCH`→`IRQ_MASK` exclusively.
+  Removed "mixed register" and "capture-window gate" framing; bit5 is
+  the barcode-capture IRQ enable (dynamically installed by
+  `Kernel_InstallIrqBit5Handler`, ROM00:2349). Removed `OUT_LATCH` from
+  all doc references.
+* **B: Port 05h** — added bit5 (barcode-capture IRQ, runtime). Removed
+  boot-condition-byte framing (boot mode is port 49h). Noted
+  "clear-on-read" NOT established.
+* **C: Port 07h** — added bit0=power-down/wake indicator candidate;
+  bit1=RTC day/month-change watcher sequence.
+* **D: Port 2Ah** — documented bit0=yellow/pin6 sink/release, bit1=
+  attention/trigger gate (SUSPECTED/OPEN), bit4=red/pin1 output,
+  bit5=boot/standby line.
+* **E: Port 2Ch** — updated bits 0/1 with owner bench evidence; bits
+  2/3/6/7 tagged LIKELY/unproven (was OPEN).
+* **F: Ports 48h/49h** — neutralized from `IR_STROBE`/`IR_SENSE`/`BOOTKEYS`
+  to `STATUS_DRIVE`/`STATUS_SENSE`. Physical identity OPEN.
+* **G: Port 33h** — unresolved note already present; no change needed.
+* **H: Keyboard index** — corrected `col*6+row` → `row*6+column` in
+  micronic_notes.md and forms-ui.md.
+* **I: Function renames** — `Comms_CfgSetTimeout`→`Kernel_InstallIrqBit5Handler`;
+  `Comms_LineDeassertRd`→barcode IRQ arming. Named occurrences updated.
+* All function renames: 3 existing + label updates. Port 33h note was
+  already present and correct.
+* No git commit or push performed.
+
 ## 2026-09-25 — debug-annotation rename pass (docs hygiene)
 
 * Applied 3 function renames from Ghidra to docs:
@@ -1521,7 +1553,7 @@ are in [TASKS.md](TASKS.md).
       too.
     - ROM00 (16): BdosDirSearchHelper extent = f823-f82c (reversed);
       Link_SelectActiveDevice AND 3 not 7; ExtBus_BusAdvanceTimer fbce +=
-      f9ac (not -=); Comms_LineDeassertRd order (2349 first); KbdColumn
+      f9ac (not -=); barcode IRQ arming (was Comms_LineDeassertRd) order (2349 first); KbdColumn
       Strobe branches on Z not carry; Lcd_CharWrapBound uses BC not HL;
       Lcd_clear_spaces loops 0xA0 (160) not 0x60; RTC_PeekDateByte CALL
       not tail-call; Diag_PrintResult 0x80=TIMEOUT else FAIL (swapped);

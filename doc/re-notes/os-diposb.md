@@ -689,9 +689,9 @@ call followed by normal return, not a transfer to another monitor ROM.
     (SUSPENDED); 1 = SUSPEND_ENTRY set first so an NMI during setup is
     ignored
   * shuts down latches: `KBD_DRIVE` released then driven `48h` (bit 6
-    wake-scan) vs `3Fh`, `OUT_LATCH` ← `FAh/F8h/D8h`, `CTL_LATCH_2C`
+    wake-scan) vs `3Fh`, `04h` (`IRQ_MASK`) ← `FAh/F8h/D8h`, `CTL_LATCH_2C`
     masked to keep only bit 5 (IR port select) so bit 4 (LIKELY LCD
-    backlight) drops, `LCD_STROBE` bits 0-1 set
+    backlight) drops, `48h` (`STATUS_DRIVE`) bits 0-1 set
   * **busy-spins** refreshing `CTL_LATCH_2A` (bit 5 clear) and
     `CTRL_07` (=3) while polling `STATUS_IN` bit 1 — standby is a spin,
     **not a CPU halt**; low-power means LCD+backlight off. The loop's

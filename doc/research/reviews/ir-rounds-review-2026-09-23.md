@@ -70,15 +70,15 @@ do not by themselves identify a CRC or an on-wire trailer.
 ### 1. High: forced coldstart is incomplete, with a misleading reset test
 
 CONFIRMED by fresh Ghidra bytes/listing and emulator comparisons:
-`ROM00:016C` already branches to `ROM00:01A6` when `BOOTKEYS` bit 0
+`ROM00:016C` already branches to `ROM00:01A6` when `STATUS_SENSE` bit 0
 is clear. The new reset-vector test returns zero for all input ports,
 so stock firmware passes that cold-entry test without the patch.
-With `BOOTKEYS` bit 0 and bit 1 both set, `ROM00:0172` jumps to
+With `STATUS_SENSE` bit 0 and bit 1 both set, `ROM00:0172` jumps to
 `ROM00:17A5` before reaching the patched gate at `ROM00:01A3`.
 
 Both emulator installations reproduce this table with `ram:F81C=55h`:
 
-| BOOTKEYS input | Stock first reached address | Prepared image first reached address |
+| `STATUS_SENSE` input | Stock first reached address | Prepared image first reached address |
 |---|---|---|
 | `00h` | `ROM00:01A6` | `ROM00:01A6` |
 | `01h` | `ROM00:024D` | `ROM00:01A6` |

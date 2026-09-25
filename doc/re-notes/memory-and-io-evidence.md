@@ -88,37 +88,53 @@ Keyboard drive / configuration latch. `LD A,3Fh` drives all lines
 written by the NMI and power-down paths. CONFIRMED as the keyboard drive;
 the non-keyboard uses are **Provisional**.
 
-### Port `04h` — `IRQ_MASK` / `OUT_LATCH`
+### Port `04h` — `IRQ_MASK`
 
 Interrupt-enable mask, active low. `ROM00:22E9` does
 `LD A,1Fh; DI; IM 1; CPL; LD (F784),A; OUT (04h),A` — the mask is
 complemented before output, so a *set* bit in the argument enables a
-source. A second entry at `ROM00:2306` passes `A = 2`. Also carries the
-per-source enable bits touched by `Kernel_IrqMaskBit0Set`/`Clr`
-(`ROM00:1B2E`/`1B39`). Shadow `F784`. CONFIRMED.
+source. A second entry at `ROM00:2306` passes `A = 2`. Bits 0-5 are
+one coherent mask: 0=kbd(18F0), 1=RTC(2206), 2=link(31B6),
+3=main-batt(2365), 4=backup-batt(2365), 5=BARCODE-CAPTURE IRQ,
+dynamically installed. `FFh` = all sources masked (28DA/28FB).
+The low-bit set/clear routines (`ROM00:1B36`/`1B41`) are IRQ masking,
+not power-latch control. Shadow `F784`. CONFIRMED.
 
 ### Port `05h` — `STATUS_IN`
 
 Interrupt / status byte, active low. `ROM00:230A`
 (`Kernel_WorkerPollPort5`) does `IN A,(05h); LD (F785),A; CPL; AND 8` —
 snapshot to `F785`, complement, test bit 3. Also read at reset
-(`ROM00:01B1`, `0238`, `17A5`) as a boot-condition byte. CONFIRMED that it
-is polled and complemented; source assignments are byte-verified below.
+(`ROM00:01B1`, `0238`, `17A5`). Bit 5 is the barcode-capture IRQ
+source, installed at runtime. Bits 3/4 are battery-low flags (active
+low). Bits 0-4 map as per the interrupt source table below.
+CONFIRMED that it is polled and complemented; source assignments are
+byte-verified below. The "clear-on-read" property is NOT established
+(RTC acknowledges via its own Reg C). The two reset reads
+read-and-discard the value, so port `05h` is **not** the reset boot-key
+test — that is port `49h`.
 
 ### Port `07h` — `CTRL_07`
 
 Control latch, shadow `F786`. Written at power-down (`ROM00:28F2`), by the
-link watcher (`ROM00:24AD`, `24B8`) and at `ROM00:17A0`, `17B6`, `23CC`.
-**Only bits 0 and 1 are ever manipulated** — a two-bit output, not an
-eight-bit one. Function otherwise **unknown**.
+RTC day/month-change watcher (`ROM00:2468`-`24AF` reads HD146818 regs
+`07h`/`08h`, schedules delayed re-set) and at `ROM00:17A0`, `17B6`,
+`23CC` (backup-battery warning). **Only bits 0 and 1 are ever
+manipulated** — a two-bit output, not an eight-bit one. Bit 0 is a
+power-down/wake indicator candidate; bit 1 is the principal sequence
+for the RTC day/month-change watcher. Physical role otherwise **OPEN**.
 
 ### Port `2Ah` — `CTL_LATCH_2A`
 
 Peripheral control latch, shadow `F78B`. Used by the barcode front end
 (`ROM00:123B`, `124A`, `14F2`, `1541`, `1550`) and by `Link_PortSelect`
-(`ROM00:345D`, which clears bit 1 on both paths). Bits 1, 4 and 5 are
-individually managed. CONFIRMED as a shared latch; individual bit meanings
-**Provisional**.
+(`ROM00:345D`, which clears bit 1 on both paths). Bits 0, 1, 4 and 5 are
+individually managed. Bit 0 = yellow/pin6 sink/release output (cleared
+by `BusDisableFe` AND FEh at 14EB, set by barcode attention OR 01h at
+1537). Bit 1 = attention/trigger gate/route bit (cleared on both IR
+branches and barcode arm, set for route 2Ah; exact role SUSPECTED/OPEN).
+Bit 4 = red/pin1 output (owner-confirmed). Bit 5 = boot/standby line.
+CONFIRMED as a shared latch; individual bit meanings noted per bit above.
 
 ### Port `33h` — *unknown*
 
@@ -153,22 +169,25 @@ grandfathered misnomers; renamed to `Lcd_ContrastWrite`/`Up`/`Down`.)
 32K bank select, shadow `F791`. 37 write sites in `ROM00`, 24 in the
 resident kernel. CONFIRMED.
 
-### Port `48h` — `IR_STROBE`
+### Port `48h` — `STATUS_DRIVE`
 
 Two-bit output, driven `0`,`1`,`2`,`3` in sequence by
 `Kernel_SenseDiagEcho` (`ROM00:24F7`-`252D`) and by `Link_SelftestRun`
 (`ROM00:28AE`-`28E4`), also `Session_SystemInit` (`ROM00:0359`, value
-`03h`) and power-down (`ROM00:178D`). CONFIRMED as a strobe/select output
-paired with `49h`; the project's older `LCD_STROBE` label is **not
-supported by the call sites**, which are all IR/link diagnostics.
+`03h`) and power-down (`ROM00:178D`). CONFIRMED as a status-drive output
+paired with `49h`; the project's older `IR_STROBE`/`LCD_STROBE` labels
+are **not supported by the call sites**. Physical identity **OPEN**.
 
-### Port `49h` — `IR_SENSE` / `BOOTKEYS`
+### Port `49h` — `STATUS_SENSE`
 
 Low 2 bits read back after each `48h` write and compared against the value
-written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3; CP …`)
-— a loopback/presence test. Also read twice at reset: `IN A,(49h); AND 1;
-JR Z` selects the cold path, `AND 2; JP NZ` selects a second boot mode
-(`ROM00:0168`-`0172`). CONFIRMED.
+written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3;
+CP …`) — a loopback/presence test. Also read twice at reset:
+`IN A,(49h); AND 1; JR Z` selects the cold path, `AND 2; JP NZ` selects
+a second boot mode (`ROM00:0168`-`0172`). CONFIRMED as a status-sense
+input paired with `48h`; the project's older `IR_SENSE`/`BOOTKEYS`
+labels are **not supported as proven identities**. Physical identity
+**OPEN**.
 
 ### Port `4Ah` — `LINK_CTRL`
 
@@ -228,7 +247,7 @@ a table of `{bitmask, handler}` triples at `ram:FD84`, copied from
 | 2 | `04h` | `ROM00:31B6` | **the link controller** |
 | 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
-| 5 | `00h` | none | **blank in ROM**, filled in at run time by `ROM00:2349` (`LD A,20h; LD (FD93),A; LD (FD94),HL`), whose sole caller is `ROM00:138F` in the barcode block |
+| 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (`ROM00:2349`); caller `ROM00:138B` supplies HL=13B8h (edge-capture). `ROM00:1397` clears port04 bit5 (AND DFh) to ENABLE the source; `ROM00:1499` sets it (OR 20h) to mask after capture |
 | 6, 7 | — | — | no slot exists |
 
 That is the answer to "why are so few mask bits enabled". `ROM00:22E9`
@@ -281,12 +300,12 @@ at the zero `Link_Probe` establishes at `ROM00:34B5` (`XOR A`).
 
 | bit | evidence in the ROM | reading |
 |---|---|---|
-| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **a programmed output pulse.** Pulse sequence and placement are CONFIRMED; physical routing and electrical function are **OPEN** |
-| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6` | **a control switched before reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is an internal enable or an external signal is **OPEN** |
-| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+| 0 | `1511` sets it, a `B=83h` `DJNZ` runs, `1520` clears it — a short output pulse of fixed width, inside the barcode block | **a programmed output pulse.** Pulse sequence and placement are CONFIRMED; physical routing and electrical function are **OPEN** (physical attention/strobe SUSPECTED) |
+| 1 | `128A` sets it, then `1299` immediately reads `IN A,(2Dh)` and tests bit 0. Cleared at `1283` and `14E6`. Owner bench: mapped `2Dh` bit0 readable with bit1 low OR high in otherwise working states, so "capture enable" not established | **a control switched before reads of `2Dh`.** The set-then-read ordering is CONFIRMED; whether it is an internal enable or an external signal is **OPEN** |
+| 2, 3 | never written to 1 anywhere in the image | unused, or not brought out. **LIKELY/unproven** |
 | 4 | `1A0C` reads a flag, tests its bit 4, and sets (`1A11`) or clears (`1A1D`) `2Ch` bit 4 to match — a toggle in the keyboard handler. The power-down path clears it at `17E7` | **CONFIRMED the EL-backlight enable.** Owner hardware fact: holding the red Sun key and pressing **`LIGHT` (letter B)** toggles the backlight, and the firmware toggles `2Ch` bit 4 in the keyboard handler (`1A0A`-`1A25`, set `1A14`/`1A19`, clear `1A20`/`1A25`). The unit's HD61830 LCD has an EL backlight (owner spec). MAME's `port_2c_w` `m_lcd_backlight` is corroborating, not the source. |
 | 5 | `Link_PortSelect` sets it for id bit 5 clear (`3487`) and clears it for id bit 5 set; `Link_Probe` zeroes the whole latch (`34B5`); the barcode arm path clears it (`1231`); power-down preserves **only** this bit (`1786`, `AND 20h`) | **IR port select**, moving with `LINK_CTRL` bit 1. CONFIRMED — see [Commstar evidence](commstar-evidence.md#device-table-ports) |
-| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **OPEN** |
+| 6, 7 | never written to 1 anywhere in the image | unused, or not brought out. **LIKELY/unproven** |
 
 `CTL_LATCH_2C` bits 0 and 1 are initial output candidates for the scanner
 connector, not an exhaustive physical pinout. Internal use of other bits
@@ -304,14 +323,14 @@ suspend sequence; the per-site evidence for each is above.
 * **`KBD_DRIVE` bit 6** is the wake-scan mode: released to `00h`, then
   driven `48h` when set / `3Fh` when clear (ROM00:1759-176B). It keeps
   the keyboard matrix scan live during the low-power spin.
-* **`OUT_LATCH`** receives the power state `FAh`/`F8h`/`D8h`
+* **`04h` (IRQ_MASK)** receives the power state `FAh`/`F8h`/`D8h`
   (ROM00:177F) — `F8h`/`FAh` chosen on `bit 6`, else `D8h`/`F8h` on
   `FBCB`.
 * **`CTL_LATCH_2C`** is masked to `AND 20h` (ROM00:1786) so only bit 5
   (IR port select) survives, dropping bit 4 (LIKELY LCD backlight); the
   dedicated power-down path then clears bit 4 again (`AND EFh`,
   ROM00:17E7).
-* **`LCD_STROBE`** bits 0-1 are forced to `11` (ROM00:1788-178D).
+* **`48h` (`STATUS_DRIVE`)** bits 0-1 are forced to `11` (ROM00:1788-178D).
 * **Spin loop** (ROM00:1795-17A3) refreshes `CTL_LATCH_2A` (bit 5
   clear) and `CTRL_07` (=3) and reads `STATUS_IN` bit 1 (ROM00:17A5).
   The loop is a **busy-spin, not a CPU halt**; the JR at ROM00:17A3
@@ -386,7 +405,7 @@ owned by one routine.
 | 4 | `14EB`/`14F2` (`OR 10h`) | — | barcode output (owner: red/pin1) |
 | 5 | `17FB` (Boot_entry `OR 20h`) | `179B`/`179D` (standby refresh `AND DFh`) | boot/standby line |
 
-### Port `48h` / `49h` — 2-bit I/O port (write 48h / read 49h)
+### Port `48h` / `49h` — 2-bit status-drive/sense (write 48h / read 49h)
 
 `48h` and `49h` are two halves of one 2-bit I/O port: **write `48h`,
 read it back at `49h`**. MAME (`src/mame/skeleton/micronic.cpp`) models
@@ -493,34 +512,30 @@ written. Six write sites, no reads. Observed contexts:
   ROM00:28F0-28F2 writes `01h`, just before port `04h`=FFh) and cleared
   on the wake path (Boot_entry ROM00:17B1-17B6, `AND FEh`) — consistent
   with a power-down indicator/output.
-* **bit 1** (`02h`): cleared by the RTC-alarm status watcher
-  (`Link_StatusWatcher` ROM00:24A5-24AD), set by a companion
-  (ROM00:24B3-24B8) and in the restart flow (ROM00:23C7-23CC) — toggles
-  around a periodic RTC/link event.
+* **bit 1** (`02h`): principal sequence is the RTC day/month-change
+  watcher (ROM00:2468-24AF reads HD146818 regs `07h`/`08h` and
+  schedules a delayed re-set), plus the backup-battery warning
+  (ROM00:23C7-23CC). It is **not** "link activity" (that came from the
+  stale `Link_StatusWatcher` label).
 **Physical role OPEN** — candidates: alarm/status output, peripheral
 power/control. No read site to corroborate.
 
-### Port `04h` — interrupt-ENABLE + capture-window gate (mixed register)
+### Port `04h` — interrupt-ENABLE mask
 
-**Reframed (2026-09-24):** port `04h` is a **mixed-purpose register**.
-Bits 0-4 are the **interrupt-enable mask**; bit 5 is a peripheral
-capture-window gate. `Kernel_CfgEnableIrq` (ROM00:22E9) loads `1Fh`,
+Port `04h` is the **interrupt-enable mask** for all six polled sources.
+`Kernel_CfgEnableIrq` (ROM00:22E9) loads `1Fh`,
 `CPL`s it, stores `F784`, and `OUT (04h)` — so **a bit set in the
 argument enables that source** (active-low stored mask). The interrupt
 dispatch gates `STATUS_IN` by this mask (`B = NOT(F784 OR status)`; a
 source fires iff its mask bit is 0 and its `STATUS_IN` bit is 0).
-* **bits 0-4** = enables for the five polled sources (kbd / RTC-wake /
-  link / main-battery / backup-battery).
-* **bit 5** = barcode **capture-window gate** (peripheral output, not an
-  interrupt-enable): cleared at capture entry (ROM00:1397 `AND DFh`),
-  set at capture completion (ROM00:1499 `OR 20h`) — it brackets the
-  barcode edge-capture window. There is no `fd84` source-5 entry; it is
-  a separate output bit, so the whole register is **not** purely an
-  interrupt controller.
+* **bits 0-4** = enables for five polled sources (kbd / RTC-wake /
+  link / main-battery / backup-battery), populated in ROM at boot.
+* **bit 5** = barcode-capture IRQ enable, dynamically installed by
+  `Kernel_InstallIrqBit5Handler` (ROM00:2349): cleared at capture
+  entry (ROM00:1397 `AND DFh`) to ENABLE the source, set at capture
+  completion (ROM00:1499 `OR 20h`) to mask. The sixth `fd84` slot is
+  written at runtime (FD93=mask 20h, FD94/95=handler).
 * **FFh** = all sources masked (ROM00:28DA/28FB before power-down).
-
-The legacy `OUT_LATCH`/`Kernel_IrqMask*`/`Lcd_Contrast*` names describe the
-interrupt-enable bits loosely.
 
 ### Port `33h` — orphan
 
@@ -531,18 +546,19 @@ status/busy read or an alias of `23h`/`03h`. **OPEN**; not fruitful.
 
 ### Port `05h` — `STATUS_IN` = interrupt STATUS register
 
-**Reframed (2026-09-24):** port `05h` is the **interrupt status/pending
+Port `05h` is the **interrupt status/pending
 register** (read-only — there is no `OUT` to it anywhere in the image).
 Each IRQ `Kernel_WorkerPollPort5` (ROM00:230A) snapshots it to `F785`,
-gates it by the interrupt-enable mask (`OUT_LATCH`/`04h` shadow `F784`),
+gates it by the interrupt-enable mask (`04h` shadow `F784`),
 and dispatches via the `fd84` `{mask,handler}` table (template
 ROM00:2352):
 * bit 0 (`01h`) → `18F0` `Kbd_ScanMain` (keyboard event)
 * bit 1 (`02h`) → `2206` `RTC_WakeReasonFetch` (RTC alarm/wake)
 * bit 2 (`04h`) → `31B6` `Link_IrqPollArmOrService` (link event)
 * bit 3 (`08h`) / bit 4 (`10h`) → `2365` (latches inverted status to
-  `FDA1`, then sets `OUT_LATCH` bits 3-4 via `Kernel_IrqMaskBitsSet`)
-bit 1 is also probed directly in the standby wake path (ROM00:17A5).
+  `FDA1`, then sets `04h` bits 3-4 via the mask set/clear routines)
+* bit 5 (`20h`) → runtime-installed handler (barcode-capture IRQ)
+Bit 1 is also probed directly in the standby wake path (ROM00:17A5).
 The two reset reads (ROM00:01B1/0238) read-and-discard the value, so
 port `05h` is **not** the reset boot-key test (that is port `49h`).
 
@@ -560,7 +576,7 @@ bits 3/4:
   `FDA1` bits 3/4 (`AND 18h`), prints the MAIN and/or BACKUP message
   (via the string printer ROM00:240C), and sets `CTRL_07` bit 1 on
   backup-low (ROM00:23C7-23CC). If neither flag is set it clears
-  `OUT_LATCH` bits 3-4 and continues.
+  `04h` bits 3-4 via the mask routines and continues.
 * **Confirms the owner-surmised low-battery detection** (micronic_notes):
   the unit reads active-low battery-flag lines on port `05h` bits 3/4,
   not a sampled analog ADC.
@@ -577,20 +593,23 @@ around the edge-timing capture:
   `ExtBus_BusArm` (ROM00:1299 `AND 1` / `12A3` `AND 2`) to select the
   attached barcode device type `E = 0/1/2` (stored in `f9ab`).
 * **Port `2Ah`** (shadow `F78B`): bit 0 = output (owner: yellow/pin6
-  sink/release), bit 1 = attention/trigger, bit 4 = output (owner:
-  red/pin1), bit 5 = boot/standby line.
-* **Port `2Ch`** (shadow `F78D`): bit 0 = attention-strobe pulse, bit 1 =
-  capture enable around `2Dh` reads, bit 5 = IR port select / barcode
-  gate.
-* **Port `04h` bit 5** = **capture-window gate**: cleared at capture
-  entry (ROM00:1397) and set at capture completion (ROM00:1499),
-  bracketing the capture; a peripheral output, not an interrupt-enable.
+  sink/release), bit 1 = tested gate/route bit (attention/trigger
+  SUSPECTED/OPEN), bit 4 = output (owner: red/pin1), bit 5 = boot/standby
+  line.
+* **Port `2Ch`** (shadow `F78D`): bit 0 = fixed-width pulse (physical
+  attention/strobe SUSPECTED), bit 1 = control around `2Dh` reads (owner
+  bench: mapped `2Dh` bit0 readable with bit1 low OR high in otherwise
+  working states, so "capture enable" not established; OPEN), bit 5 =
+  IR port select / barcode gate.
+* **Port `04h` bit 5** = **barcode-capture IRQ enable**: cleared at
+  capture entry (ROM00:1397) and set at capture completion (ROM00:1499),
+  bracketing the capture; a dynamically installed interrupt-enable bit.
 * **Port `2Bh`** = sounder: the attention beep is emitted through the
   standard `Sound_2bWrite`/`Sound_Off` path (not a new barcode pin).
 
 The capture sequencing (ROM00:1317-14A3): sample `2Dh` → `04h` bit 5
-clear (capture entry) → poll/acquire `2Dh` edges (`ExtBus_BusAcquireEdge`)
-→ `04h` bit 5 set (capture completion) → arm/re-arm. The `2A`/`2C`
+clear (IRQ enable, capture entry) → poll/acquire `2Dh` edges (`ExtBus_BusAcquireEdge`)
+→ `04h` bit 5 set (IRQ mask, capture completion) → arm/re-arm. The `2A`/`2C`
 attention lines are set around each capture window.
 
 ### Barcode device-type probe (ROM00:1221 `ExtBus_BusArm`)

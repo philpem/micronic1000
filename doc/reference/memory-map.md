@@ -552,21 +552,21 @@ decodes it.
 | `00h` | `KBD_SENSE` | R | Keyboard matrix sense, low 6 bits | CONFIRMED |
 | `02h` | `KBD_DRIVE` | W | Keyboard drive / configuration latch. Reset writes `FDh`; scan drives `3Fh`, cleared by `00h`. | CONFIRMED as keyboard; non-keyboard uses **Provisional** |
 | `03h` | `LCD_DATA` | W | HD61830 data byte | CONFIRMED |
-| `04h` | `IRQ_MASK` / `OUT_LATCH` | W | Interrupt-enable mask, **active low** (a set bit in the argument enables a source). Also carries power-latch bits. Shadow `F784`. | CONFIRMED |
-| `05h` | `STATUS_IN` | R | Interrupt / status byte, active low. Polled by `Kernel_WorkerPollPort5`; also read at reset as boot-condition byte. | CONFIRMED |
-| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. **Only bits 0 and 1 are ever manipulated.** | CONFIRMED; function **unknown** |
+| `04h` | `IRQ_MASK` | W | Interrupt-enable mask, **active low** (a set bit in the argument enables a source). Bits 0-5 are one coherent mask; bit5 dynamically installed for barcode capture. Shadow `F784`. | CONFIRMED |
+| `05h` | `STATUS_IN` | R | Interrupt / status byte, active low. Polled by `Kernel_WorkerPollPort5`; also read at reset. Bit 5 = barcode-capture IRQ (runtime). Bits 3/4 = battery-low flags (active low). | CONFIRMED |
+| `07h` | `CTRL_07` | W | Control latch, shadow `F786`. **Only bits 0 and 1 are ever manipulated.** Bit 0 = power-down/wake indicator candidate; bit 1 = RTC day/month-change watcher sequence. Physical role **OPEN**. | CONFIRMED; function **OPEN** |
 | `08h` | `RTC_ADDR` | W | HD146818 register-address latch | CONFIRMED |
 | `23h` | `LCD_REG` | W | HD61830 register/command select | CONFIRMED |
 | `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. See [RTC](../re-notes/rtc.md) | CONFIRMED |
-| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Bits 1, 4 and 5 individually managed. Barcode front end and `Link_PortSelect`. | CONFIRMED as shared latch; bit meanings **Provisional** |
+| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Bits 0, 1, 4 and 5 individually managed. Bit 0 = yellow/pin6 sink/release; bit 1 = attention/trigger gate (SUSPECTED/OPEN); bit 4 = red/pin1 output; bit 5 = boot/standby line. Barcode front end and `Link_PortSelect`. | CONFIRMED as shared latch; bit meanings noted per bit |
 | `2Bh` | `SOUND` | W | **Beeper.** `Sound_2bWrite` / `Sound_Off`. This is a physical port, **not** the `2Bh` *wire ID* in the `FE83` device table. | CONFIRMED |
 | `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Per-bit assignments in [separate table](#port-2ch-bits) below | CONFIRMED |
 | `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end. | CONFIRMED |
 | `33h` | *unknown* | R | **Single access**: `ROM00:1ED9` `IN A,(33h); RET` inside the LCD driver block. Candidates: LCD status/busy or incomplete alias. | **OPEN** |
 | `46h` | `LCD_CONTRAST` | W | LCD contrast DAC. Written via `LD C,46h` from `Lcd_Init` and power adjusters. Cold boot overwrites to `70h`. | **LIKELY** (owner-confirmed: stock `70h` is near-black; Sun contrast key adjusts it) |
 | `47h` | `BANK_SEL` | W | 32K bank select, shadow `F791` | CONFIRMED |
-| `48h` | `IR_STROBE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by diagnostic and link selftest routines. Paired with `49h`. | CONFIRMED |
-| `49h` | `IR_SENSE` / `BOOTKEYS` | R | Low 2 bits read back after each `48h` write (loopback/presence test); also read at reset to select boot path. | CONFIRMED |
+| `48h` | `STATUS_DRIVE` | W | Two-bit output, driven `0`,`1`,`2`,`3` in sequence by diagnostic and link selftest routines. Paired with `49h`. Physical identity **OPEN**. | CONFIRMED as status-drive; identity **OPEN** |
+| `49h` | `STATUS_SENSE` | R | Low 2 bits read back after each `48h` write (loopback/presence test); also read at reset to select boot path. Physical identity **OPEN**. | CONFIRMED as status-sense; identity **OPEN** |
 | `4Ah` | `LINK_CTRL` | W | External-link control latch, shadow `F794`. Bits 0/1/4/5/6/7 are driven; **bits 2 and 3 never written**. Bit 1: port select (CONFIRMED). | CONFIRMED; electrical meanings **Provisional** |
 | `4Bh` | `LINK_STATUS` | R | Link status, polled in block Tx/Rx/Probe/WaitReady. Bit 4 = "receive pending". | CONFIRMED; bit assignments **Provisional** |
 | `4Ch` | `LINK_CMD` | W | Link command latch; only write is `81h` in `Link_Present`. | CONFIRMED |
@@ -599,7 +599,7 @@ of `{bitmask, handler}` triples at `ram:FD84`, terminated by `80h`:
 | 2 | `04h` | `ROM00:31B6` | **the link controller** — see [link interrupt](../re-notes/interrupts.md#link-interrupt) |
 | 3 | `08h` | `ROM00:2365` | **LIKELY** power/battery; shared with bit 4 |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
-| 5 | `00h` | none in ROM | filled at runtime by barcode front end |
+| 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (ROM00:2349); caller ROM00:138B supplies HL=13B8h (edge-capture) |
 | 6, 7 | — | — | no slot exists |
 
 Sleep-wake evidence confirming bit 0 is the keypad: see
@@ -641,12 +641,12 @@ bits 2, 3, 6 or 7.**
 
 | bit | reading | confidence |
 |---|---|---|
-| 0 | An output strobe on the external port — short fixed-width pulse in the barcode block | CONFIRMED (width); **OPEN** (what it strobes) |
-| 1 | An enable asserted around reads of `2Dh` | CONFIRMED (set-then-read ordering); **OPEN** (drive/wand-power/direction) |
-| 2, 3 | unused, or not brought out | **OPEN** |
+| 0 | An output strobe on the external port — short fixed-width pulse in the barcode block. Physical attention/strobe SUSPECTED. | CONFIRMED (width); **OPEN** (what it strobes) |
+| 1 | A control asserted around reads of `2Dh`. Owner bench: `2Dh` bit0 readable with bit1 low OR high in working states, so "capture enable" not established. | CONFIRMED (set-then-read ordering); **OPEN** (drive/wand-power/direction) |
+| 2, 3 | unused, or not brought out | **LIKELY/unproven** |
 | 4 | **EL-backlight enable** — Sun (red) + `LIGHT` (letter B) toggles it; the keyboard handler toggles `2Ch` bit 4 at `1A0A`-`1A25`; cleared on power-down | **CONFIRMED** (owner hardware fact + firmware) |
 | 5 | **IR port select** — moves with `LINK_CTRL` bit 1 | CONFIRMED |
-| 6, 7 | unused, or not brought out | **OPEN** |
+| 6, 7 | unused, or not brought out | **LIKELY/unproven** |
 
 Per-site evidence and exerciser plans: see
 [RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).

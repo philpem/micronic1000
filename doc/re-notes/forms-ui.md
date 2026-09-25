@@ -225,8 +225,8 @@ editor has a separate path below.
 ## Keyboard keymap
 
 `tbl_kbd_map` (ROM00:1b58) is three 36-byte pages selected by the modifier
-state (base in `fbda`; `Kbd_ScanMain` ROM00:18f0). Index = `col*6 + row`
-(col = sense port 00h, row = drive port 02h).
+state (base in `fbda`; `Kbd_ScanMain` ROM00:18f0). Index = `row*6 + column`
+(row = sense port 00h, column = drive port 02h).
 
 | key | code | key | code |
 |-----|------|-----|------|

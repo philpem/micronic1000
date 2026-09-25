@@ -111,7 +111,7 @@ CALL 5, C=03h  (CP/M reader input)
           │         HL = (FDF0) = F990, DE = (FE14) = F958
           ├─ ReaderArmRoute (1221): fbb7 = F958 (caller envelope);
           │    zeroes 6 bytes; wand: 2Ch bit1 attention pulse;
-          │    scanner (f9aa==2A): 2Ah bit1 + Comms_LineDeassertRd;
+          │    scanner (f9aa==2A): 2Ah bit1 + barcode IRQ arming (was Comms_LineDeassertRd);
           │    ReaderQueueWorkItem(1) → async capture work item
           └─ Link_WaitForLink (168F): HALT-wait on event mask
                (fbc9 & fbca), returns when the reader completion
@@ -135,7 +135,7 @@ ReaderPollWorkItem (12EC) / ReaderScanPoll (1317)
        status (fbb5)≠0        → 14DC
        else: envelope := status@+0, count word @+4/+5,
              LDIR count bytes from (fbb9) to envelope+6
-       then OUT_LATCH bit5 set, ReaderArmFrontEnd (14C8)
+       then `04h` bit5 set, ReaderArmFrontEnd (14C8)
 ```
 
 Return to the application (back in Bdos_ReaderInChar, 10B4–10D1):

@@ -652,7 +652,7 @@ SUSPECTED until bench evidence discriminates them.
      `LINK_CTRL` bit4/bit0, `ROM00:3361-3376`) and three latches the
      boot-replacing exerciser never set: `48h` (`IR_STROBE`) = `03h`
      (`Session_SystemInit` `ROM00:0359`), `07h` (`CTRL_07`) = `00h`
-     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`/`OUT_LATCH`, also
+     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`, also
      power-latch bits) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
      boot (settling). LCD `W D8 40 10 00 D3 C4 C8 55`, **still no burst**.
    * **Run 7 (6/7 idle-state witness `3072`, owner 2026-09-20):** set
