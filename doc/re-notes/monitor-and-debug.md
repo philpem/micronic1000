@@ -92,17 +92,27 @@ returns.
 The pairing of an **ON/OFF enable** with an **IR-device choice** means
 "debug mode" turns on diagnostic output routed to the selected device
 (PLINTH, and by the same device-list style as the Load/Run *From* field,
-V24 ADAPTOR). The exact backing cell and the consumer of the flag are
-**OPEN** — the emulator progress did not get the Status value to visibly
-toggle without the correct field-entry key sequence, and the form runtime
-stores field values through shared UI cells (`EC49`/`E739`/`E734`) rather
-than a dedicated uniquely-referenced flag. It is **not** `f81d` (that
-cell has only boot-time writers).
+V24 ADAPTOR).
 
-**Decisive next step:** select the template `ROM01:7898` (the debug form)
-and watch the field's backing object / choice table; or drive the
-emulator further with a targeted `--watch-mem` on the session-config
-region (`E700`-`ED1B`) while stepping the Status field with `YES`.
+**Emulator (2026-09-24):** the field-edit key routing was confirmed.
+Watching the PC during `ENTER` + `YES` (`0x0D`+`0x06`) reached
+`Form_ChoiceNext` (`ROM01:1E61`), proving `YES` does drive the choice
+index (`e739`/`e734`, boundary callback `*ec69`). The screen then
+returned to the Diagnostics menu (the edit values are committed on
+return). Because the form re-renders the template on entry and the edit
+commits on exit, screenshoting the "Status ON" state in a single driven
+run was unreliable; the value/consumer is best read by watching the
+field-state cell rather than the framebuffer.
+
+**OPEN:** the exact backing cell and the consumer of the flag are not
+yet pinned; the form runtime stores field values through shared UI cells
+(`EC49`/`E739`/`E734`). It is **not** `f81d` (that cell has only
+boot-time writers).
+
+**Decisive next step:** watch the form-field state cell during the
+`ENTER`+`YES` edit (bounded `--watch-mem` on the session-config region
+`E700`-`ED1B`) to capture the actual flag cell and then follow any read
+of it to the diagnostic-output path.
 
 ## The real monitor is a separate artifact
 
