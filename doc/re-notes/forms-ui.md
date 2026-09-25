@@ -124,6 +124,18 @@ mode" (7b52, attr 0x0003) — which opens the **"Set Debug Mode"** screen
 (0x5114 is a mis-aligned pointer into the 0x510d function, not a separate
 entry point.)
 
+### Set Debug mode — CONFIRMED backing and behaviour (2026-09-25)
+
+The "Set Debug Mode" form's state is backed by `ram:ECC7` (`g_bDebugRunEnabled`, enable byte)
+and `ram:ECC8` (`g_bDebugRunDeviceIndex`, device index), initialised to zero at `ROM01:069A/06A1`.
+When `g_bDebugRunEnabled` is nonzero, `Program_RunByName` is called while `ram:EB18`
+(`g_wDebugRunActive`) is set to 1, causing the generic handler phase (`ROM01:6286`) to invoke
+the monitor/error-vector `13h` with `DE=3` (device PLINTH) or `DE=4`
+(device LIKELY V24 ADAPTOR). The stock monitor endpoint is `XOR A; RET`
+(`Debug_MonitorHookStub` at `ROM00:3513`) — no IR output or debug print follows. See
+[Monitor / ICE hook](../re-notes/monitor-and-debug.md) for the full
+activation chain.
+
 ## Field validation
 
 Typed input is validated by `Session_FieldParseValidate`
@@ -213,8 +225,8 @@ editor has a separate path below.
 ## Keyboard keymap
 
 `tbl_kbd_map` (ROM00:1b58) is three 36-byte pages selected by the modifier
-state (base in `fbda`; `Kbd_ScanMain` ROM00:18f0). Index = `col*6 + row`
-(col = sense port 00h, row = drive port 02h).
+state (base in `fbda`; `Kbd_ScanMain` ROM00:18f0). Index = `row*6 + column`
+(row = sense port 00h, column = drive port 02h).
 
 | key | code | key | code |
 |-----|------|-----|------|

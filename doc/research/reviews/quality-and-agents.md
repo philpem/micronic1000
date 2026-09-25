@@ -175,8 +175,8 @@ handler-ptr table` — genuinely useful). Elsewhere, core functions have
   three things a reader cannot get from the mnemonics:
   `AND 0xFB` / `OR 0x04` on `fbc9` (clear/set the **keyboard event
   bit 2** of the event-pending byte), the key ring pointer `fbf0`,
-  and `CP 0xCD / JP Z,3513` — **scancode 0xCD is a hotkey into
-  Monitor_Enter**. That last one is a discovery-grade fact sitting
+and `CP 0xCD / JP Z,Debug_MonitorHookStub` (formerly `Monitor_Enter`) — **scancode 0xCD is a hotkey into
+   Debug_MonitorHookStub**. That last one is a discovery-grade fact sitting
   uncommented.
 * `ExtBus_BusAcquireEdge` (13B8): the most intricate routine in the
   subsystem — **zero inline comments**. It needs perhaps six:

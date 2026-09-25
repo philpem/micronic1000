@@ -1,6 +1,6 @@
 # Gap analysis — Micronic 1000 (documentation / annotation coverage)
 
-Status: 2026-09-19 (19th audit — §12 FINAL PASS fully CLOSED).
+Status: 2026-09-25 (20th audit — debug-annotation rename pass).
 Historical per-pass detail has been moved to
 [`gap-analysis-history.md`](gap-analysis-history.md).
 
@@ -19,24 +19,20 @@ that Ghidra merely detected.
 | **Total (guarded)** | **915** | **4** | **911** |
 | **Total (internal)** | **914** | **4** | **910 (99.6 %)** |
 
-**Refreshed directly from Ghidra on 2026-09-19 (verified:
-`get_function_count` = 915 guarded, `search_functions FUN_` = 4 at
-`ROM01:0904`/`ROM00:441B`/`ram:D937`/`ROM01:1177`, `DumpFunctions.java`
+**Refreshed directly from Ghidra on 2026-09-25 (verified:
+`get_function_count` = 916 manager, 915 iterator; `search_functions FUN_` = 4 at
+`ROM01:0904`/`ROM00:441B`/`ram:D937`/`ROM01:1177`; `DumpFunctions.java`
 = 914 internal: ROM00 487, ROM01 231, ram 196; guarded 915 incl.
-`EXTERNAL:00000001`)** — after code-gap sweep complete (121 → 12;
-bodies extended, 914 internal / 915 guarded total); counts
-unchanged through 2026-09-18 → 2026-09-19 (item 2b 5 renames, 144
-unplated plated, item 3 short-plate review 82 KEEP / 59 upgraded,
-item 4 127 rewrites + 90 labels + `Boot_entry+1` fixes +
-pointer-indirected `g_wCoroutineStepResult`, and data-typing backlog
-types + 41 `tbl_` labels — all plate/comment/data-type-only, no
-function renamed/created/deleted except the 5 item-2b renames, which do
-not change the count). Auto `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1);
-named = 910 internal (99.6 %; 911 guarded). Previous audit was 914 / 4
-/ 910; dispatch-case absorptions (1002 → 915, −87) remain. See session
-log 2026-09-19 (items 2b, unplated, short-plate, comment-style,
-data-typing) and 2026-09-18 code-gap sweep and
-`re-notes/inline-dispatch.md` for the structural model.
+`EXTERNAL:00000001`)** — 3 function renames applied
+(`UI_RedrawIfRequested`→`UI_InvokeDebugHookIfActive`,
+`Session_StateWordPreparedCall`→`Debug_InvokeMonitorVector`,
+`Monitor_Enter`→`Debug_MonitorHookStub`); no functions created or
+deleted. The 916 vs 915 discrepancy is the well-known
+manager-vs-iterator behaviour (FunctionManager.getFunctionCount()
+includes a function not yielded by the forward iterator); identical
+before and after, so it is a stable measurement, not a change.
+Auto `FUN_*` = 4 (ROM00 1, ROM01 2, ram 1);
+named = 910 internal (99.6 %; 911 guarded).
 
 The three internal address spaces contain 914 functions. Ghidra's
 guarded total also includes the existing external import

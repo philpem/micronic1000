@@ -25,7 +25,7 @@ entry. The `0010` banked-call dispatcher is inline code.
 **CONFIRMED, byte-verified 2026-09-20:** in the initial kernel image,
 `RST 20h → F5EA → F64D` and `RST 38h → F5F3 → F64D` share this handler.
 `RST 28h → F5ED → F57E` takes the diagnostic path, while
-`RST 30h → F5F0 → 3513` reaches the returning `Monitor_Enter` stub.
+`RST 30h → F5F0 → Debug_MonitorHookStub` (formerly `Monitor_Enter`) reaches the returning stub.
 The source bytes at `ROM00:3B07-3B12` are
 `C3 4D F6 C3 7E F5 C3 13 35 C3 4D F6`. RAM vectors are mutable;
 these initial targets do not establish their state at every invocation.

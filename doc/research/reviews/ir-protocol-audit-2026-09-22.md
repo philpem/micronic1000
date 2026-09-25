@@ -315,7 +315,7 @@ proposed direct-port approach.
    Monitor all six unknown contacts with a high-impedance scope and record
    level, polarity, transitions and any coupled effect on LCD/IR/power.
 4. Keep **CTL_LATCH_2C bit 5** at its baseline during this first pass because
-   it also selects the IR configuration. Do not sweep OUT_LATCH, bank select,
+   it also selects the IR configuration. Do not sweep `IRQ_MASK`, bank select,
    LINK_CTRL or every unknown latch bit indiscriminately. Expand the chosen
    masks only after reviewing their firmware use and observed effects.
    Failure of these first three candidates to reach a pin is an observation,

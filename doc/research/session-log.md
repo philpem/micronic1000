@@ -1,5 +1,169 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-25 — I/O semantic corrections applied to docs
+
+* Applied I/O port semantic corrections across documentation per
+  correction list from IRQ_MASK/STATUS_DRIVE/STATUS_SENSE rename pass.
+  Worktree: `standby-annotations` (PR #28). Branch `/home/philpem/Micronic-1000`
+  was NOT touched.
+* **A: Port 04h** — heading `IRQ_MASK`/`OUT_LATCH`→`IRQ_MASK` exclusively.
+  Removed "mixed register" and "capture-window gate" framing; bit5 is
+  the barcode-capture IRQ enable (dynamically installed by
+  `Kernel_InstallIrqBit5Handler`, ROM00:2349). Removed `OUT_LATCH` from
+  all doc references.
+* **B: Port 05h** — added bit5 (barcode-capture IRQ, runtime). Removed
+  boot-condition-byte framing (boot mode is port 49h). Noted
+  "clear-on-read" NOT established.
+* **C: Port 07h** — added bit0=power-down/wake indicator candidate;
+  bit1=RTC day/month-change watcher sequence.
+* **D: Port 2Ah** — documented bit0=yellow/pin6 sink/release, bit1=
+  attention/trigger gate (SUSPECTED/OPEN), bit4=red/pin1 output,
+  bit5=boot/standby line.
+* **E: Port 2Ch** — updated bits 0/1 with owner bench evidence; bits
+  2/3/6/7 tagged LIKELY/unproven (was OPEN).
+* **F: Ports 48h/49h** — neutralized from `IR_STROBE`/`IR_SENSE`/`BOOTKEYS`
+  to `STATUS_DRIVE`/`STATUS_SENSE`. Physical identity OPEN.
+* **G: Port 33h** — unresolved note already present; no change needed.
+* **H: Keyboard index** — corrected `col*6+row` → `row*6+column` in
+  micronic_notes.md and forms-ui.md.
+* **I: Function renames** — `Comms_CfgSetTimeout`→`Kernel_InstallIrqBit5Handler`;
+  `Comms_LineDeassertRd`→barcode IRQ arming. Named occurrences updated.
+* All function renames: 3 existing + label updates. Port 33h note was
+  already present and correct.
+* No git commit or push performed in the initial pass.
+
+### Re-audit addendum (same day) — adversarial pass and residual fixes
+
+* An independent adversarial re-audit of the corrected state re-derived
+  every decisive byte-level claim and found them substantially correct
+  (port 04h fd84 active-low mask + dynamic bit-5 source; 05h source map;
+  07h RTC watcher; 2A/2C bit semantics; 48h/49h neutral; 4A-4F directions).
+* Residual contradictions were then fixed: port 05h generic
+  acknowledge-on-read claim removed; 2Ah ownership-table set/clear sites
+  filled; 2Ch bit5 set/clear addresses corrected (`OR 20h` at `3482`,
+  `AND DCh` at `346F`, `OUT (2Ch)` at `3487`); 2Ch bits 2/3/6/7 changed to
+  "never written to 1" CONFIRMED / "not brought out" OPEN; backlight and
+  port 46h promoted to CONFIRMED (owner bench); `LINK_CMD`/`LINK_PROBE`
+  electrical aliases tagged unproven.
+* Ghidra-side fixes this pass: corrected `io:04` plate slot address
+  (FD93/FD94, was mis-stated fd86); fixed `io:2D` dead doc link and
+  shortened its repeatable; tagged `io:4C`/`io:4F` repeatables; renamed
+  `Comms_LineDeassertRd` (ROM00:138E) → `Barcode_ArmCaptureIrq` and
+  `Link_StatusWatcher` (ROM00:2468) → `RTC_DayChangeWatcher`; names
+  propagated to current-state docs.
+* Committed and pushed to `standby-annotations`: `bffe5e0` (49h table
+  blank-line CI fix), `1f89b4f` (corrections), `54c5971` (residual fixes).
+* Remaining genuinely OPEN electrical identities: 2Ah bit1, 2Ch bits0/1,
+  2Dh bit1, CTRL_07 bits0/1, 48h/49h physical source, port 33h,
+  LINK_CTRL/LINK_STATUS electrical names. Each needs a scope/PCB test.
+
+## 2026-09-25 — debug-annotation rename pass (docs hygiene)
+
+* Applied 3 function renames from Ghidra to docs:
+  `UI_RedrawIfRequested` → `UI_InvokeDebugHookIfActive` (ROM01:6280),
+  `Session_StateWordPreparedCall` → `Debug_InvokeMonitorVector` (ROM00:68C7),
+  `Monitor_Enter` → `Debug_MonitorHookStub` (ROM00:3513).
+* 3 global labels installed: `g_bDebugRunEnabled` (ECC7),
+  `g_bDebugRunDeviceIndex` (ECC8), `g_wDebugRunActive` (EB18).
+  `g_wMonitorDeviceSelector` (E2F8) remains PROPOSED (not installed).
+* Updated all doc references: old names preserved with "(now `<new>`; formerly `<old>`)" notation
+  in current docs; historical session-log entries annotated with "(now `<new>`)".
+* monitor-and-debug.md: PROPOSED labels section updated to ACTUAL for three;
+  "MCP unavailable" statement removed (MCP now available).
+* TASKS.md item 8 and item 19 updated with new names and label status.
+* gap-analysis.md refreshed: manager count 916, iterator 915; 3 renames,
+  no creation/loss. Manager/iterator mismatch caveat preserved.
+* Function-count guard verified: before/after DumpFunctions iterator
+  unchanged at 915 lines; only 3 intended renames.
+* Docs updated: monitor-and-debug.md, interrupts.md, os-diposb.md,
+  memory-and-io-evidence.md, quality-and-agents.md, forms-ui.md,
+  TASKS.md, session-log.md, gap-analysis.md.
+* No git commit or push performed.
+
+## 2026-09-25 — user monitor redirection
+
+* Independently checked the service-13 wrapper's target operand at
+  `ram:F33B-F33C` against the cold-copied kernel image. Documented a
+  COM/DIP executing-installer approach, fixed-RAM leaf callback,
+  restoration, bank handling, and shared-wrapper-context restrictions
+  in `re-notes/monitor-and-debug.md`.
+* This is a version-specific patch, not a supported installation API;
+  it does not intercept direct `ROM00:3513` or RST-30 calls. The sample
+  is explicitly untested. Warm-copy bypass is distinguished from later
+  payload lifetime. MCP tools were not exposed, so no DB edits occurred.
+
+
+## 2026-09-25 — Set Debug mode / status-device investigation closed
+
+* **CONFIRMED (byte-verified):** `ram:ECC7` and `ram:ECC8` are the
+  Set Debug mode enable byte and device index, with dedicated
+  initialisers (`ROM01:069A`/`06A1`) and consumers (`ROM01:038C`/`0393`).
+* **CONFIRMED:** The `EF4C`/`EF34` callback pair moves Diagnostics menu
+  selection (`EC6F`), not debug state. The `F168` callback slots are
+  banked-call no-op stubs (`ROM01:6768`).
+* **CONFIRMED activation chain:** `ECC7` nonzero → compare `ECC8` to 1
+  → `EF18` → `ROM00:68E0` stores `E2F8=4`/3 → `EB18=1` →
+  `Program_RunByName` → `EB18=0`. During activation `EB18` nonzero gates
+  `ROM01:6286` → `EF24` → `ROM00:68C7` pushes `E2F8,0,13h` →
+  `ram:DA27` dispatcher → vector 13h `ROM00:0139` → `ram:F32F` →
+  `ROM00:3513` (`XOR A; RET`). No IR output, debug print, or persistent
+  config write.
+* **LIKELY:** Device index 1 = V24 ADAPTOR (complementary field
+  structure; `DE=4` vs `DE=3` for PLINTH).
+* **Corrected prior claims:** The 2026-09-24 `--watch-mem` ephemeral-only
+  and no-flag conclusions are invalid — the 500-line cap exhausted on boot
+  zero-fill, and the watch region excluded the worker-phase accesses.
+  The IR-output claim is falsified — no link I/O in the static chain.
+* **RAM dispatcher/monitor-wrapper chain:** Investigator traced but
+  reviewer did not fully verify; tagged LIKELY.
+* **Docs updated:** monitor-and-debug.md (full rewrite of the Set Debug
+  mode section), memory-and-io-evidence.md (monitor/48h sections),
+  forms-ui.md (added CONFIRMED finding), TASKS.md (item 19).
+* **Labels:** `g_bDebugRunEnabled` (`ECC7`), `g_bDebugRunDeviceIndex`
+  (`ECC8`), `g_wDebugRunActive` (`EB18`) were installed in Ghidra
+  (renamed + typed + plated) once MCP became available, together with the
+  three function renames and the `F33A`/`F5F0` redirect-site comments.
+  `g_wMonitorDeviceSelector` (`E2F8`) remains PROPOSED.
+
+## 2026-09-24 — low-power standby annotation pass
+
+Annotated the low-power standby (LCD off, wake-on-key) path and its
+documentation on branch `standby-annotations`.
+
+* Named `g_eRestartFlag` (FBD5) as enum `RestartFlag` (0 NORMAL /
+  1 SUSPEND_ENTRY / 2 SUSPENDED); documented it in the NMI handler
+  (ROM00:3B13) and `Power_DownSuspend` (ROM00:1721) plates.
+* Named the 8-byte console/TTY state snapshot `g_abConsoleContext`
+  (FBF3) / `g_abConsoleContextSaved` (FBFB), plus
+  `g_bConsoleStateSavedFlag` (FC03), `g_bConsoleDeviceState` (FC04);
+  per-byte roles documented (several bytes still OPEN).
+* Added bit-mapped repeatable comments to standby I/O ports: 02h bit 6
+  wake-scan, 04h power state, 07h bits0-1, 2Ah bits1/4/5, 2Ch bit 4
+  backlight / bit 5 port select, 48h bits0-1, 05h status.
+* Documented the standby busy-spin at ROM00:17A3 as an overlapping
+  self-modifying `IN A,(05h)` read (JR into the middle byte of
+  `LD (db00),HL`) — standby is a spin, not a CPU halt.
+* Named `ExtBus_BusAdvanceTimer`'s underflow → `Power_DownSuspend`
+  (ROM00:14C3) as a **SUSPECTED** inactivity auto-standby route; wake on
+  ordinary keypress remains OPEN.
+* Confirmed the keyboard matrix scans **6 columns** (KBD_DRIVE bits 0-5,
+  stepped 01h→20h by SLA, B=06h) sensing 6 rows (KBD_SENSE & 3Fh);
+  `3Fh` = all 6 columns (Kbd_SenseAllColumns prescan).
+* Recorded **LIKELY** that `KBD_DRIVE` bit 6 is a keyboard→NMI wake
+  enable (only set on the suspend/wake path; suspend spin runs DI and
+  polls nothing, so a key closure must assert NMI) — with a hardware
+  discriminating test. The reduced wake drive `48h` (bit6+bit3) is not
+  the all-columns value (`3Fh`).
+* Resolved the shared-latch multiplexing picture for ports 2A/2C/48:
+  built the per-bit ownership matrix (2C b0 pulse/b1 enable/b4 backlight/
+  b5 select; 2A b0/b4 barcode outputs/b1 shared attention/b5 boot line),
+  confirmed the two-bit IR select (LINK_CTRL b1 + 2C b5) is a strict
+  mirror pair, found device selection is index-based
+  (`g_bActiveDevice` FBC5 → table @31FF, front-end id `f9aa`), and
+  identified the 48/49 strobe+echo pair as a presence/shunt self-test.
+  Barcode-vs-back-IR disambiguation and whether both IR ports share one
+  cluster remain OPEN (hardware).
+
 ## 2026-09-24 — v7 first physical boot
 
 * Owner reports v7 programmed, TESTING completed and Main Menu reached.
@@ -1295,7 +1459,7 @@ are in [TASKS.md](TASKS.md).
     (tbl_FieldOpSlots + repeatable; 32 SessionOpStub plates + 8 farm-B
     plates; ef88 body fixed). The earlier "ee78/ef24/eef0 are real
     helpers" reading REFUTED by bytes (decompiler-context error) -
-    UI_RecordEditModal and UI_RedrawIfRequested plates corrected.
+    UI_RecordEditModal and UI_RedrawIfRequested (now `UI_InvokeDebugHookIfActive`) plates corrected.
     No ROM writer found for the slot table (loaded software may patch:
     SUSPECTED).
   * BDOS dispatch arrays UNIFIED: F1D1-F234 = ONE 50-word handler
@@ -1547,7 +1711,7 @@ are in [TASKS.md](TASKS.md).
   * TRANche-4 APPLIED: 39 plates (9 FB stub templates, 13 ROM01
     session/coro helpers incl. Lib_Accumulate/Lib_ValueTableFetch/
     CmdRetryCounter, 17 ROM00 BDOS fn handlers incl. the version
-    deviation HL=23h, Monitor_Enter/PutChar/GetChar routing, kbd row
+    deviation HL=23h, Monitor_Enter (now `Debug_MonitorHookStub`)/PutChar/GetChar routing, kbd row
     decode, decimal formatter). ROM00::2d82 DEFERRED (body
     mis-bounded - repair first). Plateless ~343 remain. Count 751.
   * NEXT (serial): LAB batch 8 (starts 2f2e; bonus context for
@@ -1658,7 +1822,7 @@ are in [TASKS.md](TASKS.md).
   read-only, main applied + saved):
   * UI helper renames (stale names corrected): SessionLinkTx6292 ->
     UI_PostKeyedEntry (6292; JP 62A6->62D1 gap flagged), StateVarDispatch
-    -> UI_RedrawIfRequested (6280, gate cell is eb18 not ebf7),
+    -> UI_RedrawIfRequested (now `UI_InvokeDebugHookIfActive`) (6280, gate cell is eb18 not ebf7),
     UiHandler1B7D -> UI_RecordEditModal (1b7d, six stack args, modal
     loop 1CD6-1D72), SessionCoroWaitByte -> UI_GetStateWordEc41 (2116),
     TextOutChar -> ServiceCall_BdosFn2 (6f29, DA13(2,arg) shim - the
@@ -1845,7 +2009,7 @@ are in [TASKS.md](TASKS.md).
       too.
     - ROM00 (16): BdosDirSearchHelper extent = f823-f82c (reversed);
       Link_SelectActiveDevice AND 3 not 7; ExtBus_BusAdvanceTimer fbce +=
-      f9ac (not -=); Kernel_InstallIrqBit5Handler order (2349 first); KbdColumn
+      f9ac (not -=); barcode IRQ arming (was Comms_LineDeassertRd) order (2349 first); KbdColumn
       Strobe branches on Z not carry; Lcd_CharWrapBound uses BC not HL;
       Lcd_clear_spaces loops 0xA0 (160) not 0x60; RTC_PeekDateByte CALL
       not tail-call; Diag_PrintResult 0x80=TIMEOUT else FAIL (swapped);

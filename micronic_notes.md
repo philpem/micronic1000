@@ -54,7 +54,7 @@ https://philpem.me.uk/elec/micronic). Modifier keys: Shift = MODE,
 Sun = 2nd (Left Shift).
 
 Firmware key codes (master table `tbl_kbd_map` at ROM00:1b58, three
-36-entry pages; Kbd_ScanMain ROM00:18f0 indexes it as col*6+row):
+36-entry pages; Kbd_ScanMain ROM00:18f0 indexes it as row*6+column):
 letters are ASCII 0x41-0x57 ('A'..'W'), ENTER=0x0D, space=0x20,
 backspace=0x7F. Function-key codes: 0x01/0x06/0x0b/0x0c/0x11/0x12/
 0x14/0x1a/0xd0. The Shift page supplies punctuation and digits; its N

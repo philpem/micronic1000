@@ -242,6 +242,33 @@ F7's earlier 34 carry-set markers are useful evidence, but
 return framing is not confirmed. Optical arrival is owner-confirmed;
 no more internal probing or alignment sweeps are requested.
 
+## Low-power standby / wake — 2026-09-24
+
+* **Matrix scan is 6 columns.** The normal keyboard scan drives COLUMNS
+  on `KBD_DRIVE` bits 0-5, one at a time, and senses ROWS on `KBD_SENSE`
+  (io:0000, low 6 bits). The Kbd_ScanMain loop uses a column counter
+  `B=06h` with a mask stepped by `SLA` from `01h` → `02h` → `04h` →
+  `08h` → `10h` → `20h` (ROM00:190D-1920), and reads rows as `AND 3Fh`;
+  the key index is `row*6+col`. `3Fh` = drive all 6 columns at once
+  (the `Kbd_SenseAllColumns` prescan, ROM00:1A42-1A51). CONFIRMED.
+* **`KBD_DRIVE` bit 6 is not a matrix column.** It is only ever set on
+  the NMI suspend/wake path: the RAM NMI prologue forces `f782=40h`
+  (ram:F602, F628) and `Power_DownSuspend` drives `48h` when set vs
+  `3Fh` when clear (ROM00:175E-176B). **LIKELY** that bit 6 enables a
+  keyboard→NMI wake circuit: the suspend busy-spin runs `DI` and polls
+  nothing (the spin's `IN A,(05h)` result is overwritten by `LD A,3` at
+  ROM00:1795), so only NMI can wake the unit; a key closure must
+  therefore assert NMI. Note the reduced wake drive is `48h`
+  (bit 6 + bit 3) — **not** the all-columns value, which is `3Fh`
+  reached when bit 6 is clear.
+* **Discriminating test** to confirm the bit-6 NMI-wake hypothesis:
+  probe the NMI line (and the `KBD_DRIVE`/`KBD_SENSE` lines) during the
+  `48h` wake scan and press a single key; if the key closure drives NMI
+  low, that is the mechanism. Also confirm the exact bus decode of the
+  two wake drives (`48h` vs `3Fh`) — the ROM alone cannot say whether
+  bit 6 set encodes "one selected column" or "all columns + wake
+  enable" at the hardware.
+
 ## IR instrumentation and connector handoff — 2026-09-22
 
 [PR #21](https://github.com/philpem/micronic1000/pull/21) is merged and contains the fixes
@@ -661,8 +688,8 @@ SUSPECTED until bench evidence discriminates them.
    (queue ED1C-F17F doubles as task list AND UI vtable targets)
 6. Template builder / object system decoded (ROM01:0271)
 7. Warm restart path decoded
-8. Diagnostic monitor entry verified as a returning stub (`ROM00:3513`,
-   `XOR A; RET`, rechecked 2026-09-20). Prior built-in-monitor and
+8. Diagnostic monitor entry verified as a returning stub (`Debug_MonitorHookStub` at `ROM00:3513`,
+    `XOR A; RET`, rechecked 2026-09-20; now `Debug_MonitorHookStub`, formerly `Monitor_Enter`). Prior built-in-monitor and
    service-key monitor-boot claims withdrawn. External monitor/ICE use
    remains SUSPECTED; resolve with alternate-ROM/debugger evidence or an
    interception trace. See [debug facilities](../re-notes/os-diposb.md#debug-facilities).
@@ -737,6 +764,20 @@ SUSPECTED until bench evidence discriminates them.
      (ROM01 separate). Supersedes old header-open / funnel-into-D6DB
      / `g_tblFieldTypeRecPtrs` device-mapping claims.
      Docs updated: program-formats.md (rewritten), programmer-guide.md
+19. **Set Debug mode / status-device investigation — CLOSED (2026-09-25):**
+    `g_bDebugRunEnabled` (`ram:ECC7`) enable byte and `g_bDebugRunDeviceIndex` (`ram:ECC8`) device index are CONFIRMED with
+    dedicated initialisers (`ROM01:069A`/`06A1`) and consumers
+    (`ROM01:038C`/`0393`). The `EF4C`/`EF34` callback pair moves
+    Diagnostics menu selection (`EC6F`), not debug state. The activation
+    chain through `g_wDebugRunActive` (`EB18`) transient gate → `EF18`/`EF24` → vector 13h →
+    `F32F` → `Debug_MonitorHookStub` (`3513`, `XOR A; RET`) is CONFIRMED. No IR output, debug
+    print, or persistent config write occurs. The earlier ephemeral-only
+    claim from a bounded watch is corrected. Labels
+    `g_bDebugRunEnabled`, `g_bDebugRunDeviceIndex`, `g_wDebugRunActive`
+    installed in Ghidra (2026-09-25). `g_wMonitorDeviceSelector` (`E2F8`)
+    remains **PROPOSED** (not installed).
+    Docs updated: monitor-and-debug.md, memory-and-io-evidence.md,
+    forms-ui.md.
 
 ## In progress
 
@@ -834,8 +875,7 @@ SUSPECTED until bench evidence discriminates them.
      `LINK_CTRL` bit4/bit0, `ROM00:3361-3376`) and three latches the
      boot-replacing exerciser never set: `48h` (`STATUS_DRIVE`) = `03h`
      (`Session_SystemInit` `ROM00:0359`), `07h` (`CTRL_07`) = `00h`
-     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`, also
-     power-latch bits) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
+     (`RTC_DayChangeWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
      boot (settling). LCD `W D8 40 10 00 D3 C4 C8 55`, **still no burst**.
    * **Run 7 (6/7 idle-state witness `3072`, owner 2026-09-20):** set
      `LINK_CTRL` 6/7 at boot (`early_init` in a reclaimed `01BE-024F` region)

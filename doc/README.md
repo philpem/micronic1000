@@ -25,6 +25,8 @@ Choose a path for your task:
 * [DIPOS-B extensions](reference/extensions.md) — device, storage, RTC, and timing.
 * [Barcode reader](reference/barcode.md) — scanner hook and RDR: byte-stream API.
 * [Program file formats](reference/program-formats.md) — COM and DIP grammars.
+* [Keyboard](reference/keyboard.md) — physical/electrical layout, scan, and
+  Sun special functions.
 * [Memory and I/O map](reference/memory-map.md) — banks, RAM, vectors, and ports.
 * [Commstar transport](protocol/commstar.md) — controller mechanics, the
   session state machine, and the explicit blockers for a physical server.

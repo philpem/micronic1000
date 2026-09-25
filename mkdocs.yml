@@ -89,6 +89,7 @@ nav:
       - Commstar application API: reference/commstar-api.md
       - Commstar peer library: reference/commstar-peer.md
       - Memory and I/O map: reference/memory-map.md
+      - Keyboard: reference/keyboard.md
   - Protocol reference:
       - protocol/README.md
       - Commstar transport: protocol/commstar.md
@@ -100,6 +101,7 @@ nav:
       - InlineTableDispatch tables: re-notes/inline-dispatch.md
       - Listing-repair script: re-notes/ghidra-repair-script.md
       - OS internals: re-notes/os-diposb.md
+      - Monitor / ICE hook: re-notes/monitor-and-debug.md
       - Forms and UI: re-notes/forms-ui.md
       - CP/M comparison: re-notes/cp-m-comparison.md
       - Interrupts: re-notes/interrupts.md

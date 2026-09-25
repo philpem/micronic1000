@@ -626,8 +626,12 @@ loader would reject it. The socket must be written by running code — see
 
 ## Debug facilities
 
-**CONFIRMED, byte-verified 2026-09-20:** the function still named
-`Monitor_Enter` at `ROM00:3513` contains only `AF C9` (`XOR A; RET`).
+See the dedicated [Monitor / ICE hook](monitor-and-debug.md) page for
+the full topology (the `3513` stub, the `RST 30h` → `F5F0` hook, the
+error-handler break, and the separate monitor ROM).
+
+**CONFIRMED, byte-verified 2026-09-20:** the function now named
+`Debug_MonitorHookStub` (formerly `Monitor_Enter`) at `ROM00:3513` contains only `AF C9` (`XOR A; RET`).
 The name and the menu string do not establish a monitor implementation.
 The previous claims of a built-in monitor and a service-key boot into
 that monitor are withdrawn.
@@ -670,17 +674,37 @@ call followed by normal return, not a transfer to another monitor ROM.
 ## Power on/off (partially decoded)
 
 * **Power_DownSuspend** (ROM00:1721) is the suspend routine, reached
-  from the NMI handler — strong evidence the power button is wired
-  to NMI:
-  * saves SP and 8 bytes of state (fbf3 → fbfb)
-  * sets restart flag fbd5 = 2
-  * shuts down latches: port 02 reconfigured, port 04 ← FAh/F8h,
-    port 2C masked, port 48 bits 0-1 set
-  * spins refreshing port 2A / port 07 until the wake NMI
-* Wake: NMI with fbd5 == 2 takes the handler's restart path → warm
-  boot; session state survives in battery RAM.
+  from the NMI handler and also from the capture-timer underflow at
+  `ExtBus_BusAdvanceTimer` (ROM00:14C3). That underflow is the
+  **barcode-capture window timeout**, not an autonomous idle/standby
+  timer; an idle-countdown that drives the owner-observed
+  LCD/backlight-off has **not** been located in the ROM (2026-09-24).
+  **Owner fact (2026-09-24): there is no power key**, so the NMI is
+  *not* a power-button line and its physical source is still unknown
+  (owner-guide "Sun+MODE enters power-down" is the key-combo route):
+  * saves SP to `g_wSysSavedSp` (FBD0) and the 8-byte console context
+    `g_abConsoleContext` (FBF3) → `g_abConsoleContextSaved` (FBFB);
+    the copy is gated on `g_bConsoleStateSavedFlag` (FC03)
+  * sets restart flag `g_eRestartFlag` (FBD5, enum `RestartFlag`) = 2
+    (SUSPENDED); 1 = SUSPEND_ENTRY set first so an NMI during setup is
+    ignored
+  * shuts down latches: `KBD_DRIVE` released then driven `48h` (bit 6
+    wake-scan) vs `3Fh`, `04h` (`IRQ_MASK`) ← `FAh/F8h/D8h`, `CTL_LATCH_2C`
+    masked to keep only bit 5 (IR port select) so bit 4 (CONFIRMED LCD
+    backlight) drops, `48h` (`STATUS_DRIVE`) bits 0-1 set
+  * **busy-spins** refreshing `CTL_LATCH_2A` (bit 5 clear) and
+    `CTRL_07` (=3) while polling `STATUS_IN` bit 1 — standby is a spin,
+    **not a CPU halt**; low-power means LCD+backlight off. The loop's
+    JR at ROM00:17A3 lands on the middle byte of a preceding
+    `LD (db00),HL`, executing `IN A,(05h)` as an overlapping
+    self-modifying read of `STATUS_IN`.
+* Wake: NMI with `g_eRestartFlag` == 2 takes `Kernel_HandlerImage`'s
+  restart path (force `KBD_DRIVE` bit 6, JP 1758) → warm boot; session
+  state survives in battery RAM.
 * First press during operation therefore suspends; second press
-  reboots into the restored session.
+  reboots into the restored session. The owner-observed wake on an
+  ordinary keypress (not a second power press) is **OPEN** — the wake
+  key-generation path is not yet byte-verified.
 
 ## Remaining internal questions
 
