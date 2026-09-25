@@ -98,21 +98,20 @@ V24 ADAPTOR).
 Watching the PC during `ENTER` + `YES` (`0x0D`+`0x06`) reached
 `Form_ChoiceNext` (`ROM01:1E61`), proving `YES` does drive the choice
 index (`e739`/`e734`, boundary callback `*ec69`). The screen then
-returned to the Diagnostics menu (the edit values are committed on
-return). Because the form re-renders the template on entry and the edit
-commits on exit, screenshoting the "Status ON" state in a single driven
-run was unreliable; the value/consumer is best read by watching the
-field-state cell rather than the framebuffer.
+returned to the Diagnostics menu.
 
-**OPEN:** the exact backing cell and the consumer of the flag are not
-yet pinned; the form runtime stores field values through shared UI cells
-(`EC49`/`E739`/`E734`). It is **not** `f81d` (that cell has only
-boot-time writers).
+**Flag-cell capture (2026-09-24):** `--watch-mem` over the session-config
+region (`E700`-`ED1B`, 6,767 writes) and the form-backing region
+(`EC7E`-`ECDB`) during the `ENTER`+`YES` edit recorded **only zeroing
+writes** — no dedicated `0→1` flag write in either region. So the debug
+value is **not** a persistent dedicated cell there; the field values live
+in the **ephemeral form-field state** (`EC49`/`E739`/`E734`), committed
+when the form exits. Consequently "debug mode" is a **form-field value**
+(an `ON/OFF` choice plus an IR-device index), not a standalone flag byte
+that a watch can trivially catch — which is why the static xref hunt for
+a uniquely-referenced "debug" cell came up empty too.
 
-**Decisive next step:** watch the form-field state cell during the
-`ENTER`+`YES` edit (bounded `--watch-mem` on the session-config region
-`E700`-`ED1B`) to capture the actual flag cell and then follow any read
-of it to the diagnostic-output path.
+It is **not** `f81d` (that cell has only boot-time writers).
 
 ## The real monitor is a separate artifact
 
