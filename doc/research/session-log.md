@@ -30,7 +30,32 @@
   `Comms_LineDeassertRd`→barcode IRQ arming. Named occurrences updated.
 * All function renames: 3 existing + label updates. Port 33h note was
   already present and correct.
-* No git commit or push performed.
+* No git commit or push performed in the initial pass.
+
+### Re-audit addendum (same day) — adversarial pass and residual fixes
+
+* An independent adversarial re-audit of the corrected state re-derived
+  every decisive byte-level claim and found them substantially correct
+  (port 04h fd84 active-low mask + dynamic bit-5 source; 05h source map;
+  07h RTC watcher; 2A/2C bit semantics; 48h/49h neutral; 4A-4F directions).
+* Residual contradictions were then fixed: port 05h generic
+  acknowledge-on-read claim removed; 2Ah ownership-table set/clear sites
+  filled; 2Ch bit5 set/clear addresses corrected (`OR 20h` at `3482`,
+  `AND DCh` at `346F`, `OUT (2Ch)` at `3487`); 2Ch bits 2/3/6/7 changed to
+  "never written to 1" CONFIRMED / "not brought out" OPEN; backlight and
+  port 46h promoted to CONFIRMED (owner bench); `LINK_CMD`/`LINK_PROBE`
+  electrical aliases tagged unproven.
+* Ghidra-side fixes this pass: corrected `io:04` plate slot address
+  (FD93/FD94, was mis-stated fd86); fixed `io:2D` dead doc link and
+  shortened its repeatable; tagged `io:4C`/`io:4F` repeatables; renamed
+  `Comms_LineDeassertRd` (ROM00:138E) → `Barcode_ArmCaptureIrq` and
+  `Link_StatusWatcher` (ROM00:2468) → `RTC_DayChangeWatcher`; names
+  propagated to current-state docs.
+* Committed and pushed to `standby-annotations`: `bffe5e0` (49h table
+  blank-line CI fix), `1f89b4f` (corrections), `54c5971` (residual fixes).
+* Remaining genuinely OPEN electrical identities: 2Ah bit1, 2Ch bits0/1,
+  2Dh bit1, CTRL_07 bits0/1, 48h/49h physical source, port 33h,
+  LINK_CTRL/LINK_STATUS electrical names. Each needs a scope/PCB test.
 
 ## 2026-09-25 — debug-annotation rename pass (docs hygiene)
 
