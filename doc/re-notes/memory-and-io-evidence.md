@@ -397,6 +397,7 @@ Writes (`F792` shadow): `03h` by `Session_SystemInit` (0359) and
 `Power_DownSuspend` (178D).
 
 Reads: as a **boot-mode select at reset** (`0168`/`016E`):
+
 | 49h | path | meaning |
 |---|---|---|
 | bit0=0 | `01A6` | **cold start** (clear restart/warmboot sigs, `OUT 04h`=FFh, `OUT 2Bh`=0) |
