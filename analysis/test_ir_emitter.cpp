@@ -215,8 +215,26 @@ static void checkStockFraming() {
         for (char &bit : body) bit = bit == '0' ? '1' : '0';
       const std::string flagBits = wireFlagByte() == 0x7E ?
                                    "01111110" : "10000001";
-      assert(framedWire() == flagBits + body +
-             (STOCK_CLOSE_FLAG ? flagBits : ""));
+#if STOCK_CLOSE_BYTE >= 0
+      const uint8_t wireClosing = (uint8_t)STOCK_CLOSE_BYTE ^
+                                  (polarity ? 0xFF : 0);
+      std::string closingBits;
+      for (int8_t bit = 7; bit >= 0; --bit)
+        closingBits += ((wireClosing >> bit) & 1) ? '1' : '0';
+      std::string wireBody = body;
+      const char countedBit = wireStuffingMode() == 1 ? '1' : '0';
+      size_t terminalRun = 0;
+      while (terminalRun < wireBody.size() &&
+             wireBody[wireBody.size() - 1 - terminalRun] == countedBit)
+        ++terminalRun;
+      if (terminalRun == 5)
+        wireBody += wireStuffingMode() == 1 ? '0' : '1';
+#else
+      const std::string closingBits;
+      const std::string wireBody = body;
+#endif
+      assert(framedWire() == flagBits + wireBody +
+             (STOCK_CLOSE_FLAG ? flagBits : closingBits));
       assert(replyPayloadLen == 5);
       assert(replyPayload[0] == 0 && replyPayload[1] == 0 &&
              replyPayload[2] == 0xFF && replyPayload[3] == 0xFF &&
@@ -226,6 +244,139 @@ static void checkStockFraming() {
   sweepInvert = 0;
 #endif
 }
+
+#if defined(STOCK_CANDIDATE_MATRIX_TEST) && STOCK_CANDIDATE_MATRIX_TEST
+static void checkStockCandidateMatrix() {
+#if RX_SWEEP || FREE_TX || RX_NARROW
+  rxFlagIdx = STOCK_FLAG_IDX;
+  rxPolIdx = 0;
+  selectStockStuffing();
+  assert(stuffingMode == 1);
+  buildReply(7);
+  std::string wire;
+  for (uint8_t i = 0; i < frameLen; ++i)
+    wire += frameBits[i] ? '1' : '0';
+#if STOCK_PREFIX_BYTE >= 0
+  std::string prefix;
+  for (int8_t bit = 7; bit >= 0; --bit)
+    prefix += ((STOCK_PREFIX_BYTE >> bit) & 1) ? '1' : '0';
+#else
+  const std::string prefix;
+#endif
+#if STOCK_ZERO_PAYLOAD
+  const std::string payload(80, '0');
+#else
+  std::string payload =
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001";
+#if STOCK_PAYLOAD00_TO80
+  payload[0] = '1';
+#endif
+#if STOCK_PAYLOAD07_TO06
+  payload[15] = '0';
+#endif
+#endif
+#if STOCK_FLAG_IDX == 1
+  const std::string opening = "01111110";
+#else
+  const std::string opening = "10000001";
+#endif
+#if STOCK_CLOSE_BYTE >= 0
+  std::string closing;
+  const uint8_t wireClose = (uint8_t)STOCK_CLOSE_BYTE;
+  for (int8_t bit = 7; bit >= 0; --bit)
+    closing += ((wireClose >> bit) & 1) ? '1' : '0';
+#else
+  const std::string closing;
+#endif
+  assert(wire == prefix + opening + payload + closing);
+  assert(frameLen == (uint8_t)(prefix.size() + opening.size() +
+                               payload.size() + closing.size()));
+#if STOCK_FLAG_IDX == 1 && STOCK_CLOSE_BYTE < 0 && STOCK_PREFIX_BYTE >= 0
+  const std::string completeWire =
+      std::string(RX_LEAD_CELLS, '0') + wire;
+  assert(completeWire.size() == 101);
+#if STOCK_ZERO_PAYLOAD && STOCK_PREFIX_BYTE == 126
+  assert(completeWire == std::string("00000") +
+      "01111110"
+      "01111110" + std::string(80, '0'));
+#elif STOCK_ZERO_PAYLOAD
+  assert(completeWire == std::string("00000") + prefix + opening +
+      std::string(80, '0'));
+#elif STOCK_PREFIX_BYTE == 126 && STOCK_PAYLOAD00_TO80
+  std::string original = std::string("00000") + "01111110" + "01111110" +
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001";
+  assert(original[21] == '0');
+  original[21] = '1';
+  assert(completeWire == original);
+  assert(completeWire.substr(18, 8) == "11010000");
+#elif STOCK_PREFIX_BYTE == 126 && STOCK_PAYLOAD07_TO06
+  std::string original = std::string("00000") + "01111110" + "01111110" +
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001";
+  assert(original[36] == '1');
+  original[36] = '0';
+  assert(completeWire == original);
+  assert(completeWire.substr(35, 8) == "10000000");
+#elif STOCK_PREFIX_BYTE == 126
+  assert(completeWire ==
+      "00000"
+      "01111110"
+      "01111110"
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001");
+#elif STOCK_PREFIX_BYTE == 0
+  assert(completeWire ==
+      "00000"
+      "00000000"
+      "01111110"
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001");
+#endif
+#endif
+#if STOCK_FLAG_IDX == 1 && STOCK_CLOSE_BYTE < 0 && STOCK_PREFIX_BYTE < 0
+  const std::string baselineWire =
+      std::string(RX_LEAD_CELLS, '0') + wire;
+  assert(baselineWire.size() == 93);
+  assert(baselineWire ==
+      "00000"
+      "01111110"
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001");
+#endif
+#if STOCK_FLAG_IDX == 0 && STOCK_CLOSE_BYTE == 0
+  // Exact 101 cells on the wire: five lead clocks, 81, the fixed
+  // stuffed payload, then eight data-low cells (not a closing flag).
+  const std::string completeWire =
+      std::string(RX_LEAD_CELLS, '0') + wire;
+  assert(completeWire.size() == 101);
+  assert(completeWire ==
+      "00000"
+      "10000001"
+      "00000000000001110000000000000010000000010100001100000000000000000000001000000001"
+      "00000000");
+#endif
+  assert(replyPayloadLen == 10);
+#if STOCK_ZERO_PAYLOAD
+  for (uint8_t i = 0; i < replyPayloadLen; ++i)
+    assert(replyPayload[i] == 0);
+#else
+  const uint8_t expectedPayload[10] =
+      {(STOCK_PAYLOAD00_TO80 ? 0x80 : 0x00), (STOCK_PAYLOAD07_TO06 ? 0x06 : 0x07), 0x00, 0x02, 0x01, 0x43, 0x00, 0x00, 0x02, 0x01};
+  for (uint8_t i = 0; i < replyPayloadLen; ++i)
+    assert(replyPayload[i] == expectedPayload[i]);
+#endif
+
+  // A terminal run of five data ones gets a stuffed zero before the raw
+  // delimiter; the delimiter itself remains unstuffed.
+  frameLen = 0;
+  uint8_t run = 0;
+  stuffingMode = 1;
+  putStuffedByte(0x1F, &run);
+  assert(run == 5);
+  putClosingByte(0x7E, &run);
+  std::string terminal;
+  for (uint8_t i = 0; i < frameLen; ++i)
+    terminal += frameBits[i] ? '1' : '0';
+  assert(terminal == "00011111001111110");
+#endif
+}
+#endif
 
 static void checkSampleMargins() {
   for (uint8_t swap = 0; swap < 2; ++swap) {
@@ -355,6 +506,9 @@ int main() {
   checkGpioTrace();
 
   checkStockFraming();
+#if defined(STOCK_CANDIDATE_MATRIX_TEST) && STOCK_CANDIDATE_MATRIX_TEST
+  checkStockCandidateMatrix();
+#endif
   checkSampleMargins();
   checkTerminalStuffing();
 

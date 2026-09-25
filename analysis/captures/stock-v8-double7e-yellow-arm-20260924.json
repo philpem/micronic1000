@@ -1,0 +1,10 @@
+{
+  ":TRIG:EDGE:SOUR?": "DIG4",
+  ":TRIG:EDGE:SLOP?": "NEG",
+  ":TIM:SCAL?": "+8.000E-03",
+  ":TIM:POS?": "+0.0E+00",
+  ":RSTate?": "SING",
+  ":OPERegister:CONDition?": "+8",
+  ":TER?": "+0",
+  ":SYSTem:ERRor?": "+0,\"No error\""
+}

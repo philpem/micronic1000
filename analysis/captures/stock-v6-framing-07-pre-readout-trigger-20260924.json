@@ -1,0 +1,12 @@
+{
+  "saved_utc": "2026-09-24T11:19:27Z",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "source": "POD1",
+  "format": "BYTE RAW",
+  "points": 200000,
+  "sample_interval_s": 4e-07,
+  "origin_s": -0.04,
+  "sha256": "5b804f127ce5d234d672849bd0e5f4fdcf956c38b546b45b8dece95b61b08aa9",
+  "png": "analysis/captures/stock-v6-framing-07-pre-readout-trigger-20260924.png",
+  "raw_gzip": "analysis/captures/stock-v6-framing-07-pre-readout-trigger-20260924.pod1.bin.gz"
+}

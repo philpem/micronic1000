@@ -1,0 +1,14 @@
+{
+  "owner_result": "R6IEC29SCAN0000",
+  "capture": "analysis/captures/stock-v6-framing-01-final-20260924.pod1.bin.gz",
+  "scope_record": "analysis/captures/stock-v6-framing-01-final-20260924.scope.json",
+  "png": "analysis/captures/stock-v6-framing-01-final-20260924.png",
+  "data_clock_cells": 93,
+  "D3_sequence": "00000 01111110 00000000 00000111 00000000 00000010 00000001 01000011 00000000 00000000 00000010 00000001",
+  "opening": "7E",
+  "payload_hex": "00 07 00 02 01 43 00 00 02 01",
+  "median_clock_period_us": 121.6,
+  "launch_delay_after_last_D1_rising_ms": 33.0492,
+  "yellow_low_start_ms": 11.8644,
+  "yellow_low_us": 918.4
+}

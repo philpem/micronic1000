@@ -1,0 +1,22 @@
+{
+  "utc": "2026-09-24T13:29:28.912516+00:00",
+  "after_clear_state": {
+    "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SRATe?": "10000000",
+    ":ACQuire:POINts?": "1000000",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "CENT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "NORM",
+    ":WAVeform:SOURce?": "POD1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "RAW",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  },
+  "note": "No waveform preamble query while awaiting trigger; query it after the acquisition completes."
+}

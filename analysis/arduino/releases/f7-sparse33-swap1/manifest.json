@@ -1,0 +1,16 @@
+{
+  "purpose": "Single-variable optical channel assignment comparison to archived F7",
+  "source_commit": "1f0bff5",
+  "fqbn": "arduino:avr:uno",
+  "core": "arduino:avr@1.8.8",
+  "compiler": "avr-gcc/7.3.0-atmel3.6.1-arduino7",
+  "only_changed_build_flag": "STOCK_TX_SWAP: 0 -> 1",
+  "flags": "-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_CONTEXT_EVENTS=1 -DSTOCK_PHASE_IDX=3 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_TX_SWAP=1 -DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3",
+  "archived_f7_sha256": "c25dda43b1d3cf3a78bf0d1dc2e2b43dbdda34138aa996a22d7f8fda67210d8f",
+  "control_rebuild_byte_identical": true,
+  "sha256": "6375357e0e0f6a825819fd90afc073313be0e873ccf0581f37131a9f63f4b33b",
+  "hex_bytes": 28368,
+  "expected_banner": "STOCK_TX swap=1 clk_inv=0 dat_inv=0; STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000",
+  "hardware_validated": true,
+  "hardware_result": "V6 V24 trial with unchanged alignment: owner saw 8000 then 8040, no R6I; scope D3 clock/D2 data matched 93/93 expected cells; no yellow return marker during trial. See analysis/captures/stock-v6-f7-swap1-20260924.jsonl and stock-v6-f7-swap1-scope-20260924-analysis.json."
+}

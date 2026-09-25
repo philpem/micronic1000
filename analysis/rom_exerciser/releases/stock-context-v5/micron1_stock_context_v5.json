@@ -1,0 +1,60 @@
+{
+  "image": "micron1_stock_context_v5.bin",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "4383c0246149d5c4a1613266c5f94151",
+    "sum16": "34FC",
+    "sum24": "3834FC",
+    "sha256": "99e5fdb28066b62ef43b25353c8f65aed1d5368438f6a831a81712b4e7e61da8"
+  },
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "basis": "v4 receive/display/marker code; original reset routes",
+  "patches": [
+    {
+      "address": "ROM00:2FC1",
+      "original": "cd7833",
+      "replacement": "cd967e"
+    },
+    {
+      "address": "ROM00:0252",
+      "original": "328bf7d32a",
+      "replacement": "cdec7e0000"
+    }
+  ],
+  "restored_stock_reset_routes": [
+    "ROM00:0172",
+    "ROM00:01A3",
+    "ROM00:3812",
+    "ROM00:17A5",
+    "ROM00:3708"
+  ],
+  "assembly_sha256": "7bad37a656118dbf011996333a82c6e9394676335ac393df4a6f3c0da049896f",
+  "symbols": {
+    "PORT_2A": 42,
+    "SHADOW_2A": 63371,
+    "LINK_BLOCK_RX": 13176,
+    "rx_wrapper": 32406,
+    "rx_success": 32418,
+    "rx_error": 32443,
+    "rx_pulse_end": 32463,
+    "delay_1ms": 32482,
+    "delay_loop": 32484,
+    "delay_450us": 32487,
+    "guard_loop": 32489,
+    "init_wrapper": 32492,
+    "LCD_REG": 35,
+    "LCD_DAT": 3,
+    "lcd_home": 32553,
+    "lcd_putc": 32569,
+    "lcd_hex": 32578,
+    "lcd_nib": 32587,
+    "lh_out": 32597,
+    "show_result": 32600,
+    "stopped": 32633,
+    "end": 32635
+  },
+  "boot_low_dwell_calls": 6,
+  "display": "R4I followed by two hex digits A and two hex digits F",
+  "one_shot": true,
+  "hardware_validated": false
+}

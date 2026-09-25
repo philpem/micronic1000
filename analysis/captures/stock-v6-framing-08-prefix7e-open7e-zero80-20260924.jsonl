@@ -1,0 +1,27 @@
+{"utc": "2026-09-24T12:12:26.400373+00:00", "direction": "rx", "line": "hase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T12:12:26.400821+00:00", "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T12:12:26.401086+00:00", "direction": "rx", "line": "CK_PREFIX_BYTE=7E"}
+{"utc": "2026-09-24T12:12:26.401366+00:00", "direction": "rx", "line": "STOCK_ZERO_PAYLOAD=1"}
+{"utc": "2026-09-24T12:12:26.401989+00:00", "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T12:12:26.402268+00:00", "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T12:12:27.491457+00:00", "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-24T12:12:27.496128+00:00", "direction": "rx", "line": "MODE: RX NARROW -- flag fixed to 7E, one axis varied."}
+{"utc": "2026-09-24T12:12:27.500744+00:00", "direction": "rx", "line": "  axis = content (flag / flag+03h / open type-2 ack)"}
+{"utc": "2026-09-24T12:12:27.508798+00:00", "direction": "rx", "line": "STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"}
+{"utc": "2026-09-24T12:12:27.510131+00:00", "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-24T12:12:27.513851+00:00", "direction": "rx", "line": "STOCK_TX swap=0 clk_inv=0 dat_inv=0"}
+{"utc": "2026-09-24T12:12:27.518221+00:00", "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=1 wire_stuff=1 close=0"}
+{"utc": "2026-09-24T12:12:27.522174+00:00", "direction": "rx", "line": "STOCK_CLOSE_BYTE=--"}
+{"utc": "2026-09-24T12:12:27.523048+00:00", "direction": "rx", "line": "STOCK_PREFIX_BYTE=7E"}
+{"utc": "2026-09-24T12:12:27.523822+00:00", "direction": "rx", "line": "STOCK_ZERO_PAYLOAD=1"}
+{"utc": "2026-09-24T12:12:27.531561+00:00", "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T12:12:27.532406+00:00", "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T12:14:00.598028+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=93099584 low_us=5452"}
+{"utc": "2026-09-24T12:14:03.640428+00:00", "direction": "rx", "line": "burst 22 cells  0000010000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=1 wire_stuff=1 close=0 wire_content=7 payload=00000000000000000000 delay_req=33000/33000us emit_late_max=9 emit_applied_late_max=20 reply_sent=1 swap=0 clk_inv=0 dat_inv=0 fixed=1 tx_start_us=96106444]"}
+{"utc": "2026-09-24T12:14:03.644499+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=96140312 low_us=916"}
+{"utc": "2026-09-24T12:14:14.110887+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=106611068 low_us=5448"}
+{"utc": "2026-09-24T12:14:26.899063+00:00", "direction": "rx", "line": "burst 22 cells  0000110000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=1 wire_stuff=1 close=0 wire_content=7 payload=00000000000000000000 delay_req=33000/0us emit_late_max=0 emit_applied_late_max=0 reply_sent=0 swap=0 clk_inv=0 dat_inv=0 fixed=1]"}
+{"utc": "2026-09-24T12:14:27.001741+00:00", "direction": "rx", "line": "burst 22 cells  0000010000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=1 wire_stuff=1 close=0 wire_content=7 payload=00000000000000000000 delay_req=33000/0us emit_late_max=0 emit_applied_late_max=0 reply_sent=0 swap=0 clk_inv=0 dat_inv=0 fixed=1]"}
+{"utc": "2026-09-24T12:14:27.141679+00:00", "direction": "rx", "line": "burst 22 cells  0000110000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=1 wire_stuff=1 close=0 wire_content=7 payload=00000000000000000000 delay_req=33000/33000us emit_late_max=10 emit_applied_late_max=19 reply_sent=1 swap=0 clk_inv=0 dat_inv=0 fixed=1 tx_start_us=119604380]"}
+{"utc": "2026-09-24T12:14:27.145942+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=119638256 low_us=920"}
+{"utc": "2026-09-24T12:15:19.667525+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=172162224 low_us=5452"}

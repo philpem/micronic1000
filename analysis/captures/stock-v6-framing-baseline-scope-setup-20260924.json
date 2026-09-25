@@ -1,0 +1,40 @@
+{
+  "utc": "2026-09-24T08:15:55.831347+00:00",
+  "scope_id": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+  "before": {
+    "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SRATe?": "10000000",
+    ":ACQuire:POINts?": "1000000",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "LEFT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG1",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "AUTO",
+    ":WAVeform:SOURce?": "CHAN1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "NORM",
+    ":TER?": "+1"
+  },
+  "configured_for": "framing matrix baseline: 80 ms centered POD1, DIG2 rising single trigger",
+  "after_arm": {
+    "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SRATe?": "20000000",
+    ":ACQuire:POINts?": "2000000",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "CENT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "NORM",
+    ":WAVeform:SOURce?": "POD1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "RAW",
+    ":TER?": "+1",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  }
+}

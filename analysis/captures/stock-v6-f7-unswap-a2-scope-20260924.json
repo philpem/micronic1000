@@ -1,0 +1,18 @@
+{
+  "utc": "2026-09-24T02:54:04.043036+00:00",
+  "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+  ":TER?": "+0",
+  ":WAVeform:SOURce?": "POD1",
+  ":WAVeform:FORMat?": "BYTE",
+  ":WAVeform:POINts:MODE?": "RAW",
+  ":WAVeform:PREamble?": "+0,+0,+250000,+1,+8.00000000E-008,-2.00000000E-003,+0,+1.00000000E+000,+0.0E+000,+0",
+  ":ACQuire:SRATe?": "100000000",
+  ":TIMebase:SCALe?": "+2.000E-03",
+  ":TIMebase:POSition?": "+0.0E+00",
+  ":TIMebase:REFerence?": "LEFT",
+  ":TRIGger:EDGE:SOURce?": "DIG2",
+  "wave_bytes": 250000,
+  "wave_sha256": "aa3d4a2d90268244c2c29ab53b7276cf411dbdfbcd13438352a89f1e59107934",
+  "png_bytes": 26400,
+  "error": ""
+}

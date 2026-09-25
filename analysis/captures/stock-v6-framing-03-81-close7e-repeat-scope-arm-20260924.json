@@ -1,0 +1,23 @@
+{
+  "utc": "2026-09-24T11:00:21Z",
+  "prearm": {
+    ":TER?": "+0",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":WAVeform:SOURce?": "POD1"
+  },
+  "after_arm": {
+    ":TER?": "+0",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "NORM",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:REFerence?": "CENT",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":WAVeform:SOURce?": "POD1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "RAW",
+    ":ACQuire:SRATe?": "20000000",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  }
+}

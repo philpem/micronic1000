@@ -1,0 +1,9 @@
+{
+  "utc": "2026-09-24T13:33:07.416371+00:00",
+  "before_RState": "STOP",
+  "before_OPECondition": "+0",
+  "after_RState": "SING",
+  "after_OPECondition": "+40",
+  "after_TER": "+0",
+  "after_error": "+0,\"No error\""
+}

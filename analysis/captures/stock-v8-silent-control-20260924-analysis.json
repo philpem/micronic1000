@@ -1,0 +1,22 @@
+{
+  "D0": {
+    "high_samples": 762,
+    "transitions": 10
+  },
+  "D1": {
+    "high_samples": 2623,
+    "transitions": 34
+  },
+  "D2": {
+    "high_samples": 0,
+    "transitions": 0
+  },
+  "D3": {
+    "high_samples": 0,
+    "transitions": 0
+  },
+  "D4": {
+    "high_samples": 200000,
+    "transitions": 0
+  }
+}

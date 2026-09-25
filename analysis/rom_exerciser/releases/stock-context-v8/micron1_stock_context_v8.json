@@ -1,0 +1,90 @@
+{
+  "image": "micron1_stock_context_v8.bin",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "d30115abff9dc5f7448e0c33abfeec19",
+    "sum16": "7331",
+    "sum24": "387331",
+    "sha256": "57057f0a106a4608dc6675824315b44e67be93796b1052559ab3567f2c9e5dd5"
+  },
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "basis": "v7 receive/return/marker timing unchanged; post-return two-byte RAM snapshot",
+  "patches": [
+    {
+      "address": "ROM00:2FC1",
+      "original": "cd7833",
+      "replacement": "cd967e"
+    },
+    {
+      "address": "ROM00:0252",
+      "original": "328bf7d32a",
+      "replacement": "cdec7e0000"
+    },
+    {
+      "address": "ROM00:33F8",
+      "original": "e1d13820",
+      "replacement": "c3c47f00"
+    }
+  ],
+  "stock_reset_routes": [
+    "ROM00:0172",
+    "ROM00:01A3",
+    "ROM00:3812",
+    "ROM00:17A5",
+    "ROM00:3708"
+  ],
+  "assembly_sha256": "e063b74deccc9b87856b9bb0d9c2d0c4d73df042689d0f38f59ad86a5de4df58",
+  "symbols": {
+    "SCR_STATUS": 51172,
+    "SCR_BYTE": 51173,
+    "SCR_LENGTH": 51174,
+    "SCR_BUFFER": 51176,
+    "SCR_DESCRIPTOR": 51178,
+    "SCR_WRITE": 51180,
+    "SCR_SAVED_BC": 51182,
+    "SCR_TOTAL": 51184,
+    "SCR_REMAINING": 51186,
+    "PORT_2A": 42,
+    "SHADOW_2A": 63371,
+    "LINK_BLOCK_RX": 13176,
+    "rx_wrapper": 32406,
+    "rx_success": 32418,
+    "rx_error": 32443,
+    "rx_pulse_end": 32463,
+    "delay_1ms": 32482,
+    "delay_loop": 32484,
+    "delay_450us": 32487,
+    "guard_loop": 32489,
+    "init_wrapper": 32492,
+    "LCD_REG": 35,
+    "LCD_DAT": 3,
+    "lcd_home": 32553,
+    "lcd_putc": 32569,
+    "lcd_hex": 32578,
+    "lcd_nib": 32587,
+    "lh_out": 32597,
+    "show_result": 32600,
+    "stopped": 32698,
+    "lcd_dump": 32700,
+    "terminal_hook": 32708,
+    "no_terminal_byte": 32744,
+    "end": 32760
+  },
+  "scratch_ram": "C7E0-C7F2 (upper TPA diagnostic scratch; only assessed for the controlled FOO trial)",
+  "display_rows": [
+    "R8IaaFF:ssvvLLLLPPPP",
+    "XDDDDWWWWbbccTTTTRR "
+  ],
+  "word_encoding": "raw little-endian byte order; use --decode",
+  "terminal_byte_validity": "vv is valid only when ss bit 2 is set; otherwise slot is 00",
+  "non_ec_display": "R8IaaFF only; ignore stale LCD suffix/second row",
+  "buffer_sample_validity": "bb/cc only valid when pointer advancement and descriptor length/residual agree; use --decode",
+  "buffer_sample_scope": "First two active-buffer bytes; saved BC display removed; not earlier descriptors",
+  "snapshot_limits": "Controlled FOO trial; buffers/descriptors must not overlap scratch C7E0-C7F2; no concurrent writers",
+  "timing_vs_v7": {
+    "receive_and_yellow_tstates": 0,
+    "post_marker_snapshot_extra_tstates": 73
+  },
+  "one_shot": true,
+  "hardware_validated": false
+}

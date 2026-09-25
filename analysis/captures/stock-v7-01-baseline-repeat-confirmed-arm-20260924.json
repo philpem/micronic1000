@@ -1,0 +1,24 @@
+{
+  "utc": "2026-09-24T13:34:44.188793+00:00",
+  "before_rearm": {
+    "RSTate": "SING",
+    "OPERegister_CONDition": 8,
+    "AER": 0,
+    "TER": 0
+  },
+  "immediately_after_rearm": {
+    "RSTate": "SING",
+    "OPERegister_CONDition": 40,
+    "AER": 1,
+    "TER": 0
+  },
+  "confirmed_state": {
+    ":RSTate?": "SING",
+    ":OPERegister:CONDition?": "+8",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:SWEep?": "NORM",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  },
+  "interpretation": "Operation condition 0x28: Run bit 3 and Wait Trig bit 5 set. TER alone was insufficient.",
+  "correction": "Readiness not established by this file. AER? clears the arm event and its summarized Wait Trig indication; subsequent condition=8 does not prove disarming. Screenshot showed Trig'd?. Superseded by arm-recheck JSON, with front-panel confirmation pending."
+}

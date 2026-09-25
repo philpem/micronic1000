@@ -1,0 +1,9 @@
+{
+  "saved_utc": "2026-09-24T11:22:26Z",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "points": 200000,
+  "sha256": "7df5a3e093a84023aa3b68f9305e249719d9f41dbfd17cc069bf5e690a499ee7",
+  "raw": "analysis/captures/stock-v6-framing-07-pre-readout-trigger2-20260924.pod1.bin.gz",
+  "png": "analysis/captures/stock-v6-framing-07-pre-readout-trigger2-20260924.png",
+  "note": "Unmatched transient, no 101-cell reply and no D4 pulse; logger still had banner only."
+}

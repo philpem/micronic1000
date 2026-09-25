@@ -11,10 +11,11 @@ Completed
 attempts ended with `8000`, "Plinth not connected", then `8040`, "line
 failure". No valid frame or successful session has been demonstrated.
 
-**Current handover (2026-09-24):** the review fixes and replacement ROM are
-prepared in the [v4 handover and test plan](stock-context-v4-handover.md).
-Use that image for the next burn; the entry-only release below is historical.
-No new physical test was performed during preparation.
+**Historical preparation handover (2026-09-24):** the review fixes and v4
+ROM were prepared in the [v4/v5 handover and test plan](stock-context-v4-handover.md).
+V4 was subsequently tried and v5 became the installed comparison ROM;
+the entry-only release below is historical. No new physical test was
+performed during this earlier preparation pass.
 
 The [round-one worksheet](stock-context-v3-round1.md) contains the
 ROM identity, wiring and earlier trials. Scope D0/D1 observed handheld
@@ -36,11 +37,12 @@ trigger and 128-segment configuration for these handheld runs.
 | C0e | Exact F7 binary; owner restored series resistors and removed lab +5 V, confirmed V24 ADAPTOR | 100 full bursts, 34 replies | 100 handheld; D2/D3 output trace abnormal | 0 |
 | C0f | Exact F7 binary; owner swept optical alignment during a V24 attempt | 100 full bursts, 34 replies | 100 handheld, 34 complete Uno output segments | 0 |
 
-The first four runs requested and achieved 33-ms replies after every third
-full handheld burst. The Arduino reported no yellow event or event
-drop. The scope independently placed output at 33.00–33.04 ms after
-the last handheld clock rise. C0 and C0b both emitted 93 Uno clock
-cells per reply, matching F7's earlier scope count; C2 emitted 56.
+The first four runs requested and achieved 33-ms replies on qualifying
+bursts 1, 4, 7, ... (one in every three). The Arduino reported no yellow
+event or event drop. The scope independently placed output at
+33.00–33.04 ms after the last handheld clock rise. C0 and C0b both
+emitted 93 Uno clock cells per reply, matching F7's earlier scope count;
+C2 emitted 56.
 The instrument measured 97.7 kSa/s after each acquisition, and each
 2,000-row segment exports at 40 us/row. This resolves the roughly
 916-us return marker and millisecond placement, not bit-edge setup.

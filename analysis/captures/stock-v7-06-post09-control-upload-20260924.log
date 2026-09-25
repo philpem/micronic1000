@@ -1,0 +1,28 @@
+"/home/philpem/Micronic-1000/.cache/ir-arduino/m1000-arduino-data/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude" "-C/home/philpem/Micronic-1000/.cache/ir-arduino/m1000-arduino-data/packages/arduino/tools/avrdude/8.0.0-arduino1/etc/avrdude.conf" -v  -patmega328p -carduino "-P/dev/ttyACM0" -b115200 -D "-Uflash:w:analysis/arduino/releases/stock-v6-framing-matrix/06-prefix7e-open7e/m1000_ir_probe.ino.hex:i"
+Avrdude version 8.0-arduino.1
+Copyright see https://github.com/avrdudes/avrdude/blob/main/AUTHORS
+
+System wide configuration file is /home/philpem/Micronic-1000/.cache/ir-arduino/m1000-arduino-data/packages/arduino/tools/avrdude/8.0.0-arduino1/etc/avrdude.conf
+User configuration file /home/philpem/.avrduderc does not exist
+
+Using port            : /dev/ttyACM0
+Using programmer      : arduino
+Setting baud rate     : 115200
+AVR part              : ATmega328P
+Programming modes     : SPM, ISP, HVPP, debugWIRE
+Programmer type       : Arduino
+Description           : Arduino bootloader using STK500 v1 protocol
+HW Version            : 3
+FW Version            : 4.4
+
+AVR device initialized and ready to accept instructions
+Device signature = 1E 95 0F (ATmega328P, ATA6614Q, LGT8F328P)
+Reading 10266 bytes for flash from input file m1000_ir_probe.ino.hex
+in 1 section [0, 0x2819]: 81 pages and 102 pad bytes
+Writing 10266 bytes to flash
+Writing | ################################################## | 100% 2.02s
+Reading | ################################################## | 100% 1.69s
+10266 bytes of flash verified
+
+Avrdude done.  Thank you.
+New upload port: /dev/ttyACM0 (serial)

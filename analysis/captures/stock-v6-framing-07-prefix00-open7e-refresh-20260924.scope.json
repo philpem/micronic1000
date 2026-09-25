@@ -1,0 +1,28 @@
+{
+  "saved_utc": "2026-09-24T11:33:01Z",
+  "instrument": "Keysight MSO-X 3054A",
+  "ter": "+1",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "source": "POD1",
+  "format": "BYTE RAW",
+  "points": 200000,
+  "sample_rate_hz": 20000000,
+  "sample_interval_s": 4e-07,
+  "origin_s": -0.04,
+  "trigger": "DIG2 POS",
+  "timebase_s_div": 0.008,
+  "reference": "CENT",
+  "position_s": 0,
+  "png": "analysis/captures/stock-v6-framing-07-prefix00-open7e-refresh-20260924.png",
+  "raw_gzip": "analysis/captures/stock-v6-framing-07-prefix00-open7e-refresh-20260924.pod1.bin.gz",
+  "raw_sha256": "af56bc06b3e1c219e2e9d94cbe734b301b6ceef71d12e6893339f36e6612ffe2",
+  "owner_result": "R6IEC29SCAN0000",
+  "decode": "101/101 D2 rises; five lead lows + raw prefix00 + opening7E + payload 00 07 00 02 01 43 00 00 02 01",
+  "median_cell_us": 121.6,
+  "launch_delay_after_last_D1_rising_ms": 33.048,
+  "yellow_low_ms": [
+    12.842,
+    13.7604
+  ],
+  "yellow_low_us": 918.4
+}

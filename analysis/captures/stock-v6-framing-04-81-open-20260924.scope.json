@@ -1,0 +1,17 @@
+{
+  "utc_saved": "2026-09-24T10:35:58Z",
+  "instrument": "Keysight MSO-X 3054A",
+  "ter": "+0",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "source": "POD1",
+  "format": "BYTE RAW",
+  "points": 200000,
+  "sample_rate_hz": 20000000,
+  "sample_interval_s": 4e-07,
+  "origin_s": -0.04,
+  "trigger": "DIG2 POS",
+  "timebase_s_div": 0.008,
+  "reference": "CENT",
+  "position_s": 0,
+  "png": "analysis/captures/stock-v6-framing-04-81-open-20260924.png"
+}

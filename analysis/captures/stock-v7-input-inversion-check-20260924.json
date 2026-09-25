@@ -1,0 +1,35 @@
+{
+  "capture": "analysis/captures/stock-v7-06-post10-control-20260924",
+  "clock_falls": 101,
+  "data_bits_at_clock_fall": "00000011111100111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+  "raw_bytes": [
+    "7E",
+    "7E",
+    "00",
+    "07",
+    "00",
+    "02",
+    "01",
+    "43",
+    "00",
+    "00",
+    "02",
+    "01"
+  ],
+  "complement_bytes": [
+    "81",
+    "81",
+    "FF",
+    "F8",
+    "FF",
+    "FD",
+    "FE",
+    "BC",
+    "FF",
+    "FF",
+    "FD",
+    "FE"
+  ],
+  "complement_payload_five_zero_destuff_valid": true,
+  "complement_destuff_error": null
+}

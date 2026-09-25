@@ -1,0 +1,22 @@
+{
+  "variant": "10-double7e-payload80",
+  "purpose": "Single bit change in first payload byte00->80, conditional flag/payload-boundary C0->D0 prediction",
+  "flags": "compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_CONTEXT_EVENTS=1 -DSTOCK_PHASE_IDX=3 -DSTOCK_POL_IDX=0 -DSTOCK_CONTENT_IDX=2 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_DATA_INVERT=0 -DSTOCK_TX_SWAP=0 -DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3 -DSTOCK_STUFFING_MODE=1 -DSTOCK_CLOSE_FLAG=0 -DSTOCK_FLAG_IDX=1 -DSTOCK_CLOSE_BYTE=-1 -DSTOCK_PREFIX_BYTE=126 -DSTOCK_PAYLOAD00_TO80=1",
+  "source_sha256": "e59afcd39066b82796c0a5a252a5a52330b2e902b4e73609dbccf5da9d9b8672",
+  "harness_sha256": "e503504f9b2e97d20222e388e47f51c52dbc89de964072793891c2fcd726d365",
+  "hex_sha256": "acf8eeb402620049c12c1e770c854e3f3aec519ba0eb6f8bcb25b6eedb4c371d",
+  "payload_hex": "80070002014300000201",
+  "prefix": "7E",
+  "opening": "7E",
+  "lead_cells": 5,
+  "total_cells": 101,
+  "stuffing_mode": 1,
+  "inserted_stuff_bits": 0,
+  "changed_cell_zero_based": 21,
+  "phase_eighths": 2,
+  "delay_us": 33000,
+  "reply_every_n": 3,
+  "swap": 0,
+  "host_validation": "6 targeted tests passed; original complete stream differs only atcell21; window18..25=D0",
+  "physical_status": "Owner ECAD/status8E/C0/onebyte. Valid101cells;onlycell21 changed,window18..25=D0. Original00control restored ECA9/status8E/C0/onebyte,valid101cells. C0->D0 prediction unobserved. Uno verifiedsilent."
+}

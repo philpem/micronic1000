@@ -729,7 +729,25 @@ Byte-verified in `ROM00`. Static Phase-1 map of the ROM's receive chain as coded
 **3. `Link_BlockRx` (`ROM00:3378`) — CONFIRMED:**
 
 * RX arm, `ROM00:3378`–`33A6`: clear `LINK_CTRL` bit 0; set bit 5; dummy `IN A,(4Eh)` (`LINK_RXD`) at `ROM00:338C`; set bit 4; settle `LD B,20h`/`DJNZ`; clear bit 5. Same bit-5/bit-4 shape as the TX arm `ROM00:32CC`–`32EE`, plus the dummy `LINK_RXD` read.
-* byte loop `ROM00:33CF`: `IN A,(4Bh); RRCA; JR NC,33E0` waits for `LINK_STATUS` bit 0, `INI` reads `LINK_RXD` (`4Eh`) into `(HL)`. Timeouts return carry with `A=0xEE` (`ROM00:33EB`), `0xED` (`ROM00:3414`) or `0xEC` (`ROM00:341C`).
+* byte loop `ROM00:33CF`: `IN A,(4Bh); RRCA; JR NC,33E0` waits for `LINK_STATUS` bit 0, `INI` reads `LINK_RXD` (`4Eh`) into `(HL)`. Error returns carry with `A=0xEE` (`ROM00:33EB`), `0xED` (`ROM00:3414`) or `0xEC` (`ROM00:341C`). `ECh` has two byte-verified incoming branches: terminal `LINK_STATUS` bit 3 set at `ROM00:33FA`, and controller byte count below two at `ROM00:340D`. The latter leaves F sign set; the v5 hardware readout `R4IEC29` has F sign clear and therefore selects the status-bit branch (see [v4/v5 handover](stock-context-v4-handover.md#ec29-branch-trace-and-next-discriminating-test)).
+
+CONFIRMED (owner v6 physical readout, v6/stock bytes and independent
+review): the F7 V24 trial displayed diagnostic
+`R6IEC29SCAN0000`. The terminal `LINK_STATUS` sample was `CAh`:
+`LINK_STATUS` bits 0/2 clear, bits 1/3/6/7 set. The diagnostic's
+derived `INI` read count was `0000`. That count excludes the setup
+`LINK_RXD` read at `ROM00:338C`, has a 256-byte descriptor-boundary
+ambiguity, and does not measure physical optical byte arrival. The
+cause of `LINK_STATUS` bit 3 is OPEN; see the
+[v6 trial record](stock-context-v4-handover.md#v6-terminal-status-diagnostic-ready-for-hardware).
+
+The same-image F7 scope repeat captured Uno GPIO and yellow at 50 MSa/s:
+93/93 D5/D6 cells matched the configured five lead, `7Eh` flag and
+80 payload bits, while yellow showed a 918.42-us carry-set marker.
+This excludes a missing GPIO cell in that scoped run. The payload has
+no five-one run, so the capture does not test bit stuffing. Electrical
+output does not establish optical intensity, optical channel identity,
+or the controller's reason for terminal `LINK_STATUS=CAh`.
 
 **4. `Link_ValidateFrameHeader` (`ROM00:30DC`) — CONFIRMED:**
 
@@ -891,6 +909,7 @@ code, which needs a link. See T6 for the way out of that circle.
 | 2 | MSB- or LSB-first, on evidence wider than one byte? | **T1** — `1Fh` differs starkly between the two orders; otherwise **T6** |
 | 3 | Is there an FCS, and what polynomial? | **T6**, or **T5** followed by a completed-frame capture |
 | 4 | Is there a closing flag, or does the clock simply stop? | **T6** / **T5** |
+| 4a | Does a receive frame open with `81h` (owner's “GLAF”) and close with `7Eh` (FLAG)? | **SUSPECTED, tested 2026-09-24.** Controlled `81/7E` returned `R6IECA9SCAN0000`; `81/open` returned timeout `R6IEE6D` twice, with verified GPIO waveforms and recovered `7E/open` controls. No successful reception was demonstrated. Next compare an equal-length eight-clock, data-low tail to separate extra clocks from the `7E` pattern; see the [matrix results](stock-context-v4-handover.md#framing-matrix-physical-results-so-far). |
 | 5 | What does the return direction look like? | Not observable without a partner — **T4** characterises the front end instead |
 | 5a | Which Arduino LED reaches which handheld receive channel? | **OPEN.** Conn10's changed reaction on swapping software roles does not identify either optical destination. |
 | 6 | What clears `LINK_STATUS` bit 6 (`HSBUSY`) / bit 4 (`RXBUSY`)? | **T6** reads `LINK_STATUS` directly; conn3-conn13 cannot distinguish the bit-6 wait from the first bit-7 wait |

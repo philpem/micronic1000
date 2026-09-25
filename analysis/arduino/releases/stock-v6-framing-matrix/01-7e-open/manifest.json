@@ -1,0 +1,28 @@
+{
+  "purpose": "Fixed stock RX framing comparison candidate; does not claim receive acceptance",
+  "variant": "01-7e-open",
+  "fqbn": "arduino:avr:uno",
+  "arduino_cli": "arduino-cli  Version: 1.5.2-rc.1 Commit: fef6e48df Date: 2026-07-23T11:13:39Z",
+  "source": "analysis/arduino/m1000_ir_probe/m1000_ir_probe.ino",
+  "source_sha256": "a0fbfebe1963e9b2bd8e088d10e9e959d9ffc8b5a959698bc4d751f13835f97d",
+  "flags": "compiler.cpp.extra_flags=-DBLACK_USE_NPN=0 -DFEEDBACK_HARNESS=0 -DLISTEN_ONLY=0 -DFREE_TX=0 -DRX_NARROW=1 -DSTOCK_FIXED_CANDIDATE=1 -DSTOCK_CONTEXT_EVENTS=1 -DSTOCK_PHASE_IDX=3 -DSTOCK_POL_IDX=0 -DSTOCK_CONTENT_IDX=2 -DSTOCK_CLOCK_INVERT=0 -DSTOCK_DATA_INVERT=0 -DSTOCK_TX_SWAP=0 -DSTOCK_REPLY_DELAY_US=33000 -DSTOCK_REPLY_EVERY_N=3 -DSTOCK_STUFFING_MODE=1 -DSTOCK_CLOSE_FLAG=0 -DSTOCK_FLAG_IDX=1 -DSTOCK_CLOSE_BYTE=-1",
+  "candidate": {
+    "opening": "7e",
+    "payload": "00070002014300000201",
+    "stuffing_mode": 1,
+    "closing_byte": null,
+    "polarity": 0,
+    "physical_role_swap": 0,
+    "reply_delay_us": 33000,
+    "reply_every_n_full_bursts": 3,
+    "phase_reference": "data-rise relative to clock",
+    "phase": "+2/8 cell",
+    "phase_index": 3
+  },
+  "artifacts": {
+    "m1000_ir_probe.ino.hex": "24213f2ec3417f7d95724ab6a815d505588bc5fadf3dd9e26e19bba7a689c76b",
+    "m1000_ir_probe.ino.with_bootloader.hex": "f3ad268d86fb8f1f0888246a05e63d6e4046d6c1e067bf334051abcd25f32ea2"
+  },
+  "note": "The first physical row (01-7e-open) must reproduce the F7 baseline on the v6 ROM before interpreting later rows.",
+  "bench_status": "Flash verified and used for baseline, recovery, and final control; all three owner readouts were R6IEC29SCAN0000. Final capture has 93 clock cells, exact 7E + payload, 918.4 us yellow low. Uno is now restored to verified LISTEN_ONLY."
+}

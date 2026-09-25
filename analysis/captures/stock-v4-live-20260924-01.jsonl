@@ -1,0 +1,6 @@
+{"utc": "2026-09-23T23:36:02.926329+00:00", "monotonic_s": 923219.958751642, "direction": "rx", "line": "burst 1 cells  0  [content_idx=1 name=flag+03h echo wire_content=0 payload=- delay_req=500/0us emit_late_max=0 clock=0 invert=0 swap=0]  NO DATA-LINE ACTIVITY OBSERVED"}
+{"utc": "2026-09-23T23:36:55.071094+00:00", "monotonic_s": 923272.10350473, "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-23T23:36:55.075319+00:00", "monotonic_s": 923272.107720743, "direction": "rx", "line": "MODE: LISTEN ONLY -- not transmitting, sweep frozen."}
+{"utc": "2026-09-23T23:36:55.079575+00:00", "monotonic_s": 923272.111977424, "direction": "rx", "line": "  stock-context silent control: D8 yellow event capture"}
+{"utc": "2026-09-23T23:36:55.087203+00:00", "monotonic_s": 923272.119600738, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-23T23:39:24.995809+00:00", "monotonic_s": 923422.028206555, "direction": "rx", "line": "burst 1 cells  0  [content_idx=1 name=flag+03h echo wire_content=0 payload=- delay_req=500/0us emit_late_max=0 clock=0 invert=0 swap=0]  NO DATA-LINE ACTIVITY OBSERVED"}

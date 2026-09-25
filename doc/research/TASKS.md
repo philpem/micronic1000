@@ -6,17 +6,239 @@ State: continuously updated as work progresses.
 
 ## IR review follow-up — 2026-09-24
 
+**V7 diagnostic ready for programming:** ROM00 image
+`analysis/rom_exerciser/releases/stock-context-v7/micron1_stock_context_v7.bin`,
+programmer checksum **386DC5**; leave ROM01 unchanged. Captures the byte
+already written by the terminal INI and the active descriptor, without
+new receive I/O or pre-sample timing changes. Forty-seven v5/v6/v7 tests
+passed, including artifact reproduction and independent release review.
+Physical boot and the first single-7E readout are now owner-observed:
+`R7IEC29:CA000600E4FD` / `X0EFEE4FD0000060006`. The active descriptor
+is FE0Eh, post-return length 6 and buffer FDE4h; next-write pointer
+remains FDE4h, residual B=6 and IX=6. Reviewed decoding confirms no
+descriptor INI advance in this baseline, with no 256-byte ambiguity;
+the setup LINK_RXD read is separate. Terminal byte slot is invalid
+because LINK_STATUS=CAh has bit 2 clear. Double-7E trial is next; use the
+[v7 programming and test instructions](../re-notes/stock-context-v7-handover.md).
+
+The matched 101-cell zero-payload control timed out;
+restoring the original payload restored the early terminal read/error.
+Three/four opening flags remain exploratory
+and also move payload timing. See the
+[handover review](../re-notes/stock-context-v4-handover.md#review-recommended-next-tests).
+
+The owner's flag-count-as-ACK question was traced through RX entry,
+block receive, stock caller/header validation and the controller-facing
+TX handshake. CONFIRMED: no raw flag comparison or received-flag
+counter occurs in that examined path; CAh and 8Eh exit on LINK_STATUS
+bit 3 before software header/type validation. V6 stops before the
+stock caller could discard/re-arm. A flag-count rule inside the ASIC
+remains SUSPECTED, not ruled out. See the
+[code-path review](../re-notes/commstar-evidence.md#observed-receive-paths-and-the-flag-ack-hypothesis-2026-09-24).
+
+The double-7E/80-zero-payload control has now been run: owner reported
+`R6IEE6D`. The first logged reply's scope record verifies 101 intended
+cells and a 918-us yellow low at 32.9096 ms; a second logged reply
+after reset is outside that record. Restoring the original payload
+returned `R6IECADS8EN0001`, with all 101 GPIO cells matched and yellow
+low at 8.2120 ms for 918 us. Independent review supports a payload-
+pattern effect in this comparison: the double flags alone plus zeros
+did not reproduce the terminal read/error. It does not establish an
+ACK-count rule, a byte value or a valid frame.
+
+CONFIRMED (owner, scope, fresh ROM bytes and independent review):
+double-7E opening returned `R6IECA9S8EN0001`; all 101 emitted GPIO
+cells matched. LINK_STATUS=8Eh has bit 2 set, forcing the optional
+terminal INI read from LINK_RXD. LINK_STATUS bit 3 still selects the
+error exit. N0001 agrees for an ordinary small descriptor; byte value
+and valid framing remain unknown. Yellow low started at 8.2272 ms,
+before the full reply ended. The matched 00/7E prefix returned
+`R6IEC29SCAN0000`; its 101 GPIO cells matched and yellow low began
+at 12.842 ms, lasting 918.4 us. The double-7E repeat reproduced
+`R6IECA9S8EN0001`; all 101 GPIO cells matched and yellow low began
+at 8.2236 ms, lasting 918.4 us. This A/B/A
+readout supports a prefix-pattern-dependent terminal byte read/error,
+not completed frame acceptance. The post-return yellow marker starts
+before the full double-7E reply ends; it does not timestamp the exact
+status sample.
+
+CONFIRMED (owner and scope): the 81/payload/eight-zero-tail control
+returned `R6IEE6D`; all 101 intended GPIO cells were present and yellow
+low began at 37.6668 ms, lasting 918 us. The direct same-length
+81/raw7E repeat returned `R6IECADSCAN0000`, with all 101 intended
+GPIO cells and yellow low at 12.3688 ms lasting 918 us. Extra clocks
+alone did not reproduce the 7E-tail result. The data-pattern effect
+still does not identify a valid closing flag or FCS. CPU F changed
+from A9 to AD between 81/7E runs, but terminal LINK_STATUS remained
+CAh and the derived count remained N0000.
+
+CONFIRMED (owner readouts): `7E/open` and `7E/7E` returned
+`R6IEC29SCAN0000`; `81/7E` returned `R6IECA9SCAN0000`; `81/open`
+returned `R6IEE6D` twice. The baseline recovered `R6IEC29SCAN0000`
+after both 81 candidates. Valid scope records verify the intended
+93-cell open and 101-cell closed waveforms for all four variants;
+the first 81/open scope record was a transient and was replaced by
+a valid repeat. The final baseline also matched all 93 cells, with a
+918.4-us yellow low. The Uno is restored to verified LISTEN_ONLY and
+the scope to its prior settings.
+
+CONFIRMED (fresh bytes and reviewed v6 hook): both EC readouts have
+terminal `LINK_STATUS=CAh`, selecting the same bit-3 error branch,
+and derived count `N0000`. The changed CPU sign flag does not establish
+short count or accepted framing. EE is the stock receive timeout;
+v6 does not report terminal status/count on that exit. The independent
+raw closing-byte option and 32 host tests are implemented. No new ROM
+burn is needed for the proposed eight-clock control.
+
+SUSPECTED (owner, 2026-09-24): the receiver may require more than one
+opening flag before the payload. With the eight-clock tail control complete,
+compare repeated opening flags with a single opening flag while holding
+payload, pin assignment, phase and stuffing fixed. Record the exact
+prefix and distinguish flag-pattern effects from added clocks and
+payload delay with a matched-length control. A changed error alone
+does not establish successful packet reception.
+
+SUSPECTED (owner): the trailer could be an FCS and use the data
+stuffing rule. Fresh TX/RX/header-validator review confirms only that
+these ROM routines do not calculate/check a software FCS; ASIC FCS
+remains possible. RX reads available bytes and tests terminal
+`LINK_STATUS` bit 3, whose error meaning is still unknown. Bit 2
+permits one optional read; it does not identify the two bytes excluded
+from the success count. Corrected the older contrary claims in
+[Commstar evidence](../re-notes/commstar-evidence.md#fcs-hypothesis-and-test-limits-2026-09-24).
+An 8-bit exhaustive candidate set has 256 values for one fixed trailer
+placement/framing convention. V6 stops on the first RX return even if
+invalid, so an unattended search needs a report/re-arm diagnostic;
+later emitted candidates would otherwise be untested. Zero derived
+reads cannot rule out ASIC buffering until validation. The delimiter
+matrix and extra-clock control are complete; test the opening-prefix
+hypothesis before selecting an FCS search and its oracle.
+
+V6 terminal-status/count diagnostic was prepared and physically tested
+on ROM00: programmer checksum `385DEB`, ROM01 stock. It preserves the
+v5 boot/receive path through the terminal `LINK_STATUS` sample and
+prints `R6IaaFFSssNnnnn` on EC. The matched silent/F7 V24 pair is
+recorded below. OPEN: why `LINK_STATUS` bit 3 becomes set and the
+active descriptor length needed to qualify the derived count.
+The [v6 handover](../re-notes/stock-context-v4-handover.md#v6-terminal-status-diagnostic-ready-for-hardware)
+has image identity and instructions.
+CONFIRMED (owner and Uno): v6 passed VERIFY and coldstarted through
+TESTING to Main Menu; the boot marker was 5,452 us. Silent V24 FOO
+gave `8000 error`, then `8040 error`, with 100 handheld bursts and zero
+Uno TX. F7 gave `R6IEC29SCAN0000ess` and one 920-us return marker
+11,912 us after the Uno-reported TX start. The diagnostic field says
+raw AF=`EC29`, terminal `LINK_STATUS=CAh`, derived receive-loop read
+count `0000`; `ess` is leftover screen text. `LINK_STATUS` bits 0/2
+were clear, bits 1/3/6/7 set. The count excludes the setup read and
+has a 256-byte descriptor boundary ambiguity; it is not a physical
+byte-arrival count. The Uno is restored to flash-verified LISTEN_ONLY.
+OPEN: controller cause of `LINK_STATUS` bit 3, active descriptor length,
+and whether the F7 light at the handheld satisfies receive timing.
+The same-image F7 scope repeat confirmed the **Uno GPIO waveform**:
+93/93 cells match five lead clocks, `7Eh`, then all 80 payload bits;
+50-MSa/s D2/D3 capture shows no missing cell. Scope D4 measured a
+918.42-us yellow low after the frame. This payload has no five-one run,
+so its stuffing rule was not exercised. The owner again saw
+`R6IEC29SCAN0000`. The Uno was restored to flash-verified LISTEN_ONLY
+and the scope's former settings were restored. Keep the F7 payload
+fixed for the reviewed framing comparisons above.
+
+The same-ROM swap-only comparison changed `STOCK_TX_SWAP=0` to `1` in
+an otherwise byte-matched archived F7 build. CONFIRMED (owner): with
+unchanged alignment, it returned `8000 error` then `8040 error`, no
+`R6I...`. Its Uno log contains 148 bursts and 50 replies but no
+return marker during the V24 attempt; the one yellow pulse was a
+5,448-us pre-attempt boot/reset event. A 20-ms POD1 record decoded the
+swapped D6 clock/D5 data as 93/93 expected F7 cells with no D4 edge.
+The unchanged-alignment A/B/A control then reinstalled the exact
+unswapped F7 HEX (flash VERIFY passed). The owner again saw
+`R6IEC29SCAN0000`; the Uno logged one replied 22-cell burst and a
+916-us yellow return marker. The scope decoded 93/93 expected cells
+on D5 clock/D6 data and a 918.4-us yellow low 553.84 us after the last
+data fall. This establishes a repeatable assignment-dependent outcome
+under the present setup. No-entry versus no-return from `Link_BlockRx`
+in the swapped run remains OPEN.
+The Uno and scope were restored to silent and their prior settings.
+CONFIRMED (owner hardware check): the IR signal reaches the handheld's
+optical receivers. The receive logic is inside an ASIC; without
+schematics the owner cannot identify which internal receiver is clock
+or data. Discard the proposed tagged-pulse channel-mapping test as
+unactionable. A richer descriptor/status diagnostic remains a fallback
+after the reviewed Uno-only matrix. No-entry versus no-return is not
+the next ROM-burn priority, especially given the completed normal UI
+error sequence in the swapped run.
+
+SUSPECTED (owner idea, 2026-09-24): a receive frame might use `81h`
+as its opening marker and `7Eh` as its closing marker. The current
+F7 response has `7Eh` at its start and no closing marker, so it does
+not test this mixed-marker form. An earlier `81h`-opening trial also
+had no closing marker and was not a valid causal comparison because
+the exact F7 repeat subsequently had no marker. The new controlled matrix above tested this mixed-marker form and
+returned the terminal error; the marker interpretation remains open. See the
+[wire-protocol note](../re-notes/ir-wire-protocol.md).
+
+[Issue #27](https://github.com/philpem/micronic1000/issues/27) tracks the
+stock cold/warm boot and standby/wake control-flow trace. CONFIRMED
+(owner): the unit turns off LCD and backlight after inactivity and waits
+for a key in low-power standby. SUSPECTED (owner hypothesis): this path
+is tested during `TESTING...` and could explain the Enter redraw. The
+stock cold body falls through to the shared `ROM00:024D` warm-restart
+continuation; that fact alone does not establish another boot cycle.
+CONFIRMED (owner): v5, programmer checksum `3834FC`, passed TESTING
+after about one to two minutes and displayed `PARCON 1000` after beep
+and double-beep. The screen later blanked in standby; a second
+double-beep and `Backup battery low` warning preceded Main Menu.
+CONFIRMED (owner): that last transition was a return from standby, not
+a warmboot. The silent Uno logged a 5,448-us yellow boot marker.
+The cause of v4's different behavior remains open.
+The first v5 silent V24 control captured 100 handheld bursts, zero Uno
+TX and no yellow event; the owner saw `8000 error`, then `8040 error`
+with no reported `R4I...` prefix. The archived F7 sketch was
+flash-verified on the Uno. Its first matched V24 run produced a
+916-us yellow low paired with a transmitted reply and the owner saw
+`R4IEC29in progress`. The one-shot diagnostic intentionally stops;
+A=`ECh`, F=`29h` has carry set. Fresh ROM bytes and an independent flag
+review now exclude the short-count exit: that exit necessarily leaves
+F sign set, whereas `29h` has sign clear. CONFIRMED: the final sampled
+`LINK_STATUS` had bit 0 clear and bits 1 and 3 set; bit 2 is unknown.
+Why `LINK_STATUS` bit 3 was set remains OPEN. The next useful diagnostic
+is the raw terminal status byte and controller byte count, sampled only
+after the stock status read, then a matched silent/F7 V24 pair. Do not
+spend another ROM burn merely to distinguish the two `ECh` branches.
+The Uno was restored to verified LISTEN_ONLY. The owner's reset-button
+press then returned the handheld to Main Menu; do not classify that
+as a destructive cold start.
+The reset-button silent V24 repeat also captured 100 bursts, zero Uno
+TX, no yellow event and the owner saw `Error 8000`, then `Error 8040`.
+Another reset-button return to Main Menu emitted a 5,448-us yellow
+initialization marker without proving a cold boot. The second F7
+attempt reproduced `R4IEC29in progress` and a 920-us yellow marker
+11,888 us after the Uno's TX start. Its sole reported replied burst
+had `NO DATA-LINE ACTIVITY OBSERVED` in the Uno sample; preserve that
+limit on stimulus attribution. The Uno is restored to verified
+LISTEN_ONLY.
+CONFIRMED (sketch source and test): sparse F7 replies occur on
+qualifying bursts 1, 4, 7, ..., not first on burst 3. The second F7
+capture's zero data-line rises do not mean there were no clock cells.
+
 The [v4 handover and test plan](../re-notes/stock-context-v4-handover.md)
-is ready for the next agent. Review fixes: callback-memory regression
+records the first physical trial and the prepared v5 stock-reset
+comparison. Review fixes: callback-memory regression
 repaired; reset/resume and BDOS reset routes covered; diagnostic boot
 identity added; raw stock receive A/F displayed after the first return;
 exact F7 and silent HEX artifacts archived. 69 project-environment tests
-pass, and the canonical accelerated boot reaches Main Menu.
+passed before the physical trial, and the canonical accelerated boot
+reached Main Menu.
 
-Pending: owner installs the new ROM, confirms physical coldstart and
-5.45-ms boot witness, then matched silent/F7 V24 trials. No hardware
-interaction occurred during preparation; last verified Uno state remains
-LISTEN_ONLY. F7's earlier 34 carry-set markers are useful evidence, but
+CONFIRMED (owner): v4 ROM00 passed programmer VERIFY with checksum
+`38358B`, displayed `TESTING...`, then redrew that screen on Enter;
+no prompt/menu was reported. Silent Uno logging recorded no yellow boot
+pulse. The owner reports that `TESTING...` normally lasts several minutes,
+so the emulator's 38-second full-RAM-test estimate is not a physical
+deadline. The next diagnostic image restores stock reset routes while
+keeping v4's receive/display code. Its physical boot is pending; do not
+proceed to F7 until a normal prompt/menu and boot witness are observed.
+F7's earlier 34 carry-set markers are useful evidence, but
 return framing is not confirmed. Optical arrival is owner-confirmed;
 no more internal probing or alignment sweeps are requested.
 
@@ -59,9 +281,10 @@ owner also confirms **R/D/P**: yellow pulses with `2A=20h/21h`, `2C=20h`,
 the relevant top-V24 shared-latch settings. This does not run the IR
 controller or prove optical coexistence.
 
-**Current IR round:** stock-context v3 **revision 2** is the reviewed next
-ROM00 burn. Its guarded patch wraps the existing `Link_BlockRx` call with a
-post-return yellow pulse. The stock worker's `LINK_STATUS` decision remains
+**Historical IR round (superseded by v4 above):** stock-context v3
+**revision 2** was the reviewed ROM00 burn. Its guarded patch wraps the
+existing `Link_BlockRx` call with a post-return yellow pulse. The stock
+worker's `LINK_STATUS` decision remains
 unchanged. A passive Uno D8 interrupt logger permits
 silent, free-running and handheld-paced comparisons without further ROM
 changes. See the [stock-context test plan](../re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial).
@@ -609,9 +832,9 @@ SUSPECTED until bench evidence discriminates them.
    * **Run 6 (front-end init + early probe witness `3351`, owner 2026-09-20):**
      the stock I/O log shows a **teardown** after the bit6 poll (drop
      `LINK_CTRL` bit4/bit0, `ROM00:3361-3376`) and three latches the
-     boot-replacing exerciser never set: `48h` (`IR_STROBE`) = `03h`
+     boot-replacing exerciser never set: `48h` (`STATUS_DRIVE`) = `03h`
      (`Session_SystemInit` `ROM00:0359`), `07h` (`CTRL_07`) = `00h`
-     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`/`OUT_LATCH`, also
+     (`Link_StatusWatcher` `ROM00:24A5`), `04h` (`IRQ_MASK`, also
      power-latch bits) = `E0h` (`ROM00:22F2`); it also moves `LinkProbe` to
      boot (settling). LCD `W D8 40 10 00 D3 C4 C8 55`, **still no burst**.
    * **Run 7 (6/7 idle-state witness `3072`, owner 2026-09-20):** set
@@ -1264,3 +1487,115 @@ current priority order; the concise lists above are authoritative.
 ---
 
 Historical session log: see [`session-log.md`](session-log.md).
+
+### V7 double-7E follow-up (2026-09-24)
+
+CONFIRMED: owner v7 readout captured terminal C0h with LINK_STATUS8Eh,
+one-byte advancement in a six-byte descriptor, still EC/carry error.
+First 101-cell waveform matched. Exact C0h readout reproduced on repeat;
+repeat scope invalid (transient), serial reply/yellow recorded. Bracket
+with single-7E using yellow D4 falling trigger: completed, original CA/no
+advancement reproduced and all93 cells captured. Next investigate C0h
+against bitstream/terminal timing before more framing/FCS trials. See stock-context-v7 handover. Verify Uno
+LISTEN ONLY before every handheld reset; startup with active responder
+reached R diagnostics per owner. Mechanism remains unresolved.
+
+**C0 analysis update (2026-09-24):** valid captures independently decoded;
+configured stuffing adds no bits to this payload. No aligned C0 byte.
+Next proposed test is double-7E payload07->06, changing only one bit:
+SUSPECTED shifted07/00 window would changeC0->80. Verify waveform and
+restore original control; do not infer ASICphase from a sliding match.
+See v7 handover and analysis/stock_context_v7_bitstream.py. Uno silent.
+
+**Payload06 test result (2026-09-24):** reviewed scope confirms only
+cell36 changed and candidatewindow35..42=80; owner still reportsC0
+withstatus8E/onebyte/EC. Fixedwindowprediction failed; no alternate
+identity promoted. Original07control restored: C0/status8E/onebyte,
+valid101cells and yellow onset8.2616ms (modified06:8.8664ms).
+07/06/07 comparison complete. Uno verifiedsilent; byte origin open.
+
+**Payload80 result (2026-09-24):** reviewed101cell capture,onlycell21
+changed;fixedboundarywindow18..25=D0 butownerstillC0/status8E/onebyte.
+Simpleboundaryprediction failed; noalternateidentity. Original00control
+restored ECA9/status8E/C0/onebyte with valid101cells and8.2636ms yellow
+onset. Both fixedwindowtests complete; C0origin open. Uno verifiedsilent;
+fullresult in v7handover.
+
+### Alternative C0 explanations (2026-09-24)
+
+Reviewed, all byte identities remain SUSPECTED: terminal residue/partial
+byte; different receive phase; preexisting controller state/local echo;
+constant error-associated value. V7 valid-byte flag means INI captured,
+not accepted wire data. Fresh stock listing confirms setup read is
+unrecorded and terminal error status sampled before optionalINI.
+RawGPIO D3=0 at every D2 rise in original/09/10, intended bits stable
+40..80us later; ASIC sampleedge remainsunknown. Earlier handheldburst
+decodes03, bitreverse=C0 is numericalmatchonly. Proposed next: bounded
+phase-only trial with original bytes, bracketed bycurrent+2/8 control;
+then existing-setup-read/status snapshot if unresolved. No extra port
+reads. See v7handover for discriminating observations. Uno remains silent.
+
+**Minus2 phase trial (2026-09-24):** owner8000/8040,34loggedreplies,
+no yellow and yellow-trigger scope nevercompleted. No validwaveform;
+repeat unchanged withD2clocktrigger before plus2control. ASIC sampling
+edge and noentry/noreturn distinction remainopen. Uno verifiedsilent.
+
+**Minus2 repeat / inversion (2026-09-24):** reviewedvalid101cell
+capture, originalbitsatD2rise/allzerosatD2fall, owner8000/8040again,
+34replies/noyellow. Plus2capture hasintendedbitsatD2fall. Ownerclock
+inversion hypothesis isconsistentbutunproved; directASICfallingedge
+isexternallyequivalent. Datainversion separatelyunproved andwould
+complementpayloadaswellasflags. Restoreplus2control next. Uno silent.
+
+**Phase control failed (2026-09-24):** restoredplus2 also8000/8040,
+47loggedreplies/noyellow. Comparison inconclusive; do not attribute loss
+ofR7 to minus2 or treat it as inversion proof. Owner requests hardware
+reboot for suspectedquiet-state recurrence. Uno reset/verifiedsilent;
+await handheldreboot then originalplus2 D2clockcapture baseline recovery.
+
+**Post-reboot recovery (2026-09-24):** reviewed EC29/status8A with
+onebyte advancement, no terminalINI. EarlierordinaryINI occurred; byte
+unknown becausev7onlycapturesterminal. Display00 isplaceholder. Valid
+101celloriginalcapture,yellow8.248ms/918us. R7recoveredbut8E/C0notrestored;
+phasecomparison inconclusive. Nextdiagnostic should recordordinarybytes
+alongsideterminal byte to test read-path/timing vs changeddata. Uno silent.
+
+
+**V8 prepared (2026-09-24):** ROM00 checksum `387331`; 76 tests and
+independent review passed. Post-return first-two-byte buffer readback
+replaces saved BC display; receive/yellow timing unchanged from v7.
+Physical validation pending. Follow the
+[v8 handover](../re-notes/stock-context-v8-handover.md): programmer VERIFY,
+silent boot/control, then original plus-2/8 double-7E response with both
+rows and waveform. Uno remains verified silent. Scratch assessed only
+for controlled FOO; no claim that upper TPA is generally free.
+
+
+**V8 first physical result (2026-09-24):** double-7E returned status8E,
+terminal C0, buffer C0 plus invalid1A, one-byte advancement. Terminal-path
+readback is consistent; ordinary-path byte still unknown. Original
+101-cell waveform verified. Uno restored and verified silent. Next one
+unchanged repeat seeking 8A; do not treat terminal C0 as an ordinary-byte
+observation. Full evidence in v8 handover.
+
+
+**V8 baseline repeat secured (2026-09-24):** yellow-triggered capture
+matches original 101-cell reply; status8E terminalC0 bufferC0/invalid1A.
+Two valid waveform trials now support terminal readback consistency;
+ordinary8A still absent. Uno verified silent. Recommended next: controlled
+reply-start-delay comparison with fixed bits/phase and 33ms controls,
+not additional identical repeats or FCS brute force yet. Timing cause is
+SUSPECTED, not established; see v8 handover for limits.
+
+
+**Hardware parked; offline review complete (2026-09-24):** use the
+[v8 refined battery](../re-notes/stock-context-v8-handover.md#offline-review).
+This supersedes delay-first and indefinite unchanged repeats. A-B-A-C-A:
+original, payload07→47 (LSB-window prediction C0→C4), original, +60us
+reply delay, original; repeat C/A only if C changes before causal claim.
+D4 trigger with >=50ms pretrigger; actual launch delay must be measured.
+Fixed raw normal-MSB C0 windows eliminated across the three mutations;
+reversed/inverted/partial/controller-state theories remain open. Error
+precedes completion of the emitted reply; no complete-frame/FCS claim.
+No extra ROM needed; Uno silent, no logger or capture armed. Resume only
+when owner returns to hardware testing.

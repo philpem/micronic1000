@@ -1,0 +1,17 @@
+{
+  "utc": "2026-09-24T10:57:52Z",
+  "ter_before_rearm": "+0",
+  "ter_after_arm_300ms": "+0",
+  "trigger_mode": "EDGE",
+  "trigger_source": "DIG2",
+  "trigger_slope": "POS",
+  "sweep": "NORM",
+  "timebase_s_div": 0.008,
+  "reference": "CENT",
+  "position_s": 0,
+  "waveform_source": "POD1",
+  "waveform_format": "BYTE",
+  "points_mode": "RAW",
+  "sample_rate_hz": 20000000,
+  "system_error": "+0,\"No error\""
+}

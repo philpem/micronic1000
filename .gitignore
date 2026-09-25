@@ -22,4 +22,8 @@ analysis/rom_exerciser/*.bin
 analysis/rom_exerciser/releases/**/*.bin
 
 # Disk-backed local Arduino toolchain/build cache (not /tmp tmpfs).
-/.cache/ir-arduino/
+# The whole .cache tree is local scratch (PR bodies, review notes, caches).
+/.cache/
+
+# Local credential/secret files -- never commit.
+/TOKEN

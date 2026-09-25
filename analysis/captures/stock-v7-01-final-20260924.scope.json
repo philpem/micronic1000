@@ -1,0 +1,11 @@
+{
+  ":RSTate?": "STOP",
+  ":TER?": "+1",
+  ":SYSTem:ERRor?": "+0,\"No error\"",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "owner_rows": [
+    "R7IEC29:CA000600E4FD",
+    "X0EFEE4FD0000060006"
+  ],
+  "trigger": "DIG4 NEG"
+}

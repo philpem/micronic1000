@@ -1,0 +1,15 @@
+{
+  "utc": "2026-09-24T02:21:36.151678+00:00",
+  "scope_id": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+  "source": "POD1",
+  "format": "BYTE",
+  "mode": "RAW",
+  "scope_sample_rate_hz": 50000000.0,
+  "acq_points": 100,
+  "transfer_points": 1000000,
+  "preamble": "+0,+0,+1000000,+1,+2.00000000E-008,-2.00000000E-003,+0,+1.00000000E+000,+0.0E+000,+0",
+  "time_scale_s_div": 0.002,
+  "trigger_source": "DIG2",
+  "transferred_bytes": 1000000,
+  "scope_error": "+0,\"No error\""
+}

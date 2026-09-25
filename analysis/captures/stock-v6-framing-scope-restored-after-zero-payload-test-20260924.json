@@ -1,0 +1,24 @@
+{
+  "utc": "2026-09-24T12:23:05.840281+00:00",
+  "restored_from": "analysis/captures/stock-v6-framing-baseline-scope-setup-20260924.json before values",
+  "error_queue_before_restore": "+0,\"No error\"",
+  "state": {
+    "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SRATe?": "10000000",
+    ":ACQuire:POINts?": "1000000",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "LEFT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG1",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "AUTO",
+    ":WAVeform:SOURce?": "CHAN1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "NORM",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  },
+  "note": "Acquisition sample rate and point count were queried but not set; the scope derives these from the timebase/acquisition mode."
+}

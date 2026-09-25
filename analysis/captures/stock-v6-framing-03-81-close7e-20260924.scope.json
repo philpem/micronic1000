@@ -1,0 +1,23 @@
+{
+  "utc": "2026-09-24T10:05:48.896348+00:00",
+  "purpose": "v6 framing matrix 81 opening + raw 7E closing marker",
+  "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+  ":TER?": "+1",
+  ":WAVeform:SOURce?": "POD1",
+  ":WAVeform:FORMat?": "BYTE",
+  ":WAVeform:POINts:MODE?": "RAW",
+  ":WAVeform:POINts?": "+200000",
+  ":WAVeform:PREamble?": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  ":ACQuire:SRATe?": "20000000",
+  ":ACQuire:POINts?": "2000000",
+  ":TIMebase:SCALe?": "+8.000E-03",
+  ":TIMebase:POSition?": "+0.0E+00",
+  ":TIMebase:REFerence?": "CENT",
+  ":TRIGger:EDGE:SOURce?": "DIG2",
+  ":TRIGger:EDGE:SLOPe?": "POS",
+  ":SYSTem:ERRor?": "+0,\"No error\"",
+  "wave_bytes": 200000,
+  "wave_sha256": "275a387bc9aa52a545f166dca9626ddebffcae4ebe85f00d6aa077499ccaecf5",
+  "png_bytes": 26668,
+  "error_after_transfer": "+0,\"No error\""
+}

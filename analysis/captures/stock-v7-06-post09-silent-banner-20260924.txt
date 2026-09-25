@@ -1,0 +1,6 @@
+ontrol: D8 yellow event capture
+STOCK_CONTEXT_V3 width_us=32 drops=16
+M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms.
+MODE: LISTEN ONLY -- not transmitting, sweep frozen.
+  stock-context silent control: D8 yellow event capture
+STOCK_CONTEXT_V3 width_us=32 drops=16

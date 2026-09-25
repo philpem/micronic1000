@@ -241,6 +241,40 @@
 #ifndef STOCK_CLOSE_FLAG
 #define STOCK_CLOSE_FLAG 0
 #endif
+// Optional raw closing marker byte, independent of the opening marker.
+// -1 disables it; 0..255 appends it after terminal data stuffing. This is
+// unstuffed delimiter behavior, not an FCS byte in the stuffed data region.
+#ifndef STOCK_CLOSE_BYTE
+#define STOCK_CLOSE_BYTE -1
+#endif
+// Optional raw prefix byte immediately before the opening flag for the fixed
+// type-2 ACK. -1 leaves the historical frame unchanged; the byte is outside
+// the stuffed payload (e.g. 7E repeats a flag, 00 adds eight data-low cells).
+#ifndef STOCK_PREFIX_BYTE
+#define STOCK_PREFIX_BYTE -1
+#endif
+// Diagnostic payload for fixed type-2 ACK replies: 10 zero bytes instead of
+// the stock 10-byte ACK. This keeps the data field exactly 80 cells long.
+#ifndef STOCK_ZERO_PAYLOAD
+#define STOCK_ZERO_PAYLOAD 0
+#endif
+// One-bit diagnostic: second payload byte 07h -> 06h.
+#ifndef STOCK_PAYLOAD07_TO06
+#define STOCK_PAYLOAD07_TO06 0
+#endif
+#if STOCK_PAYLOAD07_TO06 != 0 && STOCK_PAYLOAD07_TO06 != 1
+#error "STOCK_PAYLOAD07_TO06 must be 0 or 1"
+#endif
+// One-bit diagnostic: first payload byte 00h -> 80h.
+#ifndef STOCK_PAYLOAD00_TO80
+#define STOCK_PAYLOAD00_TO80 0
+#endif
+#if STOCK_PAYLOAD00_TO80 != 0 && STOCK_PAYLOAD00_TO80 != 1
+#error "STOCK_PAYLOAD00_TO80 must be 0 or 1"
+#endif
+#if STOCK_PAYLOAD00_TO80 && (STOCK_PAYLOAD07_TO06 || STOCK_ZERO_PAYLOAD)
+#error "STOCK_PAYLOAD00_TO80 requires the other payload controls off"
+#endif
 #ifndef STOCK_REPLY_DELAY_US
 #define STOCK_REPLY_DELAY_US 4000
 #endif
@@ -274,8 +308,16 @@
     (STOCK_CLOSE_FLAG != 0 && STOCK_CLOSE_FLAG != 1)
 #error "STOCK_STUFFING_MODE must be -1..2; STOCK_CLOSE_FLAG must be 0 or 1"
 #endif
+#if STOCK_CLOSE_BYTE < -1 || STOCK_CLOSE_BYTE > 255 || \
+    STOCK_PREFIX_BYTE < -1 || STOCK_PREFIX_BYTE > 255 || \
+    (STOCK_CLOSE_FLAG && STOCK_CLOSE_BYTE >= 0)
+#error "STOCK_CLOSE_BYTE/STOCK_PREFIX_BYTE must be -1..255; close byte cannot combine with STOCK_CLOSE_FLAG"
+#endif
 #if STOCK_FIXED_CANDIDATE == 0 && STOCK_CONTENT_IDX == 3
 #error "STOCK_CONTENT_IDX=3 requires STOCK_FIXED_CANDIDATE=1"
+#endif
+#if STOCK_ZERO_PAYLOAD != 0 && STOCK_ZERO_PAYLOAD != 1
+#error "STOCK_ZERO_PAYLOAD must be 0 or 1"
 #endif
 #if STOCK_REPLY_DELAY_US < 500 || STOCK_REPLY_DELAY_US > 60000
 #error "STOCK_REPLY_DELAY_US must be 500..60000"
@@ -678,6 +720,13 @@ void putClosingFlag(uint8_t *zeroRun) {
   putFlag();
 }
 
+// Append an independently selected raw closing marker after stuffed data.
+// This delimiter is outside the stuffed data region.
+void putClosingByte(uint8_t value, uint8_t *zeroRun) {
+  finishStuffing(zeroRun);
+  for (int8_t i = 7; i >= 0; i--) putBit((value >> i) & 1);
+}
+
 #if LADDER_TEST
 // ------------------------------------------------- completeness ladder ----
 const uint8_t  LD_N_STIM  = 6;
@@ -886,6 +935,12 @@ void buildReply(uint8_t content) {
   uint8_t zeroRun = 0;
   replyContent = content;
   replyPayloadLen = 0;
+#if (FREE_TX || RX_NARROW || RX_SWEEP) && STOCK_PREFIX_BYTE >= 0
+  if (content == 7) {
+    for (int8_t i = 7; i >= 0; --i)
+      putBit((STOCK_PREFIX_BYTE >> i) & 1);
+  }
+#endif
   switch (content) {
     case 0: putFlag(); break;
     case 1: { const uint8_t p[] = { 0x03 };
@@ -908,11 +963,19 @@ void buildReply(uint8_t content) {
       putFlag(); putStuffedByte(0x03, &zeroRun); putFrame(&zeroRun);
       putClosingFlag(&zeroRun); break;
     case 7: {                                  // type-2 control ack (handshake)
+#if STOCK_ZERO_PAYLOAD
+      static const uint8_t zeroPayload[10] = {};
+      recordReplyPayload(content, zeroPayload, sizeof(zeroPayload));
+      putFlag();
+      for (uint8_t i = 0; i < sizeof(zeroPayload); i++)
+        putStuffedByte(zeroPayload[i], &zeroRun);
+#else
       static const uint8_t ack[10] = {
-        0x00, 0x07, 0x00, 0x02, RX_ACK_SEQ, RX_ACK_ID, 0x00, 0x00, 0x02, RX_ACK_SEQ };
+        (STOCK_PAYLOAD00_TO80 ? 0x80 : 0x00), (STOCK_PAYLOAD07_TO06 ? 0x06 : 0x07), 0x00, 0x02, RX_ACK_SEQ, RX_ACK_ID, 0x00, 0x00, 0x02, RX_ACK_SEQ };
       recordReplyPayload(content, ack, sizeof(ack));
       putFlag();
       for (uint8_t i = 0; i < sizeof(ack); i++) putStuffedByte(ack[i], &zeroRun);
+#endif
       break;
     }
     case 9: { const uint8_t p[] = { 0x00, 0x00, 0xFF, 0xFF, 0x96 };
@@ -926,6 +989,10 @@ void buildReply(uint8_t content) {
 #if (FREE_TX || RX_NARROW || RX_SWEEP) && STOCK_CLOSE_FLAG
   if (content <= 4 || content == 7 || content == 9)
     putClosingFlag(&zeroRun);
+#endif
+#if (FREE_TX || RX_NARROW || RX_SWEEP) && STOCK_CLOSE_BYTE >= 0
+  if (content <= 4 || content == 7 || content == 9)
+    putClosingByte((uint8_t)STOCK_CLOSE_BYTE, &zeroRun);
 #endif
 }
 
@@ -2018,6 +2085,24 @@ void setup() {
   Serial.print(STOCK_STUFFING_MODE);
 #endif
   Serial.print(F(" close=")); Serial.println(STOCK_CLOSE_FLAG);
+  Serial.print(F("STOCK_CLOSE_BYTE="));
+#if STOCK_CLOSE_BYTE < 0
+  Serial.println(F("--"));
+#else
+  Serial.println(STOCK_CLOSE_BYTE, HEX);
+#endif
+  Serial.print(F("STOCK_PREFIX_BYTE="));
+#if STOCK_PREFIX_BYTE < 0
+  Serial.println(F("--"));
+#else
+  Serial.println(STOCK_PREFIX_BYTE, HEX);
+#endif
+  Serial.print(F("STOCK_PAYLOAD00_TO80="));
+  Serial.println(STOCK_PAYLOAD00_TO80);
+  Serial.print(F("STOCK_PAYLOAD07_TO06="));
+  Serial.println(STOCK_PAYLOAD07_TO06);
+  Serial.print(F("STOCK_ZERO_PAYLOAD="));
+  Serial.println(STOCK_ZERO_PAYLOAD);
 #if STOCK_FIXED_CANDIDATE
   Serial.print(F("STOCK_FIXED flag=")); Serial.print(rxFlagTab[rxFlagIdx], HEX);
   Serial.print(F(" phase=")); Serial.print(rxPhaseTab[rxPhaseIdx]);

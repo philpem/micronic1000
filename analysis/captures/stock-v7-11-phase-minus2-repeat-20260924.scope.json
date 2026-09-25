@@ -1,0 +1,8 @@
+{
+  ":RSTate?": "STOP",
+  ":TER?": "+1",
+  ":SYSTem:ERRor?": "+0,\"No error\"",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "owner_report": "8000 then 8040",
+  "trigger": "DIG2 POS"
+}

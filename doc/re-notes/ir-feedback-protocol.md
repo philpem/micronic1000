@@ -4,7 +4,12 @@ Implementation contract for the combined diagnostic ROM and Elegoo Uno R3.
 The connector mappings are owner measurements; this command/result protocol
 is new test firmware, not a discovered Micronic protocol.
 
-## Current handoff: stock-context v3 bench trial
+<a id="current-handoff-stock-context-v3-bench-trial"></a>
+## Historical handoff: stock-context v3 bench trial
+
+The current burn and test sequence is the
+[stock-context v4 handover](stock-context-v4-handover.md). The v3 steps below
+record the earlier experiment and should not select the next image.
 
 The [round-one bench worksheet](stock-context-v3-round1.md)
 records the first burn, silent control, matched LED-role trials and logs.
@@ -237,8 +242,17 @@ that measured receiver node under the changed drive. **CONFIRMED (later
 owner report):** the signal still reaches the Micronic IR receiver with the
 limiting resistors back in place. Whether any earlier trial's short burst
 arrived with usable timing remains open. The owner means physical IR clock/data
-polarity, not a complement of framed data bits. Trials 25/26, silent/X with
-`swap=1` and `7Eh 03h`, both returned error 8 and did not enter stock RX;
+polarity, not a complement of framed data bits.
+**CONFIRMED (owner clarification, 2026-09-24):** signals reach the
+handheld's optical receivers in the present setup. This confirms
+optical delivery; which receiver carries clock versus data remains
+unidentified. The owner reports that the receive logic is inside an
+ASIC and no schematic is available, so a tagged-pulse receiver mapping
+is not an actionable bench test. The v6 F7 A/B/A result is an
+assignment-dependent receive outcome, not a reason to re-test basic
+light delivery.
+Trials 25/26, silent/X with `swap=1` and `7Eh 03h`, both returned
+error 8 and did not enter stock RX;
 their probe/before/after statuses were A0h/C0h/C0h and E0h/C0h/C0h.
 The differing probe samples precede the burst and do not show reception.
 With the limiting resistors fitted, G/S ID 27 and G/X ID 28 both returned

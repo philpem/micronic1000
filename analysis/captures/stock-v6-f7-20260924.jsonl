@@ -1,0 +1,24 @@
+{"utc": "2026-09-24T01:56:57.180553+00:00", "monotonic_s": 931674.212958933, "direction": "rx", "line": "M1000 IR probe. Expecting 17stuff_cfg=-1 wire_stuff=auto close=0"}
+{"utc": "2026-09-24T01:56:57.180713+00:00", "monotonic_s": 931674.213093896, "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T01:56:57.180765+00:00", "monotonic_s": 931674.213144811, "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T01:56:58.771958+00:00", "monotonic_s": 931675.804353645, "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-24T01:56:58.776077+00:00", "monotonic_s": 931675.808471781, "direction": "rx", "line": "MODE: RX NARROW -- flag fixed to 7E, one axis varied."}
+{"utc": "2026-09-24T01:56:58.788836+00:00", "monotonic_s": 931675.821230348, "direction": "rx", "line": "  axis = content (flag / flag+03h / open type-2 ack)"}
+{"utc": "2026-09-24T01:56:58.788949+00:00", "monotonic_s": 931675.821328702, "direction": "rx", "line": "STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"}
+{"utc": "2026-09-24T01:56:58.789242+00:00", "monotonic_s": 931675.821628634, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-24T01:56:58.792609+00:00", "monotonic_s": 931675.825003492, "direction": "rx", "line": "STOCK_TX swap=0 clk_inv=0 dat_inv=0"}
+{"utc": "2026-09-24T01:56:58.796659+00:00", "monotonic_s": 931675.829052754, "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=-1 wire_stuff=auto close=0"}
+{"utc": "2026-09-24T01:56:58.800788+00:00", "monotonic_s": 931675.833182109, "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T01:56:58.804915+00:00", "monotonic_s": 931675.837308279, "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T01:57:04.985239+00:00", "monotonic_s": 931682.017634991, "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-24T01:57:04.990559+00:00", "monotonic_s": 931682.022955168, "direction": "rx", "line": "MODE: RX NARROW -- flag fixed to 7E, one axis varied."}
+{"utc": "2026-09-24T01:57:04.993769+00:00", "monotonic_s": 931682.026164828, "direction": "rx", "line": "  axis = content (flag / flag+03h / open type-2 ack)"}
+{"utc": "2026-09-24T01:57:04.997476+00:00", "monotonic_s": 931682.029871632, "direction": "rx", "line": "STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"}
+{"utc": "2026-09-24T01:57:05.001620+00:00", "monotonic_s": 931682.034013137, "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-24T01:57:05.005962+00:00", "monotonic_s": 931682.038352303, "direction": "rx", "line": "STOCK_TX swap=0 clk_inv=0 dat_inv=0"}
+{"utc": "2026-09-24T01:57:05.011709+00:00", "monotonic_s": 931682.044105141, "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=-1 wire_stuff=auto close=0"}
+{"utc": "2026-09-24T01:57:05.014427+00:00", "monotonic_s": 931682.046823048, "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T01:57:05.019404+00:00", "monotonic_s": 931682.051801319, "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T01:57:26.845259+00:00", "monotonic_s": 931703.877657842, "direction": "rx", "line": "# STOCK_YELLOW rise_us=21860708 low_us=5452"}
+{"utc": "2026-09-24T01:57:41.393054+00:00", "monotonic_s": 931718.425452347, "direction": "rx", "line": "burst 17 cells  10000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=-1 wire_stuff=1 close=0 wire_content=7 payload=00070002014300000201 delay_req=33000/33000us emit_late_max=8 emit_applied_late_max=18 reply_sent=1 swap=0 clk_inv=0 dat_inv=0 fixed=1 tx_start_us=36372968]"}
+{"utc": "2026-09-24T01:57:41.397252+00:00", "monotonic_s": 931718.429647219, "direction": "rx", "line": "# STOCK_YELLOW rise_us=36385800 low_us=920"}

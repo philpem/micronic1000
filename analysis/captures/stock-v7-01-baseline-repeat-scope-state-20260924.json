@@ -1,0 +1,14 @@
+{
+  "utc": "2026-09-24T13:33:19.477170+00:00",
+  "before_png": {
+    "RState": "SING",
+    "OPECondition": "+8"
+  },
+  "after_png": {
+    "RState": "SING",
+    "OPECondition": "+8",
+    "TER": "+0",
+    "error": "+0,\"No error\""
+  },
+  "png_bytes": 21204
+}

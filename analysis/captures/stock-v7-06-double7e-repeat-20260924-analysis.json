@@ -1,0 +1,15 @@
+{
+  "clock_rises": 30,
+  "wire_bytes_msb_first": [
+    "38",
+    "00",
+    "00",
+    "00"
+  ],
+  "bits": "010000011100000000000000000000",
+  "sample_interval_s": 4e-07,
+  "median_period_us": 3.5999999999999996,
+  "yellow_low_us": [],
+  "yellow_start_from_first_clock_us": [],
+  "capture_valid": false
+}

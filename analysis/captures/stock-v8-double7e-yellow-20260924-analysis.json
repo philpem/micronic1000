@@ -1,0 +1,39 @@
+{
+  "clock_cells": 101,
+  "bits": "00000011111100111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+  "stable_sampling_40_to_80us": true,
+  "matches_original_double7e": true,
+  "yellow_start_from_first_clock_us": [
+    8263.999999999998
+  ],
+  "yellow_low_us": [
+    918.4
+  ],
+  "decoded": {
+    "a": "EC",
+    "f": "A9",
+    "carry": true,
+    "terminal_record": {
+      "link_status": "8E",
+      "terminal_byte_valid": true,
+      "terminal_byte": "C0",
+      "descriptor_address": "FE0E",
+      "descriptor_length": 6,
+      "buffer_address": "FDE4",
+      "next_write_address": "FDE5",
+      "total_requested_through_active_descriptor": 6,
+      "residual_b": "05",
+      "active_descriptor_pointer_advance_mod65536": 1,
+      "buffer_snapshot_consistent": true,
+      "buffer_sample_raw": "C01A",
+      "buffer_sample_bytes": [
+        "C0",
+        null
+      ],
+      "active_descriptor_ordinary_reads": 0,
+      "active_descriptor_bytes_not_shown": 0,
+      "sample_scope": "first two active-buffer bytes, copied after return; descriptor stability assumed"
+    }
+  },
+  "capture_valid": true
+}

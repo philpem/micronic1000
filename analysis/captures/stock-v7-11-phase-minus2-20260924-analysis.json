@@ -1,0 +1,8 @@
+{
+  "reply_sent_count": 34,
+  "yellow_events": [],
+  "logged_bursts": 101,
+  "scope_capture_valid": false,
+  "reason": "Yellow-trigger single never completed; no trial waveform exported",
+  "owner_report": "8000 then 8040"
+}

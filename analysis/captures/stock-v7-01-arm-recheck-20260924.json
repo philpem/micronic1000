@@ -1,0 +1,23 @@
+[
+  {
+    ":RSTate?": "SING",
+    ":OPERegister:CONDition?": "+40",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\"",
+    "utc": "2026-09-24T13:38:51.152422+00:00"
+  },
+  {
+    ":RSTate?": "SING",
+    ":OPERegister:CONDition?": "+40",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\"",
+    "utc": "2026-09-24T13:38:52.160176+00:00"
+  },
+  {
+    ":RSTate?": "SING",
+    ":OPERegister:CONDition?": "+40",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\"",
+    "utc": "2026-09-24T13:38:53.167574+00:00"
+  }
+]

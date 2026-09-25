@@ -1,0 +1,16 @@
+{
+  "owner_result": "R6IECA9S8EN0001",
+  "decode": "101/101 D2 rises; five lead lows + raw prefix7E + opening7E + payload 00 07 00 02 01 43 00 00 02 01",
+  "total_clock_cells": 101,
+  "lead": "00000",
+  "prefix": "7E",
+  "opening": "7E",
+  "payload": "00 07 00 02 01 43 00 00 02 01",
+  "median_cell_us": 121.6,
+  "launch_delay_after_last_D1_rising_ms": 33.0504,
+  "yellow_low_start_ms": 8.2272,
+  "yellow_low_us": 918.0,
+  "raw": "analysis/captures/stock-v6-framing-06-prefix7e-open7e-20260924.pod1.bin.gz",
+  "png": "analysis/captures/stock-v6-framing-06-prefix7e-open7e-20260924.png",
+  "scope_metadata": "analysis/captures/stock-v6-framing-06-prefix7e-open7e-20260924.scope.json"
+}

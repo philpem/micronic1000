@@ -1,0 +1,10 @@
+{
+  "owner_report": "8000 then 8040",
+  "reply_sent_count": 47,
+  "logged_bursts": 188,
+  "yellow_events": [],
+  ":RSTate?": "SING",
+  ":OPERegister:CONDition?": "+8",
+  ":TER?": "+0",
+  ":SYSTem:ERRor?": "+0,\"No error\""
+}

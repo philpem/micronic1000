@@ -1,0 +1,17 @@
+{
+  "utc": "2026-09-24T02:50:03.351788+00:00",
+  "before": {
+    ":ACQuire:MODE?": "RTIM",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "LEFT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG1",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "AUTO",
+    ":WAVeform:SOURce?": "CHAN1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "NORM"
+  },
+  "configured_for": "unswapped F7 A2 single-shot DIG2 physical D5 clock, POD1 raw"
+}

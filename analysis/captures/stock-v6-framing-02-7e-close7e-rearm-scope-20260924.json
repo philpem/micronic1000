@@ -1,0 +1,15 @@
+{
+  "utc": "2026-09-24T08:39:06.651743+00:00",
+  "ter_before_rearm": "+0",
+  ":TER?": "+0",
+  ":TRIGger:EDGE:SOURce?": "DIG2",
+  ":TRIGger:EDGE:SLOPe?": "POS",
+  ":TIMebase:SCALe?": "+8.000E-03",
+  ":TIMebase:REFerence?": "CENT",
+  ":TIMebase:POSition?": "+0.0E+00",
+  ":WAVeform:SOURce?": "POD1",
+  ":WAVeform:FORMat?": "BYTE",
+  ":WAVeform:POINts:MODE?": "RAW",
+  ":ACQuire:SRATe?": "20000000",
+  ":SYSTem:ERRor?": "+0,\"No error\""
+}

@@ -1,0 +1,7 @@
+{
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "state": "STOP",
+  "error": "+0,\"No error\"",
+  "owner": "Main Menu reached; v8 programmed and verified",
+  "serial_yellow_low_us": 5448
+}

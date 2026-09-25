@@ -1,0 +1,11 @@
+{
+  "utc": "2026-09-24T13:59:11.102681+00:00",
+  ":TRIGger:EDGE:SOURce?": "DIG4",
+  ":TRIGger:EDGE:SLOPe?": "NEG",
+  ":TIMebase:SCALe?": "+8.000E-03",
+  ":TIMebase:POSition?": "+0.0E+00",
+  ":RSTate?": "SING",
+  ":OPERegister:CONDition?": "+40",
+  ":TER?": "+0",
+  ":SYSTem:ERRor?": "+0,\"No error\""
+}

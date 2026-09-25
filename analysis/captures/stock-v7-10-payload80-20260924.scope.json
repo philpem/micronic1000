@@ -1,0 +1,13 @@
+{
+  ":RSTate?": "STOP",
+  ":TER?": "+1",
+  ":SYSTem:ERRor?": "+0,\"No error\"",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "owner_report": "Initial abbreviated report followed by complete two rows",
+  "readout_complete": true,
+  "trigger": "DIG4 NEG",
+  "owner_rows": [
+    "R7IECAD:8EC00600E4FD",
+    "X0EFEE5FD0000060005"
+  ]
+}

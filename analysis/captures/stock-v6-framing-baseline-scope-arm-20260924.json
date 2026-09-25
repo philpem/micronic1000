@@ -1,0 +1,14 @@
+{
+  "utc": "2026-09-24T08:17:38.253958+00:00",
+  "ter_before_clear": "+0",
+  "ter_after_rearm_250ms": "+0",
+  "trigger_source": "DIG2",
+  "trigger_slope": "POS",
+  "time_scale": "+8.000E-03",
+  "time_reference": "CENT",
+  "time_position": "+0.0E+00",
+  "wave_source": "POD1",
+  "format": "BYTE",
+  "points_mode": "RAW",
+  "error": "+0,\"No error\""
+}

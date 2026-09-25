@@ -1,0 +1,21 @@
+{
+  "utc": "2026-09-24T13:32:56.092626+00:00",
+  "sequence": [
+    [
+      ":RState?",
+      "STOP"
+    ],
+    [
+      ":OPERegister:CONDition?",
+      "+0"
+    ],
+    [
+      ":RState?",
+      "STOP"
+    ],
+    [
+      ":SYSTem:ERRor?",
+      "+0,\"No error\""
+    ]
+  ]
+}

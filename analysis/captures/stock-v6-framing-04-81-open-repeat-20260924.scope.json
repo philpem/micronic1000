@@ -1,0 +1,29 @@
+{
+  "utc_saved": "2026-09-24T10:38:30Z",
+  "instrument": "Keysight MSO-X 3054A",
+  "ter": "+0",
+  "preamble": "+0,+0,+200000,+1,+4.00000000E-007,-4.00000000E-002,+0,+1.00000000E+000,+0.0E+000,+0",
+  "source": "POD1",
+  "format": "BYTE RAW",
+  "points": 200000,
+  "sample_rate_hz": 20000000,
+  "sample_interval_s": 4e-07,
+  "origin_s": -0.04,
+  "trigger": "DIG2 POS",
+  "timebase_s_div": 0.008,
+  "reference": "CENT",
+  "position_s": 0,
+  "png": "analysis/captures/stock-v6-framing-04-81-open-repeat-20260924.png",
+  "raw_gzip": "analysis/captures/stock-v6-framing-04-81-open-repeat-20260924.pod1.bin.gz",
+  "raw_sha256": "c9739d97821da0fd83260492ae6083b4c91ab9f23d191e15e894e55008860bde",
+  "owner_result": "R6IEE6D",
+  "decode": "93/93 D2 rising clocks; D3 sampled +40us yields 5 lead zero cells, opening 81, payload 00 07 00 02 01 43 00 00 02 01",
+  "median_cell_us": 121.6,
+  "launch_delay_after_last_D1_rising_ms": 33.0492,
+  "yellow_low_ms": [
+    37.6624,
+    38.5804
+  ],
+  "yellow_low_us": 918.0,
+  "serial_observation": "One short 8-cell burst ignored, then 17-cell reply; NO DATA-LINE ACTIVITY OBSERVED."
+}

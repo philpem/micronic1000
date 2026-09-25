@@ -1,0 +1,13 @@
+{"utc": "2026-09-24T13:45:28.317009+00:00", "direction": "rx", "line": "M1000 IR probe. Expecting 17- or 22-cell bursts at 93.75 ms."}
+{"utc": "2026-09-24T13:45:28.321622+00:00", "direction": "rx", "line": "MODE: RX NARROW -- flag fixed to 7E, one axis varied."}
+{"utc": "2026-09-24T13:45:28.325713+00:00", "direction": "rx", "line": "  axis = content (flag / flag+03h / open type-2 ack)"}
+{"utc": "2026-09-24T13:45:28.333801+00:00", "direction": "rx", "line": "STOCK_CONTEXT_EVENTS: D8 yellow pulse widths; D7 unused"}
+{"utc": "2026-09-24T13:45:28.334426+00:00", "direction": "rx", "line": "STOCK_CONTEXT_V3 width_us=32 drops=16"}
+{"utc": "2026-09-24T13:45:28.338179+00:00", "direction": "rx", "line": "STOCK_TX swap=0 clk_inv=0 dat_inv=0"}
+{"utc": "2026-09-24T13:45:28.342450+00:00", "direction": "rx", "line": "STOCK_FRAMING stuff_cfg=1 wire_stuff=1 close=0"}
+{"utc": "2026-09-24T13:45:28.346718+00:00", "direction": "rx", "line": "STOCK_CLOSE_BYTE=--"}
+{"utc": "2026-09-24T13:45:28.347018+00:00", "direction": "rx", "line": "STOCK_PREFIX_BYTE=7E"}
+{"utc": "2026-09-24T13:45:28.351361+00:00", "direction": "rx", "line": "STOCK_FIXED flag=7E phase=2 pol=0 content_idx=2 delay_us=33000"}
+{"utc": "2026-09-24T13:45:28.355402+00:00", "direction": "rx", "line": "STOCK_REPLY_EVERY_N=3"}
+{"utc": "2026-09-24T13:46:55.124742+00:00", "direction": "rx", "line": "burst 22 cells  0000110000001000001011  [flag=7E wire_flag=7E phase(data-clock)=2/8cell pol=0 content_idx=2 stuff_cfg=1 wire_stuff=1 close=0 wire_content=7 payload=00070002014300000201 delay_req=33000/33000us emit_late_max=14 emit_applied_late_max=26 reply_sent=1 swap=0 clk_inv=0 dat_inv=0 fixed=1 tx_start_us=86765444]"}
+{"utc": "2026-09-24T13:46:55.129238+00:00", "direction": "rx", "line": "# STOCK_YELLOW rise_us=86774672 low_us=920"}

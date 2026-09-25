@@ -1,0 +1,22 @@
+{
+  "utc": "2026-09-24T02:17:29.536641+00:00",
+  "scope_id": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150",
+  "before": {
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SEGMented:COUNt?": "128",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "LEFT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG1",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "AUTO",
+    ":WAVeform:SOURce?": "CHAN1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "NORM",
+    ":DIGital2:DISPlay?": "1",
+    ":DIGital3:DISPlay?": "1",
+    ":DIGital4:DISPlay?": "1"
+  },
+  "configured_for": "v6 F7 waveform single-shot DIG2 trigger, 20 ms window"
+}

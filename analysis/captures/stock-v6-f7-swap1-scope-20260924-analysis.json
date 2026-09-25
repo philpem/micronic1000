@@ -1,0 +1,34 @@
+{
+  "source_capture": "stock-v6-f7-swap1-scope-20260924.pod1.bin.gz",
+  "source_sha256_uncompressed": "6e09aab39ae43fb0b06b4a824058636c12ae46dcedb8b1aac974df7aa5d6e41a",
+  "scope_sample_interval_ns": 80,
+  "scope_window_ms": 20,
+  "channel_mapping_owner_confirmed": {
+    "D2": "Uno D5; swapped data",
+    "D3": "Uno D6; swapped clock",
+    "D4": "yellow/pin 6"
+  },
+  "D3_clock_rises": 93,
+  "D3_first_rise_us": -0.07999999999992724,
+  "D3_last_rise_us": 11223.76,
+  "D3_rise_period_us": {
+    "min": 113.52,
+    "median": 120.92,
+    "max": 133.68
+  },
+  "D2_data_rises": 16,
+  "D2_rise_after_prior_D3_rise_us": {
+    "min": 17.2,
+    "median": 27.28,
+    "max": 30.8
+  },
+  "sample_after_D3_rise_us": 40,
+  "observed_cells": "000000111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+  "expected_cells": "000000111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+  "bit_mismatches": [],
+  "D4_yellow_edges": {
+    "rises": 0,
+    "falls": 0
+  },
+  "limits": "Uno GPIO and yellow electrical signals only; no direct optical or LINK_STATUS measurement. One 20ms scope window within longer attempt."
+}

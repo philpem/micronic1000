@@ -203,7 +203,20 @@ only while `LINK_STATUS` bit 0 is set. If bit 0 is clear, bit 1 set continues
 to bits 2/3 decode while bit 1 clear waits/retries with `DE=0x06F9`; bit 2 set
 performs an extra `INI`; bit 3 set returns `EC`. Cleanup toggles
 `LINK_CTRL` bit 1, sets then clears `LINK_CTRL` bit 0, clears `LINK_CTRL`
-bit 4, toggles `LINK_CTRL` bit 1.
+bit 4, toggles `LINK_CTRL` bit 1. A separate `ECh` exit follows a
+controller-byte count below two at `ROM00:340D`; it leaves F sign set.
+The v5 hardware result F=`29h` has sign clear, so its `ECh` came from
+the terminal `LINK_STATUS` bit-3 branch, not that short-count exit.
+CONFIRMED (owner v6 physical readout and diagnostic bytes): the matched
+F7 V24 run sampled terminal `LINK_STATUS=CAh`, with `LINK_STATUS`
+bits 0/2 clear and bits 1/3/6/7 set. Its derived receive-loop `INI`
+count was `0000`; the count excludes the setup `LINK_RXD` read and
+has a 256-byte descriptor-boundary caveat. The controller's reason
+for asserting `LINK_STATUS` bit 3 is OPEN.
+The same-image F7 scope repeat matched all 93 configured Uno D5/D6
+GPIO cells and again produced `R6IEC29SCAN0000` (owner). The owner
+separately confirmed signal reaches the optical receivers. Their ASIC
+clock/data identities and controller interpretation remain open.
 
 `LINK_CTRL` bit 1 is also the `Link_PortSelect` output (see Transmit step 1).
 Whether the paired RX-cleanup toggles restore the selected value, or leave it
@@ -213,6 +226,61 @@ should not assume bit 1 is stable across a receive.
 An adapter emulator must model the stateful handshake, not merely present a
 flat byte stream. The current experimental Python model is not a conformance
 implementation.
+
+### Observed receive paths and the flag-ACK hypothesis — 2026-09-24
+
+CONFIRMED (fresh stock listings, v6 hook source, owner readouts and
+independent review): the paths below distinguish the observed terminal
+statuses. These are controller-visible values, not decoded wire bytes.
+
+| Stage | CAh / N0000 | 8Eh / N0001 |
+|---|---|---|
+| `ROM00:33CF-33E1` terminal sample | LINK_STATUS bit 0 clear, bit 1 set: take terminal path | Same |
+| `ROM00:33F0-33F6` optional read | LINK_STATUS bit 2 clear: skip terminal INI | LINK_STATUS bit 2 set: perform terminal INI from LINK_RXD |
+| `ROM00:33F7-33FA` error test | LINK_STATUS bit 3 set: return ECh | Same |
+| `ROM00:33FC-340D` success count / short-count check | Not reached | Not reached |
+| Stock caller `ROM00:2FC5` | Carry would discard/re-arm before header validation | Same |
+
+V6 replaces the call at `ROM00:2FC1` with its diagnostic wrapper and
+stops after reporting the first receive return. Thus the stock caller's
+discard/re-arm branch is the counterfactual stock continuation, not an
+action taken after the displayed v6 result. The optional terminal INI
+is enclosed by PUSH AF / POP AF, preserving the sampled status and
+flags before testing LINK_STATUS bit 3. N0001 is a derived count with
+the documented descriptor-boundary caveat; status 8Eh independently
+proves that terminal byte read, but does not disclose its value.
+
+CONFIRMED: entry to the stock receive dispatcher is gated by
+LINK_STATUS bit 4 set (`ROM00:31B6-31C5`, helper `ROM00:34E7-34EB`).
+There is no comparison with raw 7Eh/81h flags and no received-flag
+counter in the examined entry, block-receive, caller and header-validator
+path. After a successful block read, the validator at `ROM00:30DC-30FB`
+checks a minimum length of six, equality with the embedded length and
+the active link identifier. Only then does the dispatcher inspect
+software state and frame type (`ROM00:2FDA-300D`). Our EC observations
+do not reach that software protocol decision.
+
+CONFIRMED: `Link_Present` writes 81h to LINK_CMD after a successful
+LINK_STATUS bit-7-set wait (`ROM00:34EC-3507`). `Link_BlockTx` also
+waits for LINK_STATUS bits 4 and 6 to clear at different stages. These
+are controller commands/status waits, not proof that the optical peer
+must acknowledge with a particular number of flags. Older shorthand
+calling LINK_STATUS bit 6 "ACK" does not establish that wire meaning.
+
+SUSPECTED (owner): the ASIC could recognize repeated flags as a handshake
+or synchronization sequence. The matched double-7E / 00-7E / double-7E
+test changed the terminal read/error reproducibly; double-7E returned
+before the full 101-cell stimulus ended. This does not demonstrate a
+completed packet or flag-count acknowledgement. The next discriminating
+data are the terminal byte value and active descriptor. The subsequent
+v6-only control replaced the 80 payload bits with low-data clock cells
+while retaining the double-7E prefix and total duration. Owner reported
+`R6IEE6D`; the scoped first reply matched all 101 cells, with yellow low
+at 32.9096 ms for 918 us. Restoring the original payload returned
+`R6IECADS8EN0001`, again with all 101 cells verified and yellow low at
+8.2120 ms for 918 us. CONFIRMED: double flags plus the zero payload did
+not reproduce the original payload's early terminal read/error in this
+comparison. This does not identify a flag-count ACK or a valid frame.
 
 ### Probe
 
@@ -289,12 +357,14 @@ a server increment rule from these traces.
 `Link_BlockTx` sends the low 5-bit prelude (`link_id & 1Fh`) before the
 descriptor payload; the prelude is excluded from the descriptor byte
 count. `Link_BlockRx` on success returns `DE = controller bytes consumed
-minus 2`; in the examined bounded session the two excluded bytes are
+minus 2`; in the examined bounded emulator session the two excluded bytes are
 **CONFIRMED** as copies of the logical frame's type (`+2`) and sequence
 (`+3`) — observed as the trailing `02 01` after the six-byte logical
 frame `06 00 02 01 63 00` in the form-4 controller queues
 (`00 06 00 02 01 63 00 02 01` and `00 06 00 04 01 63 00 04 01`);
-the controller-level reason for the exclusion remains **OPEN**.
+the controller-level reason for the exclusion remains **OPEN**. These
+receive queues are emulator-supplied fixtures, not a physical capture
+establishing the optical trailer or excluding a hardware FCS.
 
 Descriptor lists (byte-verified, structurally mutable where noted): RX
 `FE0E` = `{6 -> FDE4, 3 -> FE38, 0}` (mutable); RX `FE32` =
@@ -1398,8 +1468,10 @@ register-select model. Distinguishing observations (mechanical, byte-verified):
   `LINK_STATUS`; electrical timing on the connector-facing side remains to be
   traced.
 
-**No hardware address-filter or CRC register exists in this block**
-— the only non-data write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
+**No dedicated CRC configuration register has been identified from
+these ROM accesses.** This does not exclude a fixed ASIC-internal
+FCS checker or additional hardware address filtering. The observed
+non-data command/probe write-outs are 4Ch=0x81 (present) and 4Fh=0x1F
 (probe). Multidrop addressing is done in software: the frame's byte
 at offset +4 is XOR-matched against the unit's link id `fdd4`
 (`Link_ValidateFrameHeader` ROM00:30DC, does not inspect +5). TX
@@ -1468,9 +1540,13 @@ A peer cannot recover the full eight-bit id from the wire — firmware masks it
 to five bits. The peer library's `link_id_from_prelude` is guessing at the
 other three bits.
 
-**There is no checksum, anywhere.** Neither `Link_BlockTx` nor `Link_BlockRx`
-contains an accumulating `XOR`/`ADD` — every opcode in both was checked.
-Integrity is not this layer's job.
+**CONFIRMED: the examined ROM transport and header validator do not
+compute or compare a software checksum.** Fresh listings of
+`Link_BlockTx`, `Link_BlockRx` and `Link_ValidateFrameHeader` support
+only that bounded statement. The former claim "no checksum, anywhere"
+and its conclusion about integrity are withdrawn. ASIC-internal FCS
+generation/checking remains SUSPECTED; terminal `LINK_STATUS` bit 3
+does not identify the cause of the controller error.
 
 Whether the controller forwards the prelude (`4Dh` before the strobe) onto
 the IR line or consumes it as addressing is **not determinable from firmware**
@@ -1490,10 +1566,46 @@ divider. See [IR wire protocol](ir-wire-protocol.md).
 
 `Link_BlockRx` (`ROM00:3378`, 221 bytes) — status bits 0..3 framing via single
 `IN A,(4Bh)` shifted with `RRCA` at `33CF`, `INI` gated by bit 0, end-of-frame
-bit 1, extra-byte bit 2 (`33F3` single `INI`), error bit 3. The two trailing
-excluded bytes are signalled out of band via status bit 2, not by counting.
+bit 1, extra-byte bit 2 (`33F3` single `INI`), error bit 3.
+CONFIRMED: `LINK_STATUS` bit 2 gates one optional `INI`; the success
+length arithmetic independently subtracts two at `ROM00:3408-340B`.
+The earlier claim that bit 2 signals both excluded bytes is withdrawn.
 Per-byte timeout `06F9h` = 1785, failure `EEh`. Full listing was on the former
 protocol page and is preserved here by reference.
+
+### FCS hypothesis and test limits — 2026-09-24
+
+CONFIRMED (fresh stock bytes and caller): receive polls `LINK_STATUS`
+at `ROM00:33CF`. If `LINK_STATUS` bit 0 is set it performs `INI` and
+polls again. With bit 0 clear, bit 1 selects the terminal path; bit 2
+permits one last `INI`, then bit 3 selects the `ECh` error return.
+`ROM00:2FC5` discards a carry-set result before header validation at
+`ROM00:30DC`. Thus the CPU streams available controller bytes and
+consults terminal error status, but it does not necessarily read every
+physical wire byte before an error. Descriptor capacity and what the
+ASIC exposes through `LINK_RXD` bound those reads.
+
+SUSPECTED (owner): a trailer may be an FCS, serialized through the
+same stuffing rule as frame data. This is compatible with the visible
+status-driven interface; neither FCS width nor coverage, encoding,
+nor `LINK_STATUS` bit 3 as an FCS-error flag is established. The fixed
+subtract-two is not proof of a 16-bit FCS. Type/sequence copies in the
+emulator's receive queues are synthetic fixtures, not measured optical
+trailer bytes. Likewise `N0000` cannot exclude an ASIC that withholds
+data until checking a frame; that buffering behavior is also unknown.
+
+After framing controls, a complete 8-bit candidate search covers 256
+values only for one chosen trailer location and frame convention.
+Serialize each candidate through the stuffed data path before the raw
+closing marker. V6 stops after the first receive return, including
+`ECh`, so an unattended search requires a repeatable report/re-arm
+diagnostic with candidate IDs and outcome logging. Do not interpret
+later transmitted candidates as tested after the handheld has stopped.
+A repeatable hit should fail with a corrupted trailer and be checked
+against a second payload. For a 16-bit search, specify covered bytes,
+polynomial, initialization, reflection, final XOR and transmitted byte
+order for each algorithm candidate. A fully negative search would not
+disprove FCS while framing and receive timing remain uncertain.
 
 ### The command and probe latches — derivation {#the-command-and-probe-latches}
 
@@ -1799,3 +1911,178 @@ addresses).
 
 See also: [Commstar API reference](../reference/commstar-api.md),
 [Commstar peer library](../reference/commstar-peer.md).
+
+
+### V7 receive diagnostics and phase controls {#v7-receive-diagnostics}
+
+This section replaces the growing experiment history formerly embedded in
+`Link_BlockRx`'s Ghidra plate. The detailed trial sequence, exact LCD rows,
+waveform measurements, artifact paths and recovery state are retained in
+[the stock-context v7 handover](stock-context-v7-handover.md). Earlier
+framing and swap trials remain in the
+[v4-v6 handover](stock-context-v4-handover.md).
+
+CONFIRMED (owner readouts, diagnostic bytes and reviewed captures):
+
+| Test | Observation | Limit |
+|---|---|---|
+| Single7E baseline | Terminal LINK_STATUS=CAh; no descriptor advancement | Setup port read and controller-buffered data are outside this count |
+| Double7E, original payload | LINK_STATUS=8Eh; terminal INI stores C0h; one byte advanced in a six-byte descriptor | Still ECh with carry; no valid-frame or byte-role claim |
+| Second payload byte07h->06h | Verified single-bit waveform change; terminal C0h unchanged; original control restored | Fixed direct-MSB C0h->80h prediction failed |
+| First payload byte00h->80h | Verified single-bit waveform change; terminal C0h unchanged; original control restored | Fixed flag/payload-boundary C0h->D0h prediction failed |
+| Data phase-2/8 cell | Two reports of decimal8000 then8040; repeat waveform verified | No R7 return or yellow pulse reported |
+| Restore data phase+2/8 cell | Also decimal8000 then8040; no completed yellow-trigger capture | Phase comparison inconclusive; earlier successful control did not reproduce |
+
+The earlier successful plus2 capture has intended data at external clock
+falling edges; the minus2 repeat has intended data at rising edges and
+zero at falling edges. These GPIO facts do not identify ASIC polarity or
+sampling edge. The failed restoration prevents attributing the change in
+handheld behavior to phase alone.
+
+V7's byte-valid field certifies capture after the optional INI, not a
+complete payload byte or accepted frame. The separate setup LINK_RXD read
+is not recorded. Partial/residual data, preexisting controller state or
+local echo, and different receive sampling remain SUSPECTED. The handover
+pairs each with a discriminating observation. The 03h handheld transmit
+byte's bit reversal equals C0h, but that numerical match is not echo proof.
+
+Latest recovery: after the owner rebooted, the original plus2 response
+returned EC29, terminal LINK_STATUS=8Ah and one-byte advancement in the
+six-byte descriptor. Status bit2 is clear, so this was an earlier ordinary
+INI, not a terminal INI. V7 does not display that ordinary byte; terminal
+00 is an invalid placeholder. A valid101-cell waveform and918us yellow
+pulse were captured. Diagnostic return recovered, but the earlier8Eh/C0h
+terminal result did not. Phase causality remains inconclusive. See the v7
+handover for exact rows, byte verification and the synthetic01h/8Ah check.
+
+### V8 prepared: ordinary-byte readback
+
+The [v8 handover](stock-context-v8-handover.md) records the new ROM00 image
+(checksum **387331**). It reads two active-buffer bytes after return and
+retains the terminal-byte slot. CONFIRMED by emulator comparison: receive
+and yellow-marker timing match v7; only later display gains 73 T-states.
+All 76 v5–v8 tests and independent release review passed. Physical v8
+validation is pending. Scratch is assessed only for the controlled FOO
+trial; unused buffer slots are invalid. This enables testing the unknown
+ordinary byte from the post-reset 8A result without adding LINK_RXD reads.
+
+
+### 2026-09-24 v8 first double-7E result
+
+Owner display:
+
+```text
+R8IECA9:8EC00600E4FD
+X0EFEE5FDC01A060005
+```
+
+CONFIRMED observation: the existing decoder reports LINK_STATUS=8E,
+terminal C0, descriptor FE0E length six, buffer FDE4, next-write FDE5,
+residual B=5. Under the documented stable-descriptor interpretation,
+one terminal INI and zero ordinary INIs occurred in this active descriptor.
+Post-return buffer slot zero is C0, matching the terminal capture. Raw
+slot one is 1A but lies outside the one-byte advancement: it is invalid,
+not a second received byte. The receive return is still EC with carry set;
+this is not packet acceptance. The ordinary-byte question remains open.
+
+Saved `analysis/captures/stock-v8-double7e-20260924` POD1, PNG, serial log,
+scope metadata and analysis. CONFIRMED raw capture: 101 clock cells;
+data sampled 40–80 us after each rise matches the archived original
+five lead zeros, two 7E flags and payload 00070002014300000201.
+This payload requires no inserted bits under the configured five-ones
+stuffing rule; that comparison does not prove ASIC destuffing behavior.
+Yellow starts 8262.8 us after first clock and remains low 918.0 us.
+
+V8's terminal-path buffer readback now has one physical consistency check;
+ordinary-path readback remains hardware-unvalidated. Next: one unchanged
+double-7E repeat to seek the previously observed 8A ordinary path without
+changing framing or phase. Do not infer ordinary-byte equality from this
+8E result. Restored silent Uno, all 5626 flash bytes verified, fresh
+LISTEN ONLY banner saved as `stock-v8-double7e-post-silent-banner-20260924.txt`.
+Safe to request handheld reset; no serial logger left running.
+
+
+V8 unchanged repeat reproduced both display rows (8E, terminal C0,
+buffer C0/invalid1A), but its scope capture is invalid: 149 clock edges,
+no yellow pulse, inconsistent samples. Owner identified likely mistrigger.
+No waveform repeatability claim follows. See v8 handover; next capture
+uses yellow D4 falling trigger with the unchanged responder.
+
+
+### 2026-09-24 v8 valid yellow-trigger repeat
+
+Owner again reports:
+
+```text
+R8IECA9:8EC00600E4FD
+X0EFEE5FDC01A060005
+```
+
+CONFIRMED capture observation: 101 D2 rising edges, identical original
+raw double-7E sequence at all D3 sampling offsets 40–80 us after each
+rise. Yellow starts 8264.0 us after first clock and remains low 918.4 us.
+This is a valid repeat of the first v8 waveform (8262.8 us / 918.0 us),
+unlike the intervening mistrigger. All artifacts use
+`analysis/captures/stock-v8-double7e-yellow-20260924` (serial, POD1, PNG,
+metadata and decoded analysis). Configured payload stuffing inserts no
+bits in this particular payload; ASIC destuffing behavior remains open.
+
+The existing decoder gives status 8E, one terminal C0 and post-return
+buffer C0/invalid1A. One-byte advancement with terminal presence means
+zero ordinary reads under the documented descriptor assumptions.
+Three v8 displays match, two with validated reply waveforms. The earlier
+8A ordinary path has not recurred on v8, so its byte is still unknown.
+Do not interpret the unused 1A slot as a received byte or FCS.
+
+Uno restored to silent firmware: all 5626 flash bytes verified, fresh
+LISTEN ONLY banner saved under the same yellow-post-silent prefix.
+Logger stopped; handheld may remain on the diagnostic display.
+
+Recommended next experiment: a controlled reply-start-delay comparison,
+keeping emitted bits and within-cell data/clock phase unchanged, with
+33 ms baseline controls and D4-triggered capture. SUSPECTED: relative
+arrival/poll timing may affect whether the byte is consumed by ordinary
+or terminal INI. Reproducible 8A/8E changes across controlled delays would
+support timing sensitivity; repeated 8E would leave the cause unresolved.
+This proposal does not identify the controller's internal sampling edge
+or explain the earlier hardware quiet state. No new variant is armed.
+
+
+### Offline adjudication and next battery (2026-09-24) {#v8-offline-adjudication}
+
+Hardware testing is parked; Uno remains verified silent. The
+[v8 offline review and test battery](stock-context-v8-handover.md#offline-review)
+supersedes the earlier blanket recommendation to vary reply delay next.
+Fresh ROM00:33CF–341F bytes and caller ROM00:2FBD–2FCC confirm the already
+documented status-driven receive path; no software FLAG counter/ACK or
+software FCS calculation appears in this loop. ASIC interpretation remains
+open. CPU F values A9/AD/29 must not be confused with LINK_STATUS CA/8E/8A.
+
+CONFIRMED saved-waveform comparison: both valid v8 original replies have
+101 cells, but yellow begins after only 68 clock rises, about 3.94 ms
+before the final rise. The return cannot be a completed verdict on that
+entire emitted ten-byte payload; early rejection or a shorter perceived
+frame remains possible. An FCS in the protocol is not excluded. Equal-length
+00,7E versus 7E,7E controls contradict a pure added-clock-count explanation,
+without proving an ASIC flag-count rule.
+
+The reproducible `analysis/review_ir_v8_captures.py` audit intersects fixed
+raw eight-cell C0 candidates across original, payload07→06 and first-byte
+00→80 captures. No unchanged-level MSB-first fixed position survives.
+Unchanged-level LSB positions0/28, inverted-level MSB4/12, and inverted-level
+LSB6 survive mathematically; most overlap lead/flag bits and none establishes
+ASIC decoding. Indexing is zero-based emitted clock cells. Payloads have
+no conventional five-ones stuff bits; alternate decoding remains open.
+The invalid149-edge repeat is explicitly excluded. Artifact:
+`analysis/captures/stock-v8-offline-review-20260924.json`.
+
+Recommended five runs: A original; B payload07→47 (one raw bit, cell30,
+conditional LSB28 prediction C0→C4); A restored; C original with requested
+reply delay33060us instead of33000us; A restored. Confirm any changed C
+with another C/A pair before causal interpretation. Use D4 falling capture
+with at least50ms pretrigger to measure actual preceding-handheld-to-reply
+delay. Same-provider independent review approved this limited scope.
+No new diagnostic ROM is needed for the plan; no hardware was operated during
+this review, and no new variant is built or armed. Later equal-length
+three-flag controls and properly bracketed phase/inversion tests are
+conditional follow-ups; FCS brute force remains premature.

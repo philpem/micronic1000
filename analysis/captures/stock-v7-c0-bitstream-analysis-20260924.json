@@ -1,0 +1,330 @@
+{
+  "stock-v7-01-baseline-repeat-20260924": {
+    "index_convention": "zero-based emitted clock cell; five lead cells; flags excluded from payload destuffing",
+    "data_sampling_offsets_checked_us": [
+      40,
+      50,
+      60,
+      70,
+      80
+    ],
+    "bits": "000000111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+    "clock_cells": 93,
+    "payload_start_cell": 13,
+    "payload_max_consecutive_ones": 3,
+    "payload_max_consecutive_zeros": 22,
+    "normal_destuff": {
+      "bits": "00000000000001110000000000000010000000010100001100000000000000000000001000000001",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": null
+    },
+    "complementary_destuff_on_observed_levels": {
+      "bits": "00000",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": 5
+    },
+    "aligned_payload_bytes_msb": [
+      "00",
+      "07",
+      "00",
+      "02",
+      "01",
+      "43",
+      "00",
+      "00",
+      "02",
+      "01"
+    ],
+    "c0_sliding_windows": {
+      "normal_msb": [
+        {
+          "start_cell_zero_based": 10,
+          "end_cell_zero_based": 17,
+          "payload_relative_start": -3,
+          "end_sample_from_first_clock_us": 2130.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 27,
+          "end_cell_zero_based": 34,
+          "payload_relative_start": 14,
+          "end_sample_from_first_clock_us": 4209.2,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 59,
+          "end_cell_zero_based": 66,
+          "payload_relative_start": 46,
+          "end_sample_from_first_clock_us": 8110.8,
+          "ends_before_yellow": true
+        }
+      ],
+      "normal_lsb": [
+        {
+          "start_cell_zero_based": 0,
+          "end_cell_zero_based": 7,
+          "payload_relative_start": -13,
+          "end_sample_from_first_clock_us": 911.6,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 20,
+          "end_cell_zero_based": 27,
+          "payload_relative_start": 7,
+          "end_sample_from_first_clock_us": 3350.4,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_msb": [
+        {
+          "start_cell_zero_based": 4,
+          "end_cell_zero_based": 11,
+          "payload_relative_start": -9,
+          "end_sample_from_first_clock_us": 1399.2,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_lsb": [
+        {
+          "start_cell_zero_based": 6,
+          "end_cell_zero_based": 13,
+          "payload_relative_start": -7,
+          "end_sample_from_first_clock_us": 1644.8,
+          "ends_before_yellow": true
+        }
+      ]
+    },
+    "yellow_start_from_first_clock_us": 11894.0,
+    "last_clock_from_first_clock_us": 11222.8,
+    "clock_rises_before_yellow": 93
+  },
+  "stock-v7-06-double7e-20260924": {
+    "index_convention": "zero-based emitted clock cell; five lead cells; flags excluded from payload destuffing",
+    "data_sampling_offsets_checked_us": [
+      40,
+      50,
+      60,
+      70,
+      80
+    ],
+    "bits": "00000011111100111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+    "clock_cells": 101,
+    "payload_start_cell": 21,
+    "payload_max_consecutive_ones": 3,
+    "payload_max_consecutive_zeros": 22,
+    "normal_destuff": {
+      "bits": "00000000000001110000000000000010000000010100001100000000000000000000001000000001",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": null
+    },
+    "complementary_destuff_on_observed_levels": {
+      "bits": "00000",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": 5
+    },
+    "aligned_payload_bytes_msb": [
+      "00",
+      "07",
+      "00",
+      "02",
+      "01",
+      "43",
+      "00",
+      "00",
+      "02",
+      "01"
+    ],
+    "c0_sliding_windows": {
+      "normal_msb": [
+        {
+          "start_cell_zero_based": 18,
+          "end_cell_zero_based": 25,
+          "payload_relative_start": -3,
+          "end_sample_from_first_clock_us": 3108.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 35,
+          "end_cell_zero_based": 42,
+          "payload_relative_start": 14,
+          "end_sample_from_first_clock_us": 5184.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 67,
+          "end_cell_zero_based": 74,
+          "payload_relative_start": 46,
+          "end_sample_from_first_clock_us": 9089.2,
+          "ends_before_yellow": false
+        }
+      ],
+      "normal_lsb": [
+        {
+          "start_cell_zero_based": 0,
+          "end_cell_zero_based": 7,
+          "payload_relative_start": -21,
+          "end_sample_from_first_clock_us": 911.6,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 28,
+          "end_cell_zero_based": 35,
+          "payload_relative_start": 7,
+          "end_sample_from_first_clock_us": 4328.4,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_msb": [
+        {
+          "start_cell_zero_based": 4,
+          "end_cell_zero_based": 11,
+          "payload_relative_start": -17,
+          "end_sample_from_first_clock_us": 1398.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 12,
+          "end_cell_zero_based": 19,
+          "payload_relative_start": -9,
+          "end_sample_from_first_clock_us": 2376.8,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_lsb": [
+        {
+          "start_cell_zero_based": 6,
+          "end_cell_zero_based": 13,
+          "payload_relative_start": -15,
+          "end_sample_from_first_clock_us": 1644.0,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 14,
+          "end_cell_zero_based": 21,
+          "payload_relative_start": -7,
+          "end_sample_from_first_clock_us": 2619.2,
+          "ends_before_yellow": true
+        }
+      ]
+    },
+    "yellow_start_from_first_clock_us": 8262.4,
+    "last_clock_from_first_clock_us": 12200.8,
+    "clock_rises_before_yellow": 68
+  },
+  "stock-v7-01-final-20260924": {
+    "index_convention": "zero-based emitted clock cell; five lead cells; flags excluded from payload destuffing",
+    "data_sampling_offsets_checked_us": [
+      40,
+      50,
+      60,
+      70,
+      80
+    ],
+    "bits": "000000111111000000000000001110000000000000010000000010100001100000000000000000000001000000001",
+    "clock_cells": 93,
+    "payload_start_cell": 13,
+    "payload_max_consecutive_ones": 3,
+    "payload_max_consecutive_zeros": 22,
+    "normal_destuff": {
+      "bits": "00000000000001110000000000000010000000010100001100000000000000000000001000000001",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": null
+    },
+    "complementary_destuff_on_observed_levels": {
+      "bits": "00000",
+      "removed_payload_indices": [],
+      "first_violation_payload_index": 5
+    },
+    "aligned_payload_bytes_msb": [
+      "00",
+      "07",
+      "00",
+      "02",
+      "01",
+      "43",
+      "00",
+      "00",
+      "02",
+      "01"
+    ],
+    "c0_sliding_windows": {
+      "normal_msb": [
+        {
+          "start_cell_zero_based": 10,
+          "end_cell_zero_based": 17,
+          "payload_relative_start": -3,
+          "end_sample_from_first_clock_us": 2132.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 27,
+          "end_cell_zero_based": 34,
+          "payload_relative_start": 14,
+          "end_sample_from_first_clock_us": 4208.4,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 59,
+          "end_cell_zero_based": 66,
+          "payload_relative_start": 46,
+          "end_sample_from_first_clock_us": 8114.0,
+          "ends_before_yellow": true
+        }
+      ],
+      "normal_lsb": [
+        {
+          "start_cell_zero_based": 0,
+          "end_cell_zero_based": 7,
+          "payload_relative_start": -13,
+          "end_sample_from_first_clock_us": 910.8,
+          "ends_before_yellow": true
+        },
+        {
+          "start_cell_zero_based": 20,
+          "end_cell_zero_based": 27,
+          "payload_relative_start": 7,
+          "end_sample_from_first_clock_us": 3352.4,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_msb": [
+        {
+          "start_cell_zero_based": 4,
+          "end_cell_zero_based": 11,
+          "payload_relative_start": -9,
+          "end_sample_from_first_clock_us": 1401.2,
+          "ends_before_yellow": true
+        }
+      ],
+      "inverted_lsb": [
+        {
+          "start_cell_zero_based": 6,
+          "end_cell_zero_based": 13,
+          "payload_relative_start": -7,
+          "end_sample_from_first_clock_us": 1643.2,
+          "ends_before_yellow": true
+        }
+      ]
+    },
+    "yellow_start_from_first_clock_us": 11896.8,
+    "last_clock_from_first_clock_us": 11226.4,
+    "clock_rises_before_yellow": 93
+  },
+  "proposed_07_to_06": {
+    "changed_payload_byte_zero_based": 1,
+    "changed_payload_byte_bit": 0,
+    "changed_emitted_cell_zero_based": 36,
+    "original_window_cells_35_through_42": "C0",
+    "mutated_window_cells_35_through_42": "80",
+    "stuff_bits_before_and_after": 0,
+    "interpretation": "Conditional shifted-window prediction, not ASIC decode identification"
+  },
+  "conditional_emulator_timing": {
+    "status_to_yellow_falling_tstates": 2418,
+    "terminal_ini_to_yellow_falling_tstates": 2351,
+    "clock_hz": 3686400,
+    "status_to_yellow_falling_us": 655.9244791666666,
+    "estimated_status_from_first_clock_us": 7606.475520833333,
+    "limitations": "Exact emulator fixture only; not an observed ASIC sampling timestamp. Assumes CPU clock, no extra IRQ/wait-state delays, and corresponding GPIO edge timing."
+  }
+}

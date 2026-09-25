@@ -1,0 +1,9 @@
+{
+  "utc": "2026-09-24T15:55:27.825880+00:00",
+  ":TRIGger:EDGE:SOURce?": "DIG2",
+  ":TRIGger:EDGE:SLOPe?": "POS",
+  ":RSTate?": "SING",
+  ":OPERegister:CONDition?": "+40",
+  ":TER?": "+0",
+  ":SYSTem:ERRor?": "+0,\"No error\""
+}

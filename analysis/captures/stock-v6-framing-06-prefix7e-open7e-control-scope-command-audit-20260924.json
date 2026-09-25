@@ -1,0 +1,66 @@
+{
+  "utc": "2026-09-24T12:19:22.511569+00:00",
+  "setter_errors": [
+    {
+      "command": ":ACQuire:MODE RTIM",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":ACQuire:SRATe 20000000",
+      "error": "-128,\"Numeric data not allowed\""
+    },
+    {
+      "command": ":ACQuire:POINts 2000000",
+      "error": "-128,\"Numeric data not allowed\""
+    },
+    {
+      "command": ":TIMebase:SCALe 8E-3",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TIMebase:POSition 0",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TIMebase:REFerence CENT",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TRIGger:MODE EDGE",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TRIGger:EDGE:SOURce DIG2",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TRIGger:EDGE:SLOPe POS",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":TRIGger:SWEep NORM",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":WAVeform:SOURce POD1",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":WAVeform:FORMat BYTE",
+      "error": "+0,\"No error\""
+    },
+    {
+      "command": ":WAVeform:POINts:MODE RAW",
+      "error": "+0,\"No error\""
+    }
+  ],
+  "rearmed_status": {
+    ":TER?": "+0",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:SWEep?": "NORM",
+    ":WAVeform:SOURce?": "POD1",
+    ":ACQuire:SRATe?": "20000000",
+    ":ACQuire:POINts?": "2000000",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  }
+}

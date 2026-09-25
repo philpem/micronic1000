@@ -1,0 +1,23 @@
+{
+  "saved_utc": "2026-09-24T12:18:21.976382+00:00",
+  "png": "analysis/captures/stock-v6-framing-06-prefix7e-open7e-control-scope-error-20260924.png",
+  "png_bytes": 20350,
+  "error_queue_first": "+0,\"No error\"",
+  "state": {
+    "*IDN?": "AGILENT TECHNOLOGIES,MSO-X 3054A,MY51260150,02.65.2021030741",
+    ":TER?": "+0",
+    ":ACQuire:MODE?": "RTIM",
+    ":ACQuire:SRATe?": "20000000",
+    ":ACQuire:POINts?": "2000000",
+    ":TIMebase:SCALe?": "+8.000E-03",
+    ":TIMebase:POSition?": "+0.0E+00",
+    ":TIMebase:REFerence?": "CENT",
+    ":TRIGger:MODE?": "EDGE",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":TRIGger:EDGE:SLOPe?": "POS",
+    ":TRIGger:SWEep?": "NORM",
+    ":WAVeform:SOURce?": "POD1",
+    ":WAVeform:FORMat?": "BYTE",
+    ":WAVeform:POINts:MODE?": "RAW"
+  }
+}

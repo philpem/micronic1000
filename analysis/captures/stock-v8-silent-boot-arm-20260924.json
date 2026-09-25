@@ -1,0 +1,14 @@
+{
+  "purpose": "passive v8 boot yellow capture; armed after owner reported TESTING; earlier boot not captured",
+  "before": {
+    ":RSTate?": "STOP",
+    ":TRIGger:EDGE:SOURce?": "DIG2",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  },
+  "after": {
+    ":RSTate?": "SING",
+    ":OPERegister:CONDition?": "+8",
+    ":TER?": "+0",
+    ":SYSTem:ERRor?": "+0,\"No error\""
+  }
+}

@@ -233,9 +233,12 @@ These additional build flags allow exact replay without changing ROM:
 | `STOCK_CONTENT_IDX` | 0 = flag only, 1 = flag + `03h`, 2 = type-2 control acknowledgement, 3 = diagnostic `00 00 FF FF 96` (fixed mode only) |
 | `STOCK_STUFFING_MODE` | -1 = historical flag-dependent choice (default); 0 = off; 1 = insert zero after five ones; 2 = insert one after five zeros; explicit modes describe emitted serialized bits |
 | `STOCK_CLOSE_FLAG` | 0 = open (default), 1 = append a raw closing flag after terminal stuffing |
+| `STOCK_CLOSE_BYTE` | -1 = disabled (default); 0..255 appends that raw MSB-first closing marker after terminal stuffing, independent of the opening flag; cannot combine with `STOCK_CLOSE_FLAG=1` |
+| `STOCK_PREFIX_BYTE` | -1 = disabled (default); 0..255 prepends that raw MSB-first byte immediately before the opening flag in fixed type-2 ACK mode |
+| `STOCK_ZERO_PAYLOAD` | 0 = normal type-2 ACK payload (default); 1 = replace it with ten zero bytes (80 data-low cells) |
 | `STOCK_REPLY_DELAY_US` | 500..60000; fixed RX_NARROW delay from last observed outbound clock edge |
 | `STOCK_REPLY_DELAY_STEP_US`, `STOCK_REPLY_DELAY_COUNT` | Fixed RX_NARROW only: cycle `COUNT` delays, starting at `STOCK_REPLY_DELAY_US` and adding `STEP_US` after each reported burst; defaults 0 and 1; maximum resulting delay 60000 us |
-| `STOCK_REPLY_EVERY_N` | Fixed RX_NARROW only: transmit on one of every N completed handheld bursts of at least 9 cells; shorter fragments do not advance the sparse counter. Default 1, range 1..32. Each burst report includes `reply_sent=1/0`. |
+| `STOCK_REPLY_EVERY_N` | Fixed RX_NARROW only: transmit on qualifying bursts 1, N+1, 2N+1, ... of at least 9 clock cells; shorter fragments do not advance the counter. Default 1, range 1..32. Each burst report includes `reply_sent=1/0`. |
 
 For a timing sweep with the same emitted frame, set fixed RX_NARROW and
 add `-DSTOCK_REPLY_DELAY_US=30000 -DSTOCK_REPLY_DELAY_STEP_US=1000
@@ -254,6 +257,19 @@ complements the emitted flag too (`7E` becomes `81`); the configured flag
 alone is not the emitted value. Content 3 exercises both run senses across
 byte boundaries and includes an asymmetric byte; it is a diagnostic pattern,
 not a valid Commstar message. It is excluded from the legacy 60-row sweep.
+`STOCK_CLOSE_BYTE` emits a raw closing delimiter outside the stuffed data
+region. It is useful for testing a closing marker independently of the
+opening marker; it does not model an FCS, which would belong in the stuffed
+data region.
+`STOCK_PREFIX_BYTE` is also outside the stuffed payload. A prefix of `7E`
+followed by the configured `7E` opening flag emits two adjacent flags; a
+prefix of `00` emits eight data-low cells before the same opening flag.
+Both retain the default five clock-only lead cells unless another mode
+changes that setup.
+For the matched 101-cell control, combine prefix `7E` with
+`STOCK_ZERO_PAYLOAD=1`: five lead-low cells, two `7E` bytes, then 80 zero
+payload cells. The zero payload option changes only fixed type-2 ACK content;
+the default payload remains unchanged.
 
 Start with phase index 1 (-2/8): data pulses lead the first logical clock
 edge by 30 us and hold for 46 us. To test the second logical clock edge,
@@ -347,3 +363,20 @@ timing metrics are software observations: `emit_late_max` is sampled before
 GPIO and `emit_applied_late_max` after GPIO (a conservative upper bound
 subject to 4-us resolution and intervening interrupts). Check D5/D6 and D8
 together on the scope. Ring drops cannot reveal interrupt-flag coalescing.
+
+### V7 single-bit payload probe
+
+`STOCK_PAYLOAD07_TO06=1` changes only the second byte of the normal
+fixed ten-byte payload from07h to06h; default0 preserves the baseline.
+It has no effect when STOCK_ZERO_PAYLOAD selects the separate zero array.
+Archived09: `analysis/arduino/releases/stock-v7-framing/09-double7e-payload06/`.
+Two raw7E bytes plus payload00060002014300000201,101cells including5lead
+zeros. Host validation checks the sole changed cell36 and candidate
+window35..42=80h; physical ASIC interpretation remains untested.
+
+`STOCK_PAYLOAD00_TO80=1` changes only the first normal payload byte00h
+to80h. Default0 preserves historical images; combining with zero-payload
+or07-to06 controls is rejected. Variant10 is archived under
+`analysis/arduino/releases/stock-v7-framing/10-double7e-payload80/`.
+Exact-stream host gate verifies onlycell21 changes,101cells retained,
+and candidate flag/payload window18..25 changesC0->D0.

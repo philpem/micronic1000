@@ -1,0 +1,101 @@
+{
+  "image": "micron1_stock_context_v7.bin",
+  "checksums": {
+    "size_bytes": 32768,
+    "md5": "9e103b032b5f51ce26d01219e16cd15d",
+    "sum16": "6DC5",
+    "sum24": "386DC5",
+    "sha256": "e229a97bc464a9f332b158b898476f75a5e1b0ca6853079d6c37b8578307c5d2"
+  },
+  "stock_sha256": "6226dc1766933e193130112ee9a3304d916f503c57363cfcec00a4179aa66a6f",
+  "basis": "v6 receive timing through terminal sample; stock reset routes",
+  "patches": [
+    {
+      "address": "ROM00:2FC1",
+      "original": "cd7833",
+      "replacement": "cd967e"
+    },
+    {
+      "address": "ROM00:0252",
+      "original": "328bf7d32a",
+      "replacement": "cdec7e0000"
+    },
+    {
+      "address": "ROM00:33F8",
+      "original": "e1d13820",
+      "replacement": "c3b97f00"
+    }
+  ],
+  "stock_reset_routes": [
+    "ROM00:0172",
+    "ROM00:01A3",
+    "ROM00:3812",
+    "ROM00:17A5",
+    "ROM00:3708"
+  ],
+  "assembly_sha256": "7b8a51359a35b747b9603524ec9763024bebf0610f1ece01549849a8f9660923",
+  "symbols": {
+    "SCR_STATUS": 51172,
+    "SCR_BYTE": 51173,
+    "SCR_LENGTH": 51174,
+    "SCR_BUFFER": 51176,
+    "SCR_DESCRIPTOR": 51178,
+    "SCR_WRITE": 51180,
+    "SCR_SAVED_BC": 51182,
+    "SCR_TOTAL": 51184,
+    "SCR_REMAINING": 51186,
+    "PORT_2A": 42,
+    "SHADOW_2A": 63371,
+    "LINK_BLOCK_RX": 13176,
+    "rx_wrapper": 32406,
+    "rx_success": 32418,
+    "rx_error": 32443,
+    "rx_pulse_end": 32463,
+    "delay_1ms": 32482,
+    "delay_loop": 32484,
+    "delay_450us": 32487,
+    "guard_loop": 32489,
+    "init_wrapper": 32492,
+    "LCD_REG": 35,
+    "LCD_DAT": 3,
+    "lcd_home": 32553,
+    "lcd_putc": 32569,
+    "lcd_hex": 32578,
+    "lcd_nib": 32587,
+    "lh_out": 32597,
+    "show_result": 32600,
+    "stopped": 32687,
+    "lcd_dump": 32689,
+    "terminal_hook": 32697,
+    "no_terminal_byte": 32733,
+    "end": 32749
+  },
+  "scratch_ram": "C7E0-C7F2 (upper TPA; no loaded application)",
+  "display_rows": [
+    "R7IaaFF:ssvvLLLLPPPP",
+    "XDDDDWWWWCCCCTTTTRR "
+  ],
+  "word_encoding": "raw little-endian byte order; use --decode",
+  "terminal_byte_validity": "vv is valid only when ss bit 2 is set; otherwise slot is 00",
+  "non_ec_display": "R7IaaFF only; ignore stale LCD suffix/second row",
+  "timing_vs_v6": {
+    "through_terminal_sample_tstates": 0,
+    "post_sample_extra_tstates_no_terminal_ini": 109,
+    "post_sample_extra_tstates_with_terminal_ini": 136,
+    "timeout_or_exhaustion_extra_tstates": 0,
+    "yellow_error_intervals_tstates": [
+      1719,
+      3383,
+      1701
+    ],
+    "yellow_success_intervals_tstates": [
+      1719,
+      6739,
+      1701
+    ],
+    "clock_hz": 3686400,
+    "note": "Only marker onset/stock cleanup after the terminal sample are delayed; pulse widths unchanged"
+  },
+  "one_shot": true,
+  "hardware_validated": false
+}

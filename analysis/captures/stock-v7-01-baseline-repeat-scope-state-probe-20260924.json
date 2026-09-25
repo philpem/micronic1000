@@ -1,0 +1,25 @@
+{
+  "utc": "2026-09-24T13:32:34.588157+00:00",
+  "sequence": [
+    {
+      "cmd": ":RState?",
+      "result": "STOP"
+    },
+    {
+      "cmd": ":OPERation:CONDition?",
+      "result": "TimeoutError: timed out"
+    },
+    {
+      "cmd": ":RState?",
+      "result": "STOP"
+    },
+    {
+      "cmd": ":TER?",
+      "result": "+0"
+    },
+    {
+      "cmd": ":SYSTem:ERRor?",
+      "result": "-113,\"Undefined header\""
+    }
+  ]
+}

@@ -1,5 +1,436 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-24 — v7 first physical boot
+
+* Owner reports v7 programmed, TESTING completed and Main Menu reached.
+  Boot preceded fresh capture preparation, so there is no new boot
+  waveform. Programmer VERIFY/checksum was not explicitly reported.
+  No additional reboot requested; preparing archived single-7E Uno
+  reference and a fresh capture for the first v7 receive/readout trial.
+* CONFIRMED (owner v7 baseline readout):
+  `R7IEC29:CA000600E4FD` / `X0EFEE4FD0000060006`.
+  The decoder gives A=ECh, F=29h, LINK_STATUS=CAh, terminal byte invalid,
+  active descriptor FE0Eh, length 6, buffer and next-write pointer both
+  FDE4h, saved BC=0, cumulative request 6 and residual B=6. This reports
+  no pointer advance in the active descriptor. The mandatory setup
+  LINK_RXD read is excluded. The first scope acquisition contained a
+  transient (10 D2 edges, no yellow), not the intended 93-cell reply;
+  preserved it as invalid and requested a fresh single-7E capture before
+  advancing to double-7E. The LCD record remains an owner observation.
+* Owner then reported that the scope did not show an armed acquisition.
+  Withdrew readiness based only on TER=0: it is an event latch, not proof
+  that acquisition is running and waiting. Paused the operator prompt
+  and requested actual run/wait state plus front-panel verification.
+  Previously validated waveforms remain valid; unsupported readiness
+  claims do not. Updated the active capture procedure accordingly.
+
+## 2026-09-24 — v7 terminal-byte/descriptor ROM prepared
+
+* Built guarded ROM00 v7 at the owner's request: 32,768 bytes,
+  additive checksum 386DC5, SHA-256
+  `e229a97bc464a9f332b158b898476f75a5e1b0ca6853079d6c37b8578307c5d2`.
+  ROM01 and stock reset routes remain unchanged. Published the binary,
+  manifest, builder/decoder and dedicated bench handover.
+* Fresh descriptor-loader bytes and independent design/release review
+  establish the saved cursor minus four as the active descriptor entry.
+  V7 captures (HL-1) from RAM only when terminal LINK_STATUS bit 2 set
+  proves the preceding INI; it never re-reads LINK_RXD. Descriptor bytes
+  are copied after stock cleanup and the marker, under DI. Two raw
+  20-column rows expose status, byte validity, length, buffer, descriptor,
+  next-write pointer and count operands; a CLI decoder names the fields.
+* Forty-seven v5/v6/v7 tests passed, including release reproduction,
+  unchanged I/O/cycles through the terminal sample, preserved return
+  registers, multi-descriptor and 256-byte cases, byte validity and stale
+  snapshot suppression. Yellow pulse widths match v6; post-sample marker
+  onset gains 109 or 136 T-states depending on terminal INI, not before it.
+* Archived Uno 01/06/08/silent hashes were audited without hardware
+  changes. Test plan starts with programmer VERIFY and silent boot, then
+  single-7E and double-7E captures. Physical LCD row placement and v7
+  baseline behavior remain untested. Scratch C7E0-C7F2 is reserved for
+  this one-shot FOO experiment, not arbitrary loaded applications.
+
+## 2026-09-24 — flag-ACK code-path review
+
+* Traced fresh listings for RX entry, Link_BlockRx, LinkRxDispatcher,
+  header validation, Link_BlockTx and its controller-command/status
+  helpers. Independent review approved the bounded conclusion: no raw
+  flag comparison or received-flag counter in the examined software
+  path. Both CAh and 8Eh select the terminal status error before
+  successful-count/header/type checks; only 8Eh forces the terminal INI.
+* Documented actual v6 stop versus the stock caller's counterfactual
+  carry-error discard/re-arm. LINK_CMD=81h and the TX status waits do
+  not prove an optical ACK or required flag count. Replaced two stale
+  TX EOL hardware shorthand comments with the verified bit-clear waits,
+  updated Link_BlockRx plate and saved Ghidra. ASIC flag recognition
+  remains SUSPECTED; byte value and active descriptor remain unknown.
+* Delegated offline preparation of double-7E plus an 80-zero-bit payload
+  control, retaining the same 101-cell duration. Bench remains silent
+  pending artifact review; no new ROM burn is needed for this control.
+  Parent reviewed the implemented payload switch, exact 101-cell host
+  assertion and release manifest after all 37 emitter tests passed.
+  Candidate `08-prefix7e-open7e-zero80` is approved for upload/capture;
+  the owner then ran it and reported `R6IEE6D` (receive timeout).
+  The saved scope verifies all 101 intended GPIO cells and a 918-us
+  yellow low starting 32.9096 ms after the reply trigger. Its single
+  frame is associated with the first logged reply at 12:14:03 UTC;
+  the second reply at 12:14:27 followed a reset and lies outside that
+  record. The owner supplied one EE6D readout, not separate readouts
+  for both logged attempts. A double-7E/original-payload repeat is
+  being prepared before interpreting the payload-pattern difference.
+* Before the original-payload control, the owner reported a scope
+  "Numeric data not allowed" message. Paused the operator prompt.
+  A screenshot saved before clearing showed no popup; the first error
+  query returned no error, and capture settings matched the intended
+  setup. The originating command is unresolved; no cause/fix is claimed.
+  Requested a fresh clean arm and live-logger check before continuing.
+  A subsequent command-by-command audit reproduced error -128 with
+  numeric writes to ACQuire:SRATe and ACQuire:POINts; those setters
+  are not accepted by this scope. Their queries report the actual
+  acquisition values. Removed those writes from the ongoing procedure,
+  cleared the audit errors and rearmed with a live logger and no error.
+  This establishes a reproducible command fault, not attribution of the
+  earlier popup to a particular historical command.
+* CONFIRMED (owner readout): restoring the original double-7E payload
+  returned `R6IECADS8EN0001`. CPU F=ADh differs from the earlier A9h,
+  but terminal LINK_STATUS=8Eh and N0001 recovered. Scope verified
+  all 101 cells; yellow low started at 8.2120 ms for 918 us. Independent
+  review supports a payload-pattern effect, not an ACK-count rule, byte
+  identity or valid frame. Updated and saved Link_BlockRx plate; next
+  priority is the actual read byte and active descriptor. Uno was
+  restored to verified LISTEN_ONLY; logger stopped. Scope mode,
+  timebase, trigger and waveform settings were restored with no error;
+  actual readback was 10 MSa/s and 1M points, without writing either
+  unsupported acquisition rate/point-count setter.
+
+## 2026-09-24 — repeated-opening-prefix test preparation
+
+* Owner authorized `7E,7E,payload` versus `00,7E,payload`, both
+  101 cells including the same five lead cells, with no closing tail.
+  The first 00 denotes eight low-data clock cells; both candidates
+  place the final opening flag and payload at identical cell indices.
+  Delegated source option, actual-framer tests, archived artifacts
+  and capture preparation to the existing cheaper worker. V6 remains
+  installed; working 93-cell 7E/open controls bracket the pair.
+* Owner confirmed Main Menu with alignment and leads unchanged.
+  The freshly armed 93-cell baseline returned `R6IEC29SCAN0000`
+  (owner report); the Uno logged one reply and a 916-us yellow low.
+  Scope verified all 93 intended cells and a 918-us yellow low at
+  11.8672-12.7852 ms. Double-7E candidate preparation is in progress.
+* Added an optional raw prefix for the fixed-payload reply. Parent
+  review caught an unreachable default-case test assertion nested
+  under the prefix-enabled guard; worker corrected the guard. All
+  eight focused actual-framer cases passed after correction, including
+  the exact default 93-cell and both new 101-cell strings. The full
+  36-test emitter suite passed before the test-guard-only correction.
+* CONFIRMED (owner readout): the double-7E prefix displayed
+  `R6IECA9S8EN0001`, changing terminal LINK_STATUS from CAh to 8Eh
+  and the diagnostic's derived count from 0000 to 0001. The Uno log
+  records one reply and a 920-us yellow low. Scope verified all 101
+  intended cells; yellow low lasted 918 us at 8.2272-9.1452 ms,
+  before the reply finished. Fresh bytes and independent review confirm
+  LINK_STATUS bit 2 set forces the optional terminal INI from LINK_RXD.
+  PUSH AF / POP AF preserves the status across that read; LINK_STATUS
+  bit 3 remains set and selects the same error branch. The byte's value
+  and any valid-frame interpretation are unknown. N0001 agrees with a
+  single read for an ordinary small descriptor, with the documented
+  boundary caveat. Updated and saved Link_BlockRx plate; a matched
+  00/7E prefix control is being prepared.
+* CONFIRMED (owner readout): the matched 00/7E prefix control returned
+  `R6IEC29SCAN0000`, contrasting with double-7E's `8E` status and
+  `N0001`. Its fresh logger records one reply and a yellow return.
+  Scope verified all 101 intended cells and a 918.4-us yellow low
+  at 12.842-13.7604 ms. A double-7E repeat is being prepared to
+  check the comparison. The earlier pre-run scope transients are
+  preserved separately and are not protocol captures.
+* CONFIRMED (owner readout): the double-7E repeat again displayed
+  `R6IECA9S8EN0001`, completing the observed A/B/A display sequence
+  around the 00/7E control. The repeat scope verified all 101 cells;
+  yellow low began at 8.2236 ms and lasted 918.4 us. Independent
+  review supports a prefix-pattern-dependent terminal read/error,
+  occurring before the full stimulus ends, not valid-frame acceptance.
+  Updated and saved Link_BlockRx plate. Byte identity and active
+  descriptor remain the highest-value missing evidence; a v6-only
+  payload-necessity control would replace the 80 payload bits with
+  low-data clock cells while keeping the double-7E prefix and length.
+  Restored the Uno to CLI-verified stock-silent firmware, confirmed
+  a fresh LISTEN ONLY banner, stopped the logger and restored the
+  scope settings with a clear error queue.
+
+## 2026-09-24 — eight-clock tail control preparation
+
+* Owner authorized the next Uno control: opening 81, unchanged payload,
+  then eight clocks with data low, retaining v6. Delegated preparation
+  to the existing cheaper worker. The independent raw tail-byte option
+  can express this as 00 without adding a new framing mechanism.
+  The actual-framer host check passed all five candidate cases,
+  including the exact 101-cell 81/payload/eight-zero stream. No Uno
+  source change was required for this additional candidate.
+* Recorded the owner's multiple-opening-flags hypothesis as SUSPECTED
+  in TASKS.md, to test separately after this control. Clarified that
+  diagnostic 29/A9 are CPU F values; CA is the LINK_STATUS snapshot.
+  All EC outcomes in the completed matrix reported LINK_STATUS=CAh.
+* CONFIRMED (owner readout): the eight-zero tail returned `R6IEE6D`,
+  matching the 81/open timeout. The Uno log records one replied
+  22-cell burst and a 916-us yellow low. Scope verified all 101
+  intended GPIO cells, including the eight-zero tail. Yellow low
+  lasted 918 us at 37.6668-38.5848 ms after the reply trigger.
+  Updated and saved the Link_BlockRx plate with this observation;
+  a matched-length 81/raw7E repeat is requested before interpreting
+  the difference as a response to the tail data pattern.
+* CONFIRMED (owner readout): that 81/raw7E repeat displayed
+  `R6IECADSCAN0000`, CPU F=ADh and terminal LINK_STATUS=CAh with
+  N0000. This is again the terminal-status error; varying CPU flags
+  do not establish packet acceptance. Scope verified all 101 intended
+  cells; yellow low lasted 918 us at 12.3688-13.2868 ms. Both tails
+  therefore had the intended length and pattern. The observed return
+  depends on the tail data pattern in this comparison, but does not
+  identify a valid closing flag or FCS.
+* Independent review approved the bounded tail-pattern conclusion and
+  recommends `7E,7E,payload` versus `00,7E,payload`, with the first 00
+  denoting eight low-data clock cells. Both keep the final opening
+  flag and payload at identical cell indices. Updated and saved the
+  Link_BlockRx plate and current task priorities. Restored flash-verified
+  LISTEN_ONLY with a fresh banner, stopped the logger and restored
+  prior scope settings with an empty error queue.
+
+## 2026-09-24 — delegated framing preparation and FCS audit
+
+* At the owner's request, delegated the Uno delimiter matrix to a
+  cheaper worker. Parent retained firmware-semantics review and bench
+  coordination. V6 stays installed for the four framing candidates.
+  Added an independent raw closing-marker option with exact-bit and
+  terminal-stuffing tests. All 32 emitter tests passed. The four HEXes
+  and source/artifact manifests are archived under
+  `analysis/arduino/releases/stock-v6-framing-matrix/`. Variant 01 was
+  uploaded and flash-verified; its banner was captured and an 80-ms
+  centered scope acquisition armed. Owner confirmed Main Menu; the
+  baseline V24 operation was requested before any changed candidate.
+* CONFIRMED (owner report): variant 01 reproduced
+  `R6IEC29SCAN0000`. Its captured GPIO waveform matched all 93 expected
+  cells and the yellow low lasted 918 us. Reply launch was 33.048 ms
+  after the final handheld D1 rising edge. Raw capture and analysis
+  are archived as `stock-v6-framing-baseline-20260924*`.
+  Variant 02 (opening 7E, raw closing 7E) was flash-verified and armed,
+  but no operation was recorded before the owner stepped away.
+  After fresh capture was armed on resumption, the owner reported
+  `R6IEC29SCAN0000` for variant 02 as well. Its scope record matched
+  all 101 expected cells, including the raw closing 7E. Yellow low
+  lasted 918 us and began 11.8672 ms after the reply trigger, while
+  the closing marker was still being emitted (last clock rise at
+  12.200 ms). This is unchanged displayed status, not evidence that
+  the ASIC accepted or processed the closing marker. Capture files:
+  `stock-v6-framing-02-7e-close7e-20260924*`.
+* CONFIRMED (owner report): variant 03, opening 81 and raw closing
+  7E, displayed `R6IECA9SCAN0000`. The scope matched all 101 expected
+  cells; yellow low lasted 918 us and started at 12.3548 ms, 153.2 us
+  after the final reply clock rise. This marker occurs after stock
+  receive return and does not time the terminal sample directly.
+  Fresh stock bytes, v6 hook source and independent review confirm
+  that terminal LINK_STATUS=CAh still selects the bit-3 error branch.
+  F sign changed from clear to set, but RRCA preserves that flag;
+  A9 alone does not establish the short-count path. N0000 is unchanged.
+  Updated and saved the Link_BlockRx plate. Baseline recovery requested
+  before the remaining 81/open candidate.
+* CONFIRMED (owner report, baseline recovery after variant 03):
+  `R6IEC29SCAN0000` returned with the original 7E/open image. The
+  refreshed logger recorded one reply and a 912-us yellow low.
+  The saved scope waveform matched all 93 expected cells and measured
+  yellow low at 918.4 us, from 11.8708 to 12.7892 ms. The next
+  candidate is 81/open.
+* CONFIRMED (owner report): variant 04, opening 81 without a closing
+  marker, displayed `R6IEE6D`: the established stock receive-timeout
+  return, with carry set. The Uno log records one emitted reply and
+  a 916-us yellow low. The saved scope record triggered on a transient
+  and contains only four D2/D3 glitch edges, not the intended reply;
+  it cannot verify the emitted frame or yellow timing. The owner
+  repeated variant 04 and again reported `R6IEE6D`. This repeat's
+  scope record matches all 93 expected GPIO cells, with reply launch
+  33.0492 ms after the final handheld D1 rising edge. Yellow low was
+  918 us at 37.6624-38.5804 ms after the reply trigger. The ignored
+  eight-cell fragment in the Uno log preceded the replied 17-cell
+  burst. Final 7E/open baseline recovery is pending.
+  The delimiter matrix does not yet separate
+  the effect of extra clocks from the closing 7E bit pattern.
+* CONFIRMED (owner report): the final 7E/open reference again returned
+  `R6IEC29SCAN0000`; its Uno log records one reply and a 920-us
+  yellow low. The final scope matched all 93 intended cells and measured
+  a 918.4-us yellow low. Restored the Uno to flash-verified LISTEN_ONLY
+  with a fresh banner and restored the scope settings with no SCPI error.
+  Independent review recommends an equal-length
+  control: opening 81 plus eight clock-only cells with data low,
+  compared with 81/raw7E. This needs no ROM change. No candidate in
+  this matrix demonstrated successful reception or an FCS check.
+* Fresh RX/TX/header-validator listings and independent review confirm
+  streamed byte reads followed by terminal error-status handling,
+  without software FCS calculation in these routines. Withdrew older
+  claims that no checksum exists anywhere, that no ASIC CRC register
+  could exist, and that LINK_STATUS bit 2 signals two excluded bytes.
+  It gates one optional INI; the fixed subtraction of two is separate.
+* Owner's 8/16-bit FCS proposal remains SUSPECTED. Documented stuffing,
+  candidate identification and re-arm requirements: v6 stops on the
+  first invalid receive return, so an unattended rotating trailer
+  search is not exhaustive. Updated and saved the Link_BlockRx plate.
+
+## 2026-09-24 — review of test priorities
+
+* Reassessed the immediate ROM-entry proposal against v6's repeatable
+  A/B/A readout, the swapped run's completed UI errors, and the timing
+  disturbance of a pre-call output marker. Recommended keeping v6
+  installed for a bounded Uno framing matrix first; no hardware action.
+* Source review found that automatic stuffing changes with opening
+  flag and the existing closing flag repeats the opening flag. Specify
+  mode 1 and an independent closing-byte option for `81/7E`; validate
+  the filtered sparse-counter baseline before all candidate runs.
+  Require working reference recovery and inspect the first reply;
+  use an equal-duration clock-only tail if closure changes the result.
+* Independent review agreed with deferring the ROM burn. Re-ran all
+  nine v6 builder/readout tests successfully. Updated the handover and
+  task priorities; no stock-ROM semantic annotation was changed.
+
+## 2026-09-24 — ASIC receive-channel constraint
+
+* Owner clarified that the optical receive logic is inside an ASIC,
+  no schematic is available, and the receiver check cannot identify
+  clock versus data. With optical delivery already confirmed, discarded
+  the proposed tagged-pulse channel-mapping test. The current plan is
+  to instrument firmware-visible receive-call entry, wait and return,
+  plus the active descriptor length behind v6's `N0000`; it does not
+  require naming either ASIC input.
+
+## 2026-09-24 — owner optical-receiver clarification
+
+* CONFIRMED (owner hardware check): IR signals reach the handheld's
+  optical receivers. The owner has not identified which received
+  signal is clock and which is data. Corrected the current v6 plan:
+  basic optical delivery is no longer an open test; channel mapping
+  and the `Link_BlockRx` entry/return distinction remain open. The
+  A/B/A outcome alone does not prove decoded payload bytes.
+
+## 2026-09-24 — v6 F7 LED-role A/B/A control
+
+* Rebuilt the archived F7 from source commit `1f0bff5` byte-for-byte,
+  then changed only `STOCK_TX_SWAP=0` to `1`. The swap-only HEX passed
+  flash VERIFY and its banner confirmed the unchanged F7 payload,
+  phase and delay. Owner ran v6 V24 FOO with unchanged alignment and
+  saw `8000 error` then `8040 error`, no `R6I...`. Uno logged 148
+  handheld bursts, 50 replies and no yellow return marker during the
+  operation. One 20-ms POD1 record showed swapped D6 clock/D5 data,
+  with all 93 expected F7 cells and no yellow edge. The separate
+  5,448-us yellow event occurred before the run on reset.
+* For the A/B/A control, reinstalled the exact unswapped F7 HEX with
+  flash VERIFY. After reset-button Main Menu, owner again read
+  `R6IEC29SCAN0000`. One replied burst carried a 916-us logged yellow
+  return; the scope decoded all 93 F7 cells on D5 clock/D6 data and
+  measured a 918.4-us yellow low after the frame. An independent
+  reviewer checked the swapped raw scope and recommended this control.
+  The assignment-dependent outcome is repeatable in this setup;
+  neither capture identifies optical emitter/receiver identities.
+* Recorded the owner's SUSPECTED mixed-marker idea (`81h` opening,
+  `7Eh` closing) as a later framing question. Restored the Uno to
+  flash-verified LISTEN_ONLY and checked its banner; restored the
+  scope's prior settings. Updated `Link_BlockRx` Ghidra plate and
+  saved the program.
+
+## 2026-09-24 — boot-path issue and standby observation
+
+* Repeated v6/F7 under a 50-MSa/s, 20-ms Keysight digital POD1 single
+  shot. Owner again read `R6IEC29SCAN0000`. Independent decode of the
+  saved raw million-sample POD record confirms scope D2/Uno D5 has 93
+  clock cells and scope D3/Uno D6 has the exact five lead + `7Eh` +
+  80 payload bits (93/93 matches). Scope D4/yellow low was 918.42 us,
+  starting 541.98 us after the last D3 fall. This validates GPIO
+  output, not IR optical delivery, stuffing (no five-one run), or the
+  cause of terminal `LINK_STATUS=CAh`. Saved raw waveform, preamble,
+  analysis JSON, scope PNG and serial log in `analysis/captures/`.
+  Arduino CLI flashed/verified F7 and then restored/verified silent;
+  a fresh LISTEN_ONLY banner and restored scope settings were checked.
+
+* Owner installed and VERIFY-checked v6 ROM00 (`385DEB`), then
+  coldstarted through TESTING, backup-battery warning and workstation
+  serial-number entry to Main Menu. Silent Uno captured a 5,452-us
+  boot marker. Silent V24 FOO gave `8000 error`, then `8040 error`,
+  with 100 captured handheld bursts, zero Uno TX and no receive marker.
+* Archived F7 HEX was flash-verified on the Uno and its banner checked.
+  The paired V24 attempt produced `R6IEC29SCAN0000ess` (owner).
+  Independent review of stock/v6 bytes decodes diagnostic `R6I EC 29
+  S CA N 0000`: terminal `LINK_STATUS=CAh`, derived receive-loop
+  `INI` count zero; trailing `ess` is stale text. The count excludes
+  the setup `LINK_RXD` read and has a 256-byte descriptor-boundary
+  caveat. Uno logged one 17-cell replied burst and a 920-us return
+  marker 11,912 us after its TX start, without event drops. The cause
+  of `LINK_STATUS` bit 3 remains open. Restored and flash-verified the
+  LISTEN_ONLY HEX; fresh banner confirmed no TX. Local Arduino CLI is
+  `.cache/ir-arduino/m1000-arduino-cli/arduino-cli` (owner supplied).
+
+* Prepared v6 ROM00 status/count diagnostic for the next hardware burn.
+  The guarded hook after `ROM00:33F7` records the terminal sampled
+  `LINK_STATUS`, residual count, descriptor count and IX without adding
+  I/O or delay before the sample. EC readout is `R6IaaFFSssNnnnn`;
+  the one-shot stops after printing. Builder and emulator tests verify
+  v5-equivalent I/O/registers through the sample, v5-equivalent boot
+  marker/receive wrapper bytes and modeled return flags. Release
+  checksum is `385DEB`; physical result is pending. Updated handover,
+  task list and exerciser README. No new stock-ROM finding required a
+  Ghidra database change in this release-preparation pass.
+
+* Fresh ROM00 bytes and independent Z80 flag review resolved the
+  previously open `ECh` ambiguity for the observed `R4IEC29`: the
+  short-count exit would leave F sign set, but `29h` has sign clear.
+  CONFIRMED: the terminal sample had `LINK_STATUS` bit 0 clear and
+  bits 1 and 3 set; bit 2 and the cause of bit 3 remain open. The
+  bounded emulator returned F=`A9h` on short count and F=`2Dh` on one
+  status-bit case. Updated the Ghidra `Link_BlockRx` plate, branch
+  comments, open-question bookmark and protocol/handover docs, then
+  saved the program. The v5 wrapper preserved raw AF at the call site.
+* Corrected F7 cadence wording after checking the sketch and its test:
+  `STOCK_REPLY_EVERY_N=3` replies on qualifying bursts 1, 4, 7, ... .
+  `NO DATA-LINE ACTIVITY OBSERVED` means zero data-line rises during
+  the sampled clock-cell burst, not absence of clock cells.
+* The owner installed v5 ROM00 (programmer checksum `3834FC`) and
+  coldstarted. TESTING took roughly one to two minutes, then beep and
+  double-beep preceded the PARCON 1000 screen. The silent Uno captured
+  a 5,448-us yellow boot marker at 00:07:51.851828 UTC. The screen later
+  blanked in standby; a second double-beep and `Backup battery low`
+  warning preceded Main Menu. The owner explicitly confirmed a return
+  from standby, not a warmboot. This verifies v5 reached Main Menu on
+  hardware, without identifying why v4 behaved differently.
+* V5's first silent V24 Load/Run control captured 100 handheld bursts,
+  zero Uno TX and no yellow event. The owner saw `8000 error` then
+  `8040 error`, with no `R4I...` prefix reported. Uploaded the exact
+  archived F7 HEX using `avrdude`; flash verification passed and the
+  startup banner matched fixed `7E`, +2/8-cell phase, 33-ms delay and
+  every-third-burst scheduling. The matched F7 attempt yielded one
+  reported 22-cell replied burst and a 916-us yellow low, 11,888 us
+  after TX start by Uno timestamps. The owner saw
+  `R4IEC29in progress`. The `R4IEC29` one-shot readout means raw
+  A=`ECh`, F=`29h` (carry set); `in progress` is stale screen text.
+  Stock receive returned with an error, but its two `ECh` exits remain
+  unresolved. Restored and flash-verified the silent Uno image. The
+  owner's reset-button press reached Main Menu; this is not classified
+  as a destructive cold start.
+* On that reset-button path, the repeated silent V24 operation again
+  captured 100 bursts, no Uno transmission and no yellow event; the
+  owner saw `Error 8000` then `Error 8040`.
+* The next reset-button return to Main Menu gave a 5,448-us yellow
+  initialization marker; it does not prove cold initialization. A
+  second F7 V24 attempt reproduced `R4IEC29in progress` and a 920-us
+  yellow low, beginning 11,888 us after the reported TX start. The
+  Uno's sole replied-burst report said `NO DATA-LINE ACTIVITY OBSERVED`
+  for its handheld sample, so response attribution remains limited.
+  Restored, flash-verified and banner-verified LISTEN_ONLY on the Uno.
+* Opened [issue #27](https://github.com/philpem/micronic1000/issues/27)
+  to trace stock cold start, warm restart and standby/wake during TESTING.
+  Fresh stock ROM bytes confirm cold initialization falls through to the
+  shared `ROM00:024D` continuation; a second reset has not been shown.
+* The owner reports that inactivity turns off the LCD and backlight and
+  leaves the unit waiting for a key. Their hypothesis that TESTING
+  exercises this standby/wake path remains SUSPECTED. Enter's redraw
+  therefore cannot yet be classified as a warm restart.
+* Checked Lee Davison's local `micrmon.zip`: its separate `Start`/`Warm`
+  commands belong to his monitor, not stock DIPOS-B. MAME's driver says
+  TESTING lasts about two minutes in emulation but does not describe a
+  firmware warmboot during it.
+
 ## 2026-09-22 — merged instrumentation; next IR feedback draft
 
 * Squash-merged PR #21 after 163 focused tests plus 71 subtests and passing
@@ -1414,7 +1845,7 @@ are in [TASKS.md](TASKS.md).
       too.
     - ROM00 (16): BdosDirSearchHelper extent = f823-f82c (reversed);
       Link_SelectActiveDevice AND 3 not 7; ExtBus_BusAdvanceTimer fbce +=
-      f9ac (not -=); Comms_LineDeassertRd order (2349 first); KbdColumn
+      f9ac (not -=); Kernel_InstallIrqBit5Handler order (2349 first); KbdColumn
       Strobe branches on Z not carry; Lcd_CharWrapBound uses BC not HL;
       Lcd_clear_spaces loops 0xA0 (160) not 0x60; RTC_PeekDateByte CALL
       not tail-call; Diag_PrintResult 0x80=TIMEOUT else FAIL (swapped);
@@ -8543,3 +8974,388 @@ names renamed, 144 unplated functions plated)
   remains a physical acceptance check, not an emulator conclusion.
 * Updated the current test plan/handover, task list and review follow-up.
   No speculative stock-ROM annotations or hardware identities were added.
+
+## 2026-09-24 — v4 handover readiness review
+
+* Rebuilt stock-context v4 from the stock ROM into `/tmp` and compared it
+  byte-for-byte with the release. The 32,768-byte release matches its
+  recorded MD5 and SHA-256; archived silent and F7 HEX hashes also match.
+* The 69 targeted project-environment tests pass. The canonical boot
+  harness reached Main Menu with all three expectation steps complete.
+  Physical coldstart, yellow pulse, and receive response remain pending.
+* Marked old v3 burn instructions as historical where they still appeared
+  to be current. No Ghidra data or hardware state was changed.
+
+## 2026-09-24 — v4 physical boot and reset-route comparison
+
+* Owner verified the v4 EPROM against the programmer buffer: sum24
+  `38358B`. Physical boot showed `TESTING...` and a flashing cursor,
+  without a reported prompt/menu. Pressing Enter cleared and redrew
+  `TESTING...`. The silent Uno banner was verified over USB; its passive
+  log captured no yellow boot pulse. No V24/F7 trial occurred.
+* The owner corrected the 38-second emulator estimate as a physical
+  expectation: `TESTING...` normally takes several minutes. The bounded
+  emulator count is 141,238,856 T-states to the pulse site, but it is not
+  a hardware timing baseline. The ROM's RAM-test bytes are unchanged.
+* Ghidra comments and stock bytes confirm intentional warm/alternate
+  boot branches at ROM00:01A3 and 0172. V4 overrode those and three other
+  reset sites. The physical trial does not identify a cause for the redraw.
+* Prepared v5 as a single-variable comparison: v4 RX/display/marker bytes
+  with all five reset sites restored to stock. It reproduces byte-for-byte,
+  73 targeted tests pass, and the accelerated boot reaches Main Menu with
+  all three expected inputs. Hardware validation pending.
+
+### 2026-09-24 scope readiness correction
+
+Owner reported scope not visibly armed. Withdrew TER=0-only readiness
+claim. Direct rearm returned SING/condition=40/TER=0 three times; screenshot
+still showed "Trig'd?". AER reads clear the summarized arm event, so the
+earlier condition=8 after AER read does not prove disarming. No new
+handheld trial performed; serial logger remains active for single-7E
+baseline repeat. Saved arm-recheck JSON/PNG under analysis/captures/.
+
+Owner clarified the orange Single button indicates armed; "Trig'd?"
+means waiting for a trigger. Discarded the interpretation of that display
+as an early trigger. Ready for single-7E baseline repeat.
+
+### 2026-09-24 v7 single-7E repeat
+
+Owner repeated `R7IEC29:CA000600E4FD` / `X0EFEE4FD0000060006`,
+identical to first v7 baseline. Decoder: status CAh, terminal byte invalid,
+descriptor FE0Eh length6 buffer/nextwrite FDE4h, savedBC0 IX6 residualB6.
+Worker saving scope evidence before uploading archived double-7E variant06.
+
+Owner correction: reset was requested while Uno01 responder remained
+active. Owner reports startup crashed unless IR was blocked or handheld
+moved away; Main Menu now reached. Discarded procedure allowing active
+response during reset. Require verified silent Uno before every reset,
+Main Menu before enabling test response, and restored alignment if moved.
+Crash mechanism unresolved; no hardware identity or firmware cause inferred.
+
+Owner clarified startup failure displayed the quoted R diagnostics;
+Commstar re-entry with a Uno response is SUSPECTED, requiring a reset-to-
+link control-flow trace to establish. Owner confirms alignment restored
+and Main Menu; worker authorized to prepare06 and arm after saving01.
+
+Baseline repeat scope saved: 200,000 POD1 samples at400ns,93 clock rises,
+MSB-first expected7E+payload after5leadzeros,121.6us median period,918us
+yellow low. Valid repeat replaces first transient capture. Arduino CLI
+upload verified10266bytes for archived06 after owner MainMenu+alignment.
+
+### 2026-09-24 v7 double-7E terminal byte
+
+Owner rows R7IECA9:8EC00600E4FD / X0EFEE5FD0000060005 decode to
+terminal C0h, LINK_STATUS8Eh, descriptorFE0Eh len6 bufferFDE4h nextFDE5h
+residualB5 IX6 savedBC0. Reviewed narrow interpretation: one terminal
+INI byte captured; EC/carry remains error, no ACK/FCS/valid-frame claim.
+Scope matched101cells, yellow low918us at8.2624ms after first clock rise.
+Saved RXplate in Ghidra. Silent Uno flash verified5626bytes and fresh
+LISTEN ONLY banner obtained before requesting reset. Repeat C0 next.
+
+### 2026-09-24 v7 double-7E repeat
+
+Owner reproduced exact rows R7IECA9:8EC00600E4FD /
+X0EFEE5FD0000060005: terminal C0h and one-byte advance again.
+Serial logged reply and916us yellow; scope invalid (30 short-spaced
+clock rises,no yellow). First double-7E waveform remains valid.
+Saved repeat artifacts and Ghidra observation. Uno restored to verified
+silent image with LISTEN ONLY banner. Next baseline control will use
+D4 yellow falling trigger to avoid D2 transient; reset only while silent.
+
+### 2026-09-24 v7 final baseline control
+
+Owner reproduced original single-7E rows: EC29/statusCA, invalid terminal
+byte, no pointer advance. D4 falling-trigger waveform valid:93 intended
+cells and918us yellow. GPIO sample offset32us was marginal at one data
+edge;40..80us all decode intended bytes; saved analysis uses60us.
+Completed baseline/double/double/baseline readouts, C0 reproduced twice
+but second double waveform invalid. Saved Ghidra and docs. Uno restored
+to flash-verified silent with LISTEN ONLY banner. Next investigate C0 bit
+alignment/terminal timing before further framing or FCS trials.
+
+### 2026-09-24 C0 scope/bit-stuffing analysis
+
+Re-decoded three valid v7 captures at40..80us afterclock: identical intended
+streams. Payload maxones3; configured stuffing inserts0, matching
+destuff removes0. Complementary five-zero rule invalid atpayload bit5.
+No alignedC0 under either order/polarity. SlidingC0 at double cells18,35,67;
+lastwindow completes aftermarker, excludes it as source fromthis reply
+but not preexisting buffereddata. Emulated status-to-yellow2418T, INI
+to-yellow2351T; conditional timing, not ASICsampling timestamp.
+Independent review approved bounded findings/test:07->06 flips cell36,
+candidate window35..42 C0->80, noaddedstuffbits. Proposed, not run.
+Saved analysis script/report, Ghidra plate and handover. Uno left silent.
+
+### 2026-09-24 prepare07->06 payload probe
+
+Added default-off STOCK_PAYLOAD07_TO06; archived variant09 plusmanifest
+and source hashes. Five targeted emitter tests passed, including exact
+101cell comparison with sole changedcell36 and window35..42=80h.
+Arduino compile succeeded10348bytes. Owner confirmedMainMenu while
+silent; proceeding upload/verify, freshlog andD4 falling-triggercapture.
+No new ROM. Physical resultpending; must silencebefore nextreset.
+
+### 2026-09-24 payload06 physical result
+
+Owner ECAD/status8E terminalC0, sameonebyte advancement. Valid101cell
+waveform, solechangedcell36 and window35..42=80 verified40..80us sampling.
+C0unchanged doesnotmatch proposed fixedwindow prediction; no alternative
+identity inferred. Yellow8.8664ms/918us. Original07control pending. Uno
+flash-verified silent and LISTEN ONLY banner before asking reset.
+
+### 2026-09-24 original07 control after06
+
+Owner ECA9/status8E/C0/onebyte restored. Valid101cell capture matches
+original at40..80us sample offsets. Yellow onset8.2616ms,width918.4us;
+modified06 was8.8664ms. Completed07/06/07 comparison without predicted
+C0->80 change. No alternativebyteidentity inferred. Saved Ghidra/docs;
+Uno flash-verified silent and LISTEN ONLY banner checked.
+
+### 2026-09-24 prepare flag/payload boundary probe
+
+User authorized nexttest. Prepared variant10 firstpayload00->80, second
+byte07 retained. Independent review and6 targeted hosttests confirm
+onlycell21 changes,101cells,noaddedstuffbits,boundarywindowC0->D0.
+Defaultoff macro with incompatible-payload-controlguard. Archived build
+andmanifest. Uno remains silent pending ownerMainMenu confirmation.
+
+### 2026-09-24 payload80 physical result
+
+Owner clarified initiallyabbreviated readout: ECAD/status8E/C0/onebyte,
+same descriptor. Raw101cell stream stable40..80us,solecell21changed,
+window18..25=D0 yetterminalC0. Simplefixedboundaryprediction unobserved;
+original00controlpending. Yellow8.012ms/918us. Uno restoredverified
+silent andfreshLISTEN ONLY banner before requesting reset.
+
+### 2026-09-24 original00 control after80
+
+Owner ECA9/status8E/C0/onebyte restored. Valid101cell waveform matches
+original at40..80us samples; yellow onset8.2636ms,width918us. Completed
+00/80/00 comparison, no predictedD0 byte. Both tested fixedwindow
+predictions failed with restored controls; C0origin remainsopen.
+Saved Ghidra/docs/captures. Uno flash-verified silent, LISTEN ONLY checked.
+
+### 2026-09-24 alternative C0 explanations review
+
+FreshRX listing/hook rechecked: terminal sample8E already carries error
+when optionalINI performed; setup readvalueunrecorded. Byte-valid is
+capturevalidity, not framevalidity. Saved offlinephase/preludeanalysis: D3
+zero atD2rise inoriginal/09/10 but intendedbits stable40..80us; handheld
+preceding22edge burst inverted-destuffs03, whosebitreverseisC0. These do
+not identify ASICphase or proveecho. Reviewed hypotheses/tests inhandover;
+externalZilogresiduebehavior citedasprecedentonly. Recommendedphase-only
+comparison before newROM capturingexistingreads. No deviceschanged.
+SavedGhidraplate clarification/docs and reproducibleanalysisscript/JSON.
+
+### 2026-09-24 owner phase clarification
+
+Owner expects data setup before clock rise. CurrentUno+2/8 insteadlags
+clock, while measuredhandheldTX data leads byabout30us. Clarifiedthat
+held-constant framingphasewasnot validatedRXtiming. Prioritizenext-2/8
+measuredTXconvention withoriginalpayload andunchangedpulsewidth, restore
++2/8control. Datafall precedesclockfallinmeasuredTX, so exactownerfour
+edgeorderisnot established. Uno remainssilent; nohardwaremutation.
+
+### 2026-09-24 prepare transmit-matched phase
+
+Userauthorizedphase trial. Archivedvariant11 originaldouble7E stream,
+phaseindex1 (-2/8), original33msdelay,76usdatawidth,61usclockhigh.
+Exactbuild hostmatrixgate andphase/chronology/stuffingtestpassed.
+Build10388bytes. Uno silent pendingownerMainMenu; no ROMchange.
+
+### 2026-09-24 firstminus2phase trial
+
+Owner8000then8040,noR7reported. Serial101bursts/34replies,noyellow.
+Yellowtrigger remainedSING/TER0; no waveformcaptured. Scope stopped
+before Uno silentupload; flashverified5626bytes andLISTEN ONLY banner.
+No receiveentry vs noreturn remainsopen. Need unchangedminus2repeat
+withD2clocktrigger thenplus2control. Saved observationsGhidra/docs.
+
+### 2026-09-24 minus2 repeat and input inversion hypothesis
+
+Owner8000/8040again. Valid101cellD2trigger capture: intendedbitsatD2rise,
+allD3zeroatD2fall;34loggedreplies,noyellow. Oldplus2control exactbitsat
+D2fall. Owner proposesclock/datainversion; consistentclockhypothesis,
+but directfallingedge ASICsampling externallyequivalent. Datainversion
+separate/unproven, wouldcomplementpayloadtoo; transformedflags81 and
+payloadFFF8FFFDFEBCFFFFFDFE recorded. Uno verifiedsilent; plus2controlnext.
+
+### 2026-09-24 failed phase control and owner reboot request
+
+Restoredarchivedplus2 also8000/8040:47loggedreplies/188bursts,noyellow,
+scopeSING/TER0. HEXidentity verified. No currentwaveform. Phasecausality
+and inversionvalidation withdrawn; oldrawedgefacts remain. Owner suspects
+earlierquiet-state recurrence and wants reboot. Uno reset/flashverified
+silent with LISTEN ONLY banner; requested handheldreboot thenMainMenu.
+Nextplus2 D2clockcapture to recoverbaseline before furtherchanges.
+
+Owner confirmedMainMenu after rebootrequest. Preparing archivedplus2
+recovery control withD2risingtrigger, no furtherprotocolchanges.
+
+### 2026-09-24 owner correction: Ghidra plate scope
+
+Owner rejected the growing Link_BlockRx experiment log in Ghidra.
+Reduced its176-line plate to behavior and calling convention, with an
+evidence reference. Detailed trials remain in existing v7/v4 handovers;
+added current synthesis to commstar-evidence.md. Future trial results
+belong in evidence, not appended to routine plates. No symbols changed.
+
+### 2026-09-24 post-reboot ordinary receive path
+
+Owner resetrestoredR7: EC29/status8A, invalidterminal00, descriptorlen6
+bufferFDE4 nextFDE5 residualB5. Freshstockbytes and synthetic01/8A
+fixture show earlierordinaryINI, not terminalread; actualordinarybyte
+unknown. Valid101celloriginalscope,yellow8.248ms/918us. Diagnosticreturn
+recoveredbutexact8E/C0 notrestored; phasecomparison stillinconclusive.
+Evidence updatedwithout addingtesthistorytoGhidraplate. Uno verifiedsilent.
+
+
+### 2026-09-24 v8 release prepared
+
+Built ROM00 v8, additive checksum 387331, with post-return two-byte active
+buffer readback replacing the saved-BC display field. Separate terminal
+capture retained. All 76 v5–v8 tests passed; independent review approved
+controlled FOO use after correcting the scratch-memory caveat. Receive
+and yellow-marker timing equal v7; later display gains 73 T-states.
+Physical validation pending. Added handover and navigation; retained
+concise Ghidra plate with evidence reference. No new hardware inference.
+Uno left verified silent; next step is owner programming and VERIFY.
+
+
+### 2026-09-24 v8 programmed, boot in progress
+
+Owner reports v8 programmed and programmer VERIFY passed; handheld already
+showing TESTING. Fresh Uno serial banner confirms LISTEN ONLY, no transmit.
+Passive logger: `analysis/captures/stock-v8-silent-boot-20260924.jsonl`.
+Scope armed on D4 yellow falling edge after TESTING was reported; SING,
+TER=0, no scope error. Earlier boot events were not captured. Arm state:
+`analysis/captures/stock-v8-silent-boot-arm-20260924.json`.
+Await Main Menu; no Load/Run requested yet. Receive validation pending.
+
+
+### 2026-09-24 v8 Main Menu; silent control armed
+
+Owner reports Main Menu after TESTING. Passive Uno log records a yellow
+low pulse of 5448 microseconds. Preserved scope POD1, PNG and metadata
+under `analysis/captures/stock-v8-silent-boot-20260924` before rearming.
+Uno remains LISTEN ONLY; serial logger remains active. Scope now armed
+on handheld clock D1 rising, SING / TER=0 / no error, for the silent
+Load/Run FOO → V24 ADAPTOR → LOCAL_LINK control. Await exact screen result;
+no v8 receive-byte validation yet.
+
+
+### 2026-09-24 v8 silent control completed
+
+Owner reports 8000 then 8040, matching earlier silent controls. No R8
+readout reported; this trial supplies no diagnostic buffer-byte evidence.
+Scope capture completed (TER=1, no error) and was preserved under
+`analysis/captures/stock-v8-silent-control-20260924` (POD1, PNG, metadata,
+analysis). In the captured 80 ms window, handheld D1 has 34 transitions;
+Uno D2 and D3 stay low with zero transitions, and yellow D4 stays high.
+Serial log remains `stock-v8-silent-boot-20260924.jsonl`, with the verified
+LISTEN ONLY banner and received handheld bursts. Uno firmware unchanged
+and silent. Request reset to Main Menu before loading original double-7E
+plus-2/8 responder; wait for capture-ready before the next Load/Run.
+
+
+### 2026-09-24 v8 original double-7E trial armed
+
+Owner confirmed Main Menu. Stopped silent logger and used arduino-cli to
+upload archived `06-prefix7e-open7e` HEX (SHA-256
+`b59bcc70302f6d1160d6275c95a43ee1fd33b5a94a1d007d58a94abf6ad278d7`).
+All 10266 flash bytes verified. Fresh serial banner confirms prefix 7E,
+opening 7E, phase=2 (+2/8), content_idx=2, no inversion/swap, stuffing=1,
+no closing byte, 33000 us delay and every third qualifying burst.
+Serial capture: `analysis/captures/stock-v8-double7e-20260924.jsonl`.
+Scope armed D2 rising, SING / TER=0 / no error; arm metadata and upload
+log use the same stock-v8-double7e prefix. Await both complete R8 rows.
+Uno responder is now active: restore verified silence before any reset.
+
+
+### 2026-09-24 v8 terminal-path consistency check
+
+First double-7E trial: EC/A9, status 8E, terminal C0, buffer C0/invalid1A,
+one-byte advancement and zero ordinary reads under the documented descriptor
+assumptions. Full 101-cell original waveform verified; yellow 8262.8 us
+from first clock, low 918.0 us. This checks terminal-path readback only;
+ordinary 8A question remains open. Evidence and handover updated. Restored
+and flash-verified silent Uno with fresh LISTEN ONLY banner. Next unchanged
+repeat after handheld reset; no new Ghidra inference or annotation.
+
+
+### 2026-09-24 v8 unchanged double-7E repeat armed
+
+Owner confirmed Main Menu. Reloaded the identical archived 06-prefix7e-open7e
+HEX; arduino-cli verified all 10266 flash bytes. Fresh banner confirms
+prefix/opening 7E, phase +2/8, original content, no swap/inversion,
+stuffing mode 1, no close, 33 ms delay, every third qualifying burst.
+Serial logger running at `analysis/captures/stock-v8-double7e-repeat-20260924.jsonl`.
+Scope armed D2 rising: SING, TER=0, no error. Upload log and arm metadata
+use `stock-v8-double7e-repeat` prefix. Await complete two-row display.
+Responder active; restore verified silence before any handheld reset.
+
+
+### 2026-09-24 v8 repeat display; invalid waveform capture
+
+Owner repeated the exact display:
+
+```text
+R8IECA9:8EC00600E4FD
+X0EFEE5FDC01A060005
+```
+
+The existing decoder again gives terminal C0, buffer C0/invalid1A,
+LINK_STATUS=8E, one-byte advancement and zero ordinary reads under the
+stable-descriptor assumption. This is a repeat display observation only.
+Scope capture contains 149 D2 rising edges, unstable samples at 40–80 us
+and no yellow pulse; it does not match the expected 101-cell reply.
+Owner independently identified a likely mistrigger and offered a repeat.
+Do not use this capture to claim waveform repeatability or changed wire
+behavior. Serial log reports one response and a 920 us yellow low pulse,
+but cannot validate the missing physical reply waveform.
+
+All artifacts preserved under `analysis/captures/stock-v8-double7e-repeat-20260924`;
+analysis explicitly marks capture_valid=false. Restored silent Uno with
+5626 flash bytes verified and fresh LISTEN ONLY banner. Next unchanged
+repeat should trigger on yellow D4 falling, retaining 40 ms pretrigger
+history to include the expected reply start about 8.3 ms before yellow.
+Request Main Menu reset only after verified silence; arm before Load/Run.
+
+
+### 2026-09-24 v8 yellow-trigger repeat armed
+
+Owner confirmed Main Menu. Identical archived double-7E responder loaded;
+arduino-cli verified 10266 flash bytes. Fresh banner confirms original
+payload, +2/8 phase, no swap/inversion, 33 ms delay, every third qualifying
+burst, prefix/opening 7E, stuffing mode 1 and no closing byte.
+Logger: `analysis/captures/stock-v8-double7e-yellow-20260924.jsonl`.
+Scope readback confirms DIG4 NEG, 8 ms/div, centered timebase at zero,
+SING / TER=0 / no error. This gives 40 ms pretrigger history for the
+expected reply preceding the yellow edge. Arm metadata and upload log
+use the stock-v8-double7e-yellow prefix. Await both display rows; responder
+active, so restore verified Uno silence before requesting another reset.
+
+
+### 2026-09-24 v8 repeat capture recovered
+
+D4 yellow-triggered repeat valid: 101 original cells, yellow onset8264us,
+width918.4us. Same EC/A9 status8E terminalC0 bufferC0/invalid1A readout.
+Two waveform-validated v8 terminal-path results; ordinary8A not reproduced.
+Previous mistrigger remains invalid. Saved artifacts and evidence; no
+new Ghidra inference. Uno restored, 5626 bytes flash verified and fresh
+LISTEN ONLY banner. Recommend controlled reply-delay comparison with
+unchanged bits/phase; timing explanation remains SUSPECTED. No test armed.
+
+
+### 2026-09-24 offline theory audit while hardware parked
+
+Re-read stock RX bytes and caller; retained status-driven semantics and
+separated CPU F from LINK_STATUS. Added reproducible fixed-window capture
+audit: no normal-MSB fixed raw C0 window survives original/06/80 tests;
+LSB/inverted candidates remain narrow mathematical possibilities. Excluded
+149-edge mistrigger. Two valid v8 captures reject before full emission
+finishes, limiting complete-frame/FCS interpretations. Refined future
+battery to A-B-A-C-A (07→47 payload, then +60us reply delay), with adaptive
+C/A confirmation and >=50ms pretrigger. Independent same-provider review
+approved narrow scope; no new Ghidra semantic claim. Updated evidence,
+handover and TASKS; hardware untouched and parked, Uno remains silent.

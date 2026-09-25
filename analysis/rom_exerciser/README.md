@@ -1,8 +1,72 @@
 # Link-controller exerciser
 
-## Stock-context v3 receive marker
+## Current stock-context v8 buffer diagnostic
 
-The next ROM00 burn keeps the stock V24 Load/Run and Commstar path active.
+`releases/stock-context-v8/micron1_stock_context_v8.bin` is ready for
+ROM00 programming and programmer VERIFY: additive checksum **387331**.
+Leave ROM01 unchanged. It adds post-return readback of the first two
+active-buffer bytes, replacing v7's saved-BC display field. Unreceived
+slots are invalid; use `stock_context_v8.py --decode` to interpret them.
+Receive and yellow-marker timing match v7; display gains 73 T-states.
+All 76 v5–v8 tests passed, with independent release review. Physical v8
+validation is pending. Scratch RAM is assessed only for the controlled
+FOO trial. See the [v8 handover](../../doc/re-notes/stock-context-v8-handover.md).
+
+## Previous stock-context v7 terminal-byte diagnostic
+
+`releases/stock-context-v7/micron1_stock_context_v7.bin` is ready for
+ROM00 programming and programmer VERIFY: additive checksum **386DC5**.
+Leave ROM01 unchanged. It captures the terminal INI byte from RAM and
+the active descriptor without adding receive I/O or changing timing
+before the terminal status sample. The new two-row readout replaces
+v6's derived count; use `stock_context_v7.py --decode` to interpret it.
+Forty-seven v5/v6/v7 tests passed; physical trials are recorded in the handover.
+See the [v7 image and test instructions](../../doc/re-notes/stock-context-v7-handover.md).
+
+## Previous stock-context v6 terminal-status diagnostic
+
+`releases/stock-context-v6/micron1_stock_context_v6.bin` is the previous
+ROM00 image (programmer additive checksum `385DEB`). It retains v5's
+stock reset routes and boot marker, then snapshots the terminal
+`LINK_STATUS` byte and controller-byte count after the stock sample.
+An EC return prints `R6IaaFFSssNnnnn` and stops; other errors print
+`R6IaaFF`. `N` is a derived receive-loop `INI` count, excluding the
+setup `LINK_RXD` read; 256-byte descriptor boundaries limit its
+interpretation. The first physical F7 run showed `R6IEC29SCAN0000`.
+Leave ROM01 stock. See the
+[v6 bench handover](../../doc/re-notes/stock-context-v4-handover.md#v6-terminal-status-diagnostic-ready-for-hardware).
+
+Build and compare the pinned release with:
+
+```sh
+analysis/venv/bin/python3 analysis/rom_exerciser/stock_context_v6.py \
+  -o /tmp/micron1_stock_context_v6.bin
+analysis/venv/bin/python3 -m pytest -q analysis/test_stock_context_v6.py
+sha256sum /tmp/micron1_stock_context_v6.bin
+```
+
+## Historical stock-context v5 comparison
+
+`releases/stock-context-v5/micron1_stock_context_v5.bin` restores the
+stock reset routes that v4 forced to coldstart. Its receive diagnostic,
+display and yellow markers match v4 byte-for-byte. The
+[physical-trial update](../../doc/re-notes/stock-context-v4-handover.md#2026-09-24-physical-trial-and-stock-reset-comparison)
+records the physical validation and two EC29 F7 returns. V5 reached
+Main Menu on hardware. Use ROM00 only; leave ROM01 unchanged.
+
+## Historical stock-context v4 release
+
+The v4 ROM00 image is
+`releases/stock-context-v4/micron1_stock_context_v4.bin` (32,768 bytes,
+SHA-256 `2d78a065c49f9a113b45caa074d8d1f12e9b5b1dfce30698974579ec7b375174`).
+It is a one-shot stock receive-result diagnostic. The
+[v4 handover](../../doc/re-notes/stock-context-v4-handover.md) gives the
+burn identity, limits, and matched silent/F7 test sequence. Leave ROM01
+unchanged.
+
+## Historical stock-context v3 receive marker
+
+The v3 ROM00 burn kept the stock V24 Load/Run and Commstar path active.
 Its guarded builder is `stock_context_v3.py`; it changes the stock
 `ROM00:2FC1` call to `Link_BlockRx` into a wrapper that calls the original
 routine once and pulses scanner yellow/pin 6 **after** it returns. A short
@@ -13,10 +77,9 @@ not the loaded application's RAM: the stock loader may occupy `C7E0`.
 The [stock-context bench plan](../../doc/re-notes/ir-feedback-protocol.md#current-handoff-stock-context-v3-bench-trial)
 has wiring, Uno mode sequence, logger commands and interpretation limits.
 
-Build the pinned release image and checksum manifest from the verified stock
-ROM with the command below. Burn ROM00 only; leave ROM01 stock. The `.bin`
-is intentionally ignored by git while the builder and JSON manifest are
-tracked.
+Build the historical pinned release image and checksum manifest from the
+verified stock ROM with the command below. The `.bin` is intentionally
+ignored by git while the builder and JSON manifest are tracked.
 The verified 32,768-byte v3 image has MD5
 `bf518ce09083d420332fd02748f6bbef` and additive byte sums `076F`
 (16-bit) / `38076F` (24-bit), without complement.
