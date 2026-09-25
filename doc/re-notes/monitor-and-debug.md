@@ -52,22 +52,27 @@ cannot detect a "stuck" external state — so the reset boot-mode value is
 the **latch's retained state**, set by *writing `48h`*, not by a
 physical jumper.
 
-## The "Set Debug mode" menu option (partial)
+## The "Set Debug mode" screen
 
-ROM01 carries the strings **"Set Debug mode"** (`ROM01:7B52`) and
-**"Set Debug Mode"** (`ROM01:7B61`), in the **config/setup menu** beside
-`Serial No.`, `total RAM`, `RAMdisk size`, `Status`, `Device`,
-`Log-on information`, `Mode`, `Linespeed`, `User id`, `Password`
-(`ROM01:7B2E`-`7BAA`). The menu is driven by a **descriptor tree** in
-the `ROM01:7700`-`7B00` region — entries at `7751`, `779D`, `77E8`,
-`7853`, `7884`, … holding pointers to labels and RAM cells — rendered by
-UI helpers such as `ROM01:6633` (entered from `ROM01:0718`).
+`ROM01`'s **Diagnostics** screen (`ROM01:7860`) is a menu with a single
+item — **"Set Debug mode"** (`7B52`, screen id `0x0003`) — which opens
+the **"Set Debug Mode"** screen (title `7B61`). Per
+[Forms and UI](forms-ui.md), that screen is a **form** whose fields are:
 
-**OPEN:** the descriptor field layout is not resolved, so the specific
-handler for the debug item and the flag/cell it sets are not yet traced.
-It is **not** `f81d` (that cell has only boot-time writers,
-`0161`/`0195`). The clean way to settle it is to select the item in the
-emulator and watch which RAM cell changes.
+* **"Status"** (`7B70`) — an **ON/OFF** field (enable).
+* **"Device"** (`7B77`) — a **choice** field starting at **PLINTH**.
+
+So "debug mode" is an **enable plus an output-device choice**: it appears
+to turn on diagnostic output routed to the selected IR device (PLINTH,
+and presumably V24 ADAPTOR — the same style of device list as the
+Load/Run "From" field). The screen's form descriptor (`ROM01:7898`)
+references the RAM cells **`ram:ECC7`** and **`ram:F168`** among others.
+
+**OPEN:** the exact flag cell, and what the debug output *is* / where it
+goes, are not yet pinned. It is **not** the boot flag `f81d` (that cell
+has only boot-time writers). The decisive check is the emulator: select
+the item and `--watch-mem` `ECC7`/`F168` (and the IR ports) to see the
+value change and any resulting output.
 
 ## The real monitor is a separate artifact
 
