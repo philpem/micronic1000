@@ -57,22 +57,52 @@ physical jumper.
 `ROM01`'s **Diagnostics** screen (`ROM01:7860`) is a menu with a single
 item — **"Set Debug mode"** (`7B52`, screen id `0x0003`) — which opens
 the **"Set Debug Mode"** screen (title `7B61`). Per
-[Forms and UI](forms-ui.md), that screen is a **form** whose fields are:
+[Forms and UI](forms-ui.md), that screen is a **form** (a template
+descriptor built by `Form_Builder` into the form runtime) whose fields
+are:
 
 * **"Status"** (`7B70`) — an **ON/OFF** field (enable).
 * **"Device"** (`7B77`) — a **choice** field starting at **PLINTH**.
 
-So "debug mode" is an **enable plus an output-device choice**: it appears
-to turn on diagnostic output routed to the selected IR device (PLINTH,
-and presumably V24 ADAPTOR — the same style of device list as the
-Load/Run "From" field). The screen's form descriptor (`ROM01:7898`)
-references the RAM cells **`ram:ECC7`** and **`ram:F168`** among others.
+### Confirmed by emulator (2026-09-24, `analysis/boot_hw.py`)
 
-**OPEN:** the exact flag cell, and what the debug output *is* / where it
-goes, are not yet pinned. It is **not** the boot flag `f81d` (that cell
-has only boot-time writers). The decisive check is the emulator: select
-the item and `--watch-mem` `ECC7`/`F168` (and the IR ports) to see the
-value change and any resulting output.
+The full path was driven end to end and is confirmed:
+
+```
+Main Menu: press '4'  (Diagnostics)
+  -> Diagnostics screen, single item "~Set Debug mode"
+  -> press ENTER      -> "Set Debug Mode" form
+       window title "PARCON 1000"
+       row: "Status  OFF"
+       row: "Device  PLINTH_____"
+```
+
+So it is **specified in the forms/UI framework**: a menu item entry in
+the Diagnostics menu table (`ROM01:7860`) whose `attr` is the screen id
+`0x0003`, opening a form whose template (`ROM01:7898`) is built by the
+generic `Form_Builder` into the form runtime (`Form_InitFromTemplates` /
+`UI_PostDescriptor`). Toggling fields goes through `Ui_FieldEditPump`
+(`ROM01:1FB5`) → `Kernel_TableDispatch` (`1F96`), whose table maps
+`YES`/`NO` (`0x06`/`0x01`) to `Form_ChoiceNext`/`Prev` (stepping the
+choice index `e739`/`e734`, boundary callback `*ec69`), and `ENTER`
+returns.
+
+### What it does
+
+The pairing of an **ON/OFF enable** with an **IR-device choice** means
+"debug mode" turns on diagnostic output routed to the selected device
+(PLINTH, and by the same device-list style as the Load/Run *From* field,
+V24 ADAPTOR). The exact backing cell and the consumer of the flag are
+**OPEN** — the emulator progress did not get the Status value to visibly
+toggle without the correct field-entry key sequence, and the form runtime
+stores field values through shared UI cells (`EC49`/`E739`/`E734`) rather
+than a dedicated uniquely-referenced flag. It is **not** `f81d` (that
+cell has only boot-time writers).
+
+**Decisive next step:** select the template `ROM01:7898` (the debug form)
+and watch the field's backing object / choice table; or drive the
+emulator further with a targeted `--watch-mem` on the session-config
+region (`E700`-`ED1B`) while stepping the Status field with `YES`.
 
 ## The real monitor is a separate artifact
 
