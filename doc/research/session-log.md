@@ -1,5 +1,73 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-25 — debug-annotation rename pass (docs hygiene)
+
+* Applied 3 function renames from Ghidra to docs:
+  `UI_RedrawIfRequested` → `UI_InvokeDebugHookIfActive` (ROM01:6280),
+  `Session_StateWordPreparedCall` → `Debug_InvokeMonitorVector` (ROM00:68C7),
+  `Monitor_Enter` → `Debug_MonitorHookStub` (ROM00:3513).
+* 3 global labels installed: `g_bDebugRunEnabled` (ECC7),
+  `g_bDebugRunDeviceIndex` (ECC8), `g_wDebugRunActive` (EB18).
+  `g_wMonitorDeviceSelector` (E2F8) remains PROPOSED (not installed).
+* Updated all doc references: old names preserved with "(now `<new>`; formerly `<old>`)" notation
+  in current docs; historical session-log entries annotated with "(now `<new>`)".
+* monitor-and-debug.md: PROPOSED labels section updated to ACTUAL for three;
+  "MCP unavailable" statement removed (MCP now available).
+* TASKS.md item 8 and item 19 updated with new names and label status.
+* gap-analysis.md refreshed: manager count 916, iterator 915; 3 renames,
+  no creation/loss. Manager/iterator mismatch caveat preserved.
+* Function-count guard verified: before/after DumpFunctions iterator
+  unchanged at 915 lines; only 3 intended renames.
+* Docs updated: monitor-and-debug.md, interrupts.md, os-diposb.md,
+  memory-and-io-evidence.md, quality-and-agents.md, forms-ui.md,
+  TASKS.md, session-log.md, gap-analysis.md.
+* No git commit or push performed.
+
+## 2026-09-25 — user monitor redirection
+
+* Independently checked the service-13 wrapper's target operand at
+  `ram:F33B-F33C` against the cold-copied kernel image. Documented a
+  COM/DIP executing-installer approach, fixed-RAM leaf callback,
+  restoration, bank handling, and shared-wrapper-context restrictions
+  in `re-notes/monitor-and-debug.md`.
+* This is a version-specific patch, not a supported installation API;
+  it does not intercept direct `ROM00:3513` or RST-30 calls. The sample
+  is explicitly untested. Warm-copy bypass is distinguished from later
+  payload lifetime. MCP tools were not exposed, so no DB edits occurred.
+
+
+## 2026-09-25 — Set Debug mode / status-device investigation closed
+
+* **CONFIRMED (byte-verified):** `ram:ECC7` and `ram:ECC8` are the
+  Set Debug mode enable byte and device index, with dedicated
+  initialisers (`ROM01:069A`/`06A1`) and consumers (`ROM01:038C`/`0393`).
+* **CONFIRMED:** The `EF4C`/`EF34` callback pair moves Diagnostics menu
+  selection (`EC6F`), not debug state. The `F168` callback slots are
+  banked-call no-op stubs (`ROM01:6768`).
+* **CONFIRMED activation chain:** `ECC7` nonzero → compare `ECC8` to 1
+  → `EF18` → `ROM00:68E0` stores `E2F8=4`/3 → `EB18=1` →
+  `Program_RunByName` → `EB18=0`. During activation `EB18` nonzero gates
+  `ROM01:6286` → `EF24` → `ROM00:68C7` pushes `E2F8,0,13h` →
+  `ram:DA27` dispatcher → vector 13h `ROM00:0139` → `ram:F32F` →
+  `ROM00:3513` (`XOR A; RET`). No IR output, debug print, or persistent
+  config write.
+* **LIKELY:** Device index 1 = V24 ADAPTOR (complementary field
+  structure; `DE=4` vs `DE=3` for PLINTH).
+* **Corrected prior claims:** The 2026-09-24 `--watch-mem` ephemeral-only
+  and no-flag conclusions are invalid — the 500-line cap exhausted on boot
+  zero-fill, and the watch region excluded the worker-phase accesses.
+  The IR-output claim is falsified — no link I/O in the static chain.
+* **RAM dispatcher/monitor-wrapper chain:** Investigator traced but
+  reviewer did not fully verify; tagged LIKELY.
+* **Docs updated:** monitor-and-debug.md (full rewrite of the Set Debug
+  mode section), memory-and-io-evidence.md (monitor/48h sections),
+  forms-ui.md (added CONFIRMED finding), TASKS.md (item 19).
+* **Labels:** `g_bDebugRunEnabled` (`ECC7`), `g_bDebugRunDeviceIndex`
+  (`ECC8`), `g_wDebugRunActive` (`EB18`) were installed in Ghidra
+  (renamed + typed + plated) once MCP became available, together with the
+  three function renames and the `F33A`/`F5F0` redirect-site comments.
+  `g_wMonitorDeviceSelector` (`E2F8`) remains PROPOSED.
+
 ## 2026-09-24 — low-power standby annotation pass
 
 Annotated the low-power standby (LCD off, wake-on-key) path and its
@@ -903,7 +971,7 @@ are in [TASKS.md](TASKS.md).
     (tbl_FieldOpSlots + repeatable; 32 SessionOpStub plates + 8 farm-B
     plates; ef88 body fixed). The earlier "ee78/ef24/eef0 are real
     helpers" reading REFUTED by bytes (decompiler-context error) -
-    UI_RecordEditModal and UI_RedrawIfRequested plates corrected.
+    UI_RecordEditModal and UI_RedrawIfRequested (now `UI_InvokeDebugHookIfActive`) plates corrected.
     No ROM writer found for the slot table (loaded software may patch:
     SUSPECTED).
   * BDOS dispatch arrays UNIFIED: F1D1-F234 = ONE 50-word handler
@@ -1155,7 +1223,7 @@ are in [TASKS.md](TASKS.md).
   * TRANche-4 APPLIED: 39 plates (9 FB stub templates, 13 ROM01
     session/coro helpers incl. Lib_Accumulate/Lib_ValueTableFetch/
     CmdRetryCounter, 17 ROM00 BDOS fn handlers incl. the version
-    deviation HL=23h, Monitor_Enter/PutChar/GetChar routing, kbd row
+    deviation HL=23h, Monitor_Enter (now `Debug_MonitorHookStub`)/PutChar/GetChar routing, kbd row
     decode, decimal formatter). ROM00::2d82 DEFERRED (body
     mis-bounded - repair first). Plateless ~343 remain. Count 751.
   * NEXT (serial): LAB batch 8 (starts 2f2e; bonus context for
@@ -1266,7 +1334,7 @@ are in [TASKS.md](TASKS.md).
   read-only, main applied + saved):
   * UI helper renames (stale names corrected): SessionLinkTx6292 ->
     UI_PostKeyedEntry (6292; JP 62A6->62D1 gap flagged), StateVarDispatch
-    -> UI_RedrawIfRequested (6280, gate cell is eb18 not ebf7),
+    -> UI_RedrawIfRequested (now `UI_InvokeDebugHookIfActive`) (6280, gate cell is eb18 not ebf7),
     UiHandler1B7D -> UI_RecordEditModal (1b7d, six stack args, modal
     loop 1CD6-1D72), SessionCoroWaitByte -> UI_GetStateWordEc41 (2116),
     TextOutChar -> ServiceCall_BdosFn2 (6f29, DA13(2,arg) shim - the

@@ -416,9 +416,9 @@ destination (boot jumper/switch, a test probe, a latch, or the IR
 transceiver) is **OPEN** — the ROM alone cannot say; MAME leaves its IR
 path as TODO.
 
-### Monitor / ICE hook — vestigial (2026-09-24)
+### Monitor / ICE hook — development/debug facility (2026-09-25)
 
-`Monitor_Enter` (`3513`) is a **2-byte stub** (`XOR A; RET`) in these
+`Debug_MonitorHookStub` (formerly `Monitor_Enter`) (`3513`) is a **2-byte stub** (`XOR A; RET`) in these
 ROM images. It is the target of a network of monitor/ICE hooks left in
 the firmware:
 * **RST 30h** (vector `0030h` → `JP F5F0`) and `ram:F5F0` `JP 3513` —
@@ -430,22 +430,21 @@ the firmware:
   `CALL 3513` — a break-on-error hook;
 * `Kbd_ReadChar` (`18EB`) and others (`3857`, `ram:F33A`, `ROM00:3B0D`).
 None opens a monitor in these images — every hook returns immediately.
-The actual monitor is a **separate artifact** (MAME BIOS 1 "Micronic 1000
-LCD monitor" = `monitor2.bin`; Lee Davison lists a monitor ROM and
-disassembly), installed over this hook. So the ROM contains a
-**vestigial development/ICE hook**, not an implemented monitor.
+The actual monitor may be a **separate artifact** (MAME BIOS 1 "Micronic
+1000 LCD monitor" = `monitor2.bin`; Lee Davison lists a monitor ROM and
+disassembly) that could occupy this hook. The monitor's shipping status
+and exact installation point are not confirmed from ROM evidence alone;
+the hook purpose is **SUSPECTED** as an alternate ROM or ICE.
 
-### 48h/49h and the self-test — resolving the tension
+### 48h/49h and the self-test — resolving the tension (2026-09-25)
 
 `Kernel_SenseDiagEcho` writes `48h` and requires `49h` to read back the
-same value. That is only self-consistent if `49h` is the **readback of
+same value. If it read back a mismatch the test would fail — it does not,
+because the firmware drives correct values. `49h` is the **readback of
 `48h`** (same latch; MAME's model), or `48h` drives the shared lines and
-overrides any external state. Either way the test **drives `48h`**, so
-`49h` follows it and matches — it cannot detect a "stuck" external
-config. Consequently the reset boot-mode value is the **latch's
-power-on/retained state**, not a separate external input: the debug
-selection is set by *writing `48h`* (software) or a retained value, not
-by a physical jumper as I'd earlier suggested as most likely.
+overrides any external state. The reset boot-mode value comes from the
+**latch's power-on/retained state**, set by *writing `48h`* (software),
+not by a physical jumper (earlier stated as most likely, not confirmed).
 
 ### Multiplexing conclusions
 * **Q1 (why two select bits):** `Link_PortSelect` (ROM00:3454) drives

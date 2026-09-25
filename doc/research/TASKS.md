@@ -465,8 +465,8 @@ SUSPECTED until bench evidence discriminates them.
    (queue ED1C-F17F doubles as task list AND UI vtable targets)
 6. Template builder / object system decoded (ROM01:0271)
 7. Warm restart path decoded
-8. Diagnostic monitor entry verified as a returning stub (`ROM00:3513`,
-   `XOR A; RET`, rechecked 2026-09-20). Prior built-in-monitor and
+8. Diagnostic monitor entry verified as a returning stub (`Debug_MonitorHookStub` at `ROM00:3513`,
+    `XOR A; RET`, rechecked 2026-09-20; now `Debug_MonitorHookStub`, formerly `Monitor_Enter`). Prior built-in-monitor and
    service-key monitor-boot claims withdrawn. External monitor/ICE use
    remains SUSPECTED; resolve with alternate-ROM/debugger evidence or an
    interception trace. See [debug facilities](../re-notes/os-diposb.md#debug-facilities).
@@ -541,6 +541,20 @@ SUSPECTED until bench evidence discriminates them.
      (ROM01 separate). Supersedes old header-open / funnel-into-D6DB
      / `g_tblFieldTypeRecPtrs` device-mapping claims.
      Docs updated: program-formats.md (rewritten), programmer-guide.md
+19. **Set Debug mode / status-device investigation — CLOSED (2026-09-25):**
+    `g_bDebugRunEnabled` (`ram:ECC7`) enable byte and `g_bDebugRunDeviceIndex` (`ram:ECC8`) device index are CONFIRMED with
+    dedicated initialisers (`ROM01:069A`/`06A1`) and consumers
+    (`ROM01:038C`/`0393`). The `EF4C`/`EF34` callback pair moves
+    Diagnostics menu selection (`EC6F`), not debug state. The activation
+    chain through `g_wDebugRunActive` (`EB18`) transient gate → `EF18`/`EF24` → vector 13h →
+    `F32F` → `Debug_MonitorHookStub` (`3513`, `XOR A; RET`) is CONFIRMED. No IR output, debug
+    print, or persistent config write occurs. The earlier ephemeral-only
+    claim from a bounded watch is corrected. Labels
+    `g_bDebugRunEnabled`, `g_bDebugRunDeviceIndex`, `g_wDebugRunActive`
+    installed in Ghidra (2026-09-25). `g_wMonitorDeviceSelector` (`E2F8`)
+    remains **PROPOSED** (not installed).
+    Docs updated: monitor-and-debug.md, memory-and-io-evidence.md,
+    forms-ui.md.
 
 ## In progress
 
