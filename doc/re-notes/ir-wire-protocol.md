@@ -263,11 +263,10 @@ not run on through trailing zeros.
 
 ### The lead-in is a pipeline flush — LIKELY
 
-An earlier revision of this page called the five-cell lead-in "a preceding
-flag, clipped at turn-on", on the grounds that `00001` is bits 3-7 of
-`10000001`. **That is wrong**, and the owner's alternative — that the stuffer
-has a 4-5 bit output pipeline which is flushed when an unstuffed flag is
-written to `LINK_CMD` — fits the measurements better on every count:
+The five-cell lead-in is a pipeline flush: the stuffer has a 4-5 bit output
+pipeline that is flushed when an unstuffed flag is written to `LINK_CMD`.
+The alternative — that the lead-in is "a preceding flag, clipped at turn-on"
+(`00001` as bits 3-7 of `10000001`) — does not fit the measurements:
 
 | Observation | Flag-fill | Pipeline flush |
 |---|---|---|
@@ -1417,11 +1416,11 @@ through complete download and upload sessions in the emulator
 of at most 126 data bytes, and `marker` 1 to end a stream. Wire it to the
 Arduino's byte stream and the application layer is done.
 
-What is **not** solved, and is the whole of the remaining physical work: what
-the far end must put on the return pair, and when, to make the controller
-complete the `LINK_STATUS` bit-6 acknowledge phase and present
-`LINK_STATUS` bit 7 for the first payload byte. Everything above runs on top
-of that controller handshake.
+The remaining physical work is the return side: what the far end must put
+on the return pair, and when, to make the controller complete the
+`LINK_STATUS` bit-6 acknowledge phase and present `LINK_STATUS` bit 7 for
+the first payload byte. Everything above runs on top of that controller
+handshake.
 
 ## Tooling
 

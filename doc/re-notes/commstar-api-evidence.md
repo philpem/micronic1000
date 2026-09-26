@@ -553,7 +553,7 @@ control program that does not make the call leaves both at 0 — so the call
 reached the firmware. The marker holds `AA`, never `55`. Regression:
 `CommstarApplicationApiTest` in `analysis/test_boot_upload.py`.
 
-## What this does not tell you — open limits
+## Open limits
 
 * The full result vocabulary (`0`/`8` success; `5`/`6` decoded; `4`/`9` on
   error paths not fully decoded; `ROM00:4E4E` arms `0`, `4`, `6`, `8`, `9`
