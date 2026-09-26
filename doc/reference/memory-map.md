@@ -84,9 +84,9 @@ firmware always mirrors that write into the shadow byte
 
 Three consequences for a programmer:
 
-* **`ram:F791` is authoritative, not advisory.** Every dispatcher in the
-  firmware reads `F791` to learn the current bank rather than reading the
-  port back. If you switch banks yourself and do not update `F791`, the
+* **`ram:F791` holds the authoritative current bank state.** Every dispatcher
+  in the firmware reads `F791` to learn the current bank rather than reading
+  the port back. If you switch banks yourself and do not update `F791`, the
   next `RST 10h` will compare against a stale value and take the wrong
   branch. CONFIRMED.
 * **Bank switches run with interrupts disabled.** The setter does `DI`
@@ -211,7 +211,7 @@ slots. **Template is `21 01 00 C9` — `LD HL,0001; RET`**, so an
 *uninstalled* slot returns `HL = 1` and does nothing. A slot only becomes
 `{D7, bank, lo, hi}` when a boot-chain `fn=2` record installs it.
 
-**Runtime thunk-patching — RESOLVED/WITNESSED 2026-09-19 (CONFIRMED).**
+**Runtime thunk-patching (CONFIRMED).**
 The `EE00-EE4F` 20-slot arena is a sub-range of the above (`ED1C-F17F`).
 Both DIP type-0 blocks and COM programs can write `{D7,bank,addr}` stubs
 into it. See [RE notes: OS internals](../re-notes/os-diposb.md) for the
@@ -407,11 +407,12 @@ It is the authority; this is the programmer-facing summary.
     appears as a literal. Do not use either.
 
     `F68D`-`F77F` and `FFA9`-`FFFF` remain **LIKELY unclaimed / OPEN**.
-    `F68D` is the first byte after the resident kernel image. The earlier
-    round-1536-byte-arena explanation is withdrawn: the
-    [unbanked-RAM investigation](../re-notes/unbanked-ram-map.md) rejects it.
-    Lack of observed writes in the tested workloads does not allocate
-    these spans to applications or establish safety on untested paths.
+    `F68D` is the first byte after the resident kernel image; the
+    `round-1536-byte-arena` reading was rejected by the
+    [unbanked-RAM investigation](../re-notes/unbanked-ram-map.md).
+    No write to these spans was observed in the tested workloads, so
+    they are not proven safe for general application scratch on untested
+    paths.
 
 !!! danger "`E48C`-`E6FF` is live Commstar session state"
     Staging data there has already caused a real bug in this project
@@ -495,8 +496,9 @@ bounds-checked, and never unwound by anything except a matching return.
 ### 4.4 Heap: there is none
 
 **DIPOS-B has no dynamic memory allocator.** All storage is statically
-placed by the boot chains and the loader. CONFIRMED to the extent a
-negative can be:
+placed by the boot chains and the loader. CONFIRMED by the positive
+evidence below, each of which individually rules out the allocator-shaped
+alternative:
 
 * **No allocator-shaped function exists.** A search of every named
   function in the database for `alloc`, `free`, `heap`, `pool`, `malloc`,
@@ -558,8 +560,8 @@ decodes it.
 | `08h` | `RTC_ADDR` | W | HD146818 register-address latch | CONFIRMED |
 | `23h` | `LCD_REG` | W | HD61830 register/command select | CONFIRMED |
 | `28h` | `RTC_DATA` | R/W | HD146818 data, paired with `08h`. See [RTC](../re-notes/rtc.md) | CONFIRMED |
-| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Bits 0, 1, 4 and 5 individually managed. Bit 0 = yellow/pin6 sink/release; bit 1 = attention/trigger gate (SUSPECTED/OPEN); bit 4 = red/pin1 output; bit 5 = boot/standby line. Barcode front end and `Link_PortSelect`. | CONFIRMED as shared latch; bit meanings noted per bit |
-| `2Bh` | `SOUND` | W | **Beeper.** `Sound_2bWrite` / `Sound_Off`. This is a physical port, **not** the `2Bh` *wire ID* in the `FE83` device table. | CONFIRMED |
+| `2Ah` | `CTL_LATCH_2A` | W | Peripheral control latch, shadow `F78B`. Four bits are used: bit 0 = yellow/pin-6 sink/release output, bit 4 = red/pin-1 output, bit 5 = boot/standby line, bit 1 = attention/trigger gate (SUSPECTED). Serves the barcode front end and `Link_PortSelect`. | CONFIRMED as shared latch; bit meanings noted per bit |
+| `2Bh` | `SOUND` | W | **Beeper port.** `Sound_2bWrite` / `Sound_Off`. (An unrelated `2Bh` wire ID exists in the `FE83` device table — separate namespace.) | CONFIRMED |
 | `2Ch` | `CTL_LATCH_2C` | W | Control latch, shadow `F78D`. Per-bit assignments in [separate table](#port-2ch-bits) below | CONFIRMED |
 | `2Dh` | `EXTBUS_EDGE` | R | Barcode-pen edge/level input. Eight read sites, all inside the capture front end. | CONFIRMED |
 | `33h` | *unknown* | R | **Single access**: `ROM00:1ED9` `IN A,(33h); RET` inside the LCD driver block. Candidates: LCD status/busy or incomplete alias. | **OPEN** |
@@ -577,11 +579,12 @@ decodes it.
 **No other port is accessed anywhere in either ROM image or in any
 RAM-resident module.** The untouched ranges are `01h`, `06h`, `09h`-`22h`,
 `24h`-`27h`, `29h`, `2Eh`-`32h`, `34h`-`45h`, and everything above `4Fh`.
-That is a statement about the firmware, not about the hardware: a port this
-firmware never uses may still be decoded, and the address decoding may well
-be partial — the `03h`/`23h`, `08h`/`28h` and `2Ah`/`2Ch` pairings suggest
-only some address lines are compared. **SUSPECTED** for the partial-decode
-inference; a hardware read of an unused port would settle it.
+This map covers only the ports this firmware accesses in either ROM image. A
+port not listed may still be decoded by the hardware, and the address
+decoding may be partial — the `03h`/`23h`, `08h`/`28h` and `2Ah`/`2Ch`
+pairings suggest only some address lines are compared. The partial-decode
+inference is **SUSPECTED**; reading an unused port on the hardware would
+settle it.
 
 ### Interrupt sources {#interrupt-sources}
 
@@ -637,8 +640,8 @@ Two negatives bound searches:
 
 * **`LINK_CTRL` bits 2 and 3 are the only ones no ROM instruction ever
   writes.** So the untried space on that latch is exactly two bits.
-* **`CTRL_07` uses only bits 0 and 1.** It is a two-bit output, not an
-  eight-bit one.
+* **`CTRL_07` is a two-bit output (bits 0-1).** Bits 2-7 are never written
+  by this ROM.
 
 Pattern-matching method and caveats: see
 [RE notes: Memory and I/O evidence](../re-notes/memory-and-io-evidence.md).

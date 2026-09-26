@@ -164,11 +164,13 @@ the count byte. `C-TX-BLK` will send up to 255 bytes in one call, resegmented
 into 128-byte wire frames underneath.
 
 **A host must never send more than 126 bytes in one object.** The handheld
-asks for 128 and then cannot take it. Serving the same image in 126-byte
-blocks completes; in 127-byte blocks every object is dropped, the handheld
-re-requests, and the session ends `Abort pending` / `Session aborted` with
-`C-RX-BLK` returning 4. Treat **126 as a measured limit** — reproduced by
-regression, not derived from the RX frame budget.
+asks for 128 but cannot take it. The limit is **measured**, not derived
+from the RX frame budget:
+
+- 126-byte blocks → transfer completes.
+- 127-byte blocks → every object is dropped, the handheld re-requests, and
+  the session ends `Abort pending` / `Session aborted` with `C-RX-BLK`
+  returning 4.
 
 **The block path emits no separator bytes.** Records are delimited by `1Eh`/`1Ch`;
 blocks are framed by the transport length field, so raw binary needs no
@@ -398,9 +400,9 @@ The V24 Log-on form's own field labels (`micron2.bin` ROM01:7BA0-7BC8) are
 `User id`, `Password`, `Group id`, `Telephone number` — so `EC99`/`ECA2`/`ECAB`
 are the form's User/Password/Group buffers, and *Telephone number* is a
 **separate** buffer (`ram:ECB4`). `+18`/`EC8E` is therefore the **workstation
-id**, not the telephone: the cold-boot prompt is "Enter the Workstation", and a
-dynamic run puts the entered serial there. The earlier "Telephone / workstation
-id" wording conflated the two and has been dropped.
+id**. The cold-boot prompt is "Enter the Workstation", and a
+dynamic run puts the entered serial there. The telephone (`ECB4`) is a
+separate buffer.
 
 `+8`/`ram:D120` is a single zero byte immediately before the link-method
 callback table at `ram:D121`; nothing in the image writes it, so `+8` is
@@ -453,7 +455,7 @@ in the emulator) must pump the link.
 > Wrapper listing and bare-COM harness incident: see
 > [`re-notes/commstar-api-evidence.md#why-a-command-blocks`](../re-notes/commstar-api-evidence.md#why-a-command-blocks).
 
-## What this does not tell you
+## Limits — not covered here
 
 * The full result vocabulary. `0` and `8` are success; `5` (`NO`/`DM`) and `6`
   (`Invalid reply`) are decoded here; `4` and `9` appear on error paths and are

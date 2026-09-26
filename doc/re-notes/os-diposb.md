@@ -632,9 +632,8 @@ error-handler break, and the separate monitor ROM).
 
 **CONFIRMED, byte-verified 2026-09-20:** the function now named
 `Debug_MonitorHookStub` (formerly `Monitor_Enter`) at `ROM00:3513` contains only `AF C9` (`XOR A; RET`).
-The name and the menu string do not establish a monitor implementation.
-The previous claims of a built-in monitor and a service-key boot into
-that monitor are withdrawn.
+The name and the menu string do not establish a monitor implementation, so
+there is no built-in monitor and no service-key boot into one.
 
 * **Error-screen path:** `Diag_ErrorHandler` (`ROM00:2C00`) prints the
   retry/monitor/return prompts. M (`4Dh`) or Z (`5Ah`) selects

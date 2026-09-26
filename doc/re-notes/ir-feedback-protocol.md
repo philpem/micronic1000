@@ -83,10 +83,10 @@ reports a completed low interval. A receive-class short pulse indicates the stoc
 receive returned carry set (~0.918 ms); a longer receive pulse indicates
 carry clear (~1.828 ms). The ~3.637-ms initialization pulse is never RX
 evidence. Both receive marker release guards last about 0.46 ms, including
-instruction overhead, before and after the low interval. No pulse
-does not by itself prove no pending status: check the Uno boot banner,
-yellow pull-up, stock UI path, event-drop count and optical activity. Any
-`# STOCK_YELLOW_DROPS` value above zero makes that capture incomplete.
+instruction overhead, before and after the low interval. A missing pulse is
+inconclusive — pending status may still have occurred: check the Uno boot
+banner, yellow pull-up, stock UI path, event-drop count and optical activity.
+Any `# STOCK_YELLOW_DROPS` value above zero makes that capture incomplete.
 If port `2Ah` bit 0 was already set before the wrapper, its forced release
 can first close and log a long pre-existing low interval. The bounded
 ~0.918/1.828 ms pulse follows it, then the wrapper restores the prior low

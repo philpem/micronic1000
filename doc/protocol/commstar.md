@@ -13,10 +13,10 @@ frame envelope, the request/response object grammar, and the program-data block
 format are established from the emulator running the real firmware (receive-side
 bytes are emulator fixtures). The only physical captures are the outbound IR
 clock/data waveform and the one-byte prelude (owner scope capture). Both
-directions run end to end against real firmware in the emulator. What is
-missing is the return-side handshake, a physical validation of the timed
-receive-arm fallback, and the meaning of several object fields. Nothing here is
-proven against a historical adapter or plinth.
+directions run end to end against real firmware in the emulator. The
+remaining unknowns are the return-side handshake, a physical validation of
+the timed receive-arm fallback, and the meaning of several object fields.
+No historical adapter or plinth has been tested against this document.
 
 | Layer | Stability | Guidance |
 |---|---|---|
@@ -497,10 +497,10 @@ when it began its own request (`ram:FDD2`).
 > Interrupt-table and computed-jump proof: see
 > [`re-notes/commstar-evidence.md#the-receive-path-is-always-armed-but-dead-ends`](../re-notes/commstar-evidence.md#the-receive-path-is-always-armed-but-dead-ends).
 
-### `C-ANSWER` is not a listen primitive
+### `C-ANSWER` always transmits
 
 It reads `ram:E520` and dispatches: link type 6 sends wire state `0061` (`CONNECT-ANSWER`),
-anything else sends `CONNECT-DIRECT` (`0062`). Either way the handheld transmits.
+anything else sends `CONNECT-DIRECT` (`0062`). Either way the handheld transmits; it does not wait for inbound data.
 
 ### What a host can do
 
@@ -525,15 +525,15 @@ frames.**
 > Cold-RAM jump-path argument: see
 > [`re-notes/commstar-evidence.md#do-not-send-unsolicited-frames`](../re-notes/commstar-evidence.md#do-not-send-unsolicited-frames).
 
-### There is no Plinth detection
+### No connector selects the Plinth
 
-`Plinth not connected.` is not a detection result — the handheld prints it
-when the peer fails to answer its link-configure request, whatever is
-physically attached. `Link_Probe` returns a status byte but both callers
-discard it; it is a cold-boot reset.
+`Plinth not connected.` is a peer-absence message, not a detection result:
+the handheld prints it when the peer fails to answer its link-configure
+request, whatever is physically attached. `Link_Probe` returns a status byte
+but both callers discard it; it is a cold-boot reset.
 
-Plinth versus V24 is a **menu choice**, not a detection. There is no
-electrical connector to detect: both are IR ports. `Link_BlockTx` routes on
+Plinth versus V24 is a **menu choice**, not an electrical state: both are IR
+ports and no connector is sensed. `Link_BlockTx` routes on
 **bit 5 of the link id** via `Link_PortSelect`, which drives `LINK_CTRL`
 bit 1 and port `2Ch` bit 5 together:
 

@@ -702,3 +702,55 @@ and save the Ghidra program.
   grandfathered — do not flip them to `Reader*` or to the disproven
   "EXT STORAGE ADAPTER" identity; check TASKS.md's do-not-regress
   list and §3 before any rename pass in this area.
+
+---
+
+## 14. Documentation prose style (readability)
+
+The `doc/` write-ups are read by humans and must state facts plainly. This
+file records the reusable style rules so awkward wording does not creep back
+in after a rewrite pass. They are **phrasing-only** — never change a
+technical claim while applying them, and never introduce a new unproven
+identity (§3).
+
+When editing any page under `doc/`, apply these:
+
+1. **Lead with the positive.** State what the thing *is* before what it is
+   not; use negation only for deliberate contrast.
+   - Bad: "`2Bh` is a physical port, **not** the `2Bh` wire ID."
+   - Good: "`2Bh` is the beeper port (an unrelated `2Bh` wire-ID exists in
+     the `FE83` device table — separate namespace)."
+
+2. **Keep revision history out of the live statement.** State the current
+   fact; the fact that an earlier claim was wrong/superseded belongs in the
+   session log or at most a one-line footnote pointer, never as the framing
+   of the result.
+   - Bad: "The earlier round-1536-byte-arena explanation is withdrawn:
+     `F68D`…"
+   - Good: "`F68D` is the first byte after the resident kernel image (the
+     earlier 'round 1536-byte arena' reading was rejected — see re-notes)."
+
+3. **Avoid double and layered negation.**
+   - Bad: "Nothing here is proven against a historical adapter." / "No pulse
+     does not by itself prove no pending status."
+   - Good: "No historical adapter has been tested against this document." /
+     "A pulse alone does not establish a pending status."
+
+4. **One confidence label and one discriminating observation per claim.**
+   Do not stack LIKELY/SUSPECTED/OPEN on a single fact where one label
+   suffices, and never let hedging displace the observation that would
+   settle it.
+
+5. **Break run-ons and table parallel data.** One fact per sentence; put
+   parallel or empirical data in a table rather than a comma-joined list.
+
+6. **Prefer positive terms and active voice.** Not established → unproven;
+   not supported → unsupported; "the firmware does not forward it" → "the
+   controller consumes it as addressing".
+
+7. **Prefer a positive rule over a prohibition.** "Do not relabel B: as a
+   local RAMDISK" → "Keep B:'s local-RAMDISK identity unproven until tested".
+
+Do not strip history where history is the point — `session-log.md`,
+`gap-analysis-history.md`, and pre-merger handovers legitimately record
+chronology. The style is for the durable contract/reference/evidence pages.

@@ -55,8 +55,8 @@ Rows = sense line (0-5, `KBD_SENSE` bits), columns = drive bit (0-5,
 | **5** | R `52/34/--` | S `53/35/--` | T `54/36/--` | END `14/14/11` | — | — |
 
 So the **modifier keys `⇕` (MODE/Shift) and `☼` (2nd/Sun) carry no
-keycode** (`00`) — they select a map page instead. Note the older claim
-"Sun = `D0h`" was wrong: `D0h` is **DEPT**; `14h` is **END**.
+keycode** (`00`) — they select a map page instead. `D0h` is **DEPT** and
+`14h` is **END**.
 
 ## Keycode pages (`tbl_kbd_map`, ROM00:1B58)
 

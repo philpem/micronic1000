@@ -246,13 +246,15 @@ stimulus with silence before resuming a sweep.
 - Annotation coverage is not protocol correctness. Near-complete naming
   and passing docs builds do not close these engineering questions.
 
-**LIKELY / limits of inference:** 8192 bit/s is a strong nominal timing
-interpretation, while the capture measures about 122 µs per cell; a divider
-or oscillator-source explanation is not established merely by the fit.
-The conn13 early/late separation is real, but its content and duration
-variables are not a complete factorial comparison. Conn11 already disproves
-a universal final-light-off deadline. Test equal-duration valid/malformed
-stimuli before declaring content exploration exhausted.
+**Known:** 8192 bit/s is a strong nominal timing interpretation; the capture
+measures about 122 µs per cell, a mismatch. The conn13 early/late separation
+is real. Conn11 rules out a universal final-light-off deadline.
+
+**Still open:** the divider/oscillator-source cause of the timing mismatch;
+whether the conn13 content and duration variables are a complete factorial
+comparison. This one is not established merely by the fit. Test
+equal-duration valid/malformed stimuli before declaring content exploration
+exhausted.
 
 ## What survives the review
 

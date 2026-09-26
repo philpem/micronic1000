@@ -38,7 +38,7 @@ For the byte-level envelope that establishes this rule, see
 
 | Function | Service | Stability | Notes |
 |---:|---|---|---|
-| 00h | system reset / warm boot | Provisional | Enters restart sequence; does not return in the normal sense |
+| 00h | system reset / warm boot | Provisional | Enters the restart sequence (a warm-boot entry, not a returning service) |
 | 01h, 02h, 06h | console input, output, direct I/O | Provisional | Device-routed; fn 06 poll with `E=FFh` is nonblocking. See [Extensions](extensions.md) for routing |
 | 03h | reader input | Provisional | Barcode-reader byte stream; see [Barcode reader](barcode.md) |
 | 04h, 05h | punch and list output | Provisional | Device-routed |

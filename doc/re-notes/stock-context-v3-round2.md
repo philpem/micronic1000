@@ -65,12 +65,13 @@ the saved scope exports. The cause of the difference is OPEN; the
 scope's 40-us export grid does not rule out finer electrical or
 optical differences.
 
-Discard the earlier causal claims that changing the opening flag,
-stuffing mode, or closing flag removed the return marker. Those runs
-did have zero markers, but the nominal positive control was no longer
-positive when repeated, and the handheld port choice for these runs
-is unverified. C1 and C2 likewise cannot distinguish content until
-the positive control reproduces in the same conditions.
+No content factor is yet implicated. The flag/stuffing/closure runs had
+zero markers, but the nominal positive control was no longer positive
+when repeated and the handheld port choice for those runs is unverified,
+so the earlier causal claims (that changing the opening flag, stuffing
+mode or closing flag removed the return marker) do not stand. C1 and C2
+likewise cannot distinguish content until the positive control reproduces
+in the same conditions.
 
 ## Yellow path and hardware changes
 

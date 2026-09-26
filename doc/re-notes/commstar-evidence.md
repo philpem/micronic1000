@@ -809,7 +809,7 @@ there); `E6FF` is the zero-extended received sequence at `E5BF`. They are
 displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 **OPEN**.
 
-### Session-module senders and status fields — 2026-09-17 (parent-adjudicated, bytes verified; supersedes 2026-09-12 RECORD-vs-BLOCK framing)
+### Session-module senders and status fields (2026-09-17; parent-adjudicated, bytes verified)
 
 * **RECORD vs BLOCK transmit — the `C-TX-REC` / `C-TX-BLK` pair and shared stream path (CONFIRMED, `ROM00`).** `C-TX-REC` is `ROM00:50F3` (selector 12, error decade 8130/8131) and `C-TX-BLK` is `ROM00:51F2` (selector 14, error decade 8150/8151), per the `452D` call-site table already in this page (wrappers `50F3`/`51F2` indexing the `C-*` name table at `ROM00:6B67`). **Both** transmit through the same TX stream walker `ROM00:3E14` — direct `CALL` at `ROM00:511B` in `C-TX-REC` and at `ROM00:5247` in `C-TX-BLK`. `ROM00:3E14` walks a counted source buffer whose pointer is at `SP+0x0C`, comparing with `E0E7` and appending each byte via `ROM00:3D9B`. `ROM00:3D9B` is the byte accumulator: it appends the byte to a buffer at `e3c6` with a count at `e446`, and when the count reaches `0x80` (128) it flushes via `ROM00:3D11`. So records and blocks are both chunked into 128-byte objects (126 data bytes + 2-byte header, matching the documented "objects of at most 126 data bytes").
 
@@ -819,7 +819,7 @@ displayed as `RCV1`/`RCV2`. Broader UI meaning beyond that display remains
 
 * **Transfer-vector exposure of the stream primitives (CONFIRMED).** `ROM00:3E14` via `ROM00:7DD2` / `ram:edb0`; `ROM00:3E6A` via `ROM00:7DBA` / `ram:ed80`; `ROM00:3D9B` via `ROM00:7DD4` / `ram:edb4`; `ROM00:3D11` via `ROM00:7DB6` / `ram:ed78`; `ROM00:3CF7` via `ROM00:7DC4` / `ram:ed94`.
 
-* **CORRECTION — `Session_Tx4Param`/`Session_Tx5Param` are NOT RECORD/BLOCK senders (CONFIRMED mechanics; supersedes "Tx4Param vs Tx5Param is RECORD vs BLOCK: OPEN").** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders remain reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`), plus `TxBlock4` fills `ram:e650`-`ram:e656` (first stack word `==1` selects device `63h` else `43h` → `ram:e52e`; `ram:e658=8`) and `TxBlock5` fills `ram:e65c`-`ram:e668` as before. Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. The open question "whether Tx4Param vs Tx5Param is RECORD vs BLOCK" is therefore closed: neither is; the premise was wrong. See `research/session-log.md` 2026-09-17 entry.
+* **`Session_Tx4Param`/`Session_Tx5Param` are the connect/init control-object senders (CONFIRMED), not RECORD/BLOCK senders.** `Session_Tx4Param` (`ROM00:5669`, 4 stack args: 1 word + 3 byte) calls `Session_TxBlock4` (`ROM00:5BF7` at `ROM00:5699`; result `g_wTxBlock4Result` at `ram:e64e`); `Session_Tx5Param` (`ROM00:56A4`, 5 byte args) calls `Session_TxBlock5` (`ROM00:5CD7` at `ROM00:56DC`; result `g_wTxBlock5Result` at `ram:e65a`). Both builders remain reachable via `Session_RuntimeStubSourceTable` entries `ROM00:7D96` (index 7 → `ROM00:5BF7`) and `ROM00:7D98` (index 8 → `ROM00:5CD7`), plus `TxBlock4` fills `ram:e650`-`ram:e656` (first stack word `==1` selects device `63h` else `43h` → `ram:e52e`; `ram:e658=8`) and `TxBlock5` fills `ram:e65c`-`ram:e668` as before. Their only direct callers are `ROM00:4689` (inside `C-INIT-COMMS`, whose flow runs `ROM00:4563` -> `ROM00:4600` and ends at the `46D6` result switch) and `ROM00:4796` (the `ROM00:46E9` InitState stage ending at the `47E3` switch), plus the transfer-vector stubs (`ROM00:7DE4`/`7DE6`, `ram:edd4`/`edd8`). They are the connect/init control-object senders. Likewise `Session_TxBlock4` (`ROM00:5BF7`) / `Session_TxBlock5` (`ROM00:5CD7`) are reached only via those wrappers (`5699`/`56DC`), the stub table (`7D96`/`7D98`) and RAM stubs (`ram:ed38`/`ed3c`) — not from the `3E14` RECORD/BLOCK walker path. See `research/session-log.md` 2026-09-17 entry.
 
 * **RCV1/RCV2 snapshots (CONFIRMED).** `ram:e701` (`g_wSessRcv1`) and
   `ram:e6ff` (`g_wSessRcv2`) are display snapshots of the last-consumed
@@ -863,10 +863,10 @@ regression executes it without a forced return and observes states beginning
 `ROM00:5B79`-`5BA5`, both call sites, and the emulator regression.**
 
 * `g_wSessionDeviceSelector` at `E52E` is a service-33 device selector,
-  mapped through `FE83 + selector - 1`; it is **not** logical frame type.
+  mapped through `FE83 + selector - 1`. Logical frame type `1` is a
+  separate byte written independently by `ROM00:2F6D`.
   `g_wSessionTxPayloadLength` at `E530` counts payload bytes starting at
-  `E534`; bytes `E532-E533` are skipped. Logical frame type `1` is written
-  independently by `ROM00:2F6D`.
+  `E534`; bytes `E532-E533` are skipped.
 
 * **Trace 4 — Session_TxBlock4 path (CONFIRMED):** synthetic stack args
   `(1,6,22h,33h)`, `E6E6=0`; bypassed only the preceding state-`0000`
@@ -1006,10 +1006,12 @@ completion removes that oracle. With the corrected 3.6864 MHz CPU clock, a
 both receive boundaries for a 50-byte DIP. The regression uses 500 ms and
 passes with 1700-, 3400-, and 6800-tick emulator slices. The timer begins when
 the controller model is supplied the type-4 queue. The same 500 ms policy also
-passes the V24 mode-1 route and a 200-byte, two-chunk COM transfer. A physical
-implementation would naturally begin after finishing that frame on the IR
-wire, so its epoch is slightly later; whether there is an upper acceptance
-deadline and whether 500 ms is reliable on hardware remain **OPEN**.
+passes the V24 mode-1 route and a 200-byte, two-chunk COM transfer.
+
+**OPEN (hardware):** a physical implementation would begin after finishing
+that frame on the IR wire, so its epoch is slightly later. Whether there is
+an upper acceptance deadline, and whether 500 ms is reliable on hardware, are
+untested.
 
 The queue forms below remain controller-model evidence. A timed receive-arm
 fallback is now available, but the return wire handshake and the three hidden
@@ -1127,8 +1129,8 @@ Its initial routing is:
   `ROM01:0DD7`;
 * 14 or more with any other first word -> raw COM.
 
-Thus `4F 4B A5 5A 3C C3` is a six-byte raw-COM prefix, not a DIP header and
-not a token the loader removes. A later byte cannot repair that stream into a
+Thus `4F 4B A5 5A 3C C3` is a six-byte raw-COM prefix; the loader keeps it in
+the stream. A later byte cannot repair that stream into a
 DIP: a DIP experiment must restart with `C9 C8` at offset zero. A normal
 zero-status `Program_FinalizeInput` completion resumes this parser, so EOF
 after the six bytes follows the short-COM route; it is not necessary to pad
@@ -1175,14 +1177,18 @@ control exchanges, then supplies the validated COM/DIP file as raw inner
 program-data payloads. The harness has an opt-in
 regression using a 50-byte DIP file and a 200-byte COM file which reaches the
 explicit end-of-stream boundary in two chunks (126 bytes with marker 0, then
-74 bytes with marker 1). **The maximum is 126 data bytes, measured.** 126 succeeds; 127 is silently
-dropped (no acknowledgement, the handheld re-requests, and the session ends
-`Session aborted` with `C-RX-BLK` returning 4); 128 fails with `0x1FAE`. The
-envelope overhead is therefore 8 bytes against the `ROM00:6230` capacity of
-`0x86` (134) — arithmetically consistent, but the RX frame struct at
-`ram:E5BA` is 138 bytes with its data area at `+0Ah`, which implies a
-different budget. The two readings are unreconciled: treat 126 as a measured
-limit, not a derived one.
+74 bytes with marker 1). **The maximum is 126 data bytes, measured** — treat
+it as a measured limit, not a derived one:
+
+- 126 bytes → succeeds.
+- 127 bytes → silently dropped (no acknowledgement, the handheld re-requests,
+  the session ends `Session aborted`, `C-RX-BLK` returns 4).
+- 128 bytes → fails with `0x1FAE`.
+
+The two derivation attempts are **unreconciled**: the envelope overhead is
+8 bytes against the `ROM00:6230` capacity of `0x86` (134), which is
+arithmetically consistent, but the RX frame struct at `ram:E5BA` is 138
+bytes with its data area at `+0Ah`, which implies a different budget.
 
 This is **not** a claim that the historical Commstar peer used this command
 ordering or envelope. The control-path and raw-payload copies are
@@ -1543,17 +1549,16 @@ other three bits.
 **CONFIRMED: the examined ROM transport and header validator do not
 compute or compare a software checksum.** Fresh listings of
 `Link_BlockTx`, `Link_BlockRx` and `Link_ValidateFrameHeader` support
-only that bounded statement. The former claim "no checksum, anywhere"
-and its conclusion about integrity are withdrawn. ASIC-internal FCS
+only that bounded statement; the earlier "no checksum, anywhere" reading
+was broader. ASIC-internal FCS
 generation/checking remains SUSPECTED; terminal `LINK_STATUS` bit 3
 does not identify the cause of the controller error.
 
-Whether the controller forwards the prelude (`4Dh` before the strobe) onto
-the IR line or consumes it as addressing was formerly **OPEN** — it depends
-on the controller. The physical line capture now decoded in
+The controller forwards the prelude onto the IR line (**LIKELY**): the
+physical line capture now decoded in
 [ir-wire-protocol](ir-wire-protocol.md#what-it-settles) reads the prelude as
-`03h` on the line, so forwarding is **LIKELY** (it rests on the inverted-HDLC
-decode, not independently confirmed).
+`03h` on the line. This rests on the inverted-HDLC decode; it is not
+independently confirmed.
 
 ### Timing budget — derivation {#timing-budget}
 
