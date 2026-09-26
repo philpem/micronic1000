@@ -578,6 +578,14 @@ Named cells to keep clear of:
 | `E5BC` | `g_wSessionRxLogicalLength` |
 | `E5BE`/`E5BF`/`E5C0`/`E5C1` | RX frame type / sequence / marker / opaque header |
 | `E5C2`-`E641` | `g_abSessionRxPayload` — the **body of the 134-byte service-33 receive object at `E5BC`** |
+| `E644` | `g_wSessionRxWorkingLength` |
+| `E646` | `g_wSessionRxTypeOrResult` |
+| `E648`/`E649` | RX sequence / link-id copies |
+| `E64C` | `g_wSessionRxOperation` |
+| `E681` | `g_wTxResult` — latches the `Session_RxByteLoop` error |
+| `E69F`-`E6B3` | `Session_RxByteGet` (`ROM00:65C2`) pushback buffer |
+| `E6A9`-`E6AA` | its 16-bit count — **never named literally in either ROM**, only ever touched as the high half of the `E6A9` word, which is why an address search misses it |
+| `E6FF`/`E701` | `g_wSessRcv2` / `g_wSessRcv1` |
 
 > **OPEN — the RX payload offset is disputed.** This map places the payload
 > body at `E5C2` (header `E5BA`/`E5BC` + `E5BE`-`E5C1`), but
@@ -588,14 +596,6 @@ Named cells to keep clear of:
 > `6373`, suggesting a pointer cell, and `LD HL,0xe5c4` at `ROM00:62A2`/`63A5`
 > as a destination). A host implementer must not treat `E5C2`/`E5C4` as
 > interchangeable until the 2-byte header discrepancy is resolved.
-| `E644` | `g_wSessionRxWorkingLength` |
-| `E646` | `g_wSessionRxTypeOrResult` |
-| `E648`/`E649` | RX sequence / link-id copies |
-| `E64C` | `g_wSessionRxOperation` |
-| `E681` | `g_wTxResult` — latches the `Session_RxByteLoop` error |
-| `E69F`-`E6B3` | `Session_RxByteGet` (`ROM00:65C2`) pushback buffer |
-| `E6A9`-`E6AA` | its 16-bit count — **never named literally in either ROM**, only ever touched as the high half of the `E6A9` word, which is why an address search misses it |
-| `E6FF`/`E701` | `g_wSessRcv2` / `g_wSessRcv1` |
 
 **On `E5C2` specifically.** The current `UPLOAD_BUFFER_MAX = 126` cap is
 correct as a *fix for the overrun* — capped writes stop at `E63F`, below
