@@ -499,9 +499,20 @@ not by a physical jumper (earlier stated as most likely, not confirmed).
   Since IR operation clears `2A` bit 1 (`Link_PortSelect` ROM00:3458,
   both branches), the two bits form a plausible 2-bit device decode:
   `2A` bit 1 HIGH = barcode, LOW + `2C` bit 5 HIGH = V24 IR, LOW + `2C`
-  bit 5 LOW = PLINTH IR. Whether this is one hardware router or two
-  independent enables, and whether the two IR ports share one
-  transceiver cluster, remain **OPEN** (hardware).
+   bit 5 LOW = PLINTH IR. Whether this is one hardware router or two
+   independent enables, and whether the two IR ports share one
+   transceiver cluster, remain **OPEN** (hardware).
+
+   Caveat: the "`2A` bit 1 HIGH = barcode" row applies specifically to the
+   `0x2Ah` **scanner** route (the only route on which `ExtBus_BusArm` sets
+   bit 1, `ROM00:1242-124A`). The default **reader** channel is wire
+   `0x2Bh`, which takes the `ROM00:1240 JR NZ` branch and leaves `2A` bit 1
+   LOW, so by the 2-bit decode above the default wand path would read as
+   "PLINTH IR" rather than "barcode". The owner-measured gate that requires
+   `2A` bit 1 HIGH is matched only on the `0x2Ah` route; whether a working
+   wand (the `0x2Bh` channel) actually needs `2A` bit 1 HIGH is therefore
+   undetermined — **OPEN** (hardware): does a working capture require `2A`
+   bit 1 HIGH on the default `0x2Bh` wand path?
 
 ## Remaining port-bit refinements (2026-09-24)
 

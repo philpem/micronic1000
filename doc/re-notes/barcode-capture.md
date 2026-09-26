@@ -4,19 +4,23 @@ Evidence behind [Reference: Barcode reader](../reference/barcode.md). Every
 claim here is byte-read from `micron1.bin` or measured in the emulator with
 `analysis/test_barcode.py` and the `--barcode-*` harness options.
 
-## Identification: mechanism yes, name no
+## Identification: mechanism CONFIRMED, external identity adjudicated barcode
 
 The capture front end, its buffer, the decode hook and the delivery path are
-all **CONFIRMED**. What is *not* established from the firmware is that the
-attached device is a barcode pen:
-
-* no string in either ROM names a barcode, pen, wand or symbology;
-* the default `FE83` wire table makes wire `2Bh` the **EXT STORAGE ADAPTER**;
-* the A:/B: RAM drives never touch this bus.
+all **CONFIRMED**. The attached device's identity is owner-adjudicated, not
+firmware-provable: no string in either ROM names a barcode, pen, wand or
+symbology, so nothing in the bytes names the device. The default `FE83` wire
+table was once read (in a `Disk_SelectWireId2B` plate) as making wire `2Bh`
+the "EXT STORAGE ADAPTER"; that binding is now **superseded**. The owner
+adjudicated (2026-08-24) that the 2Dh edge front end is the **barcode
+reader** — see the do-not-regress list and [§3](#); the wire-`2Bh` identity
+is kept OPEN in [memory-and-io-evidence.md](memory-and-io-evidence.md#wire-0x2b-identity-ambiguity-open)
+("do not resolve by fiat"). The A:/B: RAM drives never touch this bus.
 
 The barcode identification rests on the project owner's knowledge of the
-physical hardware. Ghidra names use the neutral `Ext*` prefix. Treat
-"barcode" as the application, and the `Ext*` front end as the mechanism.
+physical hardware; it is not derived from the firmware. Ghidra carries both
+a grandfathered `ExtBus*`/`Ext*` set and newer `Barcode_` names; new names
+in this area take the `Barcode_` prefix (§3).
 
 ## The capture loop — `ROM00:13BB`-`1441`
 
@@ -144,9 +148,11 @@ execution**: a driven `A1` scan returns `1B 02 41 31`.
 
 ## Harness notes
 
-* Only two sites sample port `2Dh`: `ROM00:13CB` (arm) and `13ED` (time).
-  The wand model gates on those PCs so the presence probe at `12A3` and the
-  idle polls at `1302`/`1317`/`132E`/`1370` cannot consume samples.
+* Port `2Dh` is read at **eight** sites, all inside the capture front end:
+  `1299`/`12A3` (presence probe), `1302`/`1317`/`132E`/`1370` (idle polls),
+  and `13CB`/`13ED` (timing samples). Only `13CB` and `13ED` feed the width
+  timing; the probe and idle-poll reads are excluded in the wand model by
+  PC gating so they cannot consume samples.
 * A synthetic direct capture must stop at `ROM00:30BD`: `CALL 30BD` never
   returns, because `Link_ResetSession` sets `ram:FBC9` bit 0 and tail-jumps
   through `(ram:FDD2)`, the device-completion callback. By then the whole
