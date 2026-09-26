@@ -21,7 +21,8 @@ entries they modify.
 
 ## Active device selector
 
-BDOS F6h reads and F7h writes fbc5, the packed active-device selector.
+BDOS F6h reads and F7h writes `g_bActiveDevice` (`fbc5`), the packed
+active-device selector.
 The documented consumers include:
 
 | Consumer | Slot selection |

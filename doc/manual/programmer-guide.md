@@ -130,7 +130,7 @@ consistent with DIPOS-B (see [CP/M comparison](../re-notes/cp-m-comparison.md)).
 byte is interpreted by DIPOS-B as follows:
 
 - **Drive byte 0** (default) → uses the currently selected drive
-  (`fbc6`).
+  (`g_bActiveDrive` at `fbc6`).
 - **Drive byte 1..16** ('A'..'P') → selects the named storage/link
   device.
 

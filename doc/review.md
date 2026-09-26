@@ -106,6 +106,13 @@ Ghidra's `micron1.bin` explicitly. No emulator workload was run in this pass.
    ID, demonstrated file operations, and unresolved behavior. Propagate
    the outcome to the guide, devices page, method page, and worklist.
 
+   > **Note (2026-09-20):** the "all fourteen drive-ID consumers reject
+   > nonzero IDs" / "local drives only" / "no BDOS path reaches the
+   > transport" conclusions were **withdrawn** — fresh tracing reaches
+   > session transport from BDOS `2Eh`. See the "Implementation status"
+   > introduction above and [open-questions.md](re-notes/open-questions.md#link-identity-and-port-selection).
+   > The publishing-table recommendation below still stands.
+
 6. **Resident-memory advice contains superseded reasoning — outstanding.**
    [Memory map](reference/memory-map.md#32-fixed-ram-8000-ffff) calls
    `F68D-F77F` the remainder of a round `600h` kernel arena; the
