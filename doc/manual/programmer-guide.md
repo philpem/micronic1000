@@ -124,8 +124,9 @@ A: volume and a 224 KiB B: volume from total SRAM capacity or menu names.
 
 ### FCB layout
 
-The FCB is the standard CP/M 2.2 36-byte structure (drive byte,
-8.3 filename, extent, S1/S2, record count, DM, CR, R0-R2). The drive
+The FCB follows the standard CP/M 2.2 36-byte layout (drive byte,
+8.3 filename, extent, S1/S2, record count, DM, CR, R0-R2), verified
+consistent with DIPOS-B (see [CP/M comparison](../re-notes/cp-m-comparison.md)). The drive
 byte is interpreted by DIPOS-B as follows:
 
 - **Drive byte 0** (default) → uses the currently selected drive
@@ -270,8 +271,8 @@ only calls allowed by the supported profile should be used by applications:
 | 0xF9 | **set device pair** | select a device pair for a link slot |
 | 0xFA | **write link config** | write a 16-byte buffer into the FE83 IR/link config |
 | 0xFB | **write storage config** | write a 16-byte buffer into the FE93 storage (drive) config |
-| 0xFC | **set RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | write RTC regs `09/08/07/04/02/00/06` from `+1..+7`; `+0` metadata copied/RTC ignored (provisional: century `19`) |
-| 0xFD | **get RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | read RTC into `+1..+7`; `+0` from `g_bRtcRecordMetadata` (`13h`, provisional `19`); polls `UIP` |
+| 0xFC | **set RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | write RTC regs `09/08/07/04/02/00/06` from `+1..+7`; `+0` metadata copied/RTC ignored (provisional: century `13h` = 19) |
+| 0xFD | **get RTC time** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record)) | read RTC into `+1..+7`; `+0` from `g_bRtcRecordMetadata` (`13h` = 19, provisional); polls `UIP` |
 | 0xFE | **`Bdos_InternalTimedWait`** (`ROM00:1122`) internal timed wait | `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`, `FD4D` HALT wait; resident only |
 | 0xFF | **RTC alarm control** ([8-byte record](../re-notes/rtc.md#bdos-eight-byte-rtc-record), `Bdos_FfAlarmControl`) | `DE=0` clears `AIE` else `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; UIP blocks both |
 

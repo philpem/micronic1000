@@ -76,14 +76,14 @@ memory changed, not “file header checksum failed”.
 
 The loader shows decimal IDs; hexadecimal IDs are included for tooling:
 
-| Shown | Condition |
+| Error (hex + decimal, quoted text) | Condition |
 |---|---|
-| `0x232B` (9003) Bad DIP file | truncated header or payload |
-| `0x2331` (9009) Program not built for this system | system ID not `0` or `0x00E5` |
-| `0x2334` (9012) DIP file has too many blocks | block count `>5` |
-| `0x232A` (9002) DIP file too big | `destAddr + count` exceeds the load ceiling `ram:E3BD` = `D081h` (`ROM01:0E9E`) |
-| `0x232C` (9004) COM file too big | raw COM exceeds `0xCF81`, which is `D081h - 0100h` |
-| `0x2332` (9010) Program corrupt | post-load checksum mismatch |
+| `0x232B` (9003), "Bad DIP file." | truncated header or payload |
+| `0x2331` (9009), "Program not built for this system." | system ID not `0` or `0x00E5` |
+| `0x2334` (9012), "DIP file has too many blocks." | block count `>5` |
+| `0x232A` (9002), "DIP file too big." | `destAddr + count` exceeds the load ceiling `ram:E3BD` = `D081h` (`ROM01:0E9E`) |
+| `0x232C` (9004), "COM file too big." | raw COM exceeds `0xCF81`, which is `D081h - 0100h` |
+| `0x2332` (9010), "Program corrupt." | post-load checksum mismatch |
 
 No executable-extension comparison beyond the fallback rule is part of the
 contract.

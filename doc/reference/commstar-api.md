@@ -345,6 +345,13 @@ The firmware compares the first two bytes against `{OK, NO, DM}`:
 The firmware never inspects bytes after the first two. A host must answer with
 **marker 1**; a marker-0 reply is treated as no reply at all.
 
+> **SUSPECTED mapping gap:** the reply classifier (see
+> [commstar-api-evidence.md](../re-notes/commstar-api-evidence.md#the-commands-reply-and-c-commands-third-argument)) produces
+> internally 0/1/2 for OK/NO/DM, yet the `C-COMMAND` result reported here is
+> 0/5/6. The 1→5 / 2→(5,6) step must be a downstream mapping inside
+> `C-COMMAND` that is not yet documented; capture the command tail that
+> consumes the reply result before treating `NO`→5 / `else`→6 as byte-verified.
+
 > Byte dump and call-site observations: see
 > [`re-notes/commstar-api-evidence.md#the-commands-reply-and-c-commands-third-argument`](../re-notes/commstar-api-evidence.md#the-commands-reply-and-c-commands-third-argument).
 
