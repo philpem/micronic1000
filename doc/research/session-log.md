@@ -1,6 +1,46 @@
 # Session log — Micronic 1000 reverse-engineering
 
-## 2026-09-26 — full adversarial documentation review
+## 2026-09-26 — documentation readability second pass
+
+A readability second-pass over `doc/`, driven from a catalogue built by a
+full read-through (four independent passes: contract layer, RE evidence,
+Commstar/IR + handovers, research/worklist). Before any edit, AGENTS.md was
+extended with **§14 Documentation prose style** — the reusable rules (lead
+with the positive; keep revision history out of the live statement; avoid
+double/stacked negation; one confidence label plus one discriminating
+observation per claim; break run-ons and table parallel data; prefer positive
+terms/active voice and positive rules over prohibitions) so the awkward
+"it's an X not a Y" class does not creep back in. Phrasing only — no
+technical claim or evidence tag changed.
+
+Applied in grouped commits on `docs/readability-pass`:
+- **Contract layer** (memory-map, barcode, commstar, commstar-api/peer,
+  devices-and-storage, keyboard, bdos): state positives; strip the revision
+  meta from the memory-map unclaimed-spans/port-table/allocator text and the
+  barcode connector paragraph; retitle the "C-ANSWER is not a listen
+  primitive"/"no Plinth detection" and "What it does not do/tell you"
+  headings positively; break the 126-byte limitation into a table.
+- **RE evidence notes** (memory-and-io-evidence, barcode-capture,
+  unbanked-ram-map, os-diposb, interrupts, forms-ui): state the current fact
+  rather than a withdrawal/correction history; convert the port-05h
+  triple-negative, the retroactive "Provisional", and the "not supported by
+  the call sites" form to positives; split hedge pile-ups.
+- **Commstar/IR evidence + handovers** (commstar-evidence,
+  commstar-api-evidence, ir-wire-protocol, ir-feedback-protocol,
+  stock-context-v3-round2): positive-first for the device-selector,
+  raw-COM-prefix, pipeline-flush and prelude findings; separate the
+  settled-vs-open timing and 126-byte passages; rewrite the Tx4Param/Tx5Param
+  "CORRECTION" to state the finding; "remaining physical work" instead of
+  "what is not solved"; tabulate the 126/127/128 limit.
+- **Research/worklist** (review.md, TASKS.md do-not-regress,
+  ir-protocol-audit): carry the resolved outcome in the review.md finding #5
+  heading; convert the do-not-regress prohibitions to a positive rule; split
+  the audit LIMITS block into Known vs Still open.
+
+`mkdocs build --strict`, `analysis/check_docs.py`, and the doc regression
+tests all pass. No functions were renamed, so the coverage tracker is
+unchanged. PR on `docs/readability-pass`.
+
 
 An independent adversarial review of the documentation worked from a fresh
 branch (`docs/adversarial-review`) off `master`. Six read-only review passes
