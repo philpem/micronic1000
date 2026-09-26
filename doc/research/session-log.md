@@ -1,5 +1,48 @@
 # Session log — Micronic 1000 reverse-engineering
 
+## 2026-09-26 — full adversarial documentation review
+
+An independent adversarial review of the documentation worked from a fresh
+branch (`docs/adversarial-review`) off `master`. Six read-only review passes
+(I/O identity, barcode/port-2D, BDOS/CP-M/API, IR/Commstar, research tracker,
+naming/manual) verified load-bearing byte claims in Ghidra and against the
+ROM dumps, then applied corrections in grouped commits:
+
+* **AGENTS.md** — fixed stale `doc/internals/*` paths (now `doc/re-notes/` /
+  `doc/reference/`); the `doc/build.py` reference (site is built via
+  `doc/Makefile` / `mkdocs build`); §3's "5-pin side port" → "eight-contact
+  side port" (owner correction 2026-09-22); §7 port-label rule (established
+  address-derived rows grandfathered) and the incomplete module-prefix list.
+* **I/O evidence** — footnote the `2Ah` bit 5 ordering quirk (the
+  standby-refresh clears it on the hardware without a shadow store, so the
+  shadow/port disagree after it); downgrade interrupt bit 3 from CONFIRMED
+  to LIKELY (MAIN/BACKUP battery strings corroborate, strings are not proof);
+  reword memory-map §5.3's false "all live in F780-F799".
+* **Barcode / port-2D** — superseded the stale "wire `2Bh` = EXT STORAGE
+  ADAPTER" binding and the "mechanism yes, name no" framing in
+  barcode-capture.md (owner-adjudicated barcode); corrected "only two sites
+  sample port 2Dh" to the eight sites; caveated the "2A bit 1 HIGH =
+  barcode" decode (only the `0x2Ah` route; default `0x2Bh` wand leaves it
+  LOW). Ghidra `io:002d` plate/repeatable "5-pin" → "8-contact".
+* **BDOS / CP-M / API** — promoted the field→offset mapping to CONFIRMED
+  (dynamic 2026-09-20 run recorded in the evidence note); flagged the reply
+  classifier 0/1/2 vs `C-COMMAND` 0/5/6 gap as SUSPECTED; quoted the
+  program-formats error text to the canonical error-reference format; framed
+  the CP/M 2.2 FCB as verified rather than asserted; consistent RTC metadata
+  base; rename hygiene on stale `FUN_*` references.
+* **IR / Commstar** — scoped the `(prelude & 1Fh) | 40h` reconstruction to
+  the observed ids (the "every id" claim was false); re-tagged prelude
+  forwarding from OPEN to LIKELY (superseded by the line capture); clarified
+  captured-vs-emulator provenance; flagged the 128/83 `BLOCK-OUT` split and
+  the E5C2-vs-E5C4 RX payload offset as open.
+* **Research / naming** — added the withdrawal note to review.md finding #5
+  (the all-fourteen/nonzero-IDs claim was withdrawn 2026-09-20); reconciled
+  the user-guide menu-selection contradiction; cited RAM cells by label.
+
+The docs build cleanly (`mkdocs build --strict`) and pass
+`analysis/check_docs.py` and the regression tests. No functions were renamed,
+so the coverage tracker needs no refresh. PR on `docs/adversarial-review`.
+
 ## 2026-09-25 — I/O semantic corrections applied to docs
 
 * Applied I/O port semantic corrections across documentation per
