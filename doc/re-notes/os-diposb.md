@@ -738,7 +738,7 @@ ticks; each tick pokes peripheral reg C (IN(05)/OUT(08)=0C/IN(28));
 on expiry POP-IX-unwinds into evaluation: elapsed busy-loop count
 must land in 4502..4C46 => CPU-vs-tick-source ratio check, i.e.
 oscillator verification. Configures controller idx 40h/26h first
-(FUN_20d9). Port 04h = write-only control/mask reg written at every
+(RTC_PeriphRegSetup). Port 04h = write-only control/mask reg written at every
 power-state transition (reset/suspend/selftest/link-test/shutdown).
 
 ## RTC status — RESOLVED

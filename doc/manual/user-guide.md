@@ -225,5 +225,6 @@ is available:
 
 * The exact effect of the function labels (`CHNGE`, `REFER`, `HELP`,
   `INSRT`, `F1`/`F2`, `STWDL`, `LIGHT`, `TOP`, `BOT`, `/POS`).
-* Whether menu items are selected by number (digits are shifted values) or
-  by YES/NO + ENTER.
+* Whether menu items are selectable only by number (digits are shifted
+  values), or also by YES/NO + ENTER — selection by number is the described
+  behaviour above.

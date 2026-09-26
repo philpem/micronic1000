@@ -245,7 +245,7 @@ a table of `{bitmask, handler}` triples at `ram:FD84`, copied from
 | 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
 | 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
 | 2 | `04h` | `ROM00:31B6` | **the link controller** |
-| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **CONFIRMED** power/battery (strings `24CA`/`24DD` confirm MAIN/BACKUP battery) |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery — the nearby `24CA`/`24DD` strings ("MAIN BATTERY LOW"/"BACKUP BATTERY LOW") corroborate it, but strings are not proof of behaviour; the shared handler is not byte-verified as a battery routine |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
 | 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (`ROM00:2349`); caller `ROM00:138B` supplies HL=13B8h (edge-capture). `ROM00:1397` clears port04 bit5 (AND DFh) to ENABLE the source; `ROM00:1499` sets it (OR 20h) to mask after capture |
 | 6, 7 | — | — | no slot exists |
@@ -499,9 +499,20 @@ not by a physical jumper (earlier stated as most likely, not confirmed).
   Since IR operation clears `2A` bit 1 (`Link_PortSelect` ROM00:3458,
   both branches), the two bits form a plausible 2-bit device decode:
   `2A` bit 1 HIGH = barcode, LOW + `2C` bit 5 HIGH = V24 IR, LOW + `2C`
-  bit 5 LOW = PLINTH IR. Whether this is one hardware router or two
-  independent enables, and whether the two IR ports share one
-  transceiver cluster, remain **OPEN** (hardware).
+   bit 5 LOW = PLINTH IR. Whether this is one hardware router or two
+   independent enables, and whether the two IR ports share one
+   transceiver cluster, remain **OPEN** (hardware).
+
+   Caveat: the "`2A` bit 1 HIGH = barcode" row applies specifically to the
+   `0x2Ah` **scanner** route (the only route on which `ExtBus_BusArm` sets
+   bit 1, `ROM00:1242-124A`). The default **reader** channel is wire
+   `0x2Bh`, which takes the `ROM00:1240 JR NZ` branch and leaves `2A` bit 1
+   LOW, so by the 2-bit decode above the default wand path would read as
+   "PLINTH IR" rather than "barcode". The owner-measured gate that requires
+   `2A` bit 1 HIGH is matched only on the `0x2Ah` route; whether a working
+   wand (the `0x2Bh` channel) actually needs `2A` bit 1 HIGH is therefore
+   undetermined — **OPEN** (hardware): does a working capture require `2A`
+   bit 1 HIGH on the default `0x2Bh` wand path?
 
 ## Remaining port-bit refinements (2026-09-24)
 

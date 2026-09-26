@@ -36,7 +36,7 @@ Common handler logic:
 * Gate on `g_bIrqServiceArmed`:
   * `g_bIrqServiceArmed == 0` → DI, pop everything, RET — event silently
     dropped. The gate is armed by writing `g_bIrqServiceArmed=1`, e.g.
-    FUN_22E9/2306 after
+    `Kernel_CfgEnableIrq`/2306 after
     loading the comms config table.
   * else → clear `g_bIrqServiceArmed` (in-service marker), DI, save current bank,
     switch to bank 0, call worker.

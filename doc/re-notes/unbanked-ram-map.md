@@ -112,7 +112,7 @@ No gaps: the table covers `8000`-`FFFF` contiguously.
 | `F938`-`F9B3` | 124 | System/extension variables: `F958` `g_abExtResultEnv`, `F95C` `g_wExtResultCount`, `F95E` `g_abExtResultData`, `F99A` `g_abRtcAlarmRecord`, `F9A2` `g_abRtcTimeRecord` | CONFIRMED | named, referenced |
 | `F9B4` | 1 | Barcode edge-sample count | CONFIRMED | `ROM00:1409` `LD (F9B4),A` (A = capped sample count, `CP 80h` at `140F`) |
 | `F9B5`-`FBB4` | 512 | **Barcode-pen edge-timing capture buffer** — filled by `PUSH` from `SP=FBB5` downward, then reversed in place | CONFIRMED | `ROM00:13BB` `ED 73 BD FB` save SP; `13BF` `31 B5 FB` `LD SP,FBB5`; `1401` `PUSH HL` per edge; `1404` restore; `1415` `DD 21 B5 F9` `LD IX,F9B5`; `1419` `FD 21 B3 FB` `LD IY,FBB3` |
-| `FBB5`-`FC05` | 81 | Barcode/system state: `FBB5` sample-loop counter and capture SP base, `FBBD` saved SP, `FBC0`-`FBC2` ext decode hook, `FBC5` `g_bActiveDevice`, `FBC6` `g_bActiveDrive`, `FBC9` `g_bEventFlags`, `FBD0` `g_wSysSavedSp`, `FBD5` `g_eRestartFlag` (enum `RestartFlag`: 0 normal/1 suspend-entry/2 suspended), `FBF3`-`FBFB` `g_abConsoleContext` + `g_abConsoleContextSaved` (8-byte console/TTY state snapshot saved across suspend), `FC03` `g_bConsoleStateSavedFlag`, `FC04` `g_bConsoleDeviceState`, `FC05` power-latch value | CONFIRMED | named, referenced |
+| `FBB5`-`FC05` | 81 | Barcode/system state: `FBB5` sample-loop counter and capture SP base, `FBBD` saved SP, `FBC0`-`FBC2` ext decode hook, `FBC5` `g_bActiveDevice`, `FBC6` `g_bActiveDrive`, `FBC9` `g_bEventFlags`, `FBD0` `g_wSysSavedSp`, `FBD5` `g_eRestartFlag` (enum `RestartFlag`: 0 normal/1 suspend-entry/2 suspended), `FBF3`-`FBFB` `g_abConsoleContext` + `g_abConsoleContextSaved` (8-byte console/TTY state snapshot saved across suspend), `FC03` `g_bConsoleStateSavedFlag`, `FC04` `g_bConsoleDeviceState`, `FC05` LCD-contrast value (port `46h` mirror) | CONFIRMED | named, referenced |
 | `FC06`-`FCA5` | 160 | **LCD framebuffer** (20 cols × 8 rows ASCII) | CONFIRMED | `ROM00:1D9F` `LD HL,FC06`; `1DE3`, `1DEE` |
 | `FCA6`-`FD45` | 160 | **LCD shadow/compare buffer** (paired with the above) | CONFIRMED | `ROM00:1DA4` `LD HL,FCA6` immediately after `FC06`, compared byte-for-byte |
 | `FD46`-`FD5B` | 22 | RTC working area: `FD4A`-`FD4C` alarm fields, `FD4D` `RTC_AlarmSleep` countdown, `FD4F` `g_bRtcWakeFlags`, `FD50` `g_abRtcRegisterSnapshot` (10 B), `FD57`/`FD58` alarm date compare, `FD5B` `g_bWorkItemSweepIndex` | CONFIRMED | [RTC notes](rtc.md); `ROM00:2214` stores the enabled wake flags, `ROM00:2250` stores the slot index |
@@ -586,6 +586,16 @@ Named cells to keep clear of:
 | `E69F`-`E6B3` | `Session_RxByteGet` (`ROM00:65C2`) pushback buffer |
 | `E6A9`-`E6AA` | its 16-bit count — **never named literally in either ROM**, only ever touched as the high half of the `E6A9` word, which is why an address search misses it |
 | `E6FF`/`E701` | `g_wSessRcv2` / `g_wSessRcv1` |
+
+> **OPEN — the RX payload offset is disputed.** This map places the payload
+> body at `E5C2` (header `E5BA`/`E5BC` + `E5BE`-`E5C1`), but
+> [commstar-evidence.md](commstar-evidence.md) and
+> [commstar-api-evidence.md](commstar-api-evidence.md) state the RX frame
+> struct at `ram:E5BA` is 138 bytes **with its data area at `+0Ah` → `E5C4`**.
+> Both cells are genuinely referenced (e.g. `LD HL,(0xe5c2)` at `ROM00:626A`/
+> `6373`, suggesting a pointer cell, and `LD HL,0xe5c4` at `ROM00:62A2`/`63A5`
+> as a destination). A host implementer must not treat `E5C2`/`E5C4` as
+> interchangeable until the 2-byte header discrepancy is resolved.
 
 **On `E5C2` specifically.** The current `UPLOAD_BUFFER_MAX = 126` cap is
 correct as a *fix for the overrun* — capped writes stop at `E63F`, below

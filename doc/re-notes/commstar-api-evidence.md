@@ -434,8 +434,12 @@ Form field descriptors at `ROM01:78E1` (4 bytes each as `{u16 index; u16
 label_ptr}`) run in display order: Mode, Linespeed, User id, Password, Group
 id, Telephone number.
 
-**LIKELY, on the strength of the layout rather than a direct proof:** the four
-string fields sit in the same order as the form displays them, so
+**CONFIRMED dynamically (2026-09-20).** The layout inference below is now
+dynamically verified: with `MICRONIC_LOGON_POKE=1` the harness seeds
+`ECAB`/`EC99`/`ECA2` just before the V24 Log-on screen is accepted, and the
+resulting `ram:E492` record carried `+0="GRP1"`, `+26="USER1"`,
+`+34="PASS1"`, `+18="12345678"` (the banner serial) and `+8` blank. So the
+four string fields sit in the same order as the form displays them:
 
 | Form field | Buffer | Latched into | Record field |
 |---|---|---|---|
@@ -445,10 +449,9 @@ string fields sit in the same order as the form displays them, so
 | Telephone number | `ECB4` | — | *not sent* |
 
 The stride is uniform at 9 bytes and offsets (`+2`, `+11`, `+20`, `+29`) are
-exactly regular, so a different ordering would be a coincidence. It is still an
-inference: no table pairs a field index with its buffer — the form editor
-computes the address — so **the confirming experiment is to type a distinct
-value into each field and read back `E6C4`, `E6D9` and `E6D0`.**
+exactly regular, so a different ordering would be a coincidence; the dynamic
+run confirms it. See [reference/commstar-api.md](../reference/commstar-api.md)
+for the provenance of the `Group id`/`User id`/`Password` names.
 
 Telephone is not passed to `C-INIT-COMMS` because it goes to the connect
 command instead. `ram:D108` (from `micron2.bin` offset `0x7C52`) holds four

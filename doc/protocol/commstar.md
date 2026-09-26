@@ -10,11 +10,13 @@ physical server.
 **A historically interoperable Commstar server cannot yet be built from this
 document, but the frame and object formats are largely recovered.** The logical
 frame envelope, the request/response object grammar, and the program-data block
-format are established from traces against real firmware. Both directions now
-run end to end against real firmware in the emulator. What is missing is the
-return-side handshake, a physical validation of the timed receive-arm fallback,
-and the meaning of several object fields. Nothing here is proven against a
-historical adapter or plinth.
+format are established from the emulator running the real firmware (receive-side
+bytes are emulator fixtures). The only physical captures are the outbound IR
+clock/data waveform and the one-byte prelude (owner scope capture). Both
+directions run end to end against real firmware in the emulator. What is
+missing is the return-side handshake, a physical validation of the timed
+receive-arm fallback, and the meaning of several object fields. Nothing here is
+proven against a historical adapter or plinth.
 
 | Layer | Stability | Guidance |
 |---|---|---|
@@ -134,8 +136,10 @@ data, and it will not send a byte until the controller says it can take one.
 3. Poll `TXRDY` and write `81h` to `LINK_CMD` — the controller's "are you
    there" exchange. Timeout → `EBh`.
 4. Write the prelude `link id & 1Fh` to `LINK_TXD`. This byte is excluded
-   from the frame length and the controller may or may not forward it onto
-   the IR line (OPEN — depends on the controller).
+   from the frame length. **LIKELY** the controller forwards it onto the
+   IR line as the HDLC address field — it is observed on the line only
+   under the inverted-HDLC decode (see [ir-wire-protocol](../re-notes/ir-wire-protocol.md#what-it-settles)),
+   not independently confirmed, so the earlier OPEN is superseded.
 5. Handshake on `RXBUSY`/`HSBUSY` via `LINK_CTRL` bits 5/4. Timeout → `EBh`/`EEh`.
 6. Stream payload bytes: each byte to `LINK_TXD` gated by `TXRDY`. Timeout →
    `EEh`.
@@ -397,6 +401,14 @@ flush. A 200-byte record is segmented into two frames: `arg=0 len=128` then
 `arg=1 len=83`. **Frames carry no internal headers** — concatenating them
 reproduces the byte stream. A peer reassembles by plain concatenation and
 knows the transfer is complete when it sees `arg = 1`.
+
+> **SUSPECTED — `len` semantics under the `54 = 66 − 12` model.** The 128/83
+> split does not reconcile to a 200-byte record: if `len` is the frame length,
+> the object payloads are 116 and 71 (187 bytes); if it is a data-chunk size,
+> they sum to 211. Either the record is not exactly 200 bytes, the last-block
+> frame carries different overhead, or `len` has a third meaning on the
+> streaming-flush path. Capture the real `BLOCK-OUT` frame/object lengths for a
+> known-size record to resolve before relying on the split.
 
 > Call-site enumeration and measured transcripts: see
 > [`re-notes/commstar-evidence.md#the-wire-states`](../re-notes/commstar-evidence.md#the-wire-states).

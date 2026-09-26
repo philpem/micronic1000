@@ -96,7 +96,8 @@ Do not infer drive capacities from the 256 KiB SRAM total; see
 - `BdosFcbCommonHandle` (`ROM00:09CA`) handles shared FCB paths;
   `Bdos_UpdateDriveDirectoryMetadata` (`ROM00:0D79`) updates drive metadata
   and is not an FCB filename-search helper.
-- Block I/O through `FUN_ram_f4c6/f543/f510/f523` (kernel RAM image);
+- Block I/O through `Bdos_ReadRecordBlock`/`Bdos_PrepSectorBuf`/
+  `Bdos_PrepWriteBuf`/`Bdos_DoneWriteBuf` (kernel RAM image at `ram:F4C6`/`F543`/`F510`/`F523`);
   records 128 B, 32 records/block (0x1F check at FCB+0x0C).
 
 ## Deviations from stock CP/M 2.2
@@ -159,7 +160,7 @@ in Ghidra:
 | F9 | `ROM00:15CB` | `Bdos_F9DevPair` | set device pair `{fbc8,fbc7}` from 5-entry table @`15E0` |
 | FA | `ROM00:3241` | `Bdos_FAFe83Write` | write caller's 16 bytes into `FE83` link-id config |
 | FB | `ROM00:3248` | `Bdos_FBFe93Write` | write caller's 16 bytes into `FE93` storage config (MEMORY/RAMDISK) |
-| FC | `ROM00:1150` | `Bdos_SetRtcTime` | **set real-time clock** — copy [8-byte record](rtc.md#bdos-eight-byte-rtc-record) (`+1..+7`→`09/08/07/04/02/00/06`, `+0` metadata LIKELY `19`) to `f9a2`, `RtcSetTime` (`20AF`); raw binary 24h, no validation |
+| FC | `ROM00:1150` | `Bdos_SetRtcTime` | **set real-time clock** — copy [8-byte record](rtc.md#bdos-eight-byte-rtc-record) (`+1..+7`→`09/08/07/04/02/00/06`, `+0` metadata LIKELY `13h` = 19) to `f9a2`, `RtcSetTime` (`20AF`); raw binary 24h, no validation |
 | FD | `ROM00:113E` | `Bdos_GetRtcTime` | **get real-time clock** — `RTC_ReadRegisterFile` (`20EF`) → [8-byte record](rtc.md#bdos-eight-byte-rtc-record) (`+0` from `g_bRtcRecordMetadata` `13h`, `+1..+7`←`09/08/07/04/02/00/06`); UIP-polled |
 | FE | `ROM00:1122` | `Bdos_InternalTimedWait` | **internal timed wait** — `E<<4` interval, low→`(IY+23h)` high→`word[FEFA]`, `FD4D` countdown/`HALT`; `A=00h` completion, nonzero = full queue; resident context required |
 | FF | `ROM00:112D` | `Bdos_FfAlarmControl` | RTC alarm control — `DE=0000h` clears `AIE` else [8-byte record](rtc.md#bdos-eight-byte-rtc-record) `+4..+6`→`05/03/01` + `AIE`; `+2/+3` date gate `RTC_AlarmDateMatches`; `UIP` blocks both; preamble `RegA|80h` likely ineffective then `2Ah` |

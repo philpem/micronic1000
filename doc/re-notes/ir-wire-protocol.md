@@ -1400,9 +1400,13 @@ handheld receiver requires.
 **Frame.** For the captured handheld transmit direction, hunt for `10000001`,
 then destuff — drop the `1` that follows five consecutive `0`s — and assemble
 MSB-first bytes. The first byte after that transmit flag is the address; the
-M1000 sends `link id & 1Fh`, and for every id in the device table bits 6-7 are
-`01`, so `(prelude & 1Fh) | 40h` reconstructs it — which is exactly what
-`micronic.peer` already assumes. Arduino return traffic must keep flag sense,
+M1000 sends `link id & 1Fh`. For the two **observed** ids (`0x43`, `0x63`)
+bits 6-7 are `01`, so `(prelude & 1Fh) | 40h` reconstructs them (both give
+`0x43`, since bit 5 — the port-select bit — is masked off). The
+reconstruction is scoped to the observed ids, **not** every id in the device
+table: `0x80`/`0xAB` have bits 6-7 = `10` and `0x2B` has `00`, so the
+formula fails for them. `micronic.peer` already assumes this transmit-side
+form. Arduino return traffic must keep flag sense,
 stuffing, byte order and framing selectable candidates; it cannot assume this
 transmit-side form.
 
