@@ -96,22 +96,18 @@ Ghidra's `micron1.bin` explicitly. No emulator workload was run in this pass.
    These are confirmed textual contradictions; this review does not
    independently revalidate the underlying experiments.
 
-5. **Storage guidance conflicts with the current investigation — outstanding.**
-   The programmer guide presents A:/B: as two usable local stores and
-   C:+ as configurable link devices. [Open questions](re-notes/open-questions.md#link-identity-and-port-selection)
-   reports that all fourteen drive-ID consumers reject nonzero IDs,
-   including the default B: ID `7Fh`. Treat that as a conflict requiring
-   adjudication, not permission to invent how a RAMDISK or external drive
-   works. Publish one table distinguishing selectable letter, configured
-   ID, demonstrated file operations, and unresolved behavior. Propagate
-   the outcome to the guide, devices page, method page, and worklist.
-
-   > **Note (2026-09-20):** the "all fourteen drive-ID consumers reject
-   > nonzero IDs" / "local drives only" / "no BDOS path reaches the
-   > transport" conclusions were **withdrawn** — fresh tracing reaches
-   > session transport from BDOS `2Eh`. See the "Implementation status"
-   > introduction above and [open-questions.md](re-notes/open-questions.md#link-identity-and-port-selection).
-   > The publishing-table recommendation below still stands.
+5. **Storage guidance — RESOLVED (2026-09-20): BDOS `2Eh` does reach session
+   transport; the "local drives only" reading was withdrawn.** The reviewer
+   raised this because the programmer guide presents A:/B: as two usable
+   local stores and C:+ as configurable link devices, while
+   [Open questions](re-notes/open-questions.md#link-identity-and-port-selection)
+   then reported that all fourteen drive-ID consumers reject nonzero IDs,
+   including the default B: ID `7Fh`. Fresh tracing since then shows BDOS
+   `2Eh` reaches session transport, so the "local drives only" conflict is
+   gone. The publishing recommendation below still stands: publish one table
+   distinguishing selectable letter, configured ID, demonstrated file
+   operations, and unresolved behavior; propagate it to the guide, devices
+   page, method page, and worklist.
 
 6. **Resident-memory advice contains superseded reasoning — outstanding.**
    [Memory map](reference/memory-map.md#32-fixed-ram-8000-ffff) calls

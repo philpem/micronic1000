@@ -1428,14 +1428,14 @@ current priority order; the concise lists above are authoritative.
   ExtBus_BusComplete/...). The user **decode-hook socket** keeps neutral
   labels: `fbc0` = RST10 stub, `fbc1` = bank byte, `fbc2` = hook ptr;
   `ExtBus_DecodeHookInstall` (156E) / `ExtBus_DecodeHookDiscard` (1567)
-  default it. **SUPERSEDED by owner adjudication (2026-08-24, AGENTS.md
-  §3): the side port was used with a barcode pen; the 2D edge-capture
-  subsystem IS the barcode reader front end, and `Barcode_` is the
-  module prefix for NEW names there.** Existing `ExtBus*` names are
-  grandfathered until a deliberate rename pass; do NOT flip back to
-  `Reader*`, and do NOT reassign the disproven "EXT STORAGE ADAPTER"
-  identity. `Bdos_ReaderInChar` (1080) is genuinely the CP/M fn-03 RDR
-  path either way.
+  default it. **Owner-adjudicated (2026-08-24, AGENTS.md §3): the side
+  port was used with a barcode pen; the 2D edge-capture subsystem IS the
+  barcode reader front end, and `Barcode_` is the module prefix for NEW
+  names there.** The port-2D identity is CLOSED. Existing `ExtBus*` names
+  are grandfathered pending a deliberate rename pass (they may stay, or be
+  renamed to `Barcode_`, but not back to `Reader*` or to its earlier
+  "EXT STORAGE ADAPTER" reading). `Bdos_ReaderInChar` (1080) is genuinely
+  the CP/M fn-03 RDR path either way.
 18. **Annotation coverage tracker**: **593/593 (100%) named** (Pass A
     complete as of this session). All ROM00 + ROM01 + RAM kernel stubs
     carry meaningful names. Highlights of the closing batch:
