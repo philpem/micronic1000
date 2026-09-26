@@ -73,8 +73,9 @@ When using reverse-engineering subagents:
   positions, power). Owner-supplied facts; cite as such.
 - `doc/` — the write-ups (see `doc/README.md` for the index). **Update
   these in the same pass as any Ghidra change they describe.**
-  `doc/build.py` renders `site-html/` (`cd doc && python3 build.py`,
-  see `doc/BUILD.md`; Mermaid blocks render JS-side).
+  `doc/Makefile` renders the site (MkDocs; `cd doc && make build`, or
+  `mkdocs build --strict` from the repo root — see `doc/BUILD.md`;
+  Mermaid blocks render JS-side).
 - `analysis/` — Python/Java tooling (protocol scripts, boot-chain
   decoder, emulator harness); has its own README.md.
 - Ghidra is reached through MCP tools (`ghidra-mcp_*` in this
@@ -174,7 +175,7 @@ is silent. Currently on record:
   is **not** the RTC (confirmed twice).
 - There is **no serial EEPROM**; the serial number is user-entered
   after battery removal and lives in battery RAM (FEAB area).
-- **The 5-pin side port was used with a barcode pen** (documentary
+- **The eight-contact side port was used with a barcode pen** (documentary
   evidence, owner-confirmed 2026-08-24), and the edge-timing capture
   code is consistent with nothing else on the hardware. The port-2D
   subsystem is therefore adjudicated the **barcode reader front end**;
@@ -183,7 +184,7 @@ is silent. Currently on record:
   CCD scanner gun also exists.
 - The two IR ports are physically: **V24 ADAPTOR = top port, PLINTH
   = back port** (owner-stated 2026-08-24; this supersedes the earlier
-  "bottom/front" wording in `micronic_notes.md` and internals/os-diposb.md,
+  "bottom/front" wording in `micronic_notes.md` and re-notes/os-diposb.md,
   both corrected on that date). Firmware selects between the two 4x
   port configurations by wire-id bit5 (LinkBlockTx `AND 0x20` →
   LinkPortSelect, byte-verified). **Wire-ID bit 5 clear is the top V24
@@ -307,7 +308,8 @@ call site**, not just inside the callee.
   from the established subsystem set (BDOS, Link, Session, RTC, Clock,
   LCD, Kbd, Disk/Fs, Device, UI/Field, Diag, Syscall, and `Barcode`
   for the port-2D capture front end — adjudicated barcode reader, §3;
-  existing `ExtBus*` names are grandfathered); check
+  existing `ExtBus*` names are grandfathered), plus the prefixes already
+  in wide use (`Kernel_`, `Program_`, `Power_`, `Lib_`); check
   `search_functions` before inventing a new one.
 - Existing concatenated names (`LinkBlockTx`, `BdosReaderInChar`, …)
   are **grandfathered — do not churn them**. The owner may do a
@@ -352,9 +354,11 @@ tracker lie.
 ### I/O ports
 
 Each physical port is labelled at its `io:NN` address with an
-UPPER_SNAKE peripheral-based name (never address-based), carrying a
+UPPER_SNAKE peripheral-based name, carrying a
 **repeatable comment** describing the signal (CONFIRMED facts only —
-§3). Canonical table:
+§3). Some established labels below are address-derived
+(`CTRL_07`, `CTL_LATCH_2A`/`2C`, `RTC_ADDR`/`RTC_DATA`, `BANK_SEL`);
+those rows are grandfathered — do not churn them. Canonical table:
 
 | Port | Label | Device / function |
 |------|-------|-------------------|
@@ -538,8 +542,8 @@ Avoid (all restate the opcode or say nothing):
 
 DIPOS-B exposes a CP/M-2.2-style interface but is **not** stock CP/M —
 standard CP/M structure is a *starting hypothesis* to verify, never a
-fact to assume. The established picture is in `doc/internals/os-diposb.md`,
-`doc/internals/cp-m-comparison.md` and `doc/manual/programmer-guide.md`; read
+fact to assume. The established picture is in `doc/re-notes/os-diposb.md`,
+`doc/re-notes/cp-m-comparison.md` and `doc/manual/programmer-guide.md`; read
 them before touching BDOS code. Deviations from stock CP/M (RAM
 "disks", device-routed console, the F3-FF extension table, the banked
 RST 10h call, the unchecked 25h-F2h dispatch) are among the most
@@ -553,7 +557,8 @@ them into the standard name.
 When you hit an I/O port or RAM region with unknown function:
 
 1. Record every access: address, direction, value/mask, surrounding
-   control flow (→ `doc/internals/io-map.md` / `doc/internals/memory-map.md`).
+   control flow (→ `doc/reference/memory-map.md` /
+   `doc/re-notes/memory-and-io-evidence.md`).
 2. Characterise the access **pattern** before naming anything:
    init-time single write, polled spin loop, bit-test status, byte
    stream, handshake pair, edge timing.
@@ -644,8 +649,9 @@ Efficiency:
 
 The `doc/` files are the notes system — do not create parallel files:
 
-- `doc/internals/io-map.md` — port table with evidence labels (the IO_PORTS log)
-- `doc/internals/memory-map.md` — ROM/RAM/banking + system variables
+- `doc/reference/memory-map.md` — I/O port table with evidence labels, plus
+  ROM/RAM/banking and system variables (byte-level derivation in
+  `doc/re-notes/memory-and-io-evidence.md`)
 - `doc/research/TASKS.md` — worklist, open questions, "do not regress" list, and the
   **current-identity list for contested subsystems**
   (Historical session log is in `doc/research/session-log.md`.)
@@ -689,7 +695,7 @@ and save the Ghidra program.
   Neither is "comms"/modem-indexed-register hardware.
 - No serial EEPROM; serial number is user-entered, stored near FEAB.
 - RST vector roles (0010 banked dispatch, 0038 IRQ, 0066 NMI) as
-  documented in internals/memory-map.md.
+  documented in reference/memory-map.md.
 - Port-2D capture subsystem identity is **CLOSED**: it is the barcode
   reader front end (owner-adjudicated 2026-08-24, §3); new names there
   take the `Barcode_` prefix. Existing `ExtBus*` names in the DB are
