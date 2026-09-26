@@ -578,6 +578,16 @@ Named cells to keep clear of:
 | `E5BC` | `g_wSessionRxLogicalLength` |
 | `E5BE`/`E5BF`/`E5C0`/`E5C1` | RX frame type / sequence / marker / opaque header |
 | `E5C2`-`E641` | `g_abSessionRxPayload` — the **body of the 134-byte service-33 receive object at `E5BC`** |
+
+> **OPEN — the RX payload offset is disputed.** This map places the payload
+> body at `E5C2` (header `E5BA`/`E5BC` + `E5BE`-`E5C1`), but
+> [commstar-evidence.md](commstar-evidence.md) and
+> [commstar-api-evidence.md](commstar-api-evidence.md) state the RX frame
+> struct at `ram:E5BA` is 138 bytes **with its data area at `+0Ah` → `E5C4`**.
+> Both cells are genuinely referenced (e.g. `LD HL,(0xe5c2)` at `ROM00:626A`/
+> `6373`, suggesting a pointer cell, and `LD HL,0xe5c4` at `ROM00:62A2`/`63A5`
+> as a destination). A host implementer must not treat `E5C2`/`E5C4` as
+> interchangeable until the 2-byte header discrepancy is resolved.
 | `E644` | `g_wSessionRxWorkingLength` |
 | `E646` | `g_wSessionRxTypeOrResult` |
 | `E648`/`E649` | RX sequence / link-id copies |

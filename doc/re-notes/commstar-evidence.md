@@ -1549,9 +1549,11 @@ generation/checking remains SUSPECTED; terminal `LINK_STATUS` bit 3
 does not identify the cause of the controller error.
 
 Whether the controller forwards the prelude (`4Dh` before the strobe) onto
-the IR line or consumes it as addressing is **not determinable from firmware**
-— it depends on the controller and requires a logic capture of the line during
-a transfer.
+the IR line or consumes it as addressing was formerly **OPEN** — it depends
+on the controller. The physical line capture now decoded in
+[ir-wire-protocol](ir-wire-protocol.md#what-it-settles) reads the prelude as
+`03h` on the line, so forwarding is **LIKELY** (it rests on the inverted-HDLC
+decode, not independently confirmed).
 
 ### Timing budget — derivation {#timing-budget}
 
