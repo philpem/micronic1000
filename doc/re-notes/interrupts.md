@@ -56,10 +56,9 @@ with CPU maskable interrupts disabled on the RTC event path.
 The fd84 table comes from ROM00:2352 (19 bytes ≈ 6 records + terminator),
 loaded under port-04h mode bits E0h/FDh.
 
-The earlier interpretation of `RST 28h` as an IRQ-style event-poll call
-is withdrawn: its initial vector does not target this handler. Its
-diagnostic mode and subsequent vector changes must be considered
-separately; see [DIPOS-B extensions](../reference/extensions.md#other-extensions).
+`RST 28h` is not an IRQ-style event-poll call: its initial vector does not
+target this handler. Its diagnostic mode and subsequent vector changes
+must be considered separately; see [DIPOS-B extensions](../reference/extensions.md#other-extensions).
 
 ## NMI {#nmi-fully-decoded}
 

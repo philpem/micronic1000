@@ -7,15 +7,12 @@ claim here is byte-read from `micron1.bin` or measured in the emulator with
 ## Identification: mechanism CONFIRMED, external identity adjudicated barcode
 
 The capture front end, its buffer, the decode hook and the delivery path are
-all **CONFIRMED**. The attached device's identity is owner-adjudicated, not
-firmware-provable: no string in either ROM names a barcode, pen, wand or
-symbology, so nothing in the bytes names the device. The default `FE83` wire
-table was once read (in a `Disk_SelectWireId2B` plate) as making wire `2Bh`
-the "EXT STORAGE ADAPTER"; that binding is now **superseded**. The owner
-adjudicated (2026-08-24) that the 2Dh edge front end is the **barcode
-reader** — see the do-not-regress list and [§3](#); the wire-`2Bh` identity
-is kept OPEN in [memory-and-io-evidence.md](memory-and-io-evidence.md#wire-0x2b-identity-ambiguity-open)
-("do not resolve by fiat"). The A:/B: RAM drives never touch this bus.
+all **CONFIRMED**. No string in either ROM names a barcode, pen, wand or
+symbology, so the bytes do not name the device. The owner adjudicated
+(2026-08-24) that the 2Dh edge front end is the **barcode reader** (see the
+do-not-regress list and §3); the wire-`2Bh` identity remains OPEN in
+[memory-and-io-evidence.md](memory-and-io-evidence.md#wire-0x2b-identity-ambiguity-open).
+The A:/B: RAM drives never touch this bus.
 
 The barcode identification rests on the project owner's knowledge of the
 physical hardware; it is not derived from the firmware. Ghidra carries both

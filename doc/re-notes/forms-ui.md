@@ -85,9 +85,9 @@ reached. When the index wraps it rebuilds the comm form
 via `UI_PostDescriptor` (`6633`). Module B (`ROM01:7BCB` → `ram:D081`,
 586 bytes) is therefore *not* purely strings: it opens with this pointer
 table (and the error-code table near `d0e0`) before the banner
-`"PARCON 1000\n*** Error ***"` and the program-load error strings.
-The earlier mapping of the five `D081` entries to five devices is
-superseded.
+`"PARCON 1000\n*** Error ***"` and the program-load error strings. The
+five `D081` entries are per-screen handler-table pointers, not five
+devices.
 
 ## Menus
 

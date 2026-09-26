@@ -399,8 +399,8 @@ contiguous intact run `F79A`-`F7E9` makes that implausible as an
 explanation of the boundary; per run, two bytes inside `F7EA`-`F819` did
 coincide, which is the expected 1-in-256 rate.)
 
-So both readings this page offered for `F68D`-`F77F` are wrong, but not
-symmetrically. "Spare arena" is disproven from the bytes. "Stack
+So neither earlier reading of `F68D`-`F77F` holds. "Spare arena" is
+disproven from the bytes. "Stack
 headroom" is *true in principle and irrelevant in practice*: the span is
 indeed the next thing below the stack, but the stack stops 107 bytes
 short of it in every workload driven, and it must cross the port shadows
@@ -542,7 +542,7 @@ a corrupted marker as a signal, not a nuisance.
   the base-literal-plus-stride idiom this page warns about, and both
   were already documented elsewhere in the repo.
 
-!!! note "\"Nothing references it\" is not \"it is free\""
+!!! note "No references does not mean it is free — verify before use"
     The instruction scan is bounded by disassembly coverage: `ROM00` is
     61% disassembled, `ROM01` 37%. An independent raw-opcode scan of both
     full ROM images found 405 byte sequences that *encode* an address in

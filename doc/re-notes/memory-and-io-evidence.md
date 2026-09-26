@@ -109,10 +109,9 @@ snapshot to `F785`, complement, test bit 3. Also read at reset
 source, installed at runtime. Bits 3/4 are battery-low flags (active
 low). Bits 0-4 map as per the interrupt source table below.
 CONFIRMED that it is polled and complemented; source assignments are
-byte-verified below. The "clear-on-read" property is NOT established
-(RTC acknowledges via its own Reg C). The two reset reads
-read-and-discard the value, so port `05h` is **not** the reset boot-key
-test — that is port `49h`.
+byte-verified below. Reading `05h` does not clear the interrupt — the RTC
+clears via its own Reg C. Port `49h` is the reset boot-key test, not
+`05h`.
 
 ### Port `07h` — `CTRL_07`
 
@@ -142,10 +141,11 @@ One access in the whole firmware: `ROM00:1ED9` `DB 33`
 (`IN A,(33h); RET`), the tail of a four-instruction stub at `ROM00:1ED0`
 that first does `LD A,0Dh; OUT (03h),A`. Alignment is sound (the stub
 follows a `RET` at `1ECF`), but nothing references `1ED0` directly.
-**Purpose unknown.** Candidates worth discriminating on hardware: an LCD
+**Purpose unknown.** Two candidates worth discriminating on hardware: an LCD
 status/busy read (it sits inside the LCD driver block and follows an
-`LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Do not
-assume it is either.
+`LCD_DATA` write), or an incompletely-decoded alias of `23h`/`03h`. Reading
+the port on the hardware while probing the LCD status path would
+discriminate between them.
 
 ### Port `46h` — `LCD_CONTRAST`
 
@@ -160,9 +160,8 @@ unit, a Sun-modified key lightens it, and a cold boot puts it back — which
 matches that overwrite exactly. Corroborating but **not** primary: MAME
 maps it `lcd_contrast_w` (`micronic.cpp`), itself an inference from the
 same ROM. *Confirmed by:* burning the exerciser with `CONTRAST` set and
-seeing the screen legibility change. (The old Ghidra names
-`Power_PowerLatchPort46`/`Lcd_ContrastUp`/`Lcd_ContrastDown` were
-grandfathered misnomers; renamed to `Lcd_ContrastWrite`/`Up`/`Down`.)
+seeing the screen legibility change. The cell is named `Lcd_ContrastWrite`,
+with `Lcd_ContrastUp`/`Lcd_ContrastDown` for the adjusters.
 
 ### Port `47h` — `BANK_SEL`
 
@@ -175,8 +174,8 @@ Two-bit output, driven `0`,`1`,`2`,`3` in sequence by
 `Kernel_SenseDiagEcho` (`ROM00:24F7`-`252D`) and by `Link_SelftestRun`
 (`ROM00:28AE`-`28E4`), also `Session_SystemInit` (`ROM00:0359`, value
 `03h`) and power-down (`ROM00:178D`). CONFIRMED as a status-drive output
-paired with `49h`; the project's older `IR_STROBE`/`LCD_STROBE` labels
-are **not supported by the call sites**. Physical identity **OPEN**.
+paired with `49h`; the call sites do not support the older
+`IR_STROBE`/`LCD_STROBE` labels. Physical identity **OPEN**.
 
 ### Port `49h` — `STATUS_SENSE`
 
@@ -185,8 +184,8 @@ written (`ROM00:24F2`-`251B`: `OUT (48h) 0/1/2` then `IN A,(49h); AND 3;
 CP …`) — a loopback/presence test. Also read twice at reset:
 `IN A,(49h); AND 1; JR Z` selects the cold path, `AND 2; JP NZ` selects
 a second boot mode (`ROM00:0168`-`0172`). CONFIRMED as a status-sense
-input paired with `48h`; the project's older `IR_SENSE`/`BOOTKEYS`
-labels are **not supported as proven identities**. Physical identity
+input paired with `48h`; the call sites do not support the older
+`IR_SENSE`/`BOOTKEYS` labels as proven identities. Physical identity
 **OPEN**.
 
 ### Port `4Ah` — `LINK_CTRL`
@@ -194,9 +193,9 @@ labels are **not supported as proven identities**. Physical identity
 External-link control latch, shadow `F794`. 26 write sites. Bits 0, 1, 4,
 5, 6 and 7 are all driven; **bits 2 and 3 are never written by any ROM
 instruction** ([bit usage](../reference/memory-map.md#latch-bit-usage)).
-Roles: bit 1 port select (CONFIRMED), bits 0/4/5 the transmit and receive
-arm sequences, bits 6/7 the `34BD`/`34D2` pair. Electrical meanings
-**Provisional**.
+Roles: bit 1 port select (CONFIRMED); bits 0/4/5 are the transmit and
+receive arm sequences (Provisional); bits 6/7 are the `34BD`/`34D2` pair
+(Provisional).
 
 ### Port `4Bh` — `LINK_STATUS`
 
@@ -224,12 +223,12 @@ CONFIRMED.
 **No other port is accessed anywhere in either ROM image or in any
 RAM-resident module.** The untouched ranges are `01h`, `06h`,
 `09h`-`22h`, `24h`-`27h`, `29h`, `2Eh`-`32h`, `34h`-`45h`, and everything
-above `4Fh`. That is a statement about the firmware, not about the
-hardware: a port this firmware never uses may still be decoded, and the
-address decoding may well be partial — the `03h`/`23h`, `08h`/`28h` and
+above `4Fh`. This covers only the ports the firmware accesses in either
+ROM image; a port not listed may still be decoded by the hardware, and the
+address decoding may be partial — the `03h`/`23h`, `08h`/`28h` and
 `2Ah`/`2Ch` pairings suggest only some address lines are compared.
-**SUSPECTED** for the partial-decode inference; a hardware read of an
-unused port would settle it.
+The partial-decode inference is **SUSPECTED**; reading an unused port on
+the hardware would settle it.
 
 ---
 
@@ -245,7 +244,7 @@ a table of `{bitmask, handler}` triples at `ram:FD84`, copied from
 | 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
 | 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
 | 2 | `04h` | `ROM00:31B6` | **the link controller** |
-| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery — the nearby `24CA`/`24DD` strings ("MAIN BATTERY LOW"/"BACKUP BATTERY LOW") corroborate it, but strings are not proof of behaviour; the shared handler is not byte-verified as a battery routine |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery — the nearby `24CA`/`24DD` strings ("MAIN BATTERY LOW"/"BACKUP BATTERY LOW") are the only corroboration; the shared handler is not byte-verified as a battery routine |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
 | 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (`ROM00:2349`); caller `ROM00:138B` supplies HL=13B8h (edge-capture). `ROM00:1397` clears port04 bit5 (AND DFh) to ENABLE the source; `ROM00:1499` sets it (OR 20h) to mask after capture |
 | 6, 7 | — | — | no slot exists |
@@ -260,7 +259,8 @@ dispatches them.
 Reading `05h` is followed by source-specific acknowledgement for the RTC
 via HD146818 Reg C (`LD A,0Ch; OUT (08h),A; IN A,(28h)` at `ROM00:288A`).
 Two other sites (`ROM00:01B1`, `0238`) read and discard.
-A generic port-`05h` acknowledge-on-read is NOT established.
+No generic port-`05h` acknowledge-on-read is proven; the RTC is
+acknowledged via its own Reg C, not by reading `05h`.
 
 ---
 
@@ -473,8 +473,8 @@ not by a physical jumper (earlier stated as most likely, not confirmed).
   set on the wire-ID-bit-5-clear branch (`old|02h` vs `(old&FCh)|20h`)
   and both cleared on the bit-5-set branch. No site sets one without the
   other, so it is one select signal fanned to two latch outputs.
-* **Q3 (device selection) — CORRECTED (2026-09-24): there IS a genuine
-  device selector, and it includes the barcode.** `g_bActiveDevice`
+* **Q3 (device selection) — a genuine device selector includes the
+  barcode (2026-09-24).** `g_bActiveDevice`
   (FBC5) is mapped through `Device_LookupConfigEntry` (ROM00:31FF) into
   the `FE83`/`FE93` config tables to produce a **wire-id** (reader-channel
   selection at ROM00:110C: `((FBC5>>2)+5)&1Fh` → FE83+idx−1 → wire-id in
@@ -485,9 +485,8 @@ not by a physical jumper (earlier stated as most likely, not confirmed).
   `0x1893` (`Bdos_SharedErrorStub`)**, which issues syscall `FEh`
   (`LD C,FEh; RST 28h`) — an error/support route, so `23h`/`03h` are not
   real devices. Measured `FBC5=04` → FE83+5 = **wire `2Bh`**, which is
-  the barcode. So the device index **does** select the barcode,
-  alongside the IR and storage devices — this supersedes the earlier
-  "link-only" reading.
+  the barcode. The device index therefore selects the barcode as well as
+  the IR and storage devices.
 * **Q2 / Q5 (barcode vs back-IR; both IR on one cluster):** the "device"
   tables select the logical device by wire-id (above), and the barcode
   and IR link DO share actively-configured control-latch bits — this is
