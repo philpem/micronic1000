@@ -623,6 +623,16 @@ bit. This table is the exhaustive result of matching that idiom
 | `2Ch` `CTL_LATCH_2C` | `F78D` | . | . | x | x | . | . | x | x | `1786` `3487` `34B5` |
 | `4Ah` `LINK_CTRL` | `F794` | x | x | x | x | . | . | x | x | — |
 
+The table tracks shadow-persisting read-modify-writes, so `2Ah` bit 5
+shows as `o` (set-only): the set site (`ROM00:17F6` `OR 20h` / `17F8`
+`LD (F78B),A`) stores back to the `F78B` shadow, but the **standby-refresh
+clear** (`ROM00:1798` `LD A,(F78B)` / `179B` `AND DFh` / `179D` `OUT 2Ah`)
+clears bit 5 on the hardware latch **without** a `LD (F78B),A` after it.
+So immediately after the standby refresh the port and its shadow disagree;
+a later read-modify-write through `F78B` will re-assert bit 5. The per-bit
+ownership table in the [evidence notes](../re-notes/memory-and-io-evidence.md)
+documents the hardware-output side, which does clear bit 5.
+
 Two negatives bound searches:
 
 * **`LINK_CTRL` bits 2 and 3 are the only ones no ROM instruction ever
@@ -654,7 +664,9 @@ Per-site evidence and exerciser plans: see
 ### 5.3 Port shadows
 
 The firmware keeps a RAM mirror of most write-only latches, so that
-read-modify-write on a latch is possible. All live in `ram:F780`-`F799`:
+read-modify-write on a latch is possible. The shadow block is
+`ram:F780`-`F799`; two related mirrors live outside it (the `FC05`
+contrast mirror and the `FFA8` interrupt-enable cell), listed below.
 
 | Cell | Mirrors |
 |---|---|

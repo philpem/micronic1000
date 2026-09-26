@@ -245,7 +245,7 @@ a table of `{bitmask, handler}` triples at `ram:FD84`, copied from
 | 0 | `01h` | `ROM00:18F0` `Kbd_ScanMain` | **keyboard** |
 | 1 | `02h` | `ROM00:2206` | **RTC** — reads HD146818 registers `0Ch` then `0Bh` via `22E2`, the standard acknowledge |
 | 2 | `04h` | `ROM00:31B6` | **the link controller** |
-| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **CONFIRMED** power/battery (strings `24CA`/`24DD` confirm MAIN/BACKUP battery) |
+| 3 | `08h` | `ROM00:2365` | snapshots `05h` to `FDA1` and schedules; shared with bit 4. **LIKELY** power/battery — the nearby `24CA`/`24DD` strings ("MAIN BATTERY LOW"/"BACKUP BATTERY LOW") corroborate it, but strings are not proof of behaviour; the shared handler is not byte-verified as a battery routine |
 | 4 | `10h` | `ROM00:2365` | same handler as bit 3 |
 | 5 | `20h` | **filled at runtime** | **barcode-capture IRQ**, dynamically installed by `Kernel_InstallIrqBit5Handler` (`ROM00:2349`); caller `ROM00:138B` supplies HL=13B8h (edge-capture). `ROM00:1397` clears port04 bit5 (AND DFh) to ENABLE the source; `ROM00:1499` sets it (OR 20h) to mask after capture |
 | 6, 7 | — | — | no slot exists |
