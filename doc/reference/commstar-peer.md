@@ -44,7 +44,8 @@ Two rules the callback must obey, both measured against real firmware:
 * **`data` may be at most 126 bytes.** `micronic.peer.MAX_OBJECT_DATA` is
   that limit. At 127 the handheld silently drops every object, re-requests,
   and ends the session `Session aborted`. The handheld *asks* for 128 in the
-  `size` field of its `0044` request; do not believe it.
+  `size` field of its `0044` request, though the measured maximum is 126
+  data bytes.
 * **`marker` 0 means "more follows", `marker` 1 ends the stream** — and a
   command reply must carry marker 1, because the firmware's reply classifier
   is only reached on read status 8.
@@ -67,8 +68,7 @@ Pinned by `CommstarShadowPeerTest`. `analysis/test_peer.py` additionally
 checks the framing and decode against captured bytes with no emulator at all.
 
 The harness also counts unsolicited feeds. The current PLINTH download is
-request-driven and has zero unsolicited feeds; the earlier peer-initiated
-synthetic push has been removed.
+request-driven and has zero unsolicited feeds.
 
 Outstanding exchanges are cached by sequence and request bytes. Repeating
 an unacknowledged request replays the same reply without calling the policy
@@ -101,7 +101,7 @@ Two things the wire cannot tell you, so supply them:
   [how the IR hardware works](../protocol/commstar.md#how-the-ir-hardware-works).
   The peer produces byte queues; it does not model the latch handshake.
 
-## What it does not do
+## Limits — not covered here
 
 * Interpret `size`. It is the object length for some states and a capacity for
   others, so the peer reports it and leaves the meaning to you.

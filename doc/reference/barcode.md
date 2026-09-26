@@ -11,11 +11,11 @@ emulator tests in `analysis/test_barcode.py`. This is not validation of
 every decoder or a guarantee for other ROM revisions.
 
 The right-side scanner port has eight contacts (owner correction,
-2026-09-22), superseding the earlier five-pin description. Owner bench tests
-map black/pin 5 to the `2Dh` bit-0 data input, red/pin 1 to the `2Ah` bit-4
-output, and yellow to the `2Ah` bit-0 sink/release output in the tested
-control states. Power and ground are known; brown/2, violet/4 and green/7
-remain unassigned. See the [connector experiment](../re-notes/connector-experiment.md)
+2026-09-22). Owner bench tests map black/pin 5 to the `2Dh` bit-0 data
+input, red/pin 1 to the `2Ah` bit-4 output, and yellow to the `2Ah` bit-0
+sink/release output in the tested control states. Power and ground are
+known; brown/2, violet/4 and green/7 remain unassigned. See the
+[connector experiment](../re-notes/connector-experiment.md)
 for conditions, measurements and the distinction between confirmed signal
 mappings and suspected scanner power/trigger functions.
 For identity evidence and the superseded interpretations, see
@@ -61,8 +61,8 @@ pointer:
 | `FBC1` | the hook's **bank** |
 | `FBC2`-`FBC3` | the hook's **address** |
 
-All four cells matter. An earlier version of this page showed
-`LD (hook_ptr),HL` against a placeholder; there is no single pointer cell.
+All four cells matter; there is no single pointer cell — `ram:FBC0` holds a
+complete four-byte thunk.
 
 ### Installing it
 
@@ -129,10 +129,9 @@ that simply `RET`s works either way.
 | `FBB9`-`FBBA` | word | pointer to the width table (`F9B5` on entry) |
 | `FBBB`-`FBBC` | word | **16-bit element count**, little-endian |
 
-`FBBC` is the count's **high byte**. An earlier version of this page called
-it a status byte; `ROM00:147E` reads the pair with `LD BC,(FBBB)` and uses
-it as an `LDIR` length, so a nonzero "status" there would copy 256 extra
-bytes per unit.
+`FBBC` is the count's **high byte**; `ROM00:147E` reads the pair with
+`LD BC,(FBBB)` and uses it as an `LDIR` length, so a nonzero "status" there
+would copy 256 extra bytes per unit.
 
 ### Returning
 

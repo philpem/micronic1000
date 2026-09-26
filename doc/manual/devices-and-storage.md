@@ -10,10 +10,10 @@ through configuration tables. A device selector is not a physical-port number.
 | FE83h | 16 one-byte entries | Console, reader, punch, and list device slots. |
 | FE93h | 16 one-byte entries | Drive-letter/device mapping used by file operations. |
 
-**Stable:** FE83 is not four four-byte records. Its cold-start contents are
-80 AB 63 43 | 80 2B 63 43 | 80 67 63 43 | 80 67 63 43; consumers select
-individual entries through different windows of the active-device field.
-FE93 is separately letter-indexed.
+**Stable:** FE83 is 16 one-byte entries, not four four-byte records. Its
+cold-start contents are 80 AB 63 43 | 80 2B 63 43 | 80 67 63 43 | 80 67 63 43;
+consumers select individual entries through different windows of the
+active-device field. FE93 is separately letter-indexed.
 
 BDOS F8h and FAh read/write FE83. BDOS FBh writes FE93. These calls can alter
 the system-wide configuration, so applications should save and restore any
@@ -54,10 +54,10 @@ The default table is configuration, not a list of proven storage capacities:
 
 **CONFIRMED:** fresh `ROM00:3257` bytes give the defaults above. BDOS
 `2Eh` supplies a concrete path from a selected entry to link-session
-setup; the previous “local drives only” interpretation is withdrawn.
-Neither accepting a drive selector nor entering a transport proves a
-successful file operation. Do not relabel B: as a local RAMDISK from menu
-strings or split the total SRAM capacity into assumed drive capacities.
+setup. Neither accepting a drive selector nor entering a transport proves
+a successful file operation; keep B:'s local-RAMDISK identity unproven
+until tested, and treat the total SRAM capacity as unverified rather than
+split into assumed drive capacities.
 See [the operation-level evidence](../re-notes/open-questions.md#link-identity-and-port-selection).
 
 The owner confirms a backup cell retains RAM while main batteries are changed.
